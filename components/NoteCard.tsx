@@ -1,37 +1,48 @@
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Dimensions, ScrollView } from 'react-native';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-import { format } from 'date-fns';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { Note } from '@/types/Note';
+import { format } from 'date-fns';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 interface NoteCardProps {
   note: Note;
   onPress: () => void;
 }
 
-const IMAGE_WIDTH = Dimensions.get('window').width - 64;
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const IMAGE_WIDTH = SCREEN_WIDTH - 32;
 
 export function NoteCard({ note, onPress }: NoteCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [expanded, setExpanded] = useState(false);
+  const [showFullText, setShowFullText] = useState(false);
 
   const formatDateTime = (dateString: string) => {
     try {
-      return format(new Date(dateString), 'MMM d, yyyy \'at\' HH:mm');
+      const date = new Date(dateString);
+      return format(date, 'MMM d, yyyy \'at\' HH:mm');
     } catch (error) {
       console.error('Error formatting date:', error);
-      return dateString;
+      return '';
     }
   };
 
   const getPreviewText = () => {
     if (!note.text) return '';
     const lines = note.text.split('\n');
-    if (expanded) return note.text;
-    return lines.slice(0, 3).join('\n');
+    if (lines.length <= 3 && note.text.length <= 150) {
+      return note.text;
+    }
+    
+    if (showFullText) {
+      return note.text;
+    }
+    
+    // Show first 3 lines or 150 characters
+    const preview = lines.slice(0, 3).join('\n');
+    return preview.length > 150 ? preview.substring(0, 150) + '...' : preview;
   };
 
   const shouldShowToggle = () => {
@@ -41,14 +52,15 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
   };
 
   const handleScroll = (event: any) => {
-    const scrollPosition = event.nativeEvent.contentOffset.x;
-    const index = Math.round(scrollPosition / IMAGE_WIDTH);
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / IMAGE_WIDTH);
     setCurrentImageIndex(index);
   };
 
   return (
-    <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
-      <Pressable onPress={onPress} style={styles.card}>
+    <Animated.View entering={FadeInDown.duration(400)} style={styles.container}>
+      <Pressable onPress={onPress} style={styles.pressable}>
+        {/* Image Carousel */}
         {note.images && note.images.length > 0 && (
           <View style={styles.imageContainer}>
             <ScrollView
@@ -58,23 +70,25 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
               onScroll={handleScroll}
               scrollEventThrottle={16}
             >
-              {note.images.map((imageUri, index) => (
+              {note.images.map((imageUrl, index) => (
                 <Image
                   key={index}
-                  source={{ uri: imageUri }}
+                  source={{ uri: imageUrl }}
                   style={styles.image}
                   resizeMode="cover"
                 />
               ))}
             </ScrollView>
+            
+            {/* Image indicators */}
             {note.images.length > 1 && (
-              <View style={styles.pagination}>
+              <View style={styles.indicatorContainer}>
                 {note.images.map((_, index) => (
                   <View
                     key={index}
                     style={[
-                      styles.paginationDot,
-                      index === currentImageIndex && styles.paginationDotActive,
+                      styles.indicator,
+                      index === currentImageIndex && styles.indicatorActive,
                     ]}
                   />
                 ))}
@@ -83,35 +97,33 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
           </View>
         )}
 
+        {/* Note Text */}
         {note.text && (
           <View style={styles.textContainer}>
-            <Text style={styles.text}>{getPreviewText()}</Text>
+            <Text style={styles.noteText}>{getPreviewText()}</Text>
             {shouldShowToggle() && (
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  setExpanded(!expanded);
-                }}
-                style={styles.toggleButton}
-              >
-                <Text style={styles.toggleText}>
-                  {expanded ? 'Show Less' : 'Show More'}
-                </Text>
-              </Pressable>
+              <View style={styles.showMoreContainer}>
+                <Pressable onPress={() => setShowFullText(!showFullText)}>
+                  <Text style={styles.showMoreText}>
+                    {showFullText ? 'Show Less' : 'Show More'}
+                  </Text>
+                </Pressable>
+              </View>
             )}
           </View>
         )}
 
-        <View style={styles.footer}>
+        {/* Location and Date */}
+        <View style={styles.metadataContainer}>
           <View style={styles.locationContainer}>
             {note.location && (
               <>
                 <IconSymbol name="location.fill" size={14} color={colors.textSecondary} />
-                <Text style={styles.location}>{note.location}</Text>
+                <Text style={styles.locationText}>{note.location}</Text>
               </>
             )}
           </View>
-          <Text style={styles.date}>{formatDateTime(note.created_at)}</Text>
+          <Text style={styles.dateText}>{formatDateTime(note.created_at)}</Text>
         </View>
       </Pressable>
     </Animated.View>
@@ -121,71 +133,70 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
 const styles = StyleSheet.create({
   container: {
     marginBottom: 16,
-  },
-  card: {
-    backgroundColor: colors.card,
     borderRadius: 16,
+    backgroundColor: colors.card,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
-    boxShadow: `0px 2px 8px ${colors.shadow}`,
-    elevation: 3,
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.5)',
+    elevation: 4,
+  },
+  pressable: {
+    width: '100%',
   },
   imageContainer: {
     width: '100%',
-    height: IMAGE_WIDTH,
+    height: 300,
     position: 'relative',
   },
   image: {
     width: IMAGE_WIDTH,
-    height: IMAGE_WIDTH,
-    backgroundColor: colors.backgroundSecondary,
+    height: 300,
   },
-  pagination: {
+  indicatorContainer: {
     position: 'absolute',
     bottom: 12,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
     gap: 6,
   },
-  paginationDot: {
+  indicator: {
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: 'rgba(255, 255, 255, 0.5)',
   },
-  paginationDotActive: {
+  indicatorActive: {
     backgroundColor: colors.primary,
-    width: 20,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   textContainer: {
     padding: 16,
   },
-  text: {
-    fontSize: 16,
-    lineHeight: 24,
+  noteText: {
+    fontSize: 15,
+    lineHeight: 22,
     color: colors.text,
     marginBottom: 8,
   },
-  toggleButton: {
-    alignSelf: 'flex-end',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+  showMoreContainer: {
+    alignItems: 'flex-end',
   },
-  toggleText: {
+  showMoreText: {
     fontSize: 14,
     color: colors.primary,
     fontWeight: '600',
+    marginTop: 4,
   },
-  footer: {
+  metadataContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 16,
-    paddingTop: note.text ? 0 : 16,
   },
   locationContainer: {
     flexDirection: 'row',
@@ -193,12 +204,12 @@ const styles = StyleSheet.create({
     gap: 4,
     flex: 1,
   },
-  location: {
-    fontSize: 14,
+  locationText: {
+    fontSize: 13,
     color: colors.textSecondary,
   },
-  date: {
-    fontSize: 14,
+  dateText: {
+    fontSize: 13,
     color: colors.textSecondary,
   },
 });

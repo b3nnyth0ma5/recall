@@ -15,7 +15,6 @@ import {
   Platform,
   Keyboard,
   Modal,
-  FlatList,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -24,15 +23,7 @@ import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
-import { 
-  uploadImage, 
-  reverseGeocode, 
-  searchLocations, 
-  formatLocationName,
-  LocationSearchResult,
-  ImageUploadResult,
-  supabase
-} from '@/utils/supabase';
+import { uploadImage, deleteImage, reverseGeocode, getImageUrl } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -43,7 +34,7 @@ export default function NoteEditorScreen() {
   const { notes, addNote, updateNote, deleteNote, refreshNotes } = useNotes();
 
   const [text, setText] = useState('');
-  const [imageData, setImageData] = useState<ImageUploadResult[]>([]);
+  const [imagePaths, setImagePaths] = useState<string[]>([]);
   const [imageUris, setImageUris] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -52,13 +43,11 @@ export default function NoteEditorScreen() {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [locationSearch, setLocationSearch] = useState('');
-  const [locationResults, setLocationResults] = useState<LocationSearchResult[]>([]);
-  const [searchingLocation, setSearchingLocation] = useState(false);
   const textInputRef = useRef<TextInput>(null);
 
   const isEditing = !!params.id;
   const existingNote = notes.find((n) => n.id === params.id);
-  const canSave = text.trim().length > 0 || imageData.length > 0;
+  const canSave = text.trim().length > 0 || imagePaths.length > 0;
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
@@ -77,6 +66,7 @@ export default function NoteEditorScreen() {
   useEffect(() => {
     if (existingNote) {
       setText(existingNote.text || '');
+      setImagePaths(existingNote.imagePaths || []);
       setImageUris(existingNote.images || []);
       if (existingNote.latitude && existingNote.longitude) {
         setLocation({
@@ -132,19 +122,19 @@ export default function NoteEditorScreen() {
 
       if (!result.canceled && result.assets) {
         setLoading(true);
-        const newImageData: ImageUploadResult[] = [];
-        const newImageUris: string[] = [];
+        const uploadedPaths: string[] = [];
+        const uploadedUris: string[] = [];
 
         for (const asset of result.assets) {
-          const imgData = await uploadImage(asset.uri);
-          if (imgData) {
-            newImageData.push(imgData);
-            newImageUris.push(`data:${imgData.type};base64,${imgData.base64}`);
+          const path = await uploadImage(asset.uri);
+          if (path) {
+            uploadedPaths.push(path);
+            uploadedUris.push(getImageUrl(path));
           }
         }
 
-        setImageData([...imageData, ...newImageData]);
-        setImageUris([...imageUris, ...newImageUris]);
+        setImagePaths([...imagePaths, ...uploadedPaths]);
+        setImageUris([...imageUris, ...uploadedUris]);
         setLoading(false);
       }
     } catch (error) {
@@ -169,10 +159,10 @@ export default function NoteEditorScreen() {
 
       if (!result.canceled && result.assets) {
         setLoading(true);
-        const imgData = await uploadImage(result.assets[0].uri);
-        if (imgData) {
-          setImageData([...imageData, imgData]);
-          setImageUris([...imageUris, `data:${imgData.type};base64,${imgData.base64}`]);
+        const path = await uploadImage(result.assets[0].uri);
+        if (path) {
+          setImagePaths([...imagePaths, path]);
+          setImageUris([...imageUris, getImageUrl(path)]);
         }
         setLoading(false);
       }
@@ -184,10 +174,13 @@ export default function NoteEditorScreen() {
   };
 
   const removeImage = async (index: number) => {
-    const newImageData = imageData.filter((_, i) => i !== index);
+    const imagePath = imagePaths[index];
+    const newImagePaths = imagePaths.filter((_, i) => i !== index);
     const newImageUris = imageUris.filter((_, i) => i !== index);
-    setImageData(newImageData);
+    setImagePaths(newImagePaths);
     setImageUris(newImageUris);
+
+    await deleteImage(imagePath);
   };
 
   const handleSave = async () => {
@@ -201,7 +194,8 @@ export default function NoteEditorScreen() {
 
       const noteData = {
         text: text.trim(),
-        imageData: imageData,
+        imagePaths: imagePaths,
+        images: imageUris,
         latitude: location?.latitude,
         longitude: location?.longitude,
         location: locationName,
@@ -265,72 +259,39 @@ export default function NoteEditorScreen() {
     }
 
     try {
-      setSearchingLocation(true);
-      const results = await searchLocations(locationSearch);
-      setLocationResults(results);
-      
-      if (results.length === 0) {
-        Alert.alert('No Results', 'No locations found. Please try a different search.');
-      }
-      
-      // Save to search history
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: existing } = await supabase
-          .from('search_history')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('search_text', locationSearch.trim())
-          .single();
-
-        if (existing) {
-          await supabase
-            .from('search_history')
-            .update({ updated_at: new Date().toISOString() })
-            .eq('id', existing.id);
-        } else {
-          await supabase
-            .from('search_history')
-            .insert([{
-              user_id: user.id,
-              search_text: locationSearch.trim(),
-            }]);
+      // Use Nominatim for geocoding
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&limit=1`,
+        {
+          headers: {
+            'User-Agent': 'RecallsApp/1.0',
+          },
         }
+      );
+
+      const data = await response.json();
+
+      if (data && data.length > 0) {
+        const result = data[0];
+        const latitude = parseFloat(result.lat);
+        const longitude = parseFloat(result.lon);
+
+        setLocation({ latitude, longitude });
+
+        const locationName = await reverseGeocode(latitude, longitude);
+        setLocationName(locationName);
+
+        setShowLocationModal(false);
+        setLocationSearch('');
+        Alert.alert('Success', `Location updated to: ${locationName}`);
+      } else {
+        Alert.alert('Not Found', 'Could not find that location. Please try a different search.');
       }
     } catch (error) {
       console.error('Error searching location:', error);
       Alert.alert('Error', 'Failed to search for location');
-    } finally {
-      setSearchingLocation(false);
     }
   };
-
-  const selectLocation = (result: LocationSearchResult) => {
-    const latitude = parseFloat(result.lat);
-    const longitude = parseFloat(result.lon);
-    
-    setLocation({ latitude, longitude });
-    setLocationName(formatLocationName(result));
-    setShowLocationModal(false);
-    setLocationSearch('');
-    setLocationResults([]);
-  };
-
-  const renderLocationResult = ({ item }: { item: LocationSearchResult }) => (
-    <Pressable
-      style={styles.locationResultItem}
-      onPress={() => selectLocation(item)}
-    >
-      <IconSymbol name="mappin.circle.fill" size={20} color={colors.primary} />
-      <View style={styles.locationResultText}>
-        <Text style={styles.locationResultName}>{formatLocationName(item)}</Text>
-        <Text style={styles.locationResultAddress} numberOfLines={1}>
-          {item.display_name}
-        </Text>
-      </View>
-      <IconSymbol name="chevron.right" size={16} color={colors.textTertiary} />
-    </Pressable>
-  );
 
   return (
     <KeyboardAvoidingView
@@ -472,29 +433,13 @@ export default function NoteEditorScreen() {
         visible={showLocationModal}
         transparent
         animationType="slide"
-        onRequestClose={() => {
-          setShowLocationModal(false);
-          setLocationResults([]);
-        }}
+        onRequestClose={() => setShowLocationModal(false)}
       >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <Pressable 
-            style={styles.modalBackdrop} 
-            onPress={() => {
-              setShowLocationModal(false);
-              setLocationResults([]);
-            }}
-          />
+        <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Update Location</Text>
-              <Pressable onPress={() => {
-                setShowLocationModal(false);
-                setLocationResults([]);
-              }}>
+              <Pressable onPress={() => setShowLocationModal(false)}>
                 <IconSymbol name="xmark.circle.fill" size={28} color={colors.textSecondary} />
               </Pressable>
             </View>
@@ -512,40 +457,21 @@ export default function NoteEditorScreen() {
                 value={locationSearch}
                 onChangeText={setLocationSearch}
                 autoFocus
-                returnKeyType="search"
-                onSubmitEditing={handleLocationSearch}
               />
             </View>
 
             <Pressable
               onPress={handleLocationSearch}
-              disabled={searchingLocation || !locationSearch.trim()}
-              style={[
-                styles.searchButton,
-                (searchingLocation || !locationSearch.trim()) && styles.searchButtonDisabled
-              ]}
+              style={styles.searchButton}
             >
-              {searchingLocation ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.searchButtonText}>Search</Text>
-              )}
+              <Text style={styles.searchButtonText}>Search</Text>
             </Pressable>
 
-            {locationResults.length > 0 && (
-              <View style={styles.resultsContainer}>
-                <Text style={styles.resultsTitle}>Top 5 Results:</Text>
-                <FlatList
-                  data={locationResults}
-                  renderItem={renderLocationResult}
-                  keyExtractor={(item, index) => `${item.lat}-${item.lon}-${index}`}
-                  style={styles.resultsList}
-                  scrollEnabled={true}
-                />
-              </View>
-            )}
+            <Text style={styles.modalNote}>
+              Note: react-native-maps is not supported in Natively. Location search uses OpenStreetMap&apos;s Nominatim service.
+            </Text>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </KeyboardAvoidingView>
   );
@@ -598,7 +524,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   bottomSection: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingBottom: Platform.OS === 'ios' ? 20 : 10,
@@ -616,13 +542,13 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 8,
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor: colors.card,
   },
   removeImageButton: {
     position: 'absolute',
     top: -8,
     right: -8,
-    backgroundColor: colors.card,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     borderRadius: 12,
   },
   locationInfo: {
@@ -656,16 +582,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
-  modalBackdrop: {
-    flex: 1,
-  },
   modalContent: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
     paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-    maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -686,14 +608,12 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor: colors.card,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   searchInput: {
     flex: 1,
@@ -707,48 +627,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  searchButtonDisabled: {
-    opacity: 0.5,
-  },
   searchButtonText: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  resultsContainer: {
-    flex: 1,
-  },
-  resultsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  resultsList: {
-    flex: 1,
-  },
-  locationResultItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: colors.backgroundSecondary,
-    borderRadius: 12,
-    marginBottom: 8,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  locationResultText: {
-    flex: 1,
-  },
-  locationResultName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  locationResultAddress: {
-    fontSize: 14,
-    color: colors.textSecondary,
+  modalNote: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
