@@ -1,15 +1,17 @@
 
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import { Swipeable } from 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes } = useNotes();
+  const { notes, loading, refreshNotes, deleteNote } = useNotes();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -31,26 +33,56 @@ export default function HomeScreen() {
     router.push('/search');
   };
 
+  const handleDeleteNote = (noteId: string) => {
+    Alert.alert(
+      'Delete Recall',
+      'Are you sure you want to delete this recall? All associated images will also be deleted.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteNote(noteId);
+          },
+        },
+      ]
+    );
+  };
+
+  const renderRightActions = (noteId: string) => {
+    return (
+      <Pressable
+        style={styles.deleteAction}
+        onPress={() => handleDeleteNote(noteId)}
+      >
+        <IconSymbol name="trash" size={24} color="#FFFFFF" />
+        <Text style={styles.deleteText}>Delete</Text>
+      </Pressable>
+    );
+  };
+
   const renderEmptyState = () => (
     <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
       <IconSymbol name="note.text" size={80} color={colors.textTertiary} />
-      <Text style={styles.emptyTitle}>No Notes Yet</Text>
+      <Text style={styles.emptyTitle}>No Recalls Yet</Text>
       <Text style={styles.emptyText}>
-        Tap the + button to create your first note
+        Tap the + button to create your first recall
       </Text>
     </Animated.View>
   );
 
   return (
-    <View style={styles.container}>
+    <GestureHandlerRootView style={styles.container}>
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: 'Journal',
+          headerTitle: 'Recall',
           headerStyle: {
             backgroundColor: colors.background,
           },
           headerTintColor: colors.text,
+          headerTitleAlign: 'left',
           headerTitleStyle: {
             fontSize: 32,
             fontWeight: 'bold',
@@ -84,11 +116,16 @@ export default function HomeScreen() {
         ) : (
           <View style={styles.notesContainer}>
             {notes.map((note) => (
-              <NoteCard
+              <Swipeable
                 key={note.id}
-                note={note}
-                onPress={() => handleNotePress(note.id)}
-              />
+                renderRightActions={() => renderRightActions(note.id)}
+                overshootRight={false}
+              >
+                <NoteCard
+                  note={note}
+                  onPress={() => handleNotePress(note.id)}
+                />
+              </Swipeable>
             ))}
           </View>
         )}
@@ -101,7 +138,7 @@ export default function HomeScreen() {
       >
         <IconSymbol name="plus" size={28} color="#FFFFFF" />
       </Pressable>
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
@@ -161,5 +198,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     boxShadow: '0px 4px 16px rgba(255, 107, 53, 0.4)',
     elevation: 8,
+  },
+  deleteAction: {
+    backgroundColor: colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 100,
+    marginBottom: 16,
+    borderRadius: 16,
+    marginLeft: 8,
+  },
+  deleteText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
   },
 });

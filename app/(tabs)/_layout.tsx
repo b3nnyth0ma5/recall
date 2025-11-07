@@ -12,23 +12,20 @@ export default function TabLayout() {
         tabBarInactiveTintColor: colors.textSecondary,
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: colors.card,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
+          display: 'none',
         },
       }}
     >
       <Tabs.Screen
         name="(home)"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          href: null,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          href: null, // Hide from tab bar
+          href: null,
         }}
       />
     </Tabs>

@@ -8,7 +8,7 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Upload image to Supabase Storage
+// Upload image to Supabase Storage and return the path
 export async function uploadImage(uri: string): Promise<string | null> {
   try {
     console.log('Uploading image:', uri);
@@ -35,34 +35,28 @@ export async function uploadImage(uri: string): Promise<string | null> {
       return null;
     }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('note-images')
-      .getPublicUrl(filePath);
-
-    console.log('Image uploaded successfully:', urlData.publicUrl);
-    return urlData.publicUrl;
+    console.log('Image uploaded successfully:', filePath);
+    return filePath;
   } catch (error) {
     console.error('Error in uploadImage:', error);
     return null;
   }
 }
 
+// Get public URL for an image path
+export function getImageUrl(imagePath: string): string {
+  const { data } = supabase.storage
+    .from('note-images')
+    .getPublicUrl(imagePath);
+  return data.publicUrl;
+}
+
 // Delete image from Supabase Storage
-export async function deleteImage(imageUrl: string): Promise<boolean> {
+export async function deleteImage(imagePath: string): Promise<boolean> {
   try {
-    // Extract file path from URL
-    const urlParts = imageUrl.split('/note-images/');
-    if (urlParts.length < 2) {
-      console.error('Invalid image URL');
-      return false;
-    }
-    
-    const filePath = urlParts[1];
-    
     const { error } = await supabase.storage
       .from('note-images')
-      .remove([filePath]);
+      .remove([imagePath]);
 
     if (error) {
       console.error('Error deleting image:', error);

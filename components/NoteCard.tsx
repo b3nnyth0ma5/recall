@@ -102,11 +102,13 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
           <View style={styles.textContainer}>
             <Text style={styles.noteText}>{getPreviewText()}</Text>
             {shouldShowToggle() && (
-              <Pressable onPress={() => setShowFullText(!showFullText)}>
-                <Text style={styles.showMoreText}>
-                  {showFullText ? 'Show Less' : 'Show More'}
-                </Text>
-              </Pressable>
+              <View style={styles.showMoreContainer}>
+                <Pressable onPress={() => setShowFullText(!showFullText)}>
+                  <Text style={styles.showMoreText}>
+                    {showFullText ? 'Show Less' : 'Show More'}
+                  </Text>
+                </Pressable>
+              </View>
             )}
           </View>
         )}
@@ -134,7 +136,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: colors.card,
     overflow: 'hidden',
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.4)',
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.5)',
     elevation: 4,
   },
   pressable: {
@@ -179,6 +181,9 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.text,
     marginBottom: 8,
+  },
+  showMoreContainer: {
+    alignItems: 'flex-end',
   },
   showMoreText: {
     fontSize: 14,

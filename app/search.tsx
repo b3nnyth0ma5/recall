@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,16 +14,44 @@ import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
+import { SearchHistory } from '@/types/Note';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 export default function SearchScreen() {
   const router = useRouter();
-  const { notes, loading, searchNotes } = useNotes();
+  const { notes, loading, searchNotes, getSearchHistory } = useNotes();
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
+  const [showHistory, setShowHistory] = useState(true);
+
+  useEffect(() => {
+    loadSearchHistory();
+  }, []);
+
+  const loadSearchHistory = async () => {
+    const history = await getSearchHistory();
+    setSearchHistory(history);
+  };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-    searchNotes(query);
+    if (query.trim()) {
+      setShowHistory(false);
+      searchNotes(query);
+      // Reload history after search to get updated list
+      setTimeout(() => {
+        loadSearchHistory();
+      }, 500);
+    } else {
+      setShowHistory(true);
+      searchNotes('');
+    }
+  };
+
+  const handleHistoryItemPress = (searchText: string) => {
+    setSearchQuery(searchText);
+    setShowHistory(false);
+    searchNotes(searchText);
   };
 
   const handleNotePress = (noteId: string) => {
@@ -32,6 +60,7 @@ export default function SearchScreen() {
 
   const handleClear = () => {
     setSearchQuery('');
+    setShowHistory(true);
     searchNotes('');
   };
 
@@ -59,7 +88,7 @@ export default function SearchScreen() {
           <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search notes..."
+            placeholder="Search recalls..."
             placeholderTextColor={colors.textTertiary}
             value={searchQuery}
             onChangeText={handleSearch}
@@ -75,16 +104,31 @@ export default function SearchScreen() {
 
       {/* Results */}
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {loading ? (
+        {showHistory && searchHistory.length > 0 ? (
+          <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
+            <Text style={styles.historyTitle}>Recent Searches</Text>
+            {searchHistory.map((item) => (
+              <Pressable
+                key={item.id}
+                style={styles.historyItem}
+                onPress={() => handleHistoryItemPress(item.search_text)}
+              >
+                <IconSymbol name="clock" size={18} color={colors.textSecondary} />
+                <Text style={styles.historyText}>{item.search_text}</Text>
+                <IconSymbol name="arrow.up.left" size={16} color={colors.textTertiary} />
+              </Pressable>
+            ))}
+          </Animated.View>
+        ) : loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : searchQuery.length === 0 ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
             <IconSymbol name="magnifyingglass" size={80} color={colors.textTertiary} />
-            <Text style={styles.emptyTitle}>Search Your Notes</Text>
+            <Text style={styles.emptyTitle}>Search Your Recalls</Text>
             <Text style={styles.emptyText}>
-              Type to search across all your notes
+              Type to search across all your recalls
             </Text>
           </Animated.View>
         ) : notes.length === 0 ? (
@@ -148,6 +192,29 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+  },
+  historyContainer: {
+    width: '100%',
+  },
+  historyTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  historyText: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
   },
   loadingContainer: {
     flex: 1,
