@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -23,9 +24,23 @@ export default function SearchScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
   const [showHistory, setShowHistory] = useState(true);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const searchInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     loadSearchHistory();
+
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+    });
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+    });
+
+    return () => {
+      keyboardDidHideListener.remove();
+      keyboardDidShowListener.remove();
+    };
   }, []);
 
   const loadSearchHistory = async () => {
@@ -38,7 +53,6 @@ export default function SearchScreen() {
     if (query.trim()) {
       setShowHistory(false);
       searchNotes(query);
-      // Reload history after search to get updated list
       setTimeout(() => {
         loadSearchHistory();
       }, 500);
@@ -64,6 +78,14 @@ export default function SearchScreen() {
     searchNotes('');
   };
 
+  const toggleKeyboard = () => {
+    if (keyboardVisible) {
+      Keyboard.dismiss();
+    } else {
+      searchInputRef.current?.focus();
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -79,14 +101,23 @@ export default function SearchScreen() {
               <IconSymbol name="chevron.left" size={24} color={colors.text} />
             </Pressable>
           ),
+          headerRight: () => (
+            <Pressable onPress={toggleKeyboard} style={styles.headerButton}>
+              <IconSymbol 
+                name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+                size={24} 
+                color={colors.text} 
+              />
+            </Pressable>
+          ),
         }}
       />
 
-      {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
           <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
           <TextInput
+            ref={searchInputRef}
             style={styles.searchInput}
             placeholder="Search recalls..."
             placeholderTextColor={colors.textTertiary}
@@ -102,7 +133,6 @@ export default function SearchScreen() {
         </View>
       </View>
 
-      {/* Results */}
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {showHistory && searchHistory.length > 0 ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
@@ -125,11 +155,7 @@ export default function SearchScreen() {
           </View>
         ) : searchQuery.length === 0 ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-            <IconSymbol name="magnifyingglass" size={80} color={colors.textTertiary} />
-            <Text style={styles.emptyTitle}>Search Your Recalls</Text>
-            <Text style={styles.emptyText}>
-              Type to search across all your recalls
-            </Text>
+            
           </Animated.View>
         ) : notes.length === 0 ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
@@ -165,7 +191,7 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     padding: 8,
-    marginLeft: 8,
+    marginHorizontal: 8,
   },
   searchContainer: {
     padding: 16,

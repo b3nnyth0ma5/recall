@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  Modal,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -40,10 +41,13 @@ export default function NoteEditorScreen() {
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationName, setLocationName] = useState<string>('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [locationSearch, setLocationSearch] = useState('');
   const textInputRef = useRef<TextInput>(null);
 
   const isEditing = !!params.id;
   const existingNote = notes.find((n) => n.id === params.id);
+  const canSave = text.trim().length > 0 || imagePaths.length > 0;
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
@@ -90,7 +94,6 @@ export default function NoteEditorScreen() {
           longitude: currentLocation.coords.longitude,
         });
 
-        // Get location name
         const locationName = await reverseGeocode(
           currentLocation.coords.latitude,
           currentLocation.coords.longitude
@@ -177,12 +180,11 @@ export default function NoteEditorScreen() {
     setImagePaths(newImagePaths);
     setImageUris(newImageUris);
 
-    // Delete from storage
     await deleteImage(imagePath);
   };
 
   const handleSave = async () => {
-    if (!text.trim() && imagePaths.length === 0) {
+    if (!canSave) {
       Alert.alert('Empty Recall', 'Please add some text or images');
       return;
     }
@@ -205,7 +207,6 @@ export default function NoteEditorScreen() {
         await addNote(noteData);
       }
 
-      // Navigate back and refresh
       router.back();
       setTimeout(() => {
         refreshNotes();
@@ -251,6 +252,47 @@ export default function NoteEditorScreen() {
     }
   };
 
+  const handleLocationSearch = async () => {
+    if (!locationSearch.trim()) {
+      Alert.alert('Error', 'Please enter a location to search');
+      return;
+    }
+
+    try {
+      // Use Nominatim for geocoding
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&limit=1`,
+        {
+          headers: {
+            'User-Agent': 'RecallsApp/1.0',
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (data && data.length > 0) {
+        const result = data[0];
+        const latitude = parseFloat(result.lat);
+        const longitude = parseFloat(result.lon);
+
+        setLocation({ latitude, longitude });
+
+        const locationName = await reverseGeocode(latitude, longitude);
+        setLocationName(locationName);
+
+        setShowLocationModal(false);
+        setLocationSearch('');
+        Alert.alert('Success', `Location updated to: ${locationName}`);
+      } else {
+        Alert.alert('Not Found', 'Could not find that location. Please try a different search.');
+      }
+    } catch (error) {
+      console.error('Error searching location:', error);
+      Alert.alert('Error', 'Failed to search for location');
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -271,24 +313,22 @@ export default function NoteEditorScreen() {
             </Pressable>
           ),
           headerRight: () => (
-            <View style={styles.headerRightContainer}>
-              {isEditing && (
-                <Pressable onPress={handleDelete} style={styles.headerButton}>
-                  <IconSymbol name="trash" size={22} color={colors.error} />
-                </Pressable>
+            <Pressable
+              onPress={handleSave}
+              disabled={saving || !canSave}
+              style={[
+                styles.saveButton,
+                (saving || !canSave) && styles.saveButtonDisabled,
+              ]}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <View style={styles.checkmarkContainer}>
+                  <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
+                </View>
               )}
-              <Pressable
-                onPress={handleSave}
-                disabled={saving}
-                style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-              >
-                {saving ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <IconSymbol name="checkmark" size={24} color="#FFFFFF" />
-                )}
-              </Pressable>
-            </View>
+            </Pressable>
           ),
         }}
       />
@@ -298,7 +338,6 @@ export default function NoteEditorScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Text Input */}
         <Animated.View entering={FadeIn.duration(600)} style={styles.textInputContainer}>
           <TextInput
             ref={textInputRef}
@@ -313,9 +352,8 @@ export default function NoteEditorScreen() {
         </Animated.View>
       </ScrollView>
 
-      {/* Bottom Section - Image Previews, Location, and Action Buttons */}
+      {/* Bottom Section */}
       <View style={styles.bottomSection}>
-        {/* Image Preview */}
         {imageUris.length > 0 && (
           <Animated.View entering={FadeInDown.duration(400)} style={styles.imagesContainer}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -334,7 +372,6 @@ export default function NoteEditorScreen() {
           </Animated.View>
         )}
 
-        {/* Location Info */}
         {locationName && (
           <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.locationInfo}>
             <IconSymbol name="location.fill" size={16} color={colors.textSecondary} />
@@ -342,38 +379,100 @@ export default function NoteEditorScreen() {
           </Animated.View>
         )}
 
-        {/* Action Buttons */}
         <View style={styles.toolbar}>
-          <Pressable
-            onPress={takePhoto}
-            disabled={loading}
-            style={styles.toolbarButton}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <IconSymbol name="camera.fill" size={28} color={colors.primary} />
-            )}
-          </Pressable>
-          <Pressable
-            onPress={pickImage}
-            disabled={loading}
-            style={styles.toolbarButton}
-          >
-            <IconSymbol name="photo.fill" size={28} color={colors.primary} />
-          </Pressable>
-          <Pressable
-            onPress={toggleKeyboard}
-            style={styles.toolbarButton}
-          >
-            <IconSymbol 
-              name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-              size={28} 
-              color={colors.primary} 
-            />
-          </Pressable>
+          <View style={styles.toolbarLeft}>
+            <Pressable
+              onPress={takePhoto}
+              disabled={loading}
+              style={styles.toolbarButton}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+              )}
+            </Pressable>
+            <Pressable
+              onPress={pickImage}
+              disabled={loading}
+              style={styles.toolbarButton}
+            >
+              <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+            </Pressable>
+            <Pressable
+              onPress={() => setShowLocationModal(true)}
+              style={styles.toolbarButton}
+            >
+              <IconSymbol name="mappin.circle.fill" size={28} color={colors.primary} />
+            </Pressable>
+            <Pressable
+              onPress={toggleKeyboard}
+              style={styles.toolbarButton}
+            >
+              <IconSymbol 
+                name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+                size={28} 
+                color={colors.primary} 
+              />
+            </Pressable>
+          </View>
+
+          {isEditing && (
+            <Pressable
+              onPress={handleDelete}
+              style={styles.toolbarButton}
+            >
+              <IconSymbol name="trash" size={28} color={colors.error} />
+            </Pressable>
+          )}
         </View>
       </View>
+
+      {/* Location Search Modal */}
+      <Modal
+        visible={showLocationModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLocationModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Update Location</Text>
+              <Pressable onPress={() => setShowLocationModal(false)}>
+                <IconSymbol name="xmark.circle.fill" size={28} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+
+            <Text style={styles.modalDescription}>
+              Search for an address or business to update the location
+            </Text>
+
+            <View style={styles.searchContainer}>
+              <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search location..."
+                placeholderTextColor={colors.textTertiary}
+                value={locationSearch}
+                onChangeText={setLocationSearch}
+                autoFocus
+              />
+            </View>
+
+            <Pressable
+              onPress={handleLocationSearch}
+              style={styles.searchButton}
+            >
+              <Text style={styles.searchButtonText}>Search</Text>
+            </Pressable>
+
+            <Text style={styles.modalNote}>
+              Note: react-native-maps is not supported in Natively. Location search uses OpenStreetMap&apos;s Nominatim service.
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -394,20 +493,25 @@ const styles = StyleSheet.create({
     padding: 8,
     marginHorizontal: 8,
   },
-  headerRightContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   saveButton: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
     marginRight: 8,
+    minWidth: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   saveButtonDisabled: {
-    opacity: 0.6,
+    opacity: 0.4,
+  },
+  checkmarkContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   textInputContainer: {
     minHeight: 300,
@@ -461,12 +565,77 @@ const styles = StyleSheet.create({
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 24,
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
+  toolbarLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 24,
+  },
   toolbarButton: {
     padding: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  modalDescription: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginBottom: 24,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+    marginBottom: 16,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.text,
+  },
+  searchButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  searchButtonText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  modalNote: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });

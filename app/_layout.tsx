@@ -1,12 +1,13 @@
 
 import React, { useEffect } from 'react';
 import { useColorScheme, StatusBar } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { colors } from '@/styles/commonStyles';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import 'react-native-reanimated';
 
 SplashScreen.preventAutoHideAsync();
@@ -24,6 +25,52 @@ const CustomDarkTheme = {
     notification: colors.primary,
   },
 };
+
+function RootLayoutNav() {
+  const { session, loading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+
+    const inAuthGroup = segments[0] === 'login';
+
+    if (!session && !inAuthGroup) {
+      // Redirect to login if not authenticated
+      router.replace('/login');
+    } else if (session && inAuthGroup) {
+      // Redirect to home if authenticated
+      router.replace('/(tabs)/(home)');
+    }
+  }, [session, loading, segments]);
+
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.background },
+      }}
+    >
+      <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="note-editor"
+        options={{
+          presentation: 'card',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="search"
+        options={{
+          presentation: 'card',
+          headerShown: false,
+        }}
+      />
+    </Stack>
+  );
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -43,31 +90,12 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={CustomDarkTheme}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.background },
-          }}
-        >
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="note-editor"
-            options={{
-              presentation: 'card',
-              headerShown: false,
-            }}
-          />
-          <Stack.Screen
-            name="search"
-            options={{
-              presentation: 'card',
-              headerShown: false,
-            }}
-          />
-        </Stack>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider value={CustomDarkTheme}>
+          <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+          <RootLayoutNav />
+        </ThemeProvider>
+      </AuthProvider>
     </GestureHandlerRootView>
   );
 }

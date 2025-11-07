@@ -2,32 +2,29 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Note } from '@/types/Note';
 import { supabase, getImageUrl, deleteImage } from '@/utils/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [userId, setUserId] = useState<string | null>(null);
-
-  // Get current user
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUserId(user?.id || null);
-      console.log('Current user ID:', user?.id);
-    };
-    getUser();
-  }, []);
+  const { user } = useAuth();
 
   const loadNotes = useCallback(async () => {
+    if (!user) {
+      setNotes([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      console.log('Loading notes from Supabase...');
+      console.log('Loading notes from Supabase for user:', user.id);
       
-      // Fetch recalls
       const { data: recallsData, error: recallsError } = await supabase
         .from('recalls')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (recallsError) {
@@ -35,7 +32,6 @@ export function useNotes() {
         return;
       }
 
-      // Fetch images for each recall
       const notesWithImages = await Promise.all(
         (recallsData || []).map(async (recall) => {
           const { data: imagesData, error: imagesError } = await supabase
@@ -49,7 +45,6 @@ export function useNotes() {
             return { ...recall, images: [] };
           }
 
-          // Convert image paths to URLs
           const imageUrls = (imagesData || []).map(img => getImageUrl(img.image_path));
           return { ...recall, images: imageUrls, imagePaths: (imagesData || []).map(img => img.image_path) };
         })
@@ -62,17 +57,21 @@ export function useNotes() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     loadNotes();
   }, [loadNotes]);
 
   const addNote = useCallback(async (note: Omit<Note, 'id' | 'created_at' | 'updated_at'>) => {
+    if (!user) {
+      console.error('No user logged in');
+      return;
+    }
+
     try {
       console.log('Adding recall to Supabase...');
       
-      // Insert recall
       const { data: recallData, error: recallError } = await supabase
         .from('recalls')
         .insert([{
@@ -80,7 +79,7 @@ export function useNotes() {
           latitude: note.latitude,
           longitude: note.longitude,
           location: note.location,
-          user_id: userId,
+          user_id: user.id,
         }])
         .select()
         .single();
@@ -90,7 +89,6 @@ export function useNotes() {
         throw recallError;
       }
 
-      // Insert images
       if (note.imagePaths && note.imagePaths.length > 0) {
         const imageRecords = note.imagePaths.map(path => ({
           recall_id: recallData.id,
@@ -112,13 +110,17 @@ export function useNotes() {
       console.error('Error adding recall:', error);
       throw error;
     }
-  }, [loadNotes, userId]);
+  }, [loadNotes, user]);
 
   const updateNote = useCallback(async (noteId: string, updates: Partial<Note>) => {
+    if (!user) {
+      console.error('No user logged in');
+      return;
+    }
+
     try {
       console.log('Updating recall in Supabase:', noteId);
       
-      // Update recall
       const { error: recallError } = await supabase
         .from('recalls')
         .update({
@@ -128,16 +130,15 @@ export function useNotes() {
           location: updates.location,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', noteId);
+        .eq('id', noteId)
+        .eq('user_id', user.id);
 
       if (recallError) {
         console.error('Error updating recall:', recallError);
         throw recallError;
       }
 
-      // Update images if provided
       if (updates.imagePaths !== undefined) {
-        // Delete existing images
         const { error: deleteError } = await supabase
           .from('recall_images')
           .delete()
@@ -147,7 +148,6 @@ export function useNotes() {
           console.error('Error deleting old images:', deleteError);
         }
 
-        // Insert new images
         if (updates.imagePaths.length > 0) {
           const imageRecords = updates.imagePaths.map(path => ({
             recall_id: noteId,
@@ -170,30 +170,33 @@ export function useNotes() {
       console.error('Error updating recall:', error);
       throw error;
     }
-  }, [loadNotes]);
+  }, [loadNotes, user]);
 
   const deleteNote = useCallback(async (noteId: string) => {
+    if (!user) {
+      console.error('No user logged in');
+      return;
+    }
+
     try {
       console.log('Deleting recall from Supabase:', noteId);
       
-      // Get image paths before deleting
       const { data: imagesData } = await supabase
         .from('recall_images')
         .select('image_path')
         .eq('recall_id', noteId);
 
-      // Delete from storage
       if (imagesData && imagesData.length > 0) {
         for (const img of imagesData) {
           await deleteImage(img.image_path);
         }
       }
 
-      // Delete recall (cascade will delete recall_images entries)
       const { error } = await supabase
         .from('recalls')
         .delete()
-        .eq('id', noteId);
+        .eq('id', noteId)
+        .eq('user_id', user.id);
 
       if (error) {
         console.error('Error deleting recall:', error);
@@ -206,9 +209,14 @@ export function useNotes() {
       console.error('Error deleting recall:', error);
       throw error;
     }
-  }, [loadNotes]);
+  }, [loadNotes, user]);
 
   const searchNotes = useCallback(async (query: string) => {
+    if (!user) {
+      console.error('No user logged in');
+      return;
+    }
+
     setSearchQuery(query);
     if (!query.trim()) {
       await loadNotes();
@@ -219,15 +227,12 @@ export function useNotes() {
       console.log('Searching recalls:', query);
       setLoading(true);
       
-      // Save search to history
-      if (userId) {
-        await saveSearchHistory(query);
-      }
+      await saveSearchHistory(query);
       
-      // Fuzzy search across all text columns
       const { data: recallsData, error: recallsError } = await supabase
         .from('recalls')
         .select('*')
+        .eq('user_id', user.id)
         .or(`text.ilike.%${query}%,location.ilike.%${query}%`)
         .order('created_at', { ascending: false });
 
@@ -236,7 +241,6 @@ export function useNotes() {
         return;
       }
 
-      // Fetch images for each recall
       const notesWithImages = await Promise.all(
         (recallsData || []).map(async (recall) => {
           const { data: imagesData } = await supabase
@@ -257,32 +261,29 @@ export function useNotes() {
     } finally {
       setLoading(false);
     }
-  }, [loadNotes, userId]);
+  }, [loadNotes, user]);
 
   const saveSearchHistory = async (searchText: string) => {
-    if (!userId || !searchText.trim()) return;
+    if (!user || !searchText.trim()) return;
 
     try {
-      // Check if search already exists for this user
       const { data: existing } = await supabase
         .from('search_history')
         .select('id')
-        .eq('user_id', userId)
+        .eq('user_id', user.id)
         .eq('search_text', searchText.trim())
         .single();
 
       if (existing) {
-        // Update existing search with new timestamp
         await supabase
           .from('search_history')
           .update({ updated_at: new Date().toISOString() })
           .eq('id', existing.id);
       } else {
-        // Insert new search
         await supabase
           .from('search_history')
           .insert([{
-            user_id: userId,
+            user_id: user.id,
             search_text: searchText.trim(),
           }]);
       }
@@ -292,13 +293,13 @@ export function useNotes() {
   };
 
   const getSearchHistory = useCallback(async () => {
-    if (!userId) return [];
+    if (!user) return [];
 
     try {
       const { data, error } = await supabase
         .from('search_history')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', user.id)
         .order('updated_at', { ascending: false })
         .limit(10);
 
@@ -312,7 +313,7 @@ export function useNotes() {
       console.error('Error loading search history:', error);
       return [];
     }
-  }, [userId]);
+  }, [user]);
 
   return {
     notes,

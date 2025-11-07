@@ -2,27 +2,31 @@
 import { createClient } from '@supabase/supabase-js';
 import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const supabaseUrl = 'https://cesmsdnblkdjkskmiqib.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: AsyncStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
+});
 
-// Upload image to Supabase Storage and return the path
 export async function uploadImage(uri: string): Promise<string | null> {
   try {
     console.log('Uploading image:', uri);
     
-    // Read the file as base64
     const base64 = await FileSystem.readAsStringAsync(uri, {
       encoding: 'base64',
     });
 
-    // Generate unique filename
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
     const filePath = `${fileName}`;
 
-    // Upload to Supabase Storage
     const { data, error } = await supabase.storage
       .from('note-images')
       .upload(filePath, decode(base64), {
@@ -43,7 +47,6 @@ export async function uploadImage(uri: string): Promise<string | null> {
   }
 }
 
-// Get public URL for an image path
 export function getImageUrl(imagePath: string): string {
   const { data } = supabase.storage
     .from('note-images')
@@ -51,7 +54,6 @@ export function getImageUrl(imagePath: string): string {
   return data.publicUrl;
 }
 
-// Delete image from Supabase Storage
 export async function deleteImage(imagePath: string): Promise<boolean> {
   try {
     const { error } = await supabase.storage
@@ -71,10 +73,8 @@ export async function deleteImage(imagePath: string): Promise<boolean> {
   }
 }
 
-// Geocoding function to get location from coordinates
 export async function reverseGeocode(latitude: number, longitude: number): Promise<string> {
   try {
-    // Using Nominatim (OpenStreetMap) for reverse geocoding
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
       {

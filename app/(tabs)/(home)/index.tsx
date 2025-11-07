@@ -131,7 +131,6 @@ export default function HomeScreen() {
         )}
       </ScrollView>
 
-      {/* Floating Add Button */}
       <Pressable
         onPress={handleCreateNote}
         style={styles.fab}
@@ -185,6 +184,8 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fab: {
     position: 'absolute',
