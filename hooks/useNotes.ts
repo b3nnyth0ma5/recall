@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Note } from '@/types/Note';
-import { supabase, getImageUrl, deleteImage } from '@/utils/supabase';
+import { supabase, getImagesForRecall, deleteImageFromDatabase, ImageUploadResult, saveImageToDatabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function useNotes() {
@@ -34,19 +34,12 @@ export function useNotes() {
 
       const notesWithImages = await Promise.all(
         (recallsData || []).map(async (recall) => {
-          const { data: imagesData, error: imagesError } = await supabase
-            .from('recall_images')
-            .select('image_path')
-            .eq('recall_id', recall.id)
-            .order('created_at', { ascending: true });
-
-          if (imagesError) {
-            console.error('Error loading images for recall:', recall.id, imagesError);
-            return { ...recall, images: [] };
-          }
-
-          const imageUrls = (imagesData || []).map(img => getImageUrl(img.image_path));
-          return { ...recall, images: imageUrls, imagePaths: (imagesData || []).map(img => img.image_path) };
+          const images = await getImagesForRecall(recall.id);
+          return { 
+            ...recall, 
+            images: images.map(img => img.uri),
+            imageIds: images.map(img => img.id)
+          };
         })
       );
 
@@ -63,7 +56,7 @@ export function useNotes() {
     loadNotes();
   }, [loadNotes]);
 
-  const addNote = useCallback(async (note: Omit<Note, 'id' | 'created_at' | 'updated_at'>) => {
+  const addNote = useCallback(async (note: Omit<Note, 'id' | 'created_at' | 'updated_at'> & { imageData?: ImageUploadResult[] }) => {
     if (!user) {
       console.error('No user logged in');
       return;
@@ -89,18 +82,9 @@ export function useNotes() {
         throw recallError;
       }
 
-      if (note.imagePaths && note.imagePaths.length > 0) {
-        const imageRecords = note.imagePaths.map(path => ({
-          recall_id: recallData.id,
-          image_path: path,
-        }));
-
-        const { error: imagesError } = await supabase
-          .from('recall_images')
-          .insert(imageRecords);
-
-        if (imagesError) {
-          console.error('Error adding images:', imagesError);
+      if (note.imageData && note.imageData.length > 0) {
+        for (const imageData of note.imageData) {
+          await saveImageToDatabase(recallData.id, imageData);
         }
       }
 
@@ -112,7 +96,7 @@ export function useNotes() {
     }
   }, [loadNotes, user]);
 
-  const updateNote = useCallback(async (noteId: string, updates: Partial<Note>) => {
+  const updateNote = useCallback(async (noteId: string, updates: Partial<Note> & { imageData?: ImageUploadResult[], imageIds?: string[] }) => {
     if (!user) {
       console.error('No user logged in');
       return;
@@ -138,7 +122,8 @@ export function useNotes() {
         throw recallError;
       }
 
-      if (updates.imagePaths !== undefined) {
+      if (updates.imageData !== undefined) {
+        // Delete old images
         const { error: deleteError } = await supabase
           .from('recall_images')
           .delete()
@@ -148,18 +133,10 @@ export function useNotes() {
           console.error('Error deleting old images:', deleteError);
         }
 
-        if (updates.imagePaths.length > 0) {
-          const imageRecords = updates.imagePaths.map(path => ({
-            recall_id: noteId,
-            image_path: path,
-          }));
-
-          const { error: imagesError } = await supabase
-            .from('recall_images')
-            .insert(imageRecords);
-
-          if (imagesError) {
-            console.error('Error adding new images:', imagesError);
+        // Add new images
+        if (updates.imageData.length > 0) {
+          for (const imageData of updates.imageData) {
+            await saveImageToDatabase(noteId, imageData);
           }
         }
       }
@@ -181,17 +158,7 @@ export function useNotes() {
     try {
       console.log('Deleting recall from Supabase:', noteId);
       
-      const { data: imagesData } = await supabase
-        .from('recall_images')
-        .select('image_path')
-        .eq('recall_id', noteId);
-
-      if (imagesData && imagesData.length > 0) {
-        for (const img of imagesData) {
-          await deleteImage(img.image_path);
-        }
-      }
-
+      // Images will be automatically deleted due to CASCADE constraint
       const { error } = await supabase
         .from('recalls')
         .delete()
@@ -243,14 +210,12 @@ export function useNotes() {
 
       const notesWithImages = await Promise.all(
         (recallsData || []).map(async (recall) => {
-          const { data: imagesData } = await supabase
-            .from('recall_images')
-            .select('image_path')
-            .eq('recall_id', recall.id)
-            .order('created_at', { ascending: true });
-
-          const imageUrls = (imagesData || []).map(img => getImageUrl(img.image_path));
-          return { ...recall, images: imageUrls, imagePaths: (imagesData || []).map(img => img.image_path) };
+          const images = await getImagesForRecall(recall.id);
+          return { 
+            ...recall, 
+            images: images.map(img => img.uri),
+            imageIds: images.map(img => img.id)
+          };
         })
       );
 

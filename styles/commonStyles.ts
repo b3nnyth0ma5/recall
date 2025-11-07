@@ -2,24 +2,28 @@
 import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
 
 export const colors = {
-  // Dark theme colors
-  background: '#0A0A0A',
-  backgroundSecondary: '#1A1A1A',
-  card: '#1E1E1E',
-  cardHover: '#252525',
-  text: '#FFFFFF',
-  textSecondary: '#A0A0A0',
-  textTertiary: '#707070',
-  primary: '#FF6B35', // Burnt orange
-  primaryDark: '#E55A2B',
-  primaryLight: '#FF8555',
-  accent: '#FF6B35',
-  border: '#2A2A2A',
-  borderLight: '#3A3A3A',
-  error: '#FF4444',
-  success: '#4CAF50',
-  overlay: 'rgba(0, 0, 0, 0.7)',
-  shadow: 'rgba(0, 0, 0, 0.5)',
+  // Light theme colors inspired by the design image
+  background: '#E8DDD3', // Beige/cream background
+  backgroundSecondary: '#F5EFE9',
+  card: '#FFFFFF',
+  cardHover: '#F8F4F0',
+  text: '#2D2D2D', // Dark gray for text
+  textSecondary: '#6B6B6B',
+  textTertiary: '#9B9B9B',
+  primary: '#E57368', // Coral/salmon accent
+  primaryDark: '#D45F54',
+  primaryLight: '#F08B82',
+  accent: '#E57368',
+  border: '#D4C4B8',
+  borderLight: '#E0D5CA',
+  error: '#D9534F',
+  success: '#5CB85C',
+  overlay: 'rgba(0, 0, 0, 0.5)',
+  shadow: 'rgba(0, 0, 0, 0.15)',
+  // Additional colors for the design
+  darkCard: '#3D3D3D', // Dark card background
+  darkText: '#FFFFFF', // Text on dark backgrounds
+  meshPattern: '#8B8B8B', // For mesh/pattern elements
 };
 
 export const buttonStyles = StyleSheet.create({

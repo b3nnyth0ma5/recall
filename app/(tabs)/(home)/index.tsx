@@ -1,25 +1,25 @@
 
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Alert } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
-import { NoteCard } from '@/components/NoteCard';
-import { useNotes } from '@/hooks/useNotes';
-import { IconSymbol } from '@/components/IconSymbol';
-import Animated, { FadeIn } from 'react-native-reanimated';
-import { Swipeable } from 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Swipeable } from 'react-native-gesture-handler';
+import Animated, { FadeIn } from 'react-native-reanimated';
+import { Stack, useRouter } from 'expo-router';
+import { NoteCard } from '@/components/NoteCard';
+import { IconSymbol } from '@/components/IconSymbol';
+import { colors } from '@/styles/commonStyles';
+import { useNotes } from '@/hooks/useNotes';
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes, deleteNote } = useNotes();
   const router = useRouter();
+  const { notes, loading, refreshNotes, deleteNote } = useNotes();
   const [refreshing, setRefreshing] = useState(false);
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await refreshNotes();
     setRefreshing(false);
-  };
+  }, [refreshNotes]);
 
   const handleCreateNote = () => {
     router.push('/note-editor');
@@ -36,14 +36,19 @@ export default function HomeScreen() {
   const handleDeleteNote = (noteId: string) => {
     Alert.alert(
       'Delete Recall',
-      'Are you sure you want to delete this recall? All associated images will also be deleted.',
+      'Are you sure you want to delete this recall?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await deleteNote(noteId);
+            try {
+              await deleteNote(noteId);
+            } catch (error) {
+              console.error('Error deleting recall:', error);
+              Alert.alert('Error', 'Failed to delete recall');
+            }
           },
         },
       ]
@@ -53,20 +58,22 @@ export default function HomeScreen() {
   const renderRightActions = (noteId: string) => {
     return (
       <Pressable
-        style={styles.deleteAction}
+        style={styles.deleteButton}
         onPress={() => handleDeleteNote(noteId)}
       >
-        <IconSymbol name="trash" size={24} color="#FFFFFF" />
-        <Text style={styles.deleteText}>Delete</Text>
+        <IconSymbol name="trash.fill" size={24} color="#FFFFFF" />
+        <Text style={styles.deleteButtonText}>Delete</Text>
       </Pressable>
     );
   };
 
   const renderEmptyState = () => (
-    <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-      <IconSymbol name="note.text" size={80} color={colors.textTertiary} />
+    <Animated.View entering={FadeIn.duration(600)} style={styles.emptyState}>
+      <View style={styles.emptyIconContainer}>
+        <IconSymbol name="note.text" size={64} color={colors.textTertiary} />
+      </View>
       <Text style={styles.emptyTitle}>No Recalls Yet</Text>
-      <Text style={styles.emptyText}>
+      <Text style={styles.emptyDescription}>
         Tap the + button to create your first recall
       </Text>
     </Animated.View>
@@ -77,16 +84,15 @@ export default function HomeScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: 'Recall',
+          headerTitle: '',
           headerStyle: {
             backgroundColor: colors.background,
           },
-          headerTintColor: colors.text,
-          headerTitleAlign: 'left',
-          headerTitleStyle: {
-            fontSize: 32,
-            fontWeight: 'bold',
-          },
+          headerLeft: () => (
+            <View style={styles.headerLeft}>
+              <Text style={styles.headerTitle}>Recall</Text>
+            </View>
+          ),
           headerRight: () => (
             <Pressable onPress={handleSearch} style={styles.headerButton}>
               <IconSymbol name="magnifyingglass" size={24} color={colors.text} />
@@ -107,34 +113,26 @@ export default function HomeScreen() {
           />
         }
       >
-        {loading && !refreshing ? (
+        {loading && notes.length === 0 ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : notes.length === 0 ? (
           renderEmptyState()
         ) : (
-          <View style={styles.notesContainer}>
-            {notes.map((note) => (
-              <Swipeable
-                key={note.id}
-                renderRightActions={() => renderRightActions(note.id)}
-                overshootRight={false}
-              >
-                <NoteCard
-                  note={note}
-                  onPress={() => handleNotePress(note.id)}
-                />
-              </Swipeable>
-            ))}
-          </View>
+          notes.map((note) => (
+            <Swipeable
+              key={note.id}
+              renderRightActions={() => renderRightActions(note.id)}
+              overshootRight={false}
+            >
+              <NoteCard note={note} onPress={() => handleNotePress(note.id)} />
+            </Swipeable>
+          ))
         )}
       </ScrollView>
 
-      <Pressable
-        onPress={handleCreateNote}
-        style={styles.fab}
-      >
+      <Pressable style={styles.fab} onPress={handleCreateNote}>
         <IconSymbol name="plus" size={28} color="#FFFFFF" />
       </Pressable>
     </GestureHandlerRootView>
@@ -145,6 +143,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  headerLeft: {
+    paddingLeft: 16,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  headerButton: {
+    padding: 8,
+    marginRight: 8,
   },
   scrollView: {
     flex: 1,
@@ -159,33 +169,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 100,
   },
-  emptyContainer: {
+  emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingTop: 100,
+    paddingHorizontal: 32,
+  },
+  emptyIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: colors.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   emptyTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  emptyText: {
+  emptyDescription: {
     fontSize: 16,
     color: colors.textSecondary,
     textAlign: 'center',
-    paddingHorizontal: 32,
+    lineHeight: 24,
   },
-  notesContainer: {
-    width: '100%',
-  },
-  headerButton: {
-    padding: 8,
-    marginRight: 8,
-    alignItems: 'center',
+  deleteButton: {
+    backgroundColor: colors.error,
     justifyContent: 'center',
+    alignItems: 'center',
+    width: 100,
+    marginBottom: 16,
+    borderRadius: 16,
+    marginLeft: 8,
+  },
+  deleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 4,
   },
   fab: {
     position: 'absolute',
@@ -197,22 +224,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(255, 107, 53, 0.4)',
-    elevation: 8,
-  },
-  deleteAction: {
-    backgroundColor: colors.error,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 100,
-    marginBottom: 16,
-    borderRadius: 16,
-    marginLeft: 8,
-  },
-  deleteText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
+    boxShadow: `0px 4px 12px ${colors.shadow}`,
+    elevation: 6,
   },
 });

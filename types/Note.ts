@@ -3,7 +3,8 @@ export interface Note {
   id: string;
   text: string;
   images: string[];
-  imagePaths?: string[];
+  imageIds?: string[];
+  imagePaths?: string[]; // Deprecated, kept for backward compatibility
   created_at: string;
   updated_at: string;
   latitude?: number;

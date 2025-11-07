@@ -12,19 +12,18 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
-import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { Stack, useRouter } from 'expo-router';
+import { IconSymbol } from '@/components/IconSymbol';
+import { colors } from '@/styles/commonStyles';
+import { supabase } from '@/utils/supabase';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
 
   const handleAuth = async () => {
     if (!email.trim() || !password.trim()) {
@@ -32,75 +31,47 @@ export default function LoginScreen() {
       return;
     }
 
-    if (isSignUp && password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
-      return;
-    }
-
-    if (isSignUp && password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
-      return;
-    }
-
-    setLoading(true);
-
     try {
+      setLoading(true);
+
       if (isSignUp) {
-        // Sign up
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
-          password,
+          password: password.trim(),
           options: {
-            emailRedirectTo: 'https://natively.dev/email-confirmed',
-          },
+            emailRedirectTo: 'https://natively.dev/email-confirmed'
+          }
         });
 
         if (error) {
           Alert.alert('Sign Up Error', error.message);
-        } else if (data.user) {
-          // Create user profile
-          const { error: profileError } = await supabase
-            .from('users')
-            .insert([
-              {
-                id: data.user.id,
-                email: email.trim(),
-              },
-            ]);
-
-          if (profileError) {
-            console.error('Error creating user profile:', profileError);
-          }
-
-          // Log the signup
-          await logLogin(data.user.id);
-
+        } else {
           Alert.alert(
             'Success',
-            'Account created successfully! Please check your email to verify your account before logging in.',
+            'Account created! Please check your email to verify your account before logging in.',
             [{ text: 'OK', onPress: () => setIsSignUp(false) }]
           );
+          
+          if (data.user) {
+            await logLogin(data.user.id);
+          }
         }
       } else {
-        // Sign in
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
-          password,
+          password: password.trim(),
         });
 
         if (error) {
           Alert.alert('Login Error', error.message);
         } else if (data.user) {
-          // Log the login
           await logLogin(data.user.id);
-
-          // Navigate to home
           router.replace('/(tabs)/(home)');
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Auth error:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+      Alert.alert('Error', error.message || 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -135,17 +106,20 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Animated.View entering={FadeIn.duration(800)} style={styles.content}>
-          {/* Logo/Title */}
-          <View style={styles.header}>
-            <IconSymbol name="brain" size={80} color={colors.primary} />
-            <Text style={styles.title}>Recall</Text>
-            <Text style={styles.subtitle}>
-              {isSignUp ? 'Create your account' : 'Welcome back'}
-            </Text>
+          <View style={styles.logoContainer}>
+            <View style={styles.logoCircle}>
+              <IconSymbol name="note.text" size={48} color={colors.primary} />
+            </View>
           </View>
 
-          {/* Form */}
-          <Animated.View entering={FadeInDown.duration(600).delay(200)} style={styles.form}>
+          <Animated.Text entering={FadeInDown.duration(600).delay(200)} style={styles.title}>
+            Welcome to Recall
+          </Animated.Text>
+          <Animated.Text entering={FadeInDown.duration(600).delay(300)} style={styles.subtitle}>
+            {isSignUp ? 'Create your account' : 'Sign in to continue'}
+          </Animated.Text>
+
+          <Animated.View entering={FadeInDown.duration(600).delay(400)} style={styles.form}>
             <View style={styles.inputContainer}>
               <IconSymbol name="envelope.fill" size={20} color={colors.textSecondary} />
               <TextInput
@@ -169,58 +143,33 @@ export default function LoginScreen() {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
-                autoCapitalize="none"
                 autoComplete="password"
               />
             </View>
 
-            {isSignUp && (
-              <Animated.View entering={FadeInDown.duration(400)}>
-                <View style={styles.inputContainer}>
-                  <IconSymbol name="lock.fill" size={20} color={colors.textSecondary} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Confirm Password"
-                    placeholderTextColor={colors.textTertiary}
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                    secureTextEntry
-                    autoCapitalize="none"
-                  />
-                </View>
-              </Animated.View>
-            )}
-
-            {/* Auth Button */}
             <Pressable
+              style={[styles.button, loading && styles.buttonDisabled]}
               onPress={handleAuth}
               disabled={loading}
-              style={[styles.authButton, loading && styles.authButtonDisabled]}
             >
               {loading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={styles.authButtonText}>
-                  {isSignUp ? 'Sign Up' : 'Login'}
+                <Text style={styles.buttonText}>
+                  {isSignUp ? 'Sign Up' : 'Sign In'}
                 </Text>
               )}
             </Pressable>
 
-            {/* Toggle Sign Up/Login */}
             <Pressable
-              onPress={() => {
-                setIsSignUp(!isSignUp);
-                setConfirmPassword('');
-              }}
-              style={styles.toggleButton}
+              style={styles.switchButton}
+              onPress={() => setIsSignUp(!isSignUp)}
+              disabled={loading}
             >
-              <Text style={styles.toggleText}>
+              <Text style={styles.switchText}>
                 {isSignUp
-                  ? 'Already have an account? '
-                  : "Don't have an account? "}
-                <Text style={styles.toggleTextBold}>
-                  {isSignUp ? 'Login' : 'Sign Up'}
-                </Text>
+                  ? 'Already have an account? Sign In'
+                  : 'Don\'t have an account? Sign Up'}
               </Text>
             </Pressable>
           </Animated.View>
@@ -241,27 +190,37 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   content: {
-    width: '100%',
-    maxWidth: 400,
-    alignSelf: 'center',
-  },
-  header: {
     alignItems: 'center',
-    marginBottom: 48,
+  },
+  logoContainer: {
+    marginBottom: 32,
+  },
+  logoCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: colors.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.border,
   },
   title: {
-    fontSize: 48,
+    fontSize: 32,
     fontWeight: 'bold',
     color: colors.text,
-    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 18,
+    fontSize: 16,
     color: colors.textSecondary,
-    marginTop: 8,
+    marginBottom: 48,
+    textAlign: 'center',
   },
   form: {
     width: '100%',
+    maxWidth: 400,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -269,40 +228,39 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 16,
     marginBottom: 16,
     gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   input: {
     flex: 1,
     fontSize: 16,
     color: colors.text,
   },
-  authButton: {
+  button: {
     backgroundColor: colors.primary,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 8,
   },
-  authButtonDisabled: {
+  buttonDisabled: {
     opacity: 0.6,
   },
-  authButtonText: {
+  buttonText: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  toggleButton: {
+  switchButton: {
     marginTop: 24,
     alignItems: 'center',
   },
-  toggleText: {
+  switchText: {
     fontSize: 16,
-    color: colors.textSecondary,
-  },
-  toggleTextBold: {
-    fontWeight: 'bold',
     color: colors.primary,
+    fontWeight: '600',
   },
 });

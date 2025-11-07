@@ -10,26 +10,25 @@ import {
   ActivityIndicator,
   Keyboard,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
-import { NoteCard } from '@/components/NoteCard';
-import { useNotes } from '@/hooks/useNotes';
-import { IconSymbol } from '@/components/IconSymbol';
-import { SearchHistory } from '@/types/Note';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import { Stack, useRouter } from 'expo-router';
+import { IconSymbol } from '@/components/IconSymbol';
+import { NoteCard } from '@/components/NoteCard';
+import { colors } from '@/styles/commonStyles';
+import { SearchHistory } from '@/types/Note';
+import { useNotes } from '@/hooks/useNotes';
 
 export default function SearchScreen() {
   const router = useRouter();
-  const { notes, loading, searchNotes, getSearchHistory } = useNotes();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
-  const [showHistory, setShowHistory] = useState(true);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
+  const [searchText, setSearchText] = useState('');
+  const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const { notes, loading, searchNotes, getSearchHistory } = useNotes();
 
   useEffect(() => {
     loadSearchHistory();
-
+    
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
       setKeyboardVisible(true);
     });
@@ -48,24 +47,15 @@ export default function SearchScreen() {
     setSearchHistory(history);
   };
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (query.trim()) {
-      setShowHistory(false);
-      searchNotes(query);
-      setTimeout(() => {
-        loadSearchHistory();
-      }, 500);
-    } else {
-      setShowHistory(true);
-      searchNotes('');
-    }
+  const handleSearch = async (query: string) => {
+    if (!query.trim()) return;
+    await searchNotes(query);
+    await loadSearchHistory();
   };
 
   const handleHistoryItemPress = (searchText: string) => {
-    setSearchQuery(searchText);
-    setShowHistory(false);
-    searchNotes(searchText);
+    setSearchText(searchText);
+    handleSearch(searchText);
   };
 
   const handleNotePress = (noteId: string) => {
@@ -73,8 +63,7 @@ export default function SearchScreen() {
   };
 
   const handleClear = () => {
-    setSearchQuery('');
-    setShowHistory(true);
+    setSearchText('');
     searchNotes('');
   };
 
@@ -113,19 +102,21 @@ export default function SearchScreen() {
         }}
       />
 
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
+      <View style={styles.searchSection}>
+        <View style={styles.searchContainer}>
           <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
           <TextInput
             ref={searchInputRef}
             style={styles.searchInput}
             placeholder="Search recalls..."
             placeholderTextColor={colors.textTertiary}
-            value={searchQuery}
-            onChangeText={handleSearch}
+            value={searchText}
+            onChangeText={setSearchText}
             autoFocus
+            returnKeyType="search"
+            onSubmitEditing={() => handleSearch(searchText)}
           />
-          {searchQuery.length > 0 && (
+          {searchText.length > 0 && (
             <Pressable onPress={handleClear}>
               <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
             </Pressable>
@@ -134,49 +125,42 @@ export default function SearchScreen() {
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {showHistory && searchHistory.length > 0 ? (
-          <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
-            <Text style={styles.historyTitle}>Recent Searches</Text>
-            {searchHistory.map((item) => (
-              <Pressable
-                key={item.id}
-                style={styles.historyItem}
-                onPress={() => handleHistoryItemPress(item.search_text)}
-              >
-                <IconSymbol name="clock" size={18} color={colors.textSecondary} />
-                <Text style={styles.historyText}>{item.search_text}</Text>
-                <IconSymbol name="arrow.up.left" size={16} color={colors.textTertiary} />
-              </Pressable>
-            ))}
-          </Animated.View>
-        ) : loading ? (
+        {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ) : searchQuery.length === 0 ? (
-          <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-            
-          </Animated.View>
-        ) : notes.length === 0 ? (
-          <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-            <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
-            <Text style={styles.emptyTitle}>No Results Found</Text>
-            <Text style={styles.emptyText}>
-              Try a different search term
-            </Text>
-          </Animated.View>
+        ) : searchText.length > 0 ? (
+          notes.length > 0 ? (
+            notes.map((note) => (
+              <NoteCard key={note.id} note={note} onPress={() => handleNotePress(note.id)} />
+            ))
+          ) : (
+            <Animated.View entering={FadeIn.duration(600)} style={styles.emptyState}>
+              <IconSymbol name="magnifyingglass" size={64} color={colors.textTertiary} />
+              <Text style={styles.emptyTitle}>No Results Found</Text>
+              <Text style={styles.emptyDescription}>
+                Try searching with different keywords
+              </Text>
+            </Animated.View>
+          )
         ) : (
-          <View style={styles.notesContainer}>
-            <Text style={styles.resultsText}>
-              {notes.length} {notes.length === 1 ? 'result' : 'results'} found
-            </Text>
-            {notes.map((note) => (
-              <NoteCard
-                key={note.id}
-                note={note}
-                onPress={() => handleNotePress(note.id)}
-              />
-            ))}
+          <View style={styles.historySection}>
+            <Text style={styles.historyTitle}>Recent Searches</Text>
+            {searchHistory.length > 0 ? (
+              searchHistory.map((item) => (
+                <Pressable
+                  key={item.id}
+                  style={styles.historyItem}
+                  onPress={() => handleHistoryItemPress(item.search_text)}
+                >
+                  <IconSymbol name="clock" size={20} color={colors.textSecondary} />
+                  <Text style={styles.historyText}>{item.search_text}</Text>
+                  <IconSymbol name="arrow.up.left" size={16} color={colors.textTertiary} />
+                </Pressable>
+              ))
+            ) : (
+              <Text style={styles.noHistoryText}>No recent searches</Text>
+            )}
           </View>
         )}
       </ScrollView>
@@ -193,13 +177,13 @@ const styles = StyleSheet.create({
     padding: 8,
     marginHorizontal: 8,
   },
-  searchContainer: {
+  searchSection: {
     padding: 16,
     backgroundColor: colors.background,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  searchBar: {
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.card,
@@ -207,6 +191,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   searchInput: {
     flex: 1,
@@ -219,60 +205,61 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
   },
-  historyContainer: {
-    width: '100%',
-  },
-  historyTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  historyItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: colors.card,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  historyText: {
-    flex: 1,
-    fontSize: 15,
-    color: colors.text,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingTop: 100,
   },
-  emptyContainer: {
+  emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingTop: 100,
+    paddingHorizontal: 32,
   },
   emptyTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: 24,
+    marginBottom: 12,
   },
-  emptyText: {
+  emptyDescription: {
     fontSize: 16,
     color: colors.textSecondary,
     textAlign: 'center',
-    paddingHorizontal: 32,
+    lineHeight: 24,
   },
-  notesContainer: {
-    width: '100%',
+  historySection: {
+    paddingTop: 8,
   },
-  resultsText: {
-    fontSize: 14,
-    color: colors.textSecondary,
+  historyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
     marginBottom: 16,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    marginBottom: 8,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  historyText: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.text,
+  },
+  noHistoryText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: 32,
   },
 });
