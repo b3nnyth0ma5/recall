@@ -3,7 +3,8 @@ export interface Note {
   id: string;
   text: string;
   images: string[];
-  imagePaths?: string[];
+  imagePaths?: string[]; // Kept for backward compatibility
+  imageIds?: string[]; // New field for image record IDs
   created_at: string;
   updated_at: string;
   latitude?: number;

@@ -19,14 +19,23 @@ import {
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import * as FileSystem from 'expo-file-system';
 import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
-import { uploadImage, deleteImage, reverseGeocode, getImageUrl } from '@/utils/supabase';
+import { supabase, reverseGeocode } from '@/utils/supabase';
+import { decode } from 'base64-arraybuffer';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+interface ImageData {
+  id?: string; // For existing images
+  uri: string; // Data URL for display
+  localUri?: string; // Local file URI for new images
+  contentType: string;
+}
 
 export default function NoteEditorScreen() {
   const router = useRouter();
@@ -34,8 +43,7 @@ export default function NoteEditorScreen() {
   const { notes, addNote, updateNote, deleteNote, refreshNotes } = useNotes();
 
   const [text, setText] = useState('');
-  const [imagePaths, setImagePaths] = useState<string[]>([]);
-  const [imageUris, setImageUris] = useState<string[]>([]);
+  const [images, setImages] = useState<ImageData[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -47,7 +55,7 @@ export default function NoteEditorScreen() {
 
   const isEditing = !!params.id;
   const existingNote = notes.find((n) => n.id === params.id);
-  const canSave = text.trim().length > 0 || imagePaths.length > 0;
+  const canSave = text.trim().length > 0 || images.length > 0;
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
@@ -66,8 +74,17 @@ export default function NoteEditorScreen() {
   useEffect(() => {
     if (existingNote) {
       setText(existingNote.text || '');
-      setImagePaths(existingNote.imagePaths || []);
-      setImageUris(existingNote.images || []);
+      
+      // Load existing images
+      if (existingNote.images && existingNote.imageIds) {
+        const loadedImages: ImageData[] = existingNote.images.map((uri, index) => ({
+          id: existingNote.imageIds?.[index],
+          uri: uri,
+          contentType: 'image/jpeg',
+        }));
+        setImages(loadedImages);
+      }
+      
       if (existingNote.latitude && existingNote.longitude) {
         setLocation({
           latitude: existingNote.latitude,
@@ -122,19 +139,32 @@ export default function NoteEditorScreen() {
 
       if (!result.canceled && result.assets) {
         setLoading(true);
-        const uploadedPaths: string[] = [];
-        const uploadedUris: string[] = [];
+        const newImages: ImageData[] = [];
 
         for (const asset of result.assets) {
-          const path = await uploadImage(asset.uri);
-          if (path) {
-            uploadedPaths.push(path);
-            uploadedUris.push(getImageUrl(path));
+          // Read image as base64 for preview
+          const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+            encoding: 'base64',
+          });
+
+          // Determine content type
+          let contentType = 'image/jpeg';
+          if (asset.uri.toLowerCase().endsWith('.png')) {
+            contentType = 'image/png';
+          } else if (asset.uri.toLowerCase().endsWith('.gif')) {
+            contentType = 'image/gif';
+          } else if (asset.uri.toLowerCase().endsWith('.webp')) {
+            contentType = 'image/webp';
           }
+
+          newImages.push({
+            uri: `data:${contentType};base64,${base64}`,
+            localUri: asset.uri,
+            contentType: contentType,
+          });
         }
 
-        setImagePaths([...imagePaths, ...uploadedPaths]);
-        setImageUris([...imageUris, ...uploadedUris]);
+        setImages([...images, ...newImages]);
         setLoading(false);
       }
     } catch (error) {
@@ -159,11 +189,21 @@ export default function NoteEditorScreen() {
 
       if (!result.canceled && result.assets) {
         setLoading(true);
-        const path = await uploadImage(result.assets[0].uri);
-        if (path) {
-          setImagePaths([...imagePaths, path]);
-          setImageUris([...imageUris, getImageUrl(path)]);
-        }
+        const asset = result.assets[0];
+        
+        // Read image as base64 for preview
+        const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: 'base64',
+        });
+
+        const contentType = 'image/jpeg';
+
+        setImages([...images, {
+          uri: `data:${contentType};base64,${base64}`,
+          localUri: asset.uri,
+          contentType: contentType,
+        }]);
+        
         setLoading(false);
       }
     } catch (error) {
@@ -174,13 +214,22 @@ export default function NoteEditorScreen() {
   };
 
   const removeImage = async (index: number) => {
-    const imagePath = imagePaths[index];
-    const newImagePaths = imagePaths.filter((_, i) => i !== index);
-    const newImageUris = imageUris.filter((_, i) => i !== index);
-    setImagePaths(newImagePaths);
-    setImageUris(newImageUris);
-
-    await deleteImage(imagePath);
+    const image = images[index];
+    
+    // If it's an existing image, delete it from the database
+    if (image.id) {
+      try {
+        await supabase
+          .from('recall_images')
+          .delete()
+          .eq('id', image.id);
+      } catch (error) {
+        console.error('Error deleting image:', error);
+      }
+    }
+    
+    const newImages = images.filter((_, i) => i !== index);
+    setImages(newImages);
   };
 
   const handleSave = async () => {
@@ -194,17 +243,57 @@ export default function NoteEditorScreen() {
 
       const noteData = {
         text: text.trim(),
-        imagePaths: imagePaths,
-        images: imageUris,
         latitude: location?.latitude,
         longitude: location?.longitude,
         location: locationName,
       };
 
+      let recallId: string;
+
       if (isEditing && params.id) {
         await updateNote(params.id as string, noteData);
+        recallId = params.id as string;
+
+        // Delete all existing images for this recall
+        await supabase
+          .from('recall_images')
+          .delete()
+          .eq('recall_id', recallId);
       } else {
-        await addNote(noteData);
+        recallId = await addNote(noteData);
+      }
+
+      // Upload all images to the database
+      for (const image of images) {
+        if (image.localUri) {
+          // New image - upload to database
+          const base64 = await FileSystem.readAsStringAsync(image.localUri, {
+            encoding: 'base64',
+          });
+
+          const binaryData = decode(base64);
+
+          await supabase
+            .from('recall_images')
+            .insert([{
+              recall_id: recallId,
+              image_data: binaryData,
+              content_type: image.contentType,
+            }]);
+        } else if (image.id) {
+          // Existing image - re-insert it (since we deleted all above)
+          // Extract base64 from data URL
+          const base64Data = image.uri.split(',')[1];
+          const binaryData = decode(base64Data);
+
+          await supabase
+            .from('recall_images')
+            .insert([{
+              recall_id: recallId,
+              image_data: binaryData,
+              content_type: image.contentType,
+            }]);
+        }
       }
 
       router.back();
@@ -354,12 +443,12 @@ export default function NoteEditorScreen() {
 
       {/* Bottom Section */}
       <View style={styles.bottomSection}>
-        {imageUris.length > 0 && (
+        {images.length > 0 && (
           <Animated.View entering={FadeInDown.duration(400)} style={styles.imagesContainer}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {imageUris.map((imageUri, index) => (
+              {images.map((image, index) => (
                 <View key={index} style={styles.imageWrapper}>
-                  <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+                  <Image source={{ uri: image.uri }} style={styles.imagePreview} />
                   <Pressable
                     onPress={() => removeImage(index)}
                     style={styles.removeImageButton}

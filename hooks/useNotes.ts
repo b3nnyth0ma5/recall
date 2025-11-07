@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Note } from '@/types/Note';
-import { supabase, getImageUrl, deleteImage } from '@/utils/supabase';
+import { supabase, getImageDataUrl, deleteImageFromDatabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function useNotes() {
@@ -36,17 +36,39 @@ export function useNotes() {
         (recallsData || []).map(async (recall) => {
           const { data: imagesData, error: imagesError } = await supabase
             .from('recall_images')
-            .select('image_path')
+            .select('id, image_data, content_type')
             .eq('recall_id', recall.id)
             .order('created_at', { ascending: true });
 
           if (imagesError) {
             console.error('Error loading images for recall:', recall.id, imagesError);
-            return { ...recall, images: [] };
+            return { ...recall, images: [], imageIds: [] };
           }
 
-          const imageUrls = (imagesData || []).map(img => getImageUrl(img.image_path));
-          return { ...recall, images: imageUrls, imagePaths: (imagesData || []).map(img => img.image_path) };
+          // Convert binary data to data URLs
+          const imageUrls = (imagesData || []).map(img => {
+            try {
+              const base64 = btoa(
+                new Uint8Array(img.image_data).reduce(
+                  (data, byte) => data + String.fromCharCode(byte),
+                  ''
+                )
+              );
+              return `data:${img.content_type};base64,${base64}`;
+            } catch (error) {
+              console.error('Error converting image data:', error);
+              return '';
+            }
+          }).filter(url => url !== '');
+
+          const imageIds = (imagesData || []).map(img => img.id);
+          
+          return { 
+            ...recall, 
+            images: imageUrls, 
+            imageIds: imageIds,
+            imagePaths: imageIds // Keep for compatibility
+          };
         })
       );
 
@@ -89,23 +111,12 @@ export function useNotes() {
         throw recallError;
       }
 
-      if (note.imagePaths && note.imagePaths.length > 0) {
-        const imageRecords = note.imagePaths.map(path => ({
-          recall_id: recallData.id,
-          image_path: path,
-        }));
-
-        const { error: imagesError } = await supabase
-          .from('recall_images')
-          .insert(imageRecords);
-
-        if (imagesError) {
-          console.error('Error adding images:', imagesError);
-        }
-      }
+      // Note: Images are now uploaded separately with the recall_id
+      // This is handled in the note-editor component
 
       console.log('Recall added successfully:', recallData.id);
       await loadNotes();
+      return recallData.id;
     } catch (error) {
       console.error('Error adding recall:', error);
       throw error;
@@ -138,31 +149,7 @@ export function useNotes() {
         throw recallError;
       }
 
-      if (updates.imagePaths !== undefined) {
-        const { error: deleteError } = await supabase
-          .from('recall_images')
-          .delete()
-          .eq('recall_id', noteId);
-
-        if (deleteError) {
-          console.error('Error deleting old images:', deleteError);
-        }
-
-        if (updates.imagePaths.length > 0) {
-          const imageRecords = updates.imagePaths.map(path => ({
-            recall_id: noteId,
-            image_path: path,
-          }));
-
-          const { error: imagesError } = await supabase
-            .from('recall_images')
-            .insert(imageRecords);
-
-          if (imagesError) {
-            console.error('Error adding new images:', imagesError);
-          }
-        }
-      }
+      // Note: Image updates are now handled separately in the note-editor component
 
       console.log('Recall updated successfully');
       await loadNotes();
@@ -181,17 +168,21 @@ export function useNotes() {
     try {
       console.log('Deleting recall from Supabase:', noteId);
       
+      // Get all image IDs for this recall
       const { data: imagesData } = await supabase
         .from('recall_images')
-        .select('image_path')
+        .select('id')
         .eq('recall_id', noteId);
 
+      // Delete images from database (cascade delete will handle this automatically)
+      // But we'll do it explicitly for clarity
       if (imagesData && imagesData.length > 0) {
         for (const img of imagesData) {
-          await deleteImage(img.image_path);
+          await deleteImageFromDatabase(img.id);
         }
       }
 
+      // Delete the recall (this will also cascade delete images due to foreign key)
       const { error } = await supabase
         .from('recalls')
         .delete()
@@ -245,12 +236,33 @@ export function useNotes() {
         (recallsData || []).map(async (recall) => {
           const { data: imagesData } = await supabase
             .from('recall_images')
-            .select('image_path')
+            .select('id, image_data, content_type')
             .eq('recall_id', recall.id)
             .order('created_at', { ascending: true });
 
-          const imageUrls = (imagesData || []).map(img => getImageUrl(img.image_path));
-          return { ...recall, images: imageUrls, imagePaths: (imagesData || []).map(img => img.image_path) };
+          const imageUrls = (imagesData || []).map(img => {
+            try {
+              const base64 = btoa(
+                new Uint8Array(img.image_data).reduce(
+                  (data, byte) => data + String.fromCharCode(byte),
+                  ''
+                )
+              );
+              return `data:${img.content_type};base64,${base64}`;
+            } catch (error) {
+              console.error('Error converting image data:', error);
+              return '';
+            }
+          }).filter(url => url !== '');
+
+          const imageIds = (imagesData || []).map(img => img.id);
+          
+          return { 
+            ...recall, 
+            images: imageUrls, 
+            imageIds: imageIds,
+            imagePaths: imageIds
+          };
         })
       );
 
