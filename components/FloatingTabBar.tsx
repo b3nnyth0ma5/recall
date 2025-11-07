@@ -49,7 +49,7 @@ export default function FloatingTabBar({
     if (index !== -1) {
       activeIndex.value = withSpring(index);
     }
-  }, [pathname, tabs]);
+  }, [pathname, tabs, activeIndex]);
 
   const handleTabPress = (route: string) => {
     router.push(route as any);

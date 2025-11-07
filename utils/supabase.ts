@@ -15,7 +15,7 @@ export async function uploadImage(uri: string): Promise<string | null> {
     
     // Read the file as base64
     const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: 'base64',
     });
 
     // Generate unique filename
