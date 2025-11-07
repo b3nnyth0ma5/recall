@@ -1,91 +1,194 @@
-import React from "react";
-import { View, Text, StyleSheet, ScrollView, Platform } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { IconSymbol } from "@/components/IconSymbol";
-import { GlassView } from "expo-glass-effect";
-import { useTheme } from "@react-navigation/native";
+
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform } from 'react-native';
+import { Stack } from 'expo-router';
+import { IconSymbol } from '@/components/IconSymbol';
+import { colors } from '@/styles/commonStyles';
 
 export default function ProfileScreen() {
-  const theme = useTheme();
+  const handleSupabaseSetup = () => {
+    Alert.alert(
+      'Cloud Sync Setup',
+      'To enable cloud sync:\n\n' +
+      '1. Press the Supabase button in the Natively interface\n' +
+      '2. Connect to your Supabase project (create one if needed)\n' +
+      '3. Your notes will automatically sync across devices\n\n' +
+      'For now, your notes are stored locally on this device.',
+      [{ text: 'Got it' }]
+    );
+  };
+
+  const handleExport = () => {
+    Alert.alert(
+      'Export Notes',
+      'Export functionality will be available soon. Your notes are safely stored locally.',
+      [{ text: 'OK' }]
+    );
+  };
+
+  const handleAbout = () => {
+    Alert.alert(
+      'About',
+      'Simple Notes App\nVersion 1.0.0\n\nA clean and intuitive note-taking app with image support.',
+      [{ text: 'OK' }]
+    );
+  };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top']}>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={[
-          styles.contentContainer,
-          Platform.OS !== 'ios' && styles.contentContainerWithTabBar
-        ]}
-      >
-        <GlassView style={[
-          styles.profileHeader,
-          Platform.OS !== 'ios' && { backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
-        ]} glassEffectStyle="regular">
-          <IconSymbol name="person.circle.fill" size={80} color={theme.colors.primary} />
-          <Text style={[styles.name, { color: theme.colors.text }]}>John Doe</Text>
-          <Text style={[styles.email, { color: theme.dark ? '#98989D' : '#666' }]}>john.doe@example.com</Text>
-        </GlassView>
+    <>
+      {Platform.OS === 'ios' && (
+        <Stack.Screen
+          options={{
+            title: 'Settings',
+          }}
+        />
+      )}
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Cloud Sync</Text>
+          
+          <Pressable style={styles.card} onPress={handleSupabaseSetup}>
+            <View style={styles.cardIcon}>
+              <IconSymbol name="cloud" size={24} color={colors.primary} />
+            </View>
+            <View style={styles.cardContent}>
+              <Text style={styles.cardTitle}>Enable Cloud Sync</Text>
+              <Text style={styles.cardDescription}>
+                Sync your notes across all your devices
+              </Text>
+            </View>
+            <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
+          </Pressable>
 
-        <GlassView style={[
-          styles.section,
-          Platform.OS !== 'ios' && { backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
-        ]} glassEffectStyle="regular">
-          <View style={styles.infoRow}>
-            <IconSymbol name="phone.fill" size={20} color={theme.dark ? '#98989D' : '#666'} />
-            <Text style={[styles.infoText, { color: theme.colors.text }]}>+1 (555) 123-4567</Text>
+          <View style={styles.infoCard}>
+            <IconSymbol name="info.circle" size={20} color={colors.accent} />
+            <Text style={styles.infoText}>
+              Your notes are currently stored locally. Enable cloud sync to access them from any device.
+            </Text>
           </View>
-          <View style={styles.infoRow}>
-            <IconSymbol name="location.fill" size={20} color={theme.dark ? '#98989D' : '#666'} />
-            <Text style={[styles.infoText, { color: theme.colors.text }]}>San Francisco, CA</Text>
-          </View>
-        </GlassView>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Data</Text>
+          
+          <Pressable style={styles.card} onPress={handleExport}>
+            <View style={styles.cardIcon}>
+              <IconSymbol name="square.and.arrow.up" size={24} color={colors.secondary} />
+            </View>
+            <View style={styles.cardContent}>
+              <Text style={styles.cardTitle}>Export Notes</Text>
+              <Text style={styles.cardDescription}>
+                Save a backup of all your notes
+              </Text>
+            </View>
+            <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
+          </Pressable>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>About</Text>
+          
+          <Pressable style={styles.card} onPress={handleAbout}>
+            <View style={styles.cardIcon}>
+              <IconSymbol name="info.circle" size={24} color={colors.text} />
+            </View>
+            <View style={styles.cardContent}>
+              <Text style={styles.cardTitle}>About This App</Text>
+              <Text style={styles.cardDescription}>
+                Version and information
+              </Text>
+            </View>
+            <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
+          </Pressable>
+        </View>
+
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
+            Made with ❤️ using React Native + Expo
+          </Text>
+        </View>
       </ScrollView>
-    </SafeAreaView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    // backgroundColor handled dynamically
-  },
   container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
-  contentContainer: {
-    padding: 20,
-  },
-  contentContainerWithTabBar: {
-    paddingBottom: 100, // Extra padding for floating tab bar
-  },
-  profileHeader: {
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 32,
-    marginBottom: 16,
-    gap: 12,
-  },
-  name: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    // color handled dynamically
-  },
-  email: {
-    fontSize: 16,
-    // color handled dynamically
+  content: {
+    paddingVertical: 20,
+    paddingBottom: Platform.OS !== 'ios' ? 100 : 20,
   },
   section: {
-    borderRadius: 12,
-    padding: 20,
-    gap: 12,
+    marginBottom: 32,
+    paddingHorizontal: 16,
   },
-  infoRow: {
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 12,
+    marginLeft: 4,
+  },
+  card: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
+    elevation: 2,
+  },
+  cardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  cardContent: {
+    flex: 1,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  cardDescription: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  infoCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
     gap: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent,
   },
   infoText: {
-    fontSize: 16,
-    // color handled dynamically
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 20,
+  },
+  footer: {
+    alignItems: 'center',
+    marginTop: 20,
+    paddingHorizontal: 16,
+  },
+  footerText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
 });
