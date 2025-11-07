@@ -45,27 +45,54 @@ export function useNotes() {
             return { ...recall, images: [], imageIds: [] };
           }
 
-          // Convert binary data to data URLs
-          const imageUrls = (imagesData || []).map(img => {
-            try {
-              const base64 = btoa(
-                new Uint8Array(img.image_data).reduce(
-                  (data, byte) => data + String.fromCharCode(byte),
-                  ''
-                )
-              );
-              return `data:${img.content_type};base64,${base64}`;
-            } catch (error) {
-              console.error('Error converting image data:', error);
-              return '';
-            }
-          }).filter(url => url !== '');
+          console.log(`Loaded ${imagesData?.length || 0} images for recall ${recall.id}`);
 
+          // Convert binary data to data URLs
+          const imageUrls = await Promise.all(
+            (imagesData || []).map(async (img) => {
+              try {
+                // Check if image_data exists and is valid
+                if (!img.image_data) {
+                  console.error('No image data for image:', img.id);
+                  return '';
+                }
+
+                // Convert ArrayBuffer to base64
+                let base64: string;
+                if (img.image_data instanceof ArrayBuffer) {
+                  const uint8Array = new Uint8Array(img.image_data);
+                  base64 = btoa(
+                    uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
+                  );
+                } else if (typeof img.image_data === 'string') {
+                  // If it's already a string, use it directly
+                  base64 = img.image_data;
+                } else {
+                  // Try to convert to Uint8Array
+                  const uint8Array = new Uint8Array(img.image_data);
+                  base64 = btoa(
+                    uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
+                  );
+                }
+
+                const dataUrl = `data:${img.content_type || 'image/jpeg'};base64,${base64}`;
+                console.log(`Converted image ${img.id} to data URL (length: ${dataUrl.length})`);
+                return dataUrl;
+              } catch (error) {
+                console.error('Error converting image data for image:', img.id, error);
+                return '';
+              }
+            })
+          );
+
+          const validImageUrls = imageUrls.filter(url => url !== '');
           const imageIds = (imagesData || []).map(img => img.id);
+          
+          console.log(`Recall ${recall.id} has ${validImageUrls.length} valid images`);
           
           return { 
             ...recall, 
-            images: imageUrls, 
+            images: validImageUrls, 
             imageIds: imageIds,
             imagePaths: imageIds // Keep for compatibility
           };
@@ -240,26 +267,42 @@ export function useNotes() {
             .eq('recall_id', recall.id)
             .order('created_at', { ascending: true });
 
-          const imageUrls = (imagesData || []).map(img => {
-            try {
-              const base64 = btoa(
-                new Uint8Array(img.image_data).reduce(
-                  (data, byte) => data + String.fromCharCode(byte),
-                  ''
-                )
-              );
-              return `data:${img.content_type};base64,${base64}`;
-            } catch (error) {
-              console.error('Error converting image data:', error);
-              return '';
-            }
-          }).filter(url => url !== '');
+          const imageUrls = await Promise.all(
+            (imagesData || []).map(async (img) => {
+              try {
+                if (!img.image_data) {
+                  return '';
+                }
 
+                let base64: string;
+                if (img.image_data instanceof ArrayBuffer) {
+                  const uint8Array = new Uint8Array(img.image_data);
+                  base64 = btoa(
+                    uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
+                  );
+                } else if (typeof img.image_data === 'string') {
+                  base64 = img.image_data;
+                } else {
+                  const uint8Array = new Uint8Array(img.image_data);
+                  base64 = btoa(
+                    uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
+                  );
+                }
+
+                return `data:${img.content_type || 'image/jpeg'};base64,${base64}`;
+              } catch (error) {
+                console.error('Error converting image data:', error);
+                return '';
+              }
+            })
+          );
+
+          const validImageUrls = imageUrls.filter(url => url !== '');
           const imageIds = (imagesData || []).map(img => img.id);
           
           return { 
             ...recall, 
-            images: imageUrls, 
+            images: validImageUrls, 
             imageIds: imageIds,
             imagePaths: imageIds
           };

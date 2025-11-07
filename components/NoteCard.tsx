@@ -18,6 +18,7 @@ const IMAGE_WIDTH = SCREEN_WIDTH - 32;
 export function NoteCard({ note, onPress }: NoteCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showFullText, setShowFullText] = useState(false);
+  const [imageErrors, setImageErrors] = useState<{ [key: number]: boolean }>({});
 
   const formatDateTime = (dateString: string) => {
     try {
@@ -57,11 +58,19 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
     setCurrentImageIndex(index);
   };
 
+  const handleImageError = (index: number) => {
+    console.error(`Error loading image at index ${index} for note ${note.id}`);
+    setImageErrors(prev => ({ ...prev, [index]: true }));
+  };
+
+  // Filter out images that have errors
+  const validImages = note.images?.filter((_, index) => !imageErrors[index]) || [];
+
   return (
     <Animated.View entering={FadeInDown.duration(400)} style={styles.container}>
       <Pressable onPress={onPress} style={styles.pressable}>
         {/* Image Carousel */}
-        {note.images && note.images.length > 0 && (
+        {validImages.length > 0 && (
           <View style={styles.imageContainer}>
             <ScrollView
               horizontal
@@ -70,20 +79,23 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
               onScroll={handleScroll}
               scrollEventThrottle={16}
             >
-              {note.images.map((imageUrl, index) => (
-                <Image
-                  key={index}
-                  source={{ uri: imageUrl }}
-                  style={styles.image}
-                  resizeMode="cover"
-                />
+              {validImages.map((imageUrl, index) => (
+                <View key={index} style={styles.imageWrapper}>
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.image}
+                    resizeMode="cover"
+                    onError={() => handleImageError(index)}
+                    onLoad={() => console.log(`Image ${index} loaded successfully for note ${note.id}`)}
+                  />
+                </View>
               ))}
             </ScrollView>
             
             {/* Image indicators */}
-            {note.images.length > 1 && (
+            {validImages.length > 1 && (
               <View style={styles.indicatorContainer}>
-                {note.images.map((_, index) => (
+                {validImages.map((_, index) => (
                   <View
                     key={index}
                     style={[
@@ -146,6 +158,13 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 300,
     position: 'relative',
+    backgroundColor: colors.cardDark,
+  },
+  imageWrapper: {
+    width: IMAGE_WIDTH,
+    height: 300,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   image: {
     width: IMAGE_WIDTH,
