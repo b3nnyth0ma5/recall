@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -26,10 +26,9 @@ export async function uploadImageToDatabase(uri: string, recallId: string): Prom
   try {
     console.log('Uploading image to database:', uri);
     
-    // Read the image as base64
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: 'base64',
-    });
+    // Use the new File API to read the image as base64
+    const file = new File(uri);
+    const base64 = await file.base64();
 
     // Convert base64 to binary data
     const binaryData = decode(base64);

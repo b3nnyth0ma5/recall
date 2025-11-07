@@ -19,7 +19,7 @@ import {
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
@@ -142,10 +142,9 @@ export default function NoteEditorScreen() {
         const newImages: ImageData[] = [];
 
         for (const asset of result.assets) {
-          // Read image as base64 for preview
-          const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-            encoding: 'base64',
-          });
+          // Use the new File API to read image as base64
+          const file = new File(asset.uri);
+          const base64 = await file.base64();
 
           // Determine content type
           let contentType = 'image/jpeg';
@@ -191,10 +190,9 @@ export default function NoteEditorScreen() {
         setLoading(true);
         const asset = result.assets[0];
         
-        // Read image as base64 for preview
-        const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-          encoding: 'base64',
-        });
+        // Use the new File API to read image as base64
+        const file = new File(asset.uri);
+        const base64 = await file.base64();
 
         const contentType = 'image/jpeg';
 
@@ -266,10 +264,9 @@ export default function NoteEditorScreen() {
       // Upload all images to the database
       for (const image of images) {
         if (image.localUri) {
-          // New image - upload to database
-          const base64 = await FileSystem.readAsStringAsync(image.localUri, {
-            encoding: 'base64',
-          });
+          // New image - upload to database using the new File API
+          const file = new File(image.localUri);
+          const base64 = await file.base64();
 
           const binaryData = decode(base64);
 
