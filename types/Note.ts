@@ -1,12 +1,13 @@
 
 export interface Note {
   id: string;
-  title: string;
-  content: string;
+  text: string;
   images: string[];
-  createdAt: number;
-  updatedAt: number;
-  synced?: boolean;
+  created_at: string;
+  updated_at: string;
+  latitude?: number;
+  longitude?: number;
+  location?: string;
 }
 
 export interface NoteImage {

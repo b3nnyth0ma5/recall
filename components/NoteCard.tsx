@@ -1,179 +1,210 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
-import { Note } from '@/types/Note';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, ScrollView } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
+import { Note } from '@/types/Note';
+import { format } from 'date-fns';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 interface NoteCardProps {
   note: Note;
   onPress: () => void;
 }
 
-export function NoteCard({ note, onPress }: NoteCardProps) {
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const IMAGE_WIDTH = SCREEN_WIDTH - 32;
 
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    
-    return date.toLocaleDateString();
+export function NoteCard({ note, onPress }: NoteCardProps) {
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [showFullText, setShowFullText] = useState(false);
+
+  const formatDateTime = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return format(date, 'MMM d, yyyy \'at\' HH:mm');
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return '';
+    }
   };
 
   const getPreviewText = () => {
-    if (!note.content) return 'No content';
-    return note.content.length > 100 
-      ? note.content.substring(0, 100) + '...' 
-      : note.content;
+    if (!note.text) return '';
+    const lines = note.text.split('\n');
+    if (lines.length <= 3 && note.text.length <= 150) {
+      return note.text;
+    }
+    
+    if (showFullText) {
+      return note.text;
+    }
+    
+    // Show first 3 lines or 150 characters
+    const preview = lines.slice(0, 3).join('\n');
+    return preview.length > 150 ? preview.substring(0, 150) + '...' : preview;
+  };
+
+  const shouldShowToggle = () => {
+    if (!note.text) return false;
+    const lines = note.text.split('\n');
+    return lines.length > 3 || note.text.length > 150;
+  };
+
+  const handleScroll = (event: any) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / IMAGE_WIDTH);
+    setCurrentImageIndex(index);
   };
 
   return (
-    <Pressable 
-      style={({ pressed }) => [
-        styles.card,
-        pressed && styles.cardPressed
-      ]}
-      onPress={onPress}
-    >
-      <View style={styles.cardHeader}>
-        <Text style={styles.title} numberOfLines={1}>
-          {note.title || 'Untitled Note'}
-        </Text>
-        <Text style={styles.date}>{formatDate(note.updatedAt)}</Text>
-      </View>
-      
-      {note.content && (
-        <Text style={styles.preview} numberOfLines={3}>
-          {getPreviewText()}
-        </Text>
-      )}
-
-      {note.images && note.images.length > 0 && (
-        <View style={styles.imagesContainer}>
-          <View style={styles.imagePreviewContainer}>
-            <Image 
-              source={{ uri: note.images[0] }} 
-              style={styles.imagePreview}
-              resizeMode="cover"
-            />
+    <Animated.View entering={FadeInDown.duration(400)} style={styles.container}>
+      <Pressable onPress={onPress} style={styles.pressable}>
+        {/* Image Carousel */}
+        {note.images && note.images.length > 0 && (
+          <View style={styles.imageContainer}>
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+            >
+              {note.images.map((imageUrl, index) => (
+                <Image
+                  key={index}
+                  source={{ uri: imageUrl }}
+                  style={styles.image}
+                  resizeMode="cover"
+                />
+              ))}
+            </ScrollView>
+            
+            {/* Image indicators */}
             {note.images.length > 1 && (
-              <View style={styles.imageCountBadge}>
-                <IconSymbol name="photo" size={12} color={colors.card} />
-                <Text style={styles.imageCountText}>+{note.images.length - 1}</Text>
+              <View style={styles.indicatorContainer}>
+                {note.images.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.indicator,
+                      index === currentImageIndex && styles.indicatorActive,
+                    ]}
+                  />
+                ))}
               </View>
             )}
           </View>
-        </View>
-      )}
+        )}
 
-      <View style={styles.footer}>
-        {note.images && note.images.length > 0 && (
-          <View style={styles.iconBadge}>
-            <IconSymbol name="photo" size={14} color={colors.textSecondary} />
-            <Text style={styles.badgeText}>{note.images.length}</Text>
+        {/* Note Text */}
+        {note.text && (
+          <View style={styles.textContainer}>
+            <Text style={styles.noteText}>{getPreviewText()}</Text>
+            {shouldShowToggle() && (
+              <Pressable onPress={() => setShowFullText(!showFullText)}>
+                <Text style={styles.showMoreText}>
+                  {showFullText ? 'Show Less' : 'Show More'}
+                </Text>
+              </Pressable>
+            )}
           </View>
         )}
-        {!note.synced && (
-          <View style={styles.syncBadge}>
-            <IconSymbol name="arrow.clockwise" size={14} color={colors.accent} />
+
+        {/* Location and Date */}
+        <View style={styles.metadataContainer}>
+          <View style={styles.locationContainer}>
+            {note.location && (
+              <>
+                <IconSymbol name="location.fill" size={14} color={colors.textSecondary} />
+                <Text style={styles.locationText}>{note.location}</Text>
+              </>
+            )}
           </View>
-        )}
-      </View>
-    </Pressable>
+          <Text style={styles.dateText}>{formatDateTime(note.created_at)}</Text>
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
+  container: {
+    marginBottom: 16,
+    borderRadius: 16,
     backgroundColor: colors.card,
-    borderRadius: 12,
+    overflow: 'hidden',
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.4)',
+    elevation: 4,
+  },
+  pressable: {
+    width: '100%',
+  },
+  imageContainer: {
+    width: '100%',
+    height: 300,
+    position: 'relative',
+  },
+  image: {
+    width: IMAGE_WIDTH,
+    height: 300,
+  },
+  indicatorContainer: {
+    position: 'absolute',
+    bottom: 12,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  indicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  indicatorActive: {
+    backgroundColor: colors.primary,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  textContainer: {
     padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 12,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
   },
-  cardPressed: {
-    backgroundColor: colors.highlight,
-    transform: [{ scale: 0.98 }],
+  noteText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.text,
+    marginBottom: 8,
   },
-  cardHeader: {
+  showMoreText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  metadataContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     flex: 1,
-    marginRight: 8,
   },
-  date: {
-    fontSize: 12,
+  locationText: {
+    fontSize: 13,
     color: colors.textSecondary,
   },
-  preview: {
-    fontSize: 14,
+  dateText: {
+    fontSize: 13,
     color: colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  imagesContainer: {
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  imagePreviewContainer: {
-    position: 'relative',
-    width: '100%',
-    height: 120,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  imagePreview: {
-    width: '100%',
-    height: '100%',
-  },
-  imageCountBadge: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  imageCountText: {
-    color: colors.card,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  iconBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  badgeText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  syncBadge: {
-    marginLeft: 'auto',
   },
 });

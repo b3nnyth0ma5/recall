@@ -1,20 +1,22 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
-import { useNotes } from '@/hooks/useNotes';
 import { NoteCard } from '@/components/NoteCard';
-import { SearchBar } from '@/components/SearchBar';
+import { useNotes } from '@/hooks/useNotes';
+import { IconSymbol } from '@/components/IconSymbol';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
 export default function HomeScreen() {
+  const { notes, loading, refreshNotes } = useNotes();
   const router = useRouter();
-  const { notes, loading, searchQuery, searchNotes } = useNotes();
-  const [isSearching, setIsSearching] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const handleSearch = (query: string) => {
-    searchNotes(query);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refreshNotes();
+    setRefreshing(false);
   };
 
   const handleCreateNote = () => {
@@ -25,78 +27,81 @@ export default function HomeScreen() {
     router.push(`/note-editor?id=${noteId}`);
   };
 
-  const renderHeaderRight = () => (
-    <Pressable
-      onPress={handleCreateNote}
-      style={styles.headerButton}
-    >
-      <IconSymbol name="plus" color={colors.primary} size={24} />
-    </Pressable>
-  );
+  const handleSearch = () => {
+    router.push('/search');
+  };
 
   const renderEmptyState = () => (
-    <View style={styles.emptyContainer}>
-      <IconSymbol name="note.text" size={64} color={colors.textSecondary} />
+    <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+      <IconSymbol name="note.text" size={80} color={colors.textTertiary} />
       <Text style={styles.emptyTitle}>No Notes Yet</Text>
       <Text style={styles.emptyText}>
-        {searchQuery 
-          ? 'No notes match your search' 
-          : 'Tap the + button to create your first note'}
+        Tap the + button to create your first note
       </Text>
-    </View>
+    </Animated.View>
   );
 
   return (
-    <>
-      {Platform.OS === 'ios' && (
-        <Stack.Screen
-          options={{
-            title: 'My Notes',
-            headerRight: renderHeaderRight,
-          }}
-        />
-      )}
-      <View style={styles.container}>
-        <SearchBar
-          value={searchQuery}
-          onChangeText={handleSearch}
-          placeholder="Search notes..."
-        />
+    <View style={styles.container}>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerTitle: 'Journal',
+          headerStyle: {
+            backgroundColor: colors.background,
+          },
+          headerTintColor: colors.text,
+          headerTitleStyle: {
+            fontSize: 32,
+            fontWeight: 'bold',
+          },
+          headerRight: () => (
+            <Pressable onPress={handleSearch} style={styles.headerButton}>
+              <IconSymbol name="magnifyingglass" size={24} color={colors.text} />
+            </Pressable>
+          ),
+        }}
+      />
 
-        {loading ? (
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
+        {loading && !refreshing ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
+        ) : notes.length === 0 ? (
+          renderEmptyState()
         ) : (
-          <FlatList
-            data={notes}
-            renderItem={({ item }) => (
+          <View style={styles.notesContainer}>
+            {notes.map((note) => (
               <NoteCard
-                note={item}
-                onPress={() => handleNotePress(item.id)}
+                key={note.id}
+                note={note}
+                onPress={() => handleNotePress(note.id)}
               />
-            )}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={[
-              styles.listContainer,
-              notes.length === 0 && styles.listContainerEmpty,
-              Platform.OS !== 'ios' && styles.listContainerWithTabBar
-            ]}
-            ListEmptyComponent={renderEmptyState}
-            showsVerticalScrollIndicator={false}
-          />
+            ))}
+          </View>
         )}
+      </ScrollView>
 
-        {Platform.OS !== 'ios' && (
-          <Pressable
-            style={styles.fab}
-            onPress={handleCreateNote}
-          >
-            <IconSymbol name="plus" size={28} color={colors.card} />
-          </Pressable>
-        )}
-      </View>
-    </>
+      {/* Floating Add Button */}
+      <Pressable
+        onPress={handleCreateNote}
+        style={styles.fab}
+      >
+        <IconSymbol name="plus" size={28} color="#FFFFFF" />
+      </Pressable>
+    </View>
   );
 }
 
@@ -105,33 +110,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  headerButton: {
-    padding: 8,
-  },
-  listContainer: {
-    paddingTop: 8,
-    paddingBottom: 16,
-  },
-  listContainerEmpty: {
+  scrollView: {
     flex: 1,
   },
-  listContainerWithTabBar: {
+  scrollContent: {
+    padding: 16,
     paddingBottom: 100,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingTop: 100,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 32,
+    paddingTop: 100,
   },
   emptyTitle: {
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: colors.text,
     marginTop: 16,
     marginBottom: 8,
@@ -140,19 +140,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
+    paddingHorizontal: 32,
+  },
+  notesContainer: {
+    width: '100%',
+  },
+  headerButton: {
+    padding: 8,
+    marginRight: 8,
   },
   fab: {
     position: 'absolute',
-    bottom: 100,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    bottom: 24,
+    right: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
-    elevation: 6,
+    boxShadow: '0px 4px 16px rgba(255, 107, 53, 0.4)',
+    elevation: 8,
   },
 });

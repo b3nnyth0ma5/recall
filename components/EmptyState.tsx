@@ -3,22 +3,21 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
 interface EmptyStateProps {
   icon: string;
   title: string;
-  description: string;
+  message: string;
 }
 
-export function EmptyState({ icon, title, description }: EmptyStateProps) {
+export function EmptyState({ icon, title, message }: EmptyStateProps) {
   return (
-    <View style={styles.container}>
-      <View style={styles.iconContainer}>
-        <IconSymbol name={icon as any} size={64} color={colors.primary} />
-      </View>
+    <Animated.View entering={FadeIn.duration(600)} style={styles.container}>
+      <IconSymbol name={icon as any} size={80} color={colors.textTertiary} />
       <Text style={styles.title}>{title}</Text>
-      <Text style={styles.description}>{description}</Text>
-    </View>
+      <Text style={styles.message}>{message}</Text>
+    </Animated.View>
   );
 }
 
@@ -27,28 +26,20 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingTop: 100,
     paddingHorizontal: 32,
-  },
-  iconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: colors.highlight,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
   },
   title: {
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 12,
+    marginTop: 16,
+    marginBottom: 8,
     textAlign: 'center',
   },
-  description: {
+  message: {
     fontSize: 16,
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 24,
   },
 });
