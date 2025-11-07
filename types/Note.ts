@@ -2,9 +2,9 @@
 export interface Note {
   id: string;
   text: string;
-  images: string[];
-  imagePaths?: string[]; // Kept for backward compatibility
-  imageIds?: string[]; // New field for image record IDs
+  images: string[]; // Array of public URLs for display
+  imagePaths?: string[]; // Array of storage paths
+  imageIds?: string[]; // Array of image record IDs
   created_at: string;
   updated_at: string;
   latitude?: number;
@@ -25,4 +25,13 @@ export interface SearchHistory {
   search_text: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface ImageRecord {
+  id: string;
+  recall_id: string;
+  image_path: string; // Path in Supabase Storage
+  image_data?: any; // Deprecated: Legacy binary data
+  content_type: string;
+  created_at: string;
 }

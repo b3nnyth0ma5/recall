@@ -24,16 +24,16 @@ import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase, reverseGeocode } from '@/utils/supabase';
-import { decode } from 'base64-arraybuffer';
+import { supabase, reverseGeocode, uploadImageToStorage, saveImageRecord, deleteImageRecord, deleteImageFromStorage, getImagePath } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface ImageData {
   id?: string; // For existing images
-  uri: string; // Data URL for display
+  uri: string; // Display URL (can be local or remote)
   localUri?: string; // Local file URI for new images
+  storagePath?: string; // Storage path for existing images
   contentType: string;
 }
 
@@ -76,10 +76,11 @@ export default function NoteEditorScreen() {
       setText(existingNote.text || '');
       
       // Load existing images
-      if (existingNote.images && existingNote.imageIds) {
+      if (existingNote.images && existingNote.imageIds && existingNote.imagePaths) {
         const loadedImages: ImageData[] = existingNote.images.map((uri, index) => ({
           id: existingNote.imageIds?.[index],
           uri: uri,
+          storagePath: existingNote.imagePaths?.[index],
           contentType: 'image/jpeg',
         }));
         setImages(loadedImages);
@@ -142,10 +143,6 @@ export default function NoteEditorScreen() {
         const newImages: ImageData[] = [];
 
         for (const asset of result.assets) {
-          // Use the new File API to read image as base64
-          const file = new File(asset.uri);
-          const base64 = await file.base64();
-
           // Determine content type
           let contentType = 'image/jpeg';
           if (asset.uri.toLowerCase().endsWith('.png')) {
@@ -157,7 +154,7 @@ export default function NoteEditorScreen() {
           }
 
           newImages.push({
-            uri: `data:${contentType};base64,${base64}`,
+            uri: asset.uri,
             localUri: asset.uri,
             contentType: contentType,
           });
@@ -190,14 +187,10 @@ export default function NoteEditorScreen() {
         setLoading(true);
         const asset = result.assets[0];
         
-        // Use the new File API to read image as base64
-        const file = new File(asset.uri);
-        const base64 = await file.base64();
-
         const contentType = 'image/jpeg';
 
         setImages([...images, {
-          uri: `data:${contentType};base64,${base64}`,
+          uri: asset.uri,
           localUri: asset.uri,
           contentType: contentType,
         }]);
@@ -214,13 +207,11 @@ export default function NoteEditorScreen() {
   const removeImage = async (index: number) => {
     const image = images[index];
     
-    // If it's an existing image, delete it from the database
-    if (image.id) {
+    // If it's an existing image, delete it from storage and database
+    if (image.id && image.storagePath) {
       try {
-        await supabase
-          .from('recall_images')
-          .delete()
-          .eq('id', image.id);
+        await deleteImageFromStorage(image.storagePath);
+        await deleteImageRecord(image.id);
       } catch (error) {
         console.error('Error deleting image:', error);
       }
@@ -253,43 +244,33 @@ export default function NoteEditorScreen() {
         recallId = params.id as string;
 
         // Delete all existing images for this recall
-        await supabase
+        const { data: existingImages } = await supabase
           .from('recall_images')
-          .delete()
+          .select('id, image_path')
           .eq('recall_id', recallId);
+
+        if (existingImages) {
+          for (const img of existingImages) {
+            if (img.image_path) {
+              await deleteImageFromStorage(img.image_path);
+            }
+            await deleteImageRecord(img.id);
+          }
+        }
       } else {
         recallId = await addNote(noteData);
       }
 
-      // Upload all images to the database
+      // Upload all images to storage
       for (const image of images) {
         if (image.localUri) {
-          // New image - upload to database using the new File API
-          const file = new File(image.localUri);
-          const base64 = await file.base64();
-
-          const binaryData = decode(base64);
-
-          await supabase
-            .from('recall_images')
-            .insert([{
-              recall_id: recallId,
-              image_data: binaryData,
-              content_type: image.contentType,
-            }]);
-        } else if (image.id) {
-          // Existing image - re-insert it (since we deleted all above)
-          // Extract base64 from data URL
-          const base64Data = image.uri.split(',')[1];
-          const binaryData = decode(base64Data);
-
-          await supabase
-            .from('recall_images')
-            .insert([{
-              recall_id: recallId,
-              image_data: binaryData,
-              content_type: image.contentType,
-            }]);
+          // New image - upload to storage
+          const storagePath = await uploadImageToStorage(image.localUri, recallId);
+          
+          if (storagePath) {
+            // Save image record to database
+            await saveImageRecord(recallId, storagePath, image.contentType);
+          }
         }
       }
 

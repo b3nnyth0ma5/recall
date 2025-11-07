@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Note } from '@/types/Note';
-import { supabase, getImageDataUrl, deleteImageFromDatabase } from '@/utils/supabase';
+import { supabase, getImageUrl, deleteImageRecord, deleteImageFromStorage, getImagePath } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function useNotes() {
@@ -36,65 +36,36 @@ export function useNotes() {
         (recallsData || []).map(async (recall) => {
           const { data: imagesData, error: imagesError } = await supabase
             .from('recall_images')
-            .select('id, image_data, content_type')
+            .select('id, image_path, content_type')
             .eq('recall_id', recall.id)
             .order('created_at', { ascending: true });
 
           if (imagesError) {
             console.error('Error loading images for recall:', recall.id, imagesError);
-            return { ...recall, images: [], imageIds: [] };
+            return { ...recall, images: [], imageIds: [], imagePaths: [] };
           }
 
           console.log(`Loaded ${imagesData?.length || 0} images for recall ${recall.id}`);
 
-          // Convert binary data to data URLs
-          const imageUrls = await Promise.all(
-            (imagesData || []).map(async (img) => {
-              try {
-                // Check if image_data exists and is valid
-                if (!img.image_data) {
-                  console.error('No image data for image:', img.id);
-                  return '';
-                }
+          // Convert storage paths to public URLs
+          const imageUrls = (imagesData || []).map((img) => {
+            if (!img.image_path) {
+              console.error('No image path for image:', img.id);
+              return '';
+            }
+            return getImageUrl(img.image_path);
+          }).filter(url => url !== '');
 
-                // Convert ArrayBuffer to base64
-                let base64: string;
-                if (img.image_data instanceof ArrayBuffer) {
-                  const uint8Array = new Uint8Array(img.image_data);
-                  base64 = btoa(
-                    uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
-                  );
-                } else if (typeof img.image_data === 'string') {
-                  // If it's already a string, use it directly
-                  base64 = img.image_data;
-                } else {
-                  // Try to convert to Uint8Array
-                  const uint8Array = new Uint8Array(img.image_data);
-                  base64 = btoa(
-                    uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
-                  );
-                }
-
-                const dataUrl = `data:${img.content_type || 'image/jpeg'};base64,${base64}`;
-                console.log(`Converted image ${img.id} to data URL (length: ${dataUrl.length})`);
-                return dataUrl;
-              } catch (error) {
-                console.error('Error converting image data for image:', img.id, error);
-                return '';
-              }
-            })
-          );
-
-          const validImageUrls = imageUrls.filter(url => url !== '');
           const imageIds = (imagesData || []).map(img => img.id);
+          const imagePaths = (imagesData || []).map(img => img.image_path);
           
-          console.log(`Recall ${recall.id} has ${validImageUrls.length} valid images`);
+          console.log(`Recall ${recall.id} has ${imageUrls.length} valid images`);
           
           return { 
             ...recall, 
-            images: validImageUrls, 
+            images: imageUrls, 
             imageIds: imageIds,
-            imagePaths: imageIds // Keep for compatibility
+            imagePaths: imagePaths
           };
         })
       );
@@ -138,9 +109,6 @@ export function useNotes() {
         throw recallError;
       }
 
-      // Note: Images are now uploaded separately with the recall_id
-      // This is handled in the note-editor component
-
       console.log('Recall added successfully:', recallData.id);
       await loadNotes();
       return recallData.id;
@@ -176,8 +144,6 @@ export function useNotes() {
         throw recallError;
       }
 
-      // Note: Image updates are now handled separately in the note-editor component
-
       console.log('Recall updated successfully');
       await loadNotes();
     } catch (error) {
@@ -195,21 +161,23 @@ export function useNotes() {
     try {
       console.log('Deleting recall from Supabase:', noteId);
       
-      // Get all image IDs for this recall
+      // Get all images for this recall
       const { data: imagesData } = await supabase
         .from('recall_images')
-        .select('id')
+        .select('id, image_path')
         .eq('recall_id', noteId);
 
-      // Delete images from database (cascade delete will handle this automatically)
-      // But we'll do it explicitly for clarity
+      // Delete images from storage and database
       if (imagesData && imagesData.length > 0) {
         for (const img of imagesData) {
-          await deleteImageFromDatabase(img.id);
+          if (img.image_path) {
+            await deleteImageFromStorage(img.image_path);
+          }
+          await deleteImageRecord(img.id);
         }
       }
 
-      // Delete the recall (this will also cascade delete images due to foreign key)
+      // Delete the recall
       const { error } = await supabase
         .from('recalls')
         .delete()
@@ -263,48 +231,23 @@ export function useNotes() {
         (recallsData || []).map(async (recall) => {
           const { data: imagesData } = await supabase
             .from('recall_images')
-            .select('id, image_data, content_type')
+            .select('id, image_path, content_type')
             .eq('recall_id', recall.id)
             .order('created_at', { ascending: true });
 
-          const imageUrls = await Promise.all(
-            (imagesData || []).map(async (img) => {
-              try {
-                if (!img.image_data) {
-                  return '';
-                }
+          const imageUrls = (imagesData || []).map((img) => {
+            if (!img.image_path) return '';
+            return getImageUrl(img.image_path);
+          }).filter(url => url !== '');
 
-                let base64: string;
-                if (img.image_data instanceof ArrayBuffer) {
-                  const uint8Array = new Uint8Array(img.image_data);
-                  base64 = btoa(
-                    uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
-                  );
-                } else if (typeof img.image_data === 'string') {
-                  base64 = img.image_data;
-                } else {
-                  const uint8Array = new Uint8Array(img.image_data);
-                  base64 = btoa(
-                    uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
-                  );
-                }
-
-                return `data:${img.content_type || 'image/jpeg'};base64,${base64}`;
-              } catch (error) {
-                console.error('Error converting image data:', error);
-                return '';
-              }
-            })
-          );
-
-          const validImageUrls = imageUrls.filter(url => url !== '');
           const imageIds = (imagesData || []).map(img => img.id);
+          const imagePaths = (imagesData || []).map(img => img.image_path);
           
           return { 
             ...recall, 
-            images: validImageUrls, 
+            images: imageUrls, 
             imageIds: imageIds,
-            imagePaths: imageIds
+            imagePaths: imagePaths
           };
         })
       );

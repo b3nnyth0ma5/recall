@@ -25,6 +25,7 @@ export default function SearchScreen() {
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
   const [showHistory, setShowHistory] = useState(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -48,23 +49,21 @@ export default function SearchScreen() {
     setSearchHistory(history);
   };
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (query.trim()) {
+  const handleSearch = () => {
+    if (searchQuery.trim()) {
       setShowHistory(false);
-      searchNotes(query);
+      setHasSearched(true);
+      searchNotes(searchQuery);
       setTimeout(() => {
         loadSearchHistory();
       }, 500);
-    } else {
-      setShowHistory(true);
-      searchNotes('');
     }
   };
 
   const handleHistoryItemPress = (searchText: string) => {
     setSearchQuery(searchText);
     setShowHistory(false);
+    setHasSearched(true);
     searchNotes(searchText);
   };
 
@@ -75,6 +74,7 @@ export default function SearchScreen() {
   const handleClear = () => {
     setSearchQuery('');
     setShowHistory(true);
+    setHasSearched(false);
     searchNotes('');
   };
 
@@ -122,14 +122,32 @@ export default function SearchScreen() {
             placeholder="Search recalls..."
             placeholderTextColor={colors.textTertiary}
             value={searchQuery}
-            onChangeText={handleSearch}
+            onChangeText={setSearchQuery}
+            onSubmitEditing={handleSearch}
+            returnKeyType="search"
             autoFocus
           />
           {searchQuery.length > 0 && (
-            <Pressable onPress={handleClear}>
+            <Pressable onPress={handleClear} style={styles.clearButton}>
               <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
             </Pressable>
           )}
+          <Pressable 
+            onPress={handleSearch} 
+            style={styles.searchIconButton}
+            disabled={!searchQuery.trim()}
+          >
+            <View style={[
+              styles.searchIconContainer,
+              !searchQuery.trim() && styles.searchIconDisabled
+            ]}>
+              <IconSymbol 
+                name="magnifyingglass" 
+                size={18} 
+                color="#FFFFFF" 
+              />
+            </View>
+          </Pressable>
         </View>
       </View>
 
@@ -153,9 +171,13 @@ export default function SearchScreen() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ) : searchQuery.length === 0 ? (
+        ) : !hasSearched ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-            
+            <IconSymbol name="magnifyingglass" size={80} color={colors.textTertiary} />
+            <Text style={styles.emptyTitle}>Search Your Recalls</Text>
+            <Text style={styles.emptyText}>
+              Enter a search term and tap the search icon to find your recalls
+            </Text>
           </Animated.View>
         ) : notes.length === 0 ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
@@ -212,6 +234,23 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: colors.text,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  searchIconButton: {
+    padding: 4,
+  },
+  searchIconContainer: {
+    backgroundColor: colors.primary,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchIconDisabled: {
+    opacity: 0.4,
   },
   scrollView: {
     flex: 1,
