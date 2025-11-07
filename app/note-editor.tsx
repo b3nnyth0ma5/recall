@@ -24,7 +24,7 @@ import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase, reverseGeocode, uploadImageToStorage, saveImageRecord, deleteImageRecord, deleteImageFromStorage, getImagePath } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToStorage, saveImageRecord, deleteImageRecord, deleteImageFromStorage, getImagePath, initializeStorageBucket } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -51,6 +51,7 @@ export default function NoteEditorScreen() {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [locationSearch, setLocationSearch] = useState('');
+  const [storageReady, setStorageReady] = useState(false);
   const textInputRef = useRef<TextInput>(null);
 
   const isEditing = !!params.id;
@@ -69,6 +70,20 @@ export default function NoteEditorScreen() {
       keyboardDidHideListener.remove();
       keyboardDidShowListener.remove();
     };
+  }, []);
+
+  useEffect(() => {
+    // Check storage bucket on mount
+    initializeStorageBucket().then(ready => {
+      setStorageReady(ready);
+      if (!ready) {
+        Alert.alert(
+          'Storage Not Ready',
+          'The image storage bucket is not configured. Please create a bucket named "recall-images" in your Supabase Dashboard under Storage.',
+          [{ text: 'OK' }]
+        );
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -125,6 +140,15 @@ export default function NoteEditorScreen() {
   };
 
   const pickImage = async () => {
+    if (!storageReady) {
+      Alert.alert(
+        'Storage Not Ready',
+        'Image storage is not configured. Please check the console logs for details.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -171,6 +195,15 @@ export default function NoteEditorScreen() {
   };
 
   const takePhoto = async () => {
+    if (!storageReady) {
+      Alert.alert(
+        'Storage Not Ready',
+        'Image storage is not configured. Please check the console logs for details.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
@@ -262,16 +295,42 @@ export default function NoteEditorScreen() {
       }
 
       // Upload all images to storage
+      let uploadedCount = 0;
+      let failedCount = 0;
+
       for (const image of images) {
         if (image.localUri) {
+          console.log('Uploading image:', image.localUri);
+          
           // New image - upload to storage
           const storagePath = await uploadImageToStorage(image.localUri, recallId);
           
           if (storagePath) {
+            console.log('Image uploaded successfully, saving record...');
             // Save image record to database
-            await saveImageRecord(recallId, storagePath, image.contentType);
+            const imageId = await saveImageRecord(recallId, storagePath, image.contentType);
+            if (imageId) {
+              uploadedCount++;
+              console.log('Image record saved successfully');
+            } else {
+              failedCount++;
+              console.error('Failed to save image record');
+            }
+          } else {
+            failedCount++;
+            console.error('Failed to upload image to storage');
           }
         }
+      }
+
+      console.log(`Upload complete: ${uploadedCount} succeeded, ${failedCount} failed`);
+
+      if (failedCount > 0) {
+        Alert.alert(
+          'Partial Upload',
+          `${uploadedCount} image(s) uploaded successfully, but ${failedCount} failed. Check console logs for details.`,
+          [{ text: 'OK' }]
+        );
       }
 
       router.back();
@@ -280,7 +339,7 @@ export default function NoteEditorScreen() {
       }, 500);
     } catch (error) {
       console.error('Error saving recall:', error);
-      Alert.alert('Error', 'Failed to save recall');
+      Alert.alert('Error', 'Failed to save recall. Check console logs for details.');
     } finally {
       setSaving(false);
     }

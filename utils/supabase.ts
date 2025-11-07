@@ -26,32 +26,74 @@ const STORAGE_BUCKET = 'recall-images';
  */
 export async function uploadImageToStorage(uri: string, recallId: string): Promise<string | null> {
   try {
-    console.log('Uploading image to Supabase Storage:', uri);
+    console.log('=== Starting image upload ===');
+    console.log('URI:', uri);
+    console.log('Recall ID:', recallId);
     
+    // Check if user is authenticated
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.error('No active session - user must be logged in to upload images');
+      return null;
+    }
+    console.log('User authenticated:', session.user.id);
+
+    // Clean the URI - remove file:// prefix if present
+    let cleanUri = uri;
+    if (uri.startsWith('file://')) {
+      cleanUri = uri.substring(7);
+    }
+    console.log('Clean URI:', cleanUri);
+
     // Use the new File API to read the image as base64
-    const file = new File(uri);
+    const file = new File(cleanUri);
+    console.log('File object created');
+    
     const base64 = await file.base64();
+    console.log('Base64 conversion successful, length:', base64.length);
 
     // Convert base64 to binary data
     const binaryData = decode(base64);
+    console.log('Binary data decoded, size:', binaryData.byteLength, 'bytes');
 
     // Determine content type from URI
     let contentType = 'image/jpeg';
-    if (uri.toLowerCase().endsWith('.png')) {
+    const lowerUri = uri.toLowerCase();
+    if (lowerUri.endsWith('.png') || lowerUri.includes('.png?')) {
       contentType = 'image/png';
-    } else if (uri.toLowerCase().endsWith('.gif')) {
+    } else if (lowerUri.endsWith('.gif') || lowerUri.includes('.gif?')) {
       contentType = 'image/gif';
-    } else if (uri.toLowerCase().endsWith('.webp')) {
+    } else if (lowerUri.endsWith('.webp') || lowerUri.includes('.webp?')) {
       contentType = 'image/webp';
+    } else if (lowerUri.endsWith('.jpg') || lowerUri.endsWith('.jpeg') || 
+               lowerUri.includes('.jpg?') || lowerUri.includes('.jpeg?')) {
+      contentType = 'image/jpeg';
     }
+    console.log('Content type:', contentType);
 
     // Generate unique filename
     const timestamp = Date.now();
     const randomString = Math.random().toString(36).substring(7);
     const extension = contentType.split('/')[1];
     const fileName = `${recallId}/${timestamp}-${randomString}.${extension}`;
+    console.log('Generated filename:', fileName);
+
+    // Check if bucket exists and is accessible
+    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+    if (bucketsError) {
+      console.error('Error listing buckets:', bucketsError);
+    } else {
+      console.log('Available buckets:', buckets?.map(b => b.name).join(', '));
+      const bucketExists = buckets?.some(b => b.name === STORAGE_BUCKET);
+      if (!bucketExists) {
+        console.error(`Bucket '${STORAGE_BUCKET}' does not exist!`);
+        console.log('Please create the bucket in Supabase Dashboard or run the setup migration');
+        return null;
+      }
+    }
 
     // Upload to Supabase Storage
+    console.log('Uploading to storage...');
     const { data, error } = await supabase.storage
       .from(STORAGE_BUCKET)
       .upload(fileName, binaryData, {
@@ -60,14 +102,22 @@ export async function uploadImageToStorage(uri: string, recallId: string): Promi
       });
 
     if (error) {
-      console.error('Error uploading image to storage:', error);
+      console.error('=== Storage upload error ===');
+      console.error('Error message:', error.message);
+      console.error('Error details:', JSON.stringify(error, null, 2));
       return null;
     }
 
-    console.log('Image uploaded successfully to storage:', data.path);
+    console.log('=== Upload successful ===');
+    console.log('Storage path:', data.path);
     return data.path;
   } catch (error) {
-    console.error('Error in uploadImageToStorage:', error);
+    console.error('=== Exception in uploadImageToStorage ===');
+    console.error('Error:', error);
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+    }
     return null;
   }
 }
@@ -96,6 +146,7 @@ export async function deleteImageFromStorage(path: string): Promise<boolean> {
   try {
     if (!path) return false;
 
+    console.log('Deleting image from storage:', path);
     const { error } = await supabase.storage
       .from(STORAGE_BUCKET)
       .remove([path]);
@@ -126,24 +177,39 @@ export async function saveImageRecord(
   contentType: string
 ): Promise<string | null> {
   try {
+    console.log('Saving image record to database:', { recallId, imagePath, contentType });
+    
+    // Get current user
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.error('No active session - cannot save image record');
+      return null;
+    }
+
     const { data, error } = await supabase
       .from('recall_images')
       .insert([{
         recall_id: recallId,
         image_path: imagePath,
         content_type: contentType,
+        user_id: session.user.id,
       }])
       .select('id')
       .single();
 
     if (error) {
       console.error('Error saving image record:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
       return null;
     }
 
+    console.log('Image record saved successfully, ID:', data.id);
     return data.id;
   } catch (error) {
     console.error('Error in saveImageRecord:', error);
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+    }
     return null;
   }
 }
@@ -155,6 +221,8 @@ export async function saveImageRecord(
  */
 export async function deleteImageRecord(imageId: string): Promise<boolean> {
   try {
+    console.log('Deleting image record from database:', imageId);
+    
     const { error } = await supabase
       .from('recall_images')
       .delete()
@@ -195,6 +263,39 @@ export async function getImagePath(imageId: string): Promise<string | null> {
   } catch (error) {
     console.error('Error in getImagePath:', error);
     return null;
+  }
+}
+
+/**
+ * Initialize storage bucket if it doesn't exist
+ * This should be called once during app initialization
+ */
+export async function initializeStorageBucket(): Promise<boolean> {
+  try {
+    console.log('Checking storage bucket...');
+    
+    const { data: buckets, error } = await supabase.storage.listBuckets();
+    
+    if (error) {
+      console.error('Error listing buckets:', error);
+      return false;
+    }
+
+    const bucketExists = buckets?.some(b => b.name === STORAGE_BUCKET);
+    
+    if (!bucketExists) {
+      console.log(`Bucket '${STORAGE_BUCKET}' does not exist. Please create it in Supabase Dashboard.`);
+      console.log('Go to: Storage > Create a new bucket');
+      console.log(`Bucket name: ${STORAGE_BUCKET}`);
+      console.log('Make sure to set it as public or configure appropriate RLS policies');
+      return false;
+    }
+
+    console.log(`Bucket '${STORAGE_BUCKET}' exists and is accessible`);
+    return true;
+  } catch (error) {
+    console.error('Error in initializeStorageBucket:', error);
+    return false;
   }
 }
 
