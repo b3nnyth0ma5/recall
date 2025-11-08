@@ -155,6 +155,17 @@ const MAPPING = {
   "line.3.horizontal.decrease": "filter-list",
   "arrow.up.arrow.down": "sort",
 
+  // Additional icons
+  "note.text": "note",
+  "xmark.circle.fill": "cancel",
+  "mappin.circle.fill": "place",
+  "keyboard": "keyboard",
+  "keyboard.chevron.compact.down": "keyboard-hide",
+  "wrench.and.screwdriver": "build",
+  "arrow.right.square": "logout",
+  "arrow.up.left": "north-west",
+  "doc.text.magnifyingglass": "search",
+
   // Visibility & Display
   "eye.fill": "visibility",
   "eye.slash.fill": "visibility-off",

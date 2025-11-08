@@ -68,6 +68,20 @@ function RootLayoutNav() {
           headerShown: false,
         }}
       />
+      <Stack.Screen
+        name="location-search"
+        options={{
+          presentation: 'card',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="storage-test"
+        options={{
+          presentation: 'card',
+          headerShown: false,
+        }}
+      />
     </Stack>
   );
 }

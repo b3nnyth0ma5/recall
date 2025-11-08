@@ -1,7 +1,7 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
@@ -12,6 +12,14 @@ export default function HomeScreen() {
   const { notes, loading, refreshNotes } = useNotes();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+
+  // Simulate pull-to-refresh when returning to the screen
+  useFocusEffect(
+    useCallback(() => {
+      console.log('Home screen focused, refreshing data...');
+      refreshNotes();
+    }, [refreshNotes])
+  );
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -29,6 +37,10 @@ export default function HomeScreen() {
 
   const handleSearch = () => {
     router.push('/search');
+  };
+
+  const handleProfile = () => {
+    router.push('/(tabs)/profile');
   };
 
   const renderEmptyState = () => (
@@ -57,8 +69,8 @@ export default function HomeScreen() {
             fontWeight: 'bold',
           },
           headerRight: () => (
-            <Pressable onPress={handleSearch} style={styles.headerButton}>
-              <IconSymbol name="magnifyingglass" size={24} color={colors.text} />
+            <Pressable onPress={handleProfile} style={styles.headerButton}>
+              <IconSymbol name="person.circle.fill" size={28} color={colors.text} />
             </Pressable>
           ),
         }}
@@ -95,12 +107,22 @@ export default function HomeScreen() {
         )}
       </ScrollView>
 
-      <Pressable
-        onPress={handleCreateNote}
-        style={styles.fab}
-      >
-        <IconSymbol name="plus" size={28} color="#FFFFFF" />
-      </Pressable>
+      {/* Bottom action buttons */}
+      <View style={styles.bottomActions}>
+        <Pressable
+          onPress={handleSearch}
+          style={styles.searchFab}
+        >
+          <IconSymbol name="magnifyingglass" size={28} color="#FFFFFF" />
+        </Pressable>
+
+        <Pressable
+          onPress={handleCreateNote}
+          style={styles.fab}
+        >
+          <IconSymbol name="plus" size={28} color="#FFFFFF" />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -151,10 +173,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fab: {
+  bottomActions: {
     position: 'absolute',
     bottom: 24,
-    right: 24,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+  },
+  searchFab: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.searchAccent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 16px rgba(74, 144, 226, 0.4)',
+    elevation: 8,
+  },
+  fab: {
     width: 60,
     height: 60,
     borderRadius: 30,

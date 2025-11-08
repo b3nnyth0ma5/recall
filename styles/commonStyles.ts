@@ -7,6 +7,7 @@ export const colors = {
   backgroundSecondary: '#1A1A1A',
   card: '#1E1E1E',
   cardHover: '#252525',
+  cardDark: '#151515',
   text: '#FFFFFF',
   textSecondary: '#A0A0A0',
   textTertiary: '#707070',
@@ -14,12 +15,14 @@ export const colors = {
   primaryDark: '#E55A2B',
   primaryLight: '#FF8555',
   accent: '#FF6B35',
+  searchAccent: '#4A90E2', // Blue accent for search
   border: '#2A2A2A',
   borderLight: '#3A3A3A',
   error: '#FF4444',
   success: '#4CAF50',
   overlay: 'rgba(0, 0, 0, 0.7)',
   shadow: 'rgba(0, 0, 0, 0.5)',
+  highlight: 'rgba(255, 107, 53, 0.15)',
 };
 
 export const buttonStyles = StyleSheet.create({

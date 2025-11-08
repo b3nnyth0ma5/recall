@@ -41,6 +41,10 @@ export default function ProfileScreen() {
     router.push('/storage-test');
   };
 
+  const handleBack = () => {
+    router.back();
+  };
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -56,6 +60,11 @@ export default function ProfileScreen() {
             fontWeight: 'bold',
           },
           headerTitleAlign: 'left',
+          headerLeft: () => (
+            <Pressable onPress={handleBack} style={styles.headerButton}>
+              <IconSymbol name="chevron.left" size={24} color={colors.text} />
+            </Pressable>
+          ),
         }}
       />
 
@@ -144,5 +153,9 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     color: colors.error,
+  },
+  headerButton: {
+    padding: 8,
+    marginHorizontal: 8,
   },
 });

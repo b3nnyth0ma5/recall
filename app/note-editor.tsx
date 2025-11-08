@@ -10,30 +10,25 @@ import {
   Image,
   Alert,
   ActivityIndicator,
-  Dimensions,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
-  Modal,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { File } from 'expo-file-system';
 import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase, reverseGeocode, uploadImageToStorage, saveImageRecord, deleteImageRecord, deleteImageFromStorage, getImagePath, initializeStorageBucket } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToStorage, saveImageRecord, deleteImageRecord, deleteImageFromStorage, initializeStorageBucket } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
 interface ImageData {
-  id?: string; // For existing images
-  uri: string; // Display URL (can be local or remote)
-  localUri?: string; // Local file URI for new images
-  storagePath?: string; // Storage path for existing images
+  id?: string;
+  uri: string;
+  localUri?: string;
+  storagePath?: string;
   contentType: string;
 }
 
@@ -49,8 +44,6 @@ export default function NoteEditorScreen() {
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationName, setLocationName] = useState<string>('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [showLocationModal, setShowLocationModal] = useState(false);
-  const [locationSearch, setLocationSearch] = useState('');
   const [storageReady, setStorageReady] = useState(false);
   const textInputRef = useRef<TextInput>(null);
 
@@ -73,7 +66,6 @@ export default function NoteEditorScreen() {
   }, []);
 
   useEffect(() => {
-    // Check storage bucket on mount
     initializeStorageBucket().then(ready => {
       setStorageReady(ready);
       if (!ready) {
@@ -90,7 +82,6 @@ export default function NoteEditorScreen() {
     if (existingNote) {
       setText(existingNote.text || '');
       
-      // Load existing images
       if (existingNote.images && existingNote.imageIds && existingNote.imagePaths) {
         const loadedImages: ImageData[] = existingNote.images.map((uri, index) => ({
           id: existingNote.imageIds?.[index],
@@ -116,6 +107,25 @@ export default function NoteEditorScreen() {
       requestLocationPermission();
     }
   }, [isEditing]);
+
+  // Handle location selection from location-search screen
+  useEffect(() => {
+    if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
+      const latitude = parseFloat(params.selectedLatitude as string);
+      const longitude = parseFloat(params.selectedLongitude as string);
+      const locationName = params.selectedLocationName as string;
+
+      setLocation({ latitude, longitude });
+      setLocationName(locationName);
+
+      // Clear the params
+      router.setParams({
+        selectedLatitude: undefined,
+        selectedLongitude: undefined,
+        selectedLocationName: undefined,
+      });
+    }
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName]);
 
   const requestLocationPermission = async () => {
     try {
@@ -167,7 +177,6 @@ export default function NoteEditorScreen() {
         const newImages: ImageData[] = [];
 
         for (const asset of result.assets) {
-          // Determine content type
           let contentType = 'image/jpeg';
           if (asset.uri.toLowerCase().endsWith('.png')) {
             contentType = 'image/png';
@@ -240,7 +249,6 @@ export default function NoteEditorScreen() {
   const removeImage = async (index: number) => {
     const image = images[index];
     
-    // If it's an existing image, delete it from storage and database
     if (image.id && image.storagePath) {
       try {
         await deleteImageFromStorage(image.storagePath);
@@ -276,7 +284,6 @@ export default function NoteEditorScreen() {
         await updateNote(params.id as string, noteData);
         recallId = params.id as string;
 
-        // Delete all existing images for this recall
         const { data: existingImages } = await supabase
           .from('recall_images')
           .select('id, image_path')
@@ -294,7 +301,6 @@ export default function NoteEditorScreen() {
         recallId = await addNote(noteData);
       }
 
-      // Upload all images to storage
       let uploadedCount = 0;
       let failedCount = 0;
 
@@ -302,12 +308,10 @@ export default function NoteEditorScreen() {
         if (image.localUri) {
           console.log('Uploading image:', image.localUri);
           
-          // New image - upload to storage
           const storagePath = await uploadImageToStorage(image.localUri, recallId);
           
           if (storagePath) {
             console.log('Image uploaded successfully, saving record...');
-            // Save image record to database
             const imageId = await saveImageRecord(recallId, storagePath, image.contentType);
             if (imageId) {
               uploadedCount++;
@@ -378,45 +382,8 @@ export default function NoteEditorScreen() {
     }
   };
 
-  const handleLocationSearch = async () => {
-    if (!locationSearch.trim()) {
-      Alert.alert('Error', 'Please enter a location to search');
-      return;
-    }
-
-    try {
-      // Use Nominatim for geocoding
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&limit=1`,
-        {
-          headers: {
-            'User-Agent': 'RecallsApp/1.0',
-          },
-        }
-      );
-
-      const data = await response.json();
-
-      if (data && data.length > 0) {
-        const result = data[0];
-        const latitude = parseFloat(result.lat);
-        const longitude = parseFloat(result.lon);
-
-        setLocation({ latitude, longitude });
-
-        const locationName = await reverseGeocode(latitude, longitude);
-        setLocationName(locationName);
-
-        setShowLocationModal(false);
-        setLocationSearch('');
-        Alert.alert('Success', `Location updated to: ${locationName}`);
-      } else {
-        Alert.alert('Not Found', 'Could not find that location. Please try a different search.');
-      }
-    } catch (error) {
-      console.error('Error searching location:', error);
-      Alert.alert('Error', 'Failed to search for location');
-    }
+  const handleLocationSearch = () => {
+    router.push('/location-search');
   };
 
   return (
@@ -478,7 +445,6 @@ export default function NoteEditorScreen() {
         </Animated.View>
       </ScrollView>
 
-      {/* Bottom Section */}
       <View style={styles.bottomSection}>
         {images.length > 0 && (
           <Animated.View entering={FadeInDown.duration(400)} style={styles.imagesContainer}>
@@ -526,7 +492,7 @@ export default function NoteEditorScreen() {
               <IconSymbol name="photo.fill" size={28} color={colors.primary} />
             </Pressable>
             <Pressable
-              onPress={() => setShowLocationModal(true)}
+              onPress={handleLocationSearch}
               style={styles.toolbarButton}
             >
               <IconSymbol name="mappin.circle.fill" size={28} color={colors.primary} />
@@ -553,52 +519,6 @@ export default function NoteEditorScreen() {
           )}
         </View>
       </View>
-
-      {/* Location Search Modal */}
-      <Modal
-        visible={showLocationModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowLocationModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Update Location</Text>
-              <Pressable onPress={() => setShowLocationModal(false)}>
-                <IconSymbol name="xmark.circle.fill" size={28} color={colors.textSecondary} />
-              </Pressable>
-            </View>
-
-            <Text style={styles.modalDescription}>
-              Search for an address or business to update the location
-            </Text>
-
-            <View style={styles.searchContainer}>
-              <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search location..."
-                placeholderTextColor={colors.textTertiary}
-                value={locationSearch}
-                onChangeText={setLocationSearch}
-                autoFocus
-              />
-            </View>
-
-            <Pressable
-              onPress={handleLocationSearch}
-              style={styles.searchButton}
-            >
-              <Text style={styles.searchButtonText}>Search</Text>
-            </Pressable>
-
-            <Text style={styles.modalNote}>
-              Note: react-native-maps is not supported in Natively. Location search uses OpenStreetMap&apos;s Nominatim service.
-            </Text>
-          </View>
-        </View>
-      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -702,66 +622,5 @@ const styles = StyleSheet.create({
   },
   toolbarButton: {
     padding: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: colors.overlay,
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  modalDescription: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginBottom: 24,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
-    marginBottom: 16,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: colors.text,
-  },
-  searchButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  searchButtonText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  modalNote: {
-    fontSize: 12,
-    color: colors.textTertiary,
-    textAlign: 'center',
-    fontStyle: 'italic',
   },
 });
