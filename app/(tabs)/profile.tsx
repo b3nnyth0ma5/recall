@@ -37,6 +37,10 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleStorageTest = () => {
+    router.push('/storage-test');
+  };
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -64,6 +68,14 @@ export default function ProfileScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.duration(600).delay(200)} style={styles.menuSection}>
+          <Pressable style={styles.menuItem} onPress={handleStorageTest}>
+            <View style={styles.menuItemLeft}>
+              <IconSymbol name="wrench.and.screwdriver" size={24} color={colors.primary} />
+              <Text style={styles.menuItemText}>Storage Test</Text>
+            </View>
+            <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
+          </Pressable>
+
           <Pressable style={styles.menuItem} onPress={handleAbout}>
             <View style={styles.menuItemLeft}>
               <IconSymbol name="info.circle" size={24} color={colors.text} />
