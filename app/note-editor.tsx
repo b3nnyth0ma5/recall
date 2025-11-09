@@ -24,8 +24,9 @@ import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ImageData {
   id?: string;
@@ -37,12 +38,14 @@ interface ImageData {
 export default function NoteEditorScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { notes, addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote } = useNotes();
+  const { user } = useAuth();
+  const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote } = useNotes();
 
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageData[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadingNote, setLoadingNote] = useState(false);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationName, setLocationName] = useState<string>('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -56,7 +59,6 @@ export default function NoteEditorScreen() {
   const textInputRef = useRef<TextInput>(null);
 
   const isEditing = !!params.id;
-  const existingNote = notes.find((n) => n.id === params.id);
   const canSave = text.trim().length > 0 || images.length > 0;
 
   useEffect(() => {
@@ -73,28 +75,91 @@ export default function NoteEditorScreen() {
     };
   }, []);
 
+  // Load note data directly from Supabase when editing
   useEffect(() => {
-    if (existingNote) {
-      setText(existingNote.text || '');
-      
-      if (existingNote.images && existingNote.imageIds) {
-        const loadedImages: ImageData[] = existingNote.images.map((uri, index) => ({
-          id: existingNote.imageIds?.[index],
-          uri: uri,
-          contentType: 'image/jpeg',
-        }));
-        setImages(loadedImages);
+    const loadNoteFromDatabase = async () => {
+      if (!isEditing || !params.id || !user) {
+        return;
       }
-      
-      if (existingNote.latitude && existingNote.longitude) {
-        setLocation({
-          latitude: existingNote.latitude,
-          longitude: existingNote.longitude,
-        });
+
+      try {
+        setLoadingNote(true);
+        console.log('Loading note from database:', params.id);
+
+        // Fetch the note data
+        const { data: recallData, error: recallError } = await supabase
+          .from('recalls')
+          .select('*')
+          .eq('id', params.id)
+          .eq('user_id', user.id)
+          .single();
+
+        if (recallError || !recallData) {
+          console.error('Error loading recall:', recallError);
+          Alert.alert('Error', 'Failed to load note');
+          router.back();
+          return;
+        }
+
+        console.log('Note loaded from database:', recallData);
+
+        // Set text and location data
+        setText(recallData.text || '');
+        setLocationName(recallData.location || '');
+        
+        if (recallData.latitude && recallData.longitude) {
+          setLocation({
+            latitude: recallData.latitude,
+            longitude: recallData.longitude,
+          });
+        }
+
+        // Load images for this note
+        const { data: imagesData, error: imagesError } = await supabase
+          .from('recall_images')
+          .select('id')
+          .eq('recall_id', params.id)
+          .order('created_at', { ascending: true });
+
+        if (imagesError) {
+          console.error('Error loading images:', imagesError);
+        } else if (imagesData && imagesData.length > 0) {
+          console.log(`Loading ${imagesData.length} images for note`);
+          
+          const loadedImages: ImageData[] = [];
+          
+          for (const img of imagesData) {
+            try {
+              const dataUrl = await getImageDataUrl(img.id);
+              if (dataUrl) {
+                loadedImages.push({
+                  id: img.id,
+                  uri: dataUrl,
+                  contentType: 'image/jpeg',
+                });
+                console.log(`Image ${img.id} loaded successfully`);
+              } else {
+                console.error(`Failed to load image ${img.id}`);
+              }
+            } catch (error) {
+              console.error(`Error loading image ${img.id}:`, error);
+            }
+          }
+          
+          setImages(loadedImages);
+          console.log(`Loaded ${loadedImages.length}/${imagesData.length} images`);
+        }
+      } catch (error) {
+        console.error('Error loading note:', error);
+        Alert.alert('Error', 'Failed to load note');
+        router.back();
+      } finally {
+        setLoadingNote(false);
       }
-      setLocationName(existingNote.location || '');
-    }
-  }, [existingNote]);
+    };
+
+    loadNoteFromDatabase();
+  }, [params.id, isEditing, user]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -157,6 +222,7 @@ export default function NoteEditorScreen() {
 
     const firstPart = parts[0];
     const secondPart = parts[1];
+		const fourthPart = parts[3];
     
     // If first part is a street number, use second and third parts
     if (firstPart && /^\d/.test(firstPart)) {
@@ -166,8 +232,8 @@ export default function NoteEditorScreen() {
       return secondPart;
     }
     
-    // Otherwise use first and second parts
-    return `${firstPart}, ${secondPart}`;
+    // Otherwise use first and fourth parts
+    return `${firstPart}, ${fourthPart}`;
   };
 
   const convertImageToSuitableFormat = async (uri: string): Promise<{ uri: string; contentType: string }> => {
@@ -448,6 +514,28 @@ export default function NoteEditorScreen() {
     setSelectedLocationData(null);
   };
 
+  // Show loading state while fetching note data
+  if (loadingNote) {
+    return (
+      <View style={styles.container}>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            headerTitle: 'Loading...',
+            headerStyle: {
+              backgroundColor: colors.background,
+            },
+            headerTintColor: colors.text,
+          }}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading note...</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -662,6 +750,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   scrollView: {
     flex: 1,
