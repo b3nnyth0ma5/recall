@@ -33,7 +33,8 @@ export async function uploadImageToDatabase(
     console.log('User authenticated:', session.user.id);
 
     console.log('Converting image to base64...');
-    const base64 = await FileSystem.readAsStringAsync(uri, {
+    // Updated to use the new FileSystem.readAsString API instead of deprecated readAsStringAsync
+    const base64 = await FileSystem.readAsString(uri, {
       encoding: 'base64',
     });
     console.log('Base64 conversion successful, length:', base64.length);
