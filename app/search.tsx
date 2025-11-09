@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,11 @@ export default function SearchScreen() {
   const [hasSearched, setHasSearched] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
 
+  const loadSearchHistory = useCallback(async () => {
+    const history = await getSearchHistory();
+    setSearchHistory(history);
+  }, [getSearchHistory]);
+
   useEffect(() => {
     loadSearchHistory();
 
@@ -42,12 +47,7 @@ export default function SearchScreen() {
       keyboardDidHideListener.remove();
       keyboardDidShowListener.remove();
     };
-  }, []);
-
-  const loadSearchHistory = async () => {
-    const history = await getSearchHistory();
-    setSearchHistory(history);
-  };
+  }, [loadSearchHistory]);
 
   const handleSearch = () => {
     if (searchQuery.trim()) {

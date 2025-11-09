@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -40,43 +40,6 @@ export default function LocationSearchScreen() {
     getUserLocation();
   }, []);
 
-  useEffect(() => {
-    // Auto-search if query is provided
-    if (params.query && typeof params.query === 'string') {
-      setSearchQuery(params.query);
-      handleSearch(params.query);
-    }
-  }, [params.query]);
-
-  // Auto-search as user types
-  useEffect(() => {
-    if (searchQuery.trim().length > 2) {
-      const timeoutId = setTimeout(() => {
-        handleSearch(searchQuery);
-      }, 500); // Debounce for 500ms
-
-      return () => clearTimeout(timeoutId);
-    } else if (searchQuery.trim().length === 0) {
-      setResults([]);
-    }
-  }, [searchQuery]);
-
-  const getUserLocation = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const currentLocation = await Location.getCurrentPositionAsync({});
-        setUserLocation({
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
-        });
-        console.log('User location obtained for proximity sorting');
-      }
-    } catch (error) {
-      console.error('Error getting user location:', error);
-    }
-  };
-
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
     // Haversine formula to calculate distance between two points
     const R = 6371; // Radius of the Earth in km
@@ -91,7 +54,7 @@ export default function LocationSearchScreen() {
     return distance;
   };
 
-  const handleSearch = async (query?: string) => {
+  const handleSearch = useCallback(async (query?: string) => {
     const searchText = query || searchQuery;
     
     if (!searchText.trim()) {
@@ -150,6 +113,43 @@ export default function LocationSearchScreen() {
       setResults([]);
     } finally {
       setLoading(false);
+    }
+  }, [searchQuery, userLocation]);
+
+  useEffect(() => {
+    // Auto-search if query is provided
+    if (params.query && typeof params.query === 'string') {
+      setSearchQuery(params.query);
+      handleSearch(params.query);
+    }
+  }, [params.query, handleSearch]);
+
+  // Auto-search as user types
+  useEffect(() => {
+    if (searchQuery.trim().length > 2) {
+      const timeoutId = setTimeout(() => {
+        handleSearch(searchQuery);
+      }, 500); // Debounce for 500ms
+
+      return () => clearTimeout(timeoutId);
+    } else if (searchQuery.trim().length === 0) {
+      setResults([]);
+    }
+  }, [searchQuery, handleSearch]);
+
+  const getUserLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const currentLocation = await Location.getCurrentPositionAsync({});
+        setUserLocation({
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude,
+        });
+        console.log('User location obtained for proximity sorting');
+      }
+    } catch (error) {
+      console.error('Error getting user location:', error);
     }
   };
 

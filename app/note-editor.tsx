@@ -112,7 +112,7 @@ export default function NoteEditorScreen() {
         selectedLocationName: undefined,
       });
     }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName]);
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, router]);
 
   const requestLocationPermission = async () => {
     try {

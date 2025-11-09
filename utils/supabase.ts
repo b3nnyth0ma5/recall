@@ -43,7 +43,7 @@ export async function uploadImageToDatabase(
     // Convert image to base64 using FileSystem
     console.log('Converting image to base64...');
     const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: 'base64',
     });
     console.log('Base64 conversion successful, length:', base64.length);
 

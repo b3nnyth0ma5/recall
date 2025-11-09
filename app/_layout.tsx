@@ -12,7 +12,7 @@ import 'react-native-reanimated';
 
 // Import Geist font CSS for web
 if (Platform.OS === 'web') {
-  require('../app.css');
+  import('../app.css');
 }
 
 SplashScreen.preventAutoHideAsync();
@@ -51,7 +51,7 @@ function RootLayoutNav() {
       // Redirect to home if authenticated
       router.replace('/(tabs)/(home)');
     }
-  }, [session, loading, segments]);
+  }, [session, loading, segments, router]);
 
   return (
     <Stack

@@ -208,6 +208,35 @@ export function useNotes() {
     }
   }, [loadNotes, user]);
 
+  const saveSearchHistory = useCallback(async (searchText: string) => {
+    if (!user || !searchText.trim()) return;
+
+    try {
+      const { data: existing } = await supabase
+        .from('search_history')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('search_text', searchText.trim())
+        .single();
+
+      if (existing) {
+        await supabase
+          .from('search_history')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', existing.id);
+      } else {
+        await supabase
+          .from('search_history')
+          .insert([{
+            user_id: user.id,
+            search_text: searchText.trim(),
+          }]);
+      }
+    } catch (error) {
+      console.error('Error saving search history:', error);
+    }
+  }, [user]);
+
   const searchNotes = useCallback(async (query: string) => {
     if (!user) {
       console.error('No user logged in');
@@ -283,36 +312,7 @@ export function useNotes() {
     } finally {
       setLoading(false);
     }
-  }, [loadNotes, user]);
-
-  const saveSearchHistory = async (searchText: string) => {
-    if (!user || !searchText.trim()) return;
-
-    try {
-      const { data: existing } = await supabase
-        .from('search_history')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('search_text', searchText.trim())
-        .single();
-
-      if (existing) {
-        await supabase
-          .from('search_history')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', existing.id);
-      } else {
-        await supabase
-          .from('search_history')
-          .insert([{
-            user_id: user.id,
-            search_text: searchText.trim(),
-          }]);
-      }
-    } catch (error) {
-      console.error('Error saving search history:', error);
-    }
-  };
+  }, [loadNotes, user, saveSearchHistory]);
 
   const getSearchHistory = useCallback(async () => {
     if (!user) return [];
