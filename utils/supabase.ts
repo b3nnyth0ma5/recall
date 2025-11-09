@@ -2,7 +2,6 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
-import { decode } from 'base64-arraybuffer';
 
 const supabaseUrl = 'https://cesmsdnblkdjkskmiqib.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4';
@@ -39,17 +38,12 @@ export async function uploadImageToDatabase(
     });
     console.log('Base64 conversion successful, length:', base64.length);
 
-    // Convert base64 to bytea using decode function
-    console.log('Converting base64 to bytea...');
-    const byteArray = decode(base64);
-    console.log('Bytea conversion successful, byte length:', byteArray.byteLength);
-
-    // Insert the bytea data into the database
+    // Insert the base64 string directly into the database as text
     const { data, error } = await supabase
       .from('recall_images')
       .insert([{
         recall_id: recallId,
-        image_data: byteArray,
+        image_data: base64,
         content_type: contentType,
         user_id: session.user.id,
       }])
@@ -98,32 +92,11 @@ export async function getImageDataUrl(imageId: string): Promise<string | null> {
       return null;
     }
 
-    // The image_data is returned as a Buffer/Uint8Array from bytea column
-    // We need to convert it to base64
-    let base64String: string;
-    
-    if (typeof data.image_data === 'string') {
-      // If it's already a string (shouldn't happen with bytea, but just in case)
-      base64String = data.image_data;
-    } else if (data.image_data instanceof ArrayBuffer || data.image_data instanceof Uint8Array) {
-      // Convert ArrayBuffer/Uint8Array to base64
-      const uint8Array = data.image_data instanceof Uint8Array 
-        ? data.image_data 
-        : new Uint8Array(data.image_data);
-      
-      // Convert to base64
-      let binary = '';
-      const len = uint8Array.byteLength;
-      for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(uint8Array[i]);
-      }
-      base64String = btoa(binary);
-    } else {
-      console.error('Unexpected image_data type for ID:', imageId, typeof data.image_data);
-      return null;
-    }
-
+    // The image_data is stored as a base64 string in the text column
+    const base64String = data.image_data;
     const contentType = data.content_type || 'image/jpeg';
+    
+    // Convert to data URL for display
     const dataUrl = `data:${contentType};base64,${base64String}`;
     
     console.log('Successfully created data URL for image:', imageId);
