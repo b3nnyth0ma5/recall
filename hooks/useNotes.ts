@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Note } from '@/types/Note';
-import { supabase, getImageUrl, deleteImageRecord, deleteImageFromStorage, getImagePath } from '@/utils/supabase';
+import { supabase, getImageDataUrl, deleteImageRecord } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function useNotes() {
@@ -36,36 +36,38 @@ export function useNotes() {
         (recallsData || []).map(async (recall) => {
           const { data: imagesData, error: imagesError } = await supabase
             .from('recall_images')
-            .select('id, image_path, content_type')
+            .select('id')
             .eq('recall_id', recall.id)
             .order('created_at', { ascending: true });
 
           if (imagesError) {
             console.error('Error loading images for recall:', recall.id, imagesError);
-            return { ...recall, images: [], imageIds: [], imagePaths: [] };
+            return { ...recall, images: [], imageIds: [] };
           }
 
           console.log(`Loaded ${imagesData?.length || 0} images for recall ${recall.id}`);
 
-          // Convert storage paths to public URLs
-          const imageUrls = (imagesData || []).map((img) => {
-            if (!img.image_path) {
-              console.error('No image path for image:', img.id);
-              return '';
-            }
-            return getImageUrl(img.image_path);
-          }).filter(url => url !== '');
+          // Get data URLs for each image
+          const imageUrls = await Promise.all(
+            (imagesData || []).map(async (img) => {
+              const dataUrl = await getImageDataUrl(img.id);
+              if (!dataUrl) {
+                console.error('Failed to get data URL for image:', img.id);
+                return '';
+              }
+              return dataUrl;
+            })
+          );
 
+          const validImageUrls = imageUrls.filter(url => url !== '');
           const imageIds = (imagesData || []).map(img => img.id);
-          const imagePaths = (imagesData || []).map(img => img.image_path);
           
-          console.log(`Recall ${recall.id} has ${imageUrls.length} valid images`);
+          console.log(`Recall ${recall.id} has ${validImageUrls.length} valid images`);
           
           return { 
             ...recall, 
-            images: imageUrls, 
-            imageIds: imageIds,
-            imagePaths: imagePaths
+            images: validImageUrls, 
+            imageIds: imageIds
           };
         })
       );
@@ -164,15 +166,12 @@ export function useNotes() {
       // Get all images for this recall
       const { data: imagesData } = await supabase
         .from('recall_images')
-        .select('id, image_path')
+        .select('id')
         .eq('recall_id', noteId);
 
-      // Delete images from storage and database
+      // Delete images from database
       if (imagesData && imagesData.length > 0) {
         for (const img of imagesData) {
-          if (img.image_path) {
-            await deleteImageFromStorage(img.image_path);
-          }
           await deleteImageRecord(img.id);
         }
       }
@@ -231,23 +230,26 @@ export function useNotes() {
         (recallsData || []).map(async (recall) => {
           const { data: imagesData } = await supabase
             .from('recall_images')
-            .select('id, image_path, content_type')
+            .select('id')
             .eq('recall_id', recall.id)
             .order('created_at', { ascending: true });
 
-          const imageUrls = (imagesData || []).map((img) => {
-            if (!img.image_path) return '';
-            return getImageUrl(img.image_path);
-          }).filter(url => url !== '');
+          // Get data URLs for each image
+          const imageUrls = await Promise.all(
+            (imagesData || []).map(async (img) => {
+              const dataUrl = await getImageDataUrl(img.id);
+              if (!dataUrl) return '';
+              return dataUrl;
+            })
+          );
 
+          const validImageUrls = imageUrls.filter(url => url !== '');
           const imageIds = (imagesData || []).map(img => img.id);
-          const imagePaths = (imagesData || []).map(img => img.image_path);
           
           return { 
             ...recall, 
-            images: imageUrls, 
-            imageIds: imageIds,
-            imagePaths: imagePaths
+            images: validImageUrls, 
+            imageIds: imageIds
           };
         })
       );

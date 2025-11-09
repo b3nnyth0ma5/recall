@@ -1,5 +1,33 @@
 
-import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { StyleSheet, ViewStyle, TextStyle, Platform } from 'react-native';
+
+// Geist-like font family for different platforms
+export const fontFamily = {
+  regular: Platform.select({
+    ios: 'System',
+    android: 'Roboto',
+    web: 'Geist, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    default: 'System',
+  }),
+  medium: Platform.select({
+    ios: 'System',
+    android: 'Roboto-Medium',
+    web: 'Geist, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    default: 'System',
+  }),
+  semibold: Platform.select({
+    ios: 'System',
+    android: 'Roboto-Medium',
+    web: 'Geist, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    default: 'System',
+  }),
+  bold: Platform.select({
+    ios: 'System',
+    android: 'Roboto-Bold',
+    web: 'Geist, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    default: 'System',
+  }),
+};
 
 export const colors = {
   // Dark theme colors
@@ -62,7 +90,8 @@ export const commonStyles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
     color: colors.text,
-    marginBottom: 10
+    marginBottom: 10,
+    fontFamily: fontFamily.bold,
   },
   text: {
     fontSize: 16,
@@ -71,6 +100,7 @@ export const commonStyles = StyleSheet.create({
     marginBottom: 8,
     lineHeight: 24,
     textAlign: 'center',
+    fontFamily: fontFamily.regular,
   },
   section: {
     width: '100%',

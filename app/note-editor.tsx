@@ -22,14 +22,13 @@ import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase, reverseGeocode, uploadImageToStorage, saveImageRecord, deleteImageRecord, deleteImageFromStorage, initializeStorageBucket } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToDatabase, getImageDataUrl, deleteImageRecord } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 interface ImageData {
   id?: string;
   uri: string;
   localUri?: string;
-  storagePath?: string;
   contentType: string;
 }
 
@@ -45,7 +44,6 @@ export default function NoteEditorScreen() {
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationName, setLocationName] = useState<string>('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [storageReady, setStorageReady] = useState(false);
   const textInputRef = useRef<TextInput>(null);
 
   const isEditing = !!params.id;
@@ -66,28 +64,16 @@ export default function NoteEditorScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    initializeStorageBucket().then(ready => {
-      setStorageReady(ready);
-      if (!ready) {
-        Alert.alert(
-          'Storage Not Ready',
-          'The image storage bucket is not configured. Please create a bucket named "media" in your Supabase Dashboard under Storage.',
-          [{ text: 'OK' }]
-        );
-      }
-    });
-  }, []);
+
 
   useEffect(() => {
     if (existingNote) {
       setText(existingNote.text || '');
       
-      if (existingNote.images && existingNote.imageIds && existingNote.imagePaths) {
+      if (existingNote.images && existingNote.imageIds) {
         const loadedImages: ImageData[] = existingNote.images.map((uri, index) => ({
           id: existingNote.imageIds?.[index],
           uri: uri,
-          storagePath: existingNote.imagePaths?.[index],
           contentType: 'image/jpeg',
         }));
         setImages(loadedImages);
@@ -184,15 +170,6 @@ export default function NoteEditorScreen() {
   };
 
   const pickImage = async () => {
-    if (!storageReady) {
-      Alert.alert(
-        'Storage Not Ready',
-        'Image storage is not configured. Please check the console logs for details.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -232,15 +209,6 @@ export default function NoteEditorScreen() {
   };
 
   const takePhoto = async () => {
-    if (!storageReady) {
-      Alert.alert(
-        'Storage Not Ready',
-        'Image storage is not configured. Please check the console logs for details.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
@@ -278,9 +246,8 @@ export default function NoteEditorScreen() {
   const removeImage = async (index: number) => {
     const image = images[index];
     
-    if (image.id && image.storagePath) {
+    if (image.id) {
       try {
-        await deleteImageFromStorage(image.storagePath);
         await deleteImageRecord(image.id);
       } catch (error) {
         console.error('Error deleting image:', error);
@@ -313,16 +280,14 @@ export default function NoteEditorScreen() {
         await updateNote(params.id as string, noteData);
         recallId = params.id as string;
 
+        // Delete existing images
         const { data: existingImages } = await supabase
           .from('recall_images')
-          .select('id, image_path')
+          .select('id')
           .eq('recall_id', recallId);
 
         if (existingImages) {
           for (const img of existingImages) {
-            if (img.image_path) {
-              await deleteImageFromStorage(img.image_path);
-            }
             await deleteImageRecord(img.id);
           }
         }
@@ -333,25 +298,19 @@ export default function NoteEditorScreen() {
       let uploadedCount = 0;
       let failedCount = 0;
 
+      // Upload images directly to database
       for (const image of images) {
         if (image.localUri) {
-          console.log('Uploading image:', image.localUri);
+          console.log('Uploading image to database:', image.localUri);
           
-          const storagePath = await uploadImageToStorage(image.localUri, recallId);
+          const imageId = await uploadImageToDatabase(image.localUri, recallId, image.contentType);
           
-          if (storagePath) {
-            console.log('Image uploaded successfully, saving record...');
-            const imageId = await saveImageRecord(recallId, storagePath, image.contentType);
-            if (imageId) {
-              uploadedCount++;
-              console.log('Image record saved successfully');
-            } else {
-              failedCount++;
-              console.error('Failed to save image record');
-            }
+          if (imageId) {
+            uploadedCount++;
+            console.log('Image uploaded successfully to database');
           } else {
             failedCount++;
-            console.error('Failed to upload image to storage');
+            console.error('Failed to upload image to database');
           }
         }
       }

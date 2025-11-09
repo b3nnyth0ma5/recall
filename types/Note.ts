@@ -2,8 +2,7 @@
 export interface Note {
   id: string;
   text: string;
-  images: string[]; // Array of public URLs for display
-  imagePaths?: string[]; // Array of storage paths
+  images: string[]; // Array of data URLs for display (base64)
   imageIds?: string[]; // Array of image record IDs
   created_at: string;
   updated_at: string;
@@ -30,8 +29,8 @@ export interface SearchHistory {
 export interface ImageRecord {
   id: string;
   recall_id: string;
-  image_path: string; // Path in Supabase Storage
-  image_data?: any; // Deprecated: Legacy binary data
+  image_data: string; // Base64 encoded image data
   content_type: string;
   created_at: string;
+  user_id: string;
 }

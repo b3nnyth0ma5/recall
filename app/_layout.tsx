@@ -1,6 +1,6 @@
 
 import React, { useEffect } from 'react';
-import { useColorScheme, StatusBar } from 'react-native';
+import { useColorScheme, StatusBar, Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
@@ -10,7 +10,15 @@ import { colors } from '@/styles/commonStyles';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import 'react-native-reanimated';
 
+// Import Geist font CSS for web
+if (Platform.OS === 'web') {
+  require('./app.css');
+}
+
 SplashScreen.preventAutoHideAsync();
+
+// Note: Geist font is loaded via web fonts for web platform
+// For native, we'll use system fonts as fallback
 
 // Custom dark theme
 const CustomDarkTheme = {
@@ -70,13 +78,6 @@ function RootLayoutNav() {
       />
       <Stack.Screen
         name="location-search"
-        options={{
-          presentation: 'card',
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="storage-test"
         options={{
           presentation: 'card',
           headerShown: false,

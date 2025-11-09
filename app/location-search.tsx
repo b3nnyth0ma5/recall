@@ -48,6 +48,19 @@ export default function LocationSearchScreen() {
     }
   }, [params.query]);
 
+  // Auto-search as user types
+  useEffect(() => {
+    if (searchQuery.trim().length > 2) {
+      const timeoutId = setTimeout(() => {
+        handleSearch(searchQuery);
+      }, 500); // Debounce for 500ms
+
+      return () => clearTimeout(timeoutId);
+    } else if (searchQuery.trim().length === 0) {
+      setResults([]);
+    }
+  }, [searchQuery]);
+
   const getUserLocation = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -140,6 +153,36 @@ export default function LocationSearchScreen() {
     }
   };
 
+  const extractLocationFromSelection = (displayName: string): string => {
+    // Split the display name by commas
+    const parts = displayName.split(',').map(p => p.trim());
+    
+    if (parts.length < 2) {
+      return displayName;
+    }
+
+    // Try to extract "business name, suburb" or "suburb, city"
+    // First part is usually the most specific (business name or street)
+    // Second part is usually suburb
+    // Third part is usually city
+    
+    // Check if first part looks like a business name (not a number/street)
+    const firstPart = parts[0];
+    const secondPart = parts[1];
+    
+    // If first part doesn't start with a number, it's likely a business name
+    if (firstPart && !/^\d/.test(firstPart)) {
+      // Return "business name, suburb"
+      return `${firstPart}, ${secondPart}`;
+    } else {
+      // Return "suburb, city" (skip the street address)
+      if (parts.length >= 3) {
+        return `${secondPart}, ${parts[2]}`;
+      }
+      return `${secondPart}`;
+    }
+  };
+
   const handleSelectLocation = async (location: LocationResult) => {
     setSelectedLocation(location);
     
@@ -147,8 +190,9 @@ export default function LocationSearchScreen() {
       const latitude = parseFloat(location.lat);
       const longitude = parseFloat(location.lon);
 
-      // Get a cleaner location name
-      const locationName = await reverseGeocode(latitude, longitude);
+      // Extract location from display name
+      const locationName = extractLocationFromSelection(location.display_name);
+      console.log('Extracted location:', locationName);
 
       // Navigate back with the selected location
       router.back();
@@ -198,12 +242,12 @@ export default function LocationSearchScreen() {
             <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search location..."
+              placeholder="Search location in Australia..."
               placeholderTextColor={colors.textTertiary}
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoFocus
-              returnKeyType="search"
+              returnKeyType="done"
               onSubmitEditing={handleSubmitEditing}
             />
             {searchQuery.length > 0 && (
@@ -212,18 +256,12 @@ export default function LocationSearchScreen() {
               </Pressable>
             )}
           </View>
-
-          <Pressable
-            onPress={() => handleSearch()}
-            style={[styles.searchButton, loading && styles.searchButtonDisabled]}
-            disabled={loading || !searchQuery.trim()}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.searchButtonText}>Search</Text>
-            )}
-          </Pressable>
+          {loading && (
+            <View style={styles.searchingIndicator}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.searchingText}>Searching...</Text>
+            </View>
+          )}
         </Animated.View>
 
         <ScrollView
@@ -321,26 +359,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
-    marginBottom: 16,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
     color: colors.text,
   },
-  searchButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
+  searchingIndicator: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 12,
   },
-  searchButtonDisabled: {
-    opacity: 0.5,
-  },
-  searchButtonText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+  searchingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   resultsContainer: {
     flex: 1,
