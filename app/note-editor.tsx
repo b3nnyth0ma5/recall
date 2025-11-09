@@ -15,14 +15,14 @@ import {
   Keyboard,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as Location from 'expo-location';
 import { colors } from '@/styles/commonStyles';
+import { IconSymbol } from '@/components/IconSymbol';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
-import { IconSymbol } from '@/components/IconSymbol';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord } from '@/utils/supabase';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
+import * as ImageManipulator from 'expo-image-manipulator';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 interface ImageData {
@@ -35,20 +35,85 @@ interface ImageData {
 export default function NoteEditorScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { notes, addNote, updateNote, deleteNote, refreshNotes } = useNotes();
-
+  const { notes, addNote, updateNote, deleteNote } = useNotes();
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageData[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [locationName, setLocationName] = useState<string>('');
+  const [location, setLocation] = useState<string | null>(null);
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [existingNote, setExistingNote] = useState<Note | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const textInputRef = useRef<TextInput>(null);
 
-  const isEditing = !!params.id;
-  const existingNote = notes.find((n) => n.id === params.id);
-  const canSave = text.trim().length > 0 || images.length > 0;
+  useEffect(() => {
+    if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
+      const lat = parseFloat(params.selectedLatitude as string);
+      const lon = parseFloat(params.selectedLongitude as string);
+      const loc = params.selectedLocationName as string;
+      
+      console.log('Received location from search:', { lat, lon, loc });
+      
+      setLatitude(lat);
+      setLongitude(lon);
+      setLocation(loc);
+
+      if (isEditing && existingNote) {
+        console.log('Updating existing recall with new location');
+        updateRecallLocation(existingNote.id, lat, lon, loc);
+      }
+    }
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName]);
+
+  const updateRecallLocation = async (recallId: string, lat: number, lon: number, loc: string) => {
+    try {
+      const { error } = await supabase
+        .from('recalls')
+        .update({
+          latitude: lat,
+          longitude: lon,
+          location: loc,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', recallId);
+
+      if (error) {
+        console.error('Error updating recall location:', error);
+      } else {
+        console.log('Recall location updated successfully');
+      }
+    } catch (error) {
+      console.error('Exception updating recall location:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (params.id) {
+      const note = notes.find((n) => n.id === params.id);
+      if (note) {
+        setExistingNote(note);
+        setText(note.text || '');
+        setLocation(note.location || null);
+        setLatitude(note.latitude || null);
+        setLongitude(note.longitude || null);
+        setIsEditing(true);
+
+        if (note.imageIds && note.images) {
+          const imageData: ImageData[] = note.imageIds.map((id, index) => ({
+            id,
+            uri: note.images[index],
+            contentType: 'image/jpeg',
+          }));
+          setImages(imageData);
+        }
+      }
+    }
+  }, [params.id, notes]);
+
+  useEffect(() => {
+    requestLocationPermission();
+  }, []);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
@@ -64,137 +129,63 @@ export default function NoteEditorScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    if (existingNote) {
-      setText(existingNote.text || '');
-      
-      if (existingNote.images && existingNote.imageIds) {
-        const loadedImages: ImageData[] = existingNote.images.map((uri, index) => ({
-          id: existingNote.imageIds?.[index],
-          uri: uri,
-          contentType: 'image/jpeg',
-        }));
-        setImages(loadedImages);
-      }
-      
-      if (existingNote.latitude && existingNote.longitude) {
-        setLocation({
-          latitude: existingNote.latitude,
-          longitude: existingNote.longitude,
-        });
-      }
-      setLocationName(existingNote.location || '');
-    }
-  }, [existingNote]);
-
-  useEffect(() => {
-    if (!isEditing) {
-      requestLocationPermission();
-    }
-  }, [isEditing]);
-
-  useEffect(() => {
-    if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
-      const latitude = parseFloat(params.selectedLatitude as string);
-      const longitude = parseFloat(params.selectedLongitude as string);
-      const locationName = params.selectedLocationName as string;
-
-      setLocation({ latitude, longitude });
-      setLocationName(locationName);
-
-      router.setParams({
-        selectedLatitude: undefined,
-        selectedLongitude: undefined,
-        selectedLocationName: undefined,
-      });
-    }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName]);
-
   const requestLocationPermission = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
+      if (status === 'granted' && !isEditing) {
         const currentLocation = await Location.getCurrentPositionAsync({});
-        setLocation({
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
-        });
+        const { latitude: lat, longitude: lon } = currentLocation.coords;
+        setLatitude(lat);
+        setLongitude(lon);
 
-        const locationName = await reverseGeocode(
-          currentLocation.coords.latitude,
-          currentLocation.coords.longitude
-        );
-        setLocationName(locationName);
-        console.log('Location obtained:', locationName);
+        const locationName = await reverseGeocode(lat, lon);
+        setLocation(locationName);
+        console.log('Current location:', locationName);
       }
     } catch (error) {
       console.error('Error getting location:', error);
     }
   };
 
-  const convertImageToSuitableFormat = async (uri: string): Promise<{ uri: string; contentType: string }> => {
+  const convertImageToSuitableFormat = async (uri: string) => {
     try {
-      console.log('Converting image to suitable format:', uri);
-      
+      console.log('Converting image to suitable format...');
       const manipulatedImage = await ImageManipulator.manipulateAsync(
         uri,
-        [
-          { resize: { width: 2048 } }
-        ],
-        {
-          compress: 0.8,
-          format: ImageManipulator.SaveFormat.JPEG,
-        }
+        [{ resize: { width: 1200 } }],
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
       );
-
-      console.log('Image converted successfully:', manipulatedImage.uri);
-      return {
-        uri: manipulatedImage.uri,
-        contentType: 'image/jpeg',
-      };
+      console.log('Image converted successfully');
+      return manipulatedImage.uri;
     } catch (error) {
       console.error('Error converting image:', error);
-      return {
-        uri: uri,
-        contentType: 'image/jpeg',
-      };
+      return uri;
     }
   };
 
   const pickImage = async () => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please grant camera roll permissions');
-        return;
-      }
-
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsMultipleSelection: true,
         quality: 0.8,
       });
 
       if (!result.canceled && result.assets) {
-        setLoading(true);
-        const newImages: ImageData[] = [];
-
-        for (const asset of result.assets) {
-          const converted = await convertImageToSuitableFormat(asset.uri);
-
-          newImages.push({
-            uri: converted.uri,
-            localUri: converted.uri,
-            contentType: converted.contentType,
-          });
-        }
-
+        const newImages = await Promise.all(
+          result.assets.map(async (asset) => {
+            const convertedUri = await convertImageToSuitableFormat(asset.uri);
+            return {
+              uri: convertedUri,
+              localUri: convertedUri,
+              contentType: 'image/jpeg',
+            };
+          })
+        );
         setImages([...images, ...newImages]);
-        setLoading(false);
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      setLoading(false);
       Alert.alert('Error', 'Failed to pick image');
     }
   };
@@ -203,42 +194,36 @@ export default function NoteEditorScreen() {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please grant camera permissions');
+        Alert.alert('Permission Required', 'Camera permission is required to take photos');
         return;
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
         quality: 0.8,
+        allowsEditing: false,
       });
 
-      if (!result.canceled && result.assets) {
-        setLoading(true);
-        const asset = result.assets[0];
-        
-        const converted = await convertImageToSuitableFormat(asset.uri);
-
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const convertedUri = await convertImageToSuitableFormat(result.assets[0].uri);
         setImages([...images, {
-          uri: converted.uri,
-          localUri: converted.uri,
-          contentType: converted.contentType,
+          uri: convertedUri,
+          localUri: convertedUri,
+          contentType: 'image/jpeg',
         }]);
-        
-        setLoading(false);
       }
     } catch (error) {
       console.error('Error taking photo:', error);
-      setLoading(false);
       Alert.alert('Error', 'Failed to take photo');
     }
   };
 
   const removeImage = async (index: number) => {
-    const image = images[index];
+    const imageToRemove = images[index];
     
-    if (image.id) {
+    if (imageToRemove.id && isEditing) {
       try {
-        await deleteImageRecord(image.id);
+        await deleteImageRecord(imageToRemove.id);
+        console.log('Image deleted from database');
       } catch (error) {
         console.error('Error deleting image:', error);
       }
@@ -249,86 +234,63 @@ export default function NoteEditorScreen() {
   };
 
   const handleSave = async () => {
-    if (!canSave) {
-      Alert.alert('Empty Recall', 'Please add some text or images');
+    if (!text.trim() && images.length === 0) {
+      Alert.alert('Empty Note', 'Please add some text or images before saving');
       return;
     }
 
     try {
-      setSaving(true);
+      setIsSaving(true);
+      console.log('Saving recall...');
 
-      const noteData = {
-        text: text.trim(),
-        latitude: location?.latitude,
-        longitude: location?.longitude,
-        location: locationName,
-      };
+      if (isEditing && existingNote) {
+        await updateNote(existingNote.id, {
+          text,
+          latitude,
+          longitude,
+          location,
+        });
 
-      let recallId: string;
-
-      if (isEditing && params.id) {
-        await updateNote(params.id as string, noteData);
-        recallId = params.id as string;
-
-        const { data: existingImages } = await supabase
-          .from('recall_images')
-          .select('id')
-          .eq('recall_id', recallId);
-
-        if (existingImages) {
-          for (const img of existingImages) {
-            await deleteImageRecord(img.id);
+        for (const image of images) {
+          if (!image.id && image.localUri) {
+            console.log('Uploading new image for existing recall...');
+            await uploadImageToDatabase(image.localUri, existingNote.id, image.contentType);
           }
         }
+
+        console.log('Recall updated successfully');
       } else {
-        recallId = await addNote(noteData);
-      }
+        const recallId = await addNote({
+          text,
+          latitude,
+          longitude,
+          location,
+          images: [],
+        });
 
-      let uploadedCount = 0;
-      let failedCount = 0;
-
-      for (const image of images) {
-        if (image.localUri) {
-          console.log('Uploading image to database:', image.localUri);
-          
-          const imageId = await uploadImageToDatabase(image.localUri, recallId, image.contentType);
-          
-          if (imageId) {
-            uploadedCount++;
-            console.log('Image uploaded successfully to database');
-          } else {
-            failedCount++;
-            console.error('Failed to upload image to database');
+        if (recallId) {
+          for (const image of images) {
+            if (image.localUri) {
+              console.log('Uploading image for new recall...');
+              await uploadImageToDatabase(image.localUri, recallId, image.contentType);
+            }
           }
         }
-      }
 
-      console.log(`Upload complete: ${uploadedCount} succeeded, ${failedCount} failed`);
-
-      if (failedCount > 0) {
-        Alert.alert(
-          'Partial Upload',
-          `${uploadedCount} image(s) uploaded successfully, but ${failedCount} failed. Check console logs for details.`,
-          [{ text: 'OK' }]
-        );
+        console.log('Recall created successfully');
       }
 
       router.back();
-      setTimeout(() => {
-        refreshNotes();
-      }, 500);
     } catch (error) {
       console.error('Error saving recall:', error);
-      Alert.alert('Error', 'Failed to save recall. Check console logs for details.');
+      Alert.alert('Error', 'Failed to save recall');
     } finally {
-      setSaving(false);
+      setIsSaving(false);
     }
   };
 
   const handleDelete = () => {
-    if (!isEditing || !params.id) {
-      return;
-    }
+    if (!existingNote) return;
 
     Alert.alert(
       'Delete Recall',
@@ -340,7 +302,7 @@ export default function NoteEditorScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteNote(params.id as string);
+              await deleteNote(existingNote.id);
               router.back();
             } catch (error) {
               console.error('Error deleting recall:', error);
@@ -384,118 +346,101 @@ export default function NoteEditorScreen() {
             </Pressable>
           ),
           headerRight: () => (
-            <Pressable
-              onPress={handleSave}
-              disabled={saving || !canSave}
-              style={[
-                styles.saveButton,
-                (saving || !canSave) && styles.saveButtonDisabled,
-              ]}
-            >
-              {saving ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <View style={styles.checkmarkContainer}>
-                  <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
-                </View>
+            <View style={styles.headerRightContainer}>
+              <Pressable onPress={toggleKeyboard} style={styles.headerButton}>
+                <IconSymbol 
+                  name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+                  size={32} 
+                  color={colors.text} 
+                />
+              </Pressable>
+              {isEditing && (
+                <Pressable onPress={handleDelete} style={styles.headerButton}>
+                  <IconSymbol name="trash" size={24} color={colors.error} />
+                </Pressable>
               )}
-            </Pressable>
+            </View>
           ),
         }}
       />
 
-      <ScrollView 
-        style={styles.scrollView} 
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Animated.View entering={FadeIn.duration(600)} style={styles.textInputContainer}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        <Animated.View entering={FadeIn.duration(600)} style={styles.content}>
           <TextInput
             ref={textInputRef}
             style={styles.textInput}
-            placeholder="Start writing your recall..."
+            placeholder="What do you want to recall?"
             placeholderTextColor={colors.textTertiary}
             value={text}
             onChangeText={setText}
             multiline
             autoFocus={!isEditing}
           />
-        </Animated.View>
-      </ScrollView>
 
-      <View style={styles.bottomSection}>
-        {images.length > 0 && (
-          <Animated.View entering={FadeInDown.duration(400)} style={styles.imagesContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {images.length > 0 && (
+            <View style={styles.imagesContainer}>
               {images.map((image, index) => (
-                <View key={index} style={styles.imageWrapper}>
-                  <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+                <Animated.View
+                  key={index}
+                  entering={FadeInDown.delay(index * 100).duration(400)}
+                  style={styles.imageWrapper}
+                >
+                  <Image source={{ uri: image.uri }} style={styles.image} />
                   <Pressable
-                    onPress={() => removeImage(index)}
                     style={styles.removeImageButton}
+                    onPress={() => removeImage(index)}
                   >
-                    <IconSymbol name="xmark.circle.fill" size={24} color={colors.error} />
+                    <IconSymbol name="xmark.circle.fill" size={28} color={colors.error} />
                   </Pressable>
-                </View>
+                </Animated.View>
               ))}
-            </ScrollView>
-          </Animated.View>
-        )}
+            </View>
+          )}
 
-        {locationName && (
-          <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.locationInfo}>
-            <IconSymbol name="location.fill" size={16} color={colors.textSecondary} />
-            <Text style={styles.locationText}>{locationName}</Text>
-          </Animated.View>
-        )}
-
-        <View style={styles.toolbar}>
-          <View style={styles.toolbarLeft}>
-            <Pressable
-              onPress={takePhoto}
-              disabled={loading}
-              style={styles.toolbarButton}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <IconSymbol name="camera.fill" size={28} color={colors.primary} />
-              )}
-            </Pressable>
-            <Pressable
-              onPress={pickImage}
-              disabled={loading}
-              style={styles.toolbarButton}
-            >
-              <IconSymbol name="photo.fill" size={28} color={colors.primary} />
-            </Pressable>
-            <Pressable
-              onPress={handleLocationSearch}
-              style={styles.toolbarButton}
-            >
-              <IconSymbol name="mappin.circle.fill" size={28} color={colors.primary} />
-            </Pressable>
-            <Pressable
-              onPress={toggleKeyboard}
-              style={styles.toolbarButton}
-            >
-              <IconSymbol 
-                name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-                size={28} 
-                color={colors.primary} 
-              />
+          <View style={styles.locationContainer}>
+            <View style={styles.locationHeader}>
+              <IconSymbol name="location.fill" size={20} color={colors.primary} />
+              <Text style={styles.locationLabel}>Location</Text>
+            </View>
+            <Pressable onPress={handleLocationSearch} style={styles.locationButton}>
+              <Text style={styles.locationText}>
+                {location || 'Add location'}
+              </Text>
+              <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
             </Pressable>
           </View>
 
-          {isEditing && (
-            <Pressable
-              onPress={handleDelete}
-              style={styles.toolbarButton}
-            >
-              <IconSymbol name="trash" size={28} color={colors.error} />
+          <View style={styles.actionsContainer}>
+            <Pressable style={styles.actionButton} onPress={pickImage}>
+              <IconSymbol name="photo" size={24} color={colors.primary} />
+              <Text style={styles.actionText}>Gallery</Text>
             </Pressable>
+
+            <Pressable style={styles.actionButton} onPress={takePhoto}>
+              <IconSymbol name="camera" size={24} color={colors.primary} />
+              <Text style={styles.actionText}>Camera</Text>
+            </Pressable>
+          </View>
+        </Animated.View>
+      </ScrollView>
+
+      <View style={styles.bottomBar}>
+        <Pressable
+          style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+          onPress={handleSave}
+          disabled={isSaving}
+        >
+          {isSaving ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <IconSymbol name="checkmark" size={24} color="#FFFFFF" />
+              <Text style={styles.saveButtonText}>
+                {isEditing ? 'Update' : 'Save'}
+              </Text>
+            </>
           )}
-        </View>
+        </Pressable>
       </View>
     </KeyboardAvoidingView>
   );
@@ -506,99 +451,132 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  headerButton: {
+    padding: 8,
+    marginHorizontal: 8,
+  },
+  headerRightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 20,
+    paddingBottom: 100,
   },
-  headerButton: {
-    padding: 8,
-    marginHorizontal: 8,
-  },
-  saveButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    minWidth: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveButtonDisabled: {
-    opacity: 0.4,
-  },
-  checkmarkContainer: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  textInputContainer: {
-    minHeight: 300,
+  content: {
+    width: '100%',
   },
   textInput: {
     fontSize: 16,
-    lineHeight: 24,
     color: colors.text,
-    minHeight: 300,
+    minHeight: 150,
     textAlignVertical: 'top',
-  },
-  bottomSection: {
-    backgroundColor: colors.background,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+    padding: 16,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    marginBottom: 16,
   },
   imagesContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 16,
   },
   imageWrapper: {
-    marginRight: 12,
+    width: '48%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
     position: 'relative',
   },
-  imagePreview: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    backgroundColor: colors.card,
+  image: {
+    width: '100%',
+    height: '100%',
   },
   removeImageButton: {
     position: 'absolute',
-    top: -8,
-    right: -8,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 12,
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 14,
   },
-  locationInfo: {
+  locationContainer: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  locationHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    gap: 8,
+    marginBottom: 12,
   },
-  locationText: {
-    fontSize: 14,
-    color: colors.textSecondary,
+  locationLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
   },
-  toolbar: {
+  locationButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    padding: 12,
+    backgroundColor: colors.background,
+    borderRadius: 8,
   },
-  toolbarLeft: {
+  locationText: {
+    fontSize: 15,
+    color: colors.text,
+    flex: 1,
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 24,
+    justifyContent: 'center',
+    gap: 8,
+    padding: 16,
+    backgroundColor: colors.card,
+    borderRadius: 12,
   },
-  toolbarButton: {
-    padding: 8,
+  actionText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    padding: 16,
+    borderRadius: 12,
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
 });

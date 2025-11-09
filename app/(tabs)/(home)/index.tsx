@@ -1,19 +1,19 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import { Note } from '@/types/Note';
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes } = useNotes();
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore } = useNotes();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
-  // Simulate pull-to-refresh when returning to the screen
   useFocusEffect(
     useCallback(() => {
       console.log('Home screen focused, refreshing data...');
@@ -43,6 +43,13 @@ export default function HomeScreen() {
     router.push('/(tabs)/profile');
   };
 
+  const handleLoadMore = () => {
+    if (!loading && hasMore) {
+      console.log('Loading more notes...');
+      loadMoreNotes();
+    }
+  };
+
   const renderEmptyState = () => (
     <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
       <IconSymbol name="note.text" size={80} color={colors.textTertiary} />
@@ -51,6 +58,24 @@ export default function HomeScreen() {
         Tap the + button to create your first recall
       </Text>
     </Animated.View>
+  );
+
+  const renderFooter = () => {
+    if (!loading || notes.length === 0) return null;
+    
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="small" color={colors.primary} />
+        <Text style={styles.footerText}>Loading more...</Text>
+      </View>
+    );
+  };
+
+  const renderItem = ({ item }: { item: Note }) => (
+    <NoteCard
+      note={item}
+      onPress={() => handleNotePress(item.id)}
+    />
   );
 
   return (
@@ -76,9 +101,19 @@ export default function HomeScreen() {
         }}
       />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+      <FlatList
+        data={notes}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : renderEmptyState()}
+        ListFooterComponent={renderFooter}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -87,25 +122,7 @@ export default function HomeScreen() {
             colors={[colors.primary]}
           />
         }
-      >
-        {loading && !refreshing ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
-        ) : notes.length === 0 ? (
-          renderEmptyState()
-        ) : (
-          <View style={styles.notesContainer}>
-            {notes.map((note) => (
-              <NoteCard
-                key={note.id}
-                note={note}
-                onPress={() => handleNotePress(note.id)}
-              />
-            ))}
-          </View>
-        )}
-      </ScrollView>
+      />
 
       {/* Bottom action buttons */}
       <View style={styles.bottomActions}>
@@ -132,10 +149,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
+  listContent: {
     padding: 16,
     paddingBottom: 100,
   },
@@ -164,8 +178,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 32,
   },
-  notesContainer: {
-    width: '100%',
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    gap: 8,
+  },
+  footerText: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   headerButton: {
     padding: 8,

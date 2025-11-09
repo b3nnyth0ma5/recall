@@ -109,7 +109,7 @@ export default function SearchScreen() {
             <Pressable onPress={toggleKeyboard} style={styles.headerButton}>
               <IconSymbol 
                 name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-                size={24} 
+                size={32} 
                 color={colors.text} 
               />
             </Pressable>
@@ -123,7 +123,7 @@ export default function SearchScreen() {
           <TextInput
             ref={searchInputRef}
             style={styles.searchInput}
-            placeholder="Search recalls with AI..."
+            placeholder="Search your recalls with AI..."
             placeholderTextColor={colors.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -156,7 +156,7 @@ export default function SearchScreen() {
         {isAiSearch && hasSearched && (
           <View style={styles.aiIndicator}>
             <IconSymbol name="sparkles" size={14} color={colors.primary} />
-            <Text style={styles.aiIndicatorText}>AI-powered search with NER</Text>
+            <Text style={styles.aiIndicatorText}>AI-powered search</Text>
           </View>
         )}
       </View>
@@ -183,26 +183,8 @@ export default function SearchScreen() {
             <Text style={styles.loadingText}>Analyzing with AI...</Text>
           </View>
         ) : !hasSearched ? (
-          <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-            <IconSymbol name="sparkles" size={80} color={colors.textTertiary} />
-            <Text style={styles.emptyTitle}>AI-Powered Search</Text>
-            <Text style={styles.emptyText}>
-              Search your recalls using advanced NLP and named entity recognition
-            </Text>
-            <View style={styles.featureList}>
-              <View style={styles.featureItem}>
-                <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                <Text style={styles.featureText}>Semantic understanding</Text>
-              </View>
-              <View style={styles.featureItem}>
-                <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                <Text style={styles.featureText}>Location-aware matching</Text>
-              </View>
-              <View style={styles.featureItem}>
-                <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                <Text style={styles.featureText}>Entity recognition</Text>
-              </View>
-            </View>
+          <Animated.View entering={FadeIn.duration(300)} style={styles.emptyContainer}>
+            
           </Animated.View>
         ) : notes.length === 0 ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>

@@ -216,7 +216,7 @@ export default function LocationSearchScreen() {
             <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search location in Australia..."
+              placeholder="Search locations in Australia..."
               placeholderTextColor={colors.textTertiary}
               value={searchQuery}
               onChangeText={setSearchQuery}

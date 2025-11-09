@@ -8,9 +8,12 @@ export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 10;
   const { user } = useAuth();
 
-  const loadNotes = useCallback(async () => {
+  const loadNotes = useCallback(async (pageNum: number = 0, append: boolean = false) => {
     if (!user) {
       setNotes([]);
       setLoading(false);
@@ -19,72 +22,33 @@ export function useNotes() {
 
     try {
       setLoading(true);
-      console.log('Loading notes from Supabase for user:', user.id);
+      console.log(`Loading notes from Supabase for user: ${user.id}, page: ${pageNum}`);
       
+      const from = pageNum * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
       const { data: recallsData, error: recallsError } = await supabase
         .from('recalls')
         .select('*')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
       if (recallsError) {
         console.error('Error loading recalls:', recallsError);
         return;
       }
 
-      const notesWithImages = await Promise.all(
-        (recallsData || []).map(async (recall) => {
-          try {
-            const { data: imagesData, error: imagesError } = await supabase
-              .from('recall_images')
-              .select('id')
-              .eq('recall_id', recall.id)
-              .order('created_at', { ascending: true });
+      const notesWithImages = await loadImagesForRecalls(recallsData || []);
 
-            if (imagesError) {
-              console.error('Error loading images for recall:', recall.id, imagesError);
-              return { ...recall, images: [], imageIds: [] };
-            }
+      if (append) {
+        setNotes(prev => [...prev, ...notesWithImages]);
+      } else {
+        setNotes(notesWithImages);
+      }
 
-            console.log(`Loaded ${imagesData?.length || 0} image records for recall ${recall.id}`);
-
-            const imageResults = await Promise.all(
-              (imagesData || []).map(async (img, index) => {
-                try {
-                  console.log(`Processing image ${index + 1}/${imagesData?.length || 0} (ID: ${img.id}) for recall ${recall.id}`);
-                  const dataUrl = await getImageDataUrl(img.id);
-                  if (!dataUrl) {
-                    console.error(`Failed to get data URL for image ${img.id} (index ${index})`);
-                    return { url: '', id: img.id };
-                  }
-                  console.log(`Successfully got data URL for image ${img.id}`);
-                  return { url: dataUrl, id: img.id };
-                } catch (error) {
-                  console.error(`Exception processing image ${img.id}:`, error);
-                  return { url: '', id: img.id };
-                }
-              })
-            );
-
-            const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
-            const imageIds = imageResults.map(result => result.id);
-            
-            console.log(`Recall ${recall.id} has ${validImageUrls.length}/${imageResults.length} valid images`);
-            
-            return { 
-              ...recall, 
-              images: validImageUrls, 
-              imageIds: imageIds
-            };
-          } catch (error) {
-            console.error(`Exception processing recall ${recall.id}:`, error);
-            return { ...recall, images: [], imageIds: [] };
-          }
-        })
-      );
-
-      setNotes(notesWithImages);
-      console.log('Loaded notes:', notesWithImages.length);
+      setHasMore((recallsData || []).length === PAGE_SIZE);
+      console.log(`Loaded ${notesWithImages.length} notes, hasMore: ${(recallsData || []).length === PAGE_SIZE}`);
     } catch (error) {
       console.error('Error loading notes:', error);
     } finally {
@@ -92,9 +56,18 @@ export function useNotes() {
     }
   }, [user]);
 
+  const loadMoreNotes = useCallback(async () => {
+    if (!hasMore || loading) return;
+    
+    const nextPage = page + 1;
+    setPage(nextPage);
+    await loadNotes(nextPage, true);
+  }, [hasMore, loading, page, loadNotes]);
+
   useEffect(() => {
-    loadNotes();
-  }, [loadNotes]);
+    setPage(0);
+    loadNotes(0, false);
+  }, [user]);
 
   const addNote = useCallback(async (note: Omit<Note, 'id' | 'created_at' | 'updated_at'>) => {
     if (!user) {
@@ -123,7 +96,8 @@ export function useNotes() {
       }
 
       console.log('Recall added successfully:', recallData.id);
-      await loadNotes();
+      setPage(0);
+      await loadNotes(0, false);
       return recallData.id;
     } catch (error) {
       console.error('Error adding recall:', error);
@@ -158,7 +132,8 @@ export function useNotes() {
       }
 
       console.log('Recall updated successfully');
-      await loadNotes();
+      setPage(0);
+      await loadNotes(0, false);
     } catch (error) {
       console.error('Error updating recall:', error);
       throw error;
@@ -197,7 +172,8 @@ export function useNotes() {
       }
 
       console.log('Recall deleted successfully');
-      await loadNotes();
+      setPage(0);
+      await loadNotes(0, false);
     } catch (error) {
       console.error('Error deleting recall:', error);
       throw error;
@@ -210,25 +186,25 @@ export function useNotes() {
     }
 
     try {
-      const { data: existing } = await supabase
+      console.log('Upserting search history:', searchText);
+      
+      const { error } = await supabase
         .from('search_history')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('search_text', searchText.trim())
-        .single();
-
-      if (existing) {
-        await supabase
-          .from('search_history')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', existing.id);
-      } else {
-        await supabase
-          .from('search_history')
-          .insert([{
+        .upsert(
+          {
             user_id: user.id,
             search_text: searchText.trim(),
-          }]);
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'user_id,search_text',
+          }
+        );
+
+      if (error) {
+        console.error('Error upserting search history:', error);
+      } else {
+        console.log('Search history saved successfully');
       }
     } catch (error) {
       console.error('Error saving search history:', error);
@@ -243,7 +219,8 @@ export function useNotes() {
 
     setSearchQuery(query);
     if (!query.trim()) {
-      await loadNotes();
+      setPage(0);
+      await loadNotes(0, false);
       return;
     }
     
@@ -253,14 +230,12 @@ export function useNotes() {
       
       await saveSearchHistory(query);
       
-      // Get the session token for authentication
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         console.error('No active session');
         return;
       }
 
-      // Call the OpenAI-powered search edge function
       const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls', {
         body: {
           query: query.trim(),
@@ -270,7 +245,6 @@ export function useNotes() {
 
       if (searchError) {
         console.error('Error calling search-recalls function:', searchError);
-        // Fallback to basic search
         const { data: recallsData, error: recallsError } = await supabase
           .from('recalls')
           .select('*')
@@ -291,7 +265,6 @@ export function useNotes() {
 
       console.log('OpenAI search results:', searchResults);
 
-      // Load images for the scored results
       const scoredRecalls = searchResults.results || [];
       const notesWithImages = await loadImagesForRecalls(scoredRecalls);
       
@@ -299,8 +272,8 @@ export function useNotes() {
       console.log('AI-powered search results:', notesWithImages.length);
     } catch (error) {
       console.error('Error searching recalls:', error);
-      // Fallback to loading all notes
-      await loadNotes();
+      setPage(0);
+      await loadNotes(0, false);
     } finally {
       setLoading(false);
     }
@@ -372,15 +345,23 @@ export function useNotes() {
     }
   }, [user]);
 
+  const refreshNotes = useCallback(async () => {
+    setPage(0);
+    setHasMore(true);
+    await loadNotes(0, false);
+  }, [loadNotes]);
+
   return {
     notes,
     loading,
     searchQuery,
+    hasMore,
     addNote,
     updateNote,
     deleteNote,
     searchNotes,
-    refreshNotes: loadNotes,
+    refreshNotes,
+    loadMoreNotes,
     getSearchHistory,
   };
 }
