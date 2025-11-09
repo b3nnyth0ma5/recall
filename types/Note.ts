@@ -35,4 +35,7 @@ export interface ImageRecord {
   content_type: string;
   created_at: string;
   user_id: string;
+  ocr_text?: string; // Extracted text from OCR
+  image_explanation?: string; // AI-generated explanation (under 120 words)
+  processed_at?: string; // Timestamp when OCR processing completed
 }

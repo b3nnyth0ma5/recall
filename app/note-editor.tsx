@@ -24,7 +24,7 @@ import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -423,6 +423,7 @@ export default function NoteEditorScreen() {
 
       let uploadedCount = 0;
       let failedCount = 0;
+      const uploadedImageIds: string[] = [];
 
       for (const image of images) {
         if (image.localUri) {
@@ -432,7 +433,20 @@ export default function NoteEditorScreen() {
           
           if (imageId) {
             uploadedCount++;
+            uploadedImageIds.push(imageId);
             console.log('Image uploaded successfully to database');
+            
+            // Trigger OCR processing for the uploaded image
+            console.log('Triggering OCR processing for image:', imageId);
+            triggerOCRProcessing(imageId).then(result => {
+              if (result.success) {
+                console.log('OCR processing triggered successfully for image:', imageId);
+              } else {
+                console.error('Failed to trigger OCR processing:', result.error);
+              }
+            }).catch(error => {
+              console.error('Error triggering OCR processing:', error);
+            });
           } else {
             failedCount++;
             console.error('Failed to upload image to database');
@@ -441,6 +455,9 @@ export default function NoteEditorScreen() {
       }
 
       console.log(`Upload complete: ${uploadedCount} succeeded, ${failedCount} failed`);
+      if (uploadedImageIds.length > 0) {
+        console.log(`OCR processing triggered for ${uploadedImageIds.length} images`);
+      }
 
       if (failedCount > 0) {
         Alert.alert(

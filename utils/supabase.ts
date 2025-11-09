@@ -198,3 +198,59 @@ export async function saveSearchHistory(userId: string, searchText: string): Pro
     console.error('Error saving search history:', e);
   }
 }
+
+export async function triggerOCRProcessing(imageId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log('Triggering OCR processing for image:', imageId);
+
+    const { data, error } = await supabase.functions.invoke('ocr-image', {
+      body: { 
+        record: { id: imageId } 
+      },
+    });
+
+    if (error) {
+      console.error('Error invoking OCR function:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log('OCR processing triggered successfully:', data);
+    return { success: true };
+  } catch (error) {
+    console.error('Exception in triggerOCRProcessing:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
+}
+
+export async function getImageOCRResults(imageId: string): Promise<{
+  ocrText?: string;
+  explanation?: string;
+  processedAt?: string;
+} | null> {
+  try {
+    console.log('Fetching OCR results for image:', imageId);
+
+    const { data, error } = await supabase
+      .from('recall_images')
+      .select('ocr_text, image_explanation, processed_at')
+      .eq('id', imageId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching OCR results:', error);
+      return null;
+    }
+
+    return {
+      ocrText: data.ocr_text,
+      explanation: data.image_explanation,
+      processedAt: data.processed_at,
+    };
+  } catch (error) {
+    console.error('Exception in getImageOCRResults:', error);
+    return null;
+  }
+}
