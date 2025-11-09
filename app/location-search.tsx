@@ -16,6 +16,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import * as Location from 'expo-location';
+import { supabase } from '@/utils/supabase';
 
 interface LocationResult {
   place_id: string;
@@ -162,7 +163,7 @@ export default function LocationSearchScreen() {
     }
   };
 
-  const handleSelectLocation = (location: LocationResult) => {
+  const handleSelectLocation = async (location: LocationResult) => {
     try {
       const latitude = parseFloat(location.lat);
       const longitude = parseFloat(location.lon);
@@ -175,15 +176,36 @@ export default function LocationSearchScreen() {
         fullDisplayName: location.display_name
       });
 
+      if (params.id) {
+        const noteId = params.id as string;
+        console.log('Updating location for note:', noteId);
+
+        const { error } = await supabase
+          .from('recalls')
+          .update({
+            latitude: latitude,
+            longitude: longitude,
+            location: locationName,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', noteId);
+
+        if (error) {
+          console.error('Error updating location in database:', error);
+        } else {
+          console.log('Location updated successfully in database');
+        }
+      }
+
       router.back();
       
-      if (router.canGoBack()) {
+      setTimeout(() => {
         router.setParams({
           selectedLatitude: latitude.toString(),
           selectedLongitude: longitude.toString(),
           selectedLocationName: locationName,
         });
-      }
+      }, 100);
     } catch (error) {
       console.error('Error processing location:', error);
     }

@@ -110,7 +110,13 @@ export function useNotes() {
       );
 
       if (append) {
-        setNotes(prevNotes => [...prevNotes, ...notesWithImages]);
+        // Prevent duplicates by filtering out notes that already exist
+        setNotes(prevNotes => {
+          const existingIds = new Set(prevNotes.map(note => note.id));
+          const newUniqueNotes = notesWithImages.filter(note => !existingIds.has(note.id));
+          console.log(`Adding ${newUniqueNotes.length} new unique notes (filtered ${notesWithImages.length - newUniqueNotes.length} duplicates)`);
+          return [...prevNotes, ...newUniqueNotes];
+        });
       } else {
         setNotes(notesWithImages);
       }

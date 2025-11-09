@@ -14,6 +14,7 @@ import {
   Platform,
   Keyboard,
   Linking,
+  Modal,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -45,6 +46,12 @@ export default function NoteEditorScreen() {
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationName, setLocationName] = useState<string>('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [isLocationModalVisible, setIsLocationModalVisible] = useState(false);
+  const [selectedLocationData, setSelectedLocationData] = useState<{
+    latitude: number;
+    longitude: number;
+    displayName: string;
+  } | null>(null);
   const textInputRef = useRef<TextInput>(null);
 
   const isEditing = !!params.id;
@@ -98,11 +105,14 @@ export default function NoteEditorScreen() {
     if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
       const latitude = parseFloat(params.selectedLatitude as string);
       const longitude = parseFloat(params.selectedLongitude as string);
-      const locationName = params.selectedLocationName as string;
+      const displayName = params.selectedLocationName as string;
 
-      console.log('Location updated from search:', { latitude, longitude, locationName });
+      console.log('Location updated from search:', { latitude, longitude, displayName });
+      
       setLocation({ latitude, longitude });
-      setLocationName(locationName);
+      setLocationName(displayName);
+      setSelectedLocationData({ latitude, longitude, displayName });
+      setIsLocationModalVisible(true);
 
       router.setParams({
         selectedLatitude: undefined,
@@ -398,6 +408,11 @@ export default function NoteEditorScreen() {
     router.push('/location-search');
   };
 
+  const handleCloseLocationModal = () => {
+    setIsLocationModalVisible(false);
+    setSelectedLocationData(null);
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -549,6 +564,56 @@ export default function NoteEditorScreen() {
           )}
         </View>
       </View>
+
+      <Modal
+        visible={isLocationModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCloseLocationModal}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={handleCloseLocationModal}
+        >
+          <Animated.View 
+            entering={FadeIn.duration(300)}
+            style={styles.modalContent}
+          >
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={styles.modalHeader}>
+                <IconSymbol name="mappin.circle.fill" size={32} color={colors.primary} />
+                <Text style={styles.modalTitle}>Location Updated</Text>
+              </View>
+
+              {selectedLocationData && (
+                <View style={styles.modalBody}>
+                  <View style={styles.modalRow}>
+                    <Text style={styles.modalLabel}>Location Name:</Text>
+                    <Text style={styles.modalValue}>{selectedLocationData.displayName}</Text>
+                  </View>
+
+                  <View style={styles.modalRow}>
+                    <Text style={styles.modalLabel}>Latitude:</Text>
+                    <Text style={styles.modalValue}>{selectedLocationData.latitude.toFixed(6)}</Text>
+                  </View>
+
+                  <View style={styles.modalRow}>
+                    <Text style={styles.modalLabel}>Longitude:</Text>
+                    <Text style={styles.modalValue}>{selectedLocationData.longitude.toFixed(6)}</Text>
+                  </View>
+                </View>
+              )}
+
+              <Pressable
+                onPress={handleCloseLocationModal}
+                style={styles.modalButton}
+              >
+                <Text style={styles.modalButtonText}>Close</Text>
+              </Pressable>
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -676,5 +741,60 @@ const styles = StyleSheet.create({
   },
   toolbarButton: {
     padding: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.6)',
+    elevation: 10,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginTop: 12,
+  },
+  modalBody: {
+    marginBottom: 24,
+  },
+  modalRow: {
+    marginBottom: 16,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  modalValue: {
+    fontSize: 16,
+    color: colors.text,
+    lineHeight: 22,
+  },
+  modalButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
