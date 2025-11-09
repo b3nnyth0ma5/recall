@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -13,31 +13,47 @@ export default function HomeScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
-  const [scrollPosition, setScrollPosition] = useState(0);
-  const [shouldAutoRefresh, setShouldAutoRefresh] = useState(false);
+  const scrollPositionRef = useRef(0);
   const previousNotesCountRef = useRef(notes.length);
+  const isFirstFocusRef = useRef(true);
+
+  // Update the previous notes count whenever notes change
+  useEffect(() => {
+    previousNotesCountRef.current = notes.length;
+  }, [notes.length]);
 
   useFocusEffect(
     useCallback(() => {
       console.log('Home screen focused');
       
+      // Skip auto-refresh on first focus (initial load)
+      if (isFirstFocusRef.current) {
+        isFirstFocusRef.current = false;
+        return;
+      }
+      
       // Check if a new note was created (notes count increased)
-      if (notes.length > previousNotesCountRef.current) {
+      const currentCount = notes.length;
+      const previousCount = previousNotesCountRef.current;
+      
+      if (currentCount > previousCount) {
         console.log('New note detected, auto-refreshing...');
-        setShouldAutoRefresh(true);
         refreshNotes();
       }
       
-      // Update the previous count
-      previousNotesCountRef.current = notes.length;
-      
-      // Restore scroll position
-      if (scrollPosition > 0 && scrollViewRef.current) {
+      // Restore scroll position after a short delay
+      const savedScrollPosition = scrollPositionRef.current;
+      if (savedScrollPosition > 0 && scrollViewRef.current) {
         setTimeout(() => {
-          scrollViewRef.current?.scrollTo({ y: scrollPosition, animated: false });
+          scrollViewRef.current?.scrollTo({ y: savedScrollPosition, animated: false });
         }, 100);
       }
-    }, [scrollPosition])
+      
+      // Cleanup function
+      return () => {
+        console.log('Home screen unfocused');
+      };
+    }, [notes.length, refreshNotes])
   );
 
   const handleRefresh = async () => {
@@ -47,14 +63,10 @@ export default function HomeScreen() {
   };
 
   const handleCreateNote = () => {
-    // Mark that we're creating a new note
-    setShouldAutoRefresh(true);
     router.push('/note-editor');
   };
 
   const handleNotePress = (noteId: string) => {
-    // Don't auto-refresh when just viewing/editing an existing note
-    setShouldAutoRefresh(false);
     router.push(`/note-editor?id=${noteId}`);
   };
 
@@ -66,11 +78,11 @@ export default function HomeScreen() {
     router.push('/(tabs)/profile');
   };
 
-  const handleScroll = (event: any) => {
+  const handleScroll = useCallback((event: any) => {
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
     
-    // Save scroll position
-    setScrollPosition(contentOffset.y);
+    // Save scroll position to ref (doesn't trigger re-render)
+    scrollPositionRef.current = contentOffset.y;
     
     // Load more notes when near bottom
     const paddingToBottom = 20;
@@ -80,7 +92,7 @@ export default function HomeScreen() {
       console.log('Loading more notes...');
       loadMoreNotes();
     }
-  };
+  }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
 
   const renderEmptyState = () => (
     <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
