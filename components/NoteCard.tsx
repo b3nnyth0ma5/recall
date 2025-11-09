@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, ScrollView, Linking } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, ScrollView } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { Note } from '@/types/Note';
@@ -14,9 +14,6 @@ interface NoteCardProps {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const IMAGE_WIDTH = SCREEN_WIDTH - 32;
-
-// URL regex pattern
-const URL_REGEX = /(https?:\/\/[^\s]+)/g;
 
 export function NoteCard({ note, onPress }: NoteCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -36,7 +33,7 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
   const getPreviewText = () => {
     if (!note.text) return '';
     const lines = note.text.split('\n');
-    if (lines.length <= 4 && note.text.length <= 200) {
+    if (lines.length <= 3 && note.text.length <= 150) {
       return note.text;
     }
     
@@ -44,43 +41,15 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
       return note.text;
     }
     
-    // Show first 4 lines or 200 characters
-    const preview = lines.slice(0, 4).join('\n');
-    return preview.length > 200 ? preview.substring(0, 200) + '...' : preview;
+    // Show first 3 lines or 150 characters
+    const preview = lines.slice(0, 3).join('\n');
+    return preview.length > 150 ? preview.substring(0, 150) + '...' : preview;
   };
 
   const shouldShowToggle = () => {
     if (!note.text) return false;
     const lines = note.text.split('\n');
-    return lines.length > 4 || note.text.length > 200;
-  };
-
-  const renderTextWithLinks = (text: string) => {
-    const parts = text.split(URL_REGEX);
-    
-    return (
-      <Text style={styles.noteText}>
-        {parts.map((part, index) => {
-          if (part.match(URL_REGEX)) {
-            return (
-              <Text
-                key={index}
-                style={styles.linkText}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  Linking.openURL(part).catch(err => {
-                    console.error('Failed to open URL:', err);
-                  });
-                }}
-              >
-                {part}
-              </Text>
-            );
-          }
-          return <Text key={index}>{part}</Text>;
-        })}
-      </Text>
-    );
+    return lines.length > 3 || note.text.length > 150;
   };
 
   const handleScroll = (event: any) => {
@@ -99,6 +68,7 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
     console.log(`Image ${index} loaded successfully for note ${note.id}`);
   };
 
+  // Get all images and filter out ones with errors
   const allImages = note.images || [];
   const validImages = allImages.filter((_, index) => !imageErrors[index]);
   const hasValidImages = validImages.length > 0;
@@ -117,6 +87,7 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
               scrollEventThrottle={16}
             >
               {allImages.map((imageUrl, index) => {
+                // Skip images that have errors
                 if (imageErrors[index]) {
                   return null;
                 }
@@ -152,16 +123,13 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
           </View>
         )}
 
-        {/* Note Text with clickable URLs */}
+        {/* Note Text */}
         {note.text && (
           <View style={styles.textContainer}>
-            {renderTextWithLinks(getPreviewText())}
+            <Text style={styles.noteText}>{getPreviewText()}</Text>
             {shouldShowToggle() && (
               <View style={styles.showMoreContainer}>
-                <Pressable onPress={(e) => {
-                  e.stopPropagation();
-                  setShowFullText(!showFullText);
-                }}>
+                <Pressable onPress={() => setShowFullText(!showFullText)}>
                   <Text style={styles.showMoreText}>
                     {showFullText ? 'Show Less' : 'Show More'}
                   </Text>
@@ -246,10 +214,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.text,
     marginBottom: 8,
-  },
-  linkText: {
-    color: colors.primary,
-    textDecorationLine: 'underline',
   },
   showMoreContainer: {
     alignItems: 'flex-end',

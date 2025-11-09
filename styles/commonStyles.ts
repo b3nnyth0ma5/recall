@@ -135,9 +135,9 @@ export const commonStyles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 8,
-    padding: 8,
-    marginVertical: 4,
+    borderRadius: 16,
+    padding: 20,
+    marginVertical: 8,
     width: '100%',
     // Modern shadow for iOS
     shadowColor: '#000',
