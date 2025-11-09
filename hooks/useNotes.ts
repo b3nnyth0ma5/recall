@@ -248,70 +248,104 @@ export function useNotes() {
     }
     
     try {
-      console.log('Searching recalls:', query);
+      console.log('Searching recalls with OpenAI NER:', query);
       setLoading(true);
       
       await saveSearchHistory(query);
       
-      const { data: recallsData, error: recallsError } = await supabase
-        .from('recalls')
-        .select('*')
-        .eq('user_id', user.id)
-        .or(`text.ilike.%${query}%,location.ilike.%${query}%`)
-        .order('created_at', { ascending: false });
-
-      if (recallsError) {
-        console.error('Error searching recalls:', recallsError);
+      // Get the session token for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error('No active session');
         return;
       }
 
-      const notesWithImages = await Promise.all(
-        (recallsData || []).map(async (recall) => {
-          try {
-            const { data: imagesData } = await supabase
-              .from('recall_images')
-              .select('id')
-              .eq('recall_id', recall.id)
-              .order('created_at', { ascending: true });
+      // Call the OpenAI-powered search edge function
+      const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls', {
+        body: {
+          query: query.trim(),
+          limit: 10,
+        },
+      });
 
-            const imageResults = await Promise.all(
-              (imagesData || []).map(async (img) => {
-                try {
-                  const dataUrl = await getImageDataUrl(img.id);
-                  if (!dataUrl) {
-                    return { url: '', id: img.id };
-                  }
-                  return { url: dataUrl, id: img.id };
-                } catch (error) {
-                  console.error(`Exception processing image ${img.id}:`, error);
-                  return { url: '', id: img.id };
-                }
-              })
-            );
+      if (searchError) {
+        console.error('Error calling search-recalls function:', searchError);
+        // Fallback to basic search
+        const { data: recallsData, error: recallsError } = await supabase
+          .from('recalls')
+          .select('*')
+          .eq('user_id', user.id)
+          .or(`text.ilike.%${query}%,location.ilike.%${query}%`)
+          .order('created_at', { ascending: false });
 
-            const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
-            const imageIds = imageResults.map(result => result.id);
-            
-            return { 
-              ...recall, 
-              images: validImageUrls, 
-              imageIds: imageIds
-            };
-          } catch (error) {
-            console.error(`Exception processing recall ${recall.id}:`, error);
-            return { ...recall, images: [], imageIds: [] };
-          }
-        })
-      );
+        if (recallsError) {
+          console.error('Error searching recalls:', recallsError);
+          return;
+        }
 
+        const notesWithImages = await loadImagesForRecalls(recallsData || []);
+        setNotes(notesWithImages);
+        console.log('Fallback search results:', notesWithImages.length);
+        return;
+      }
+
+      console.log('OpenAI search results:', searchResults);
+
+      // Load images for the scored results
+      const scoredRecalls = searchResults.results || [];
+      const notesWithImages = await loadImagesForRecalls(scoredRecalls);
+      
       setNotes(notesWithImages);
-      console.log('Search results:', notesWithImages.length);
+      console.log('AI-powered search results:', notesWithImages.length);
     } catch (error) {
       console.error('Error searching recalls:', error);
+      // Fallback to loading all notes
+      await loadNotes();
     } finally {
       setLoading(false);
     }
   }, [loadNotes, user, saveSearchHistory]);
+
+  const loadImagesForRecalls = async (recalls: any[]) => {
+    return await Promise.all(
+      recalls.map(async (recall) => {
+        try {
+          const { data: imagesData } = await supabase
+            .from('recall_images')
+            .select('id')
+            .eq('recall_id', recall.id)
+            .order('created_at', { ascending: true });
+
+          const imageResults = await Promise.all(
+            (imagesData || []).map(async (img) => {
+              try {
+                const dataUrl = await getImageDataUrl(img.id);
+                if (!dataUrl) {
+                  return { url: '', id: img.id };
+                }
+                return { url: dataUrl, id: img.id };
+              } catch (error) {
+                console.error(`Exception processing image ${img.id}:`, error);
+                return { url: '', id: img.id };
+              }
+            })
+          );
+
+          const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
+          const imageIds = imageResults.map(result => result.id);
+          
+          return { 
+            ...recall, 
+            images: validImageUrls, 
+            imageIds: imageIds
+          };
+        } catch (error) {
+          console.error(`Exception processing recall ${recall.id}:`, error);
+          return { ...recall, images: [], imageIds: [] };
+        }
+      })
+    );
+  };
 
   const getSearchHistory = useCallback(async () => {
     if (!user) {

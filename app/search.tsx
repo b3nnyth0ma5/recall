@@ -26,6 +26,7 @@ export default function SearchScreen() {
   const [showHistory, setShowHistory] = useState(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [isAiSearch, setIsAiSearch] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
 
   const loadSearchHistory = useCallback(async () => {
@@ -53,6 +54,7 @@ export default function SearchScreen() {
     if (searchQuery.trim()) {
       setShowHistory(false);
       setHasSearched(true);
+      setIsAiSearch(true);
       searchNotes(searchQuery);
       setTimeout(() => {
         loadSearchHistory();
@@ -64,6 +66,7 @@ export default function SearchScreen() {
     setSearchQuery(searchText);
     setShowHistory(false);
     setHasSearched(true);
+    setIsAiSearch(true);
     searchNotes(searchText);
   };
 
@@ -75,6 +78,7 @@ export default function SearchScreen() {
     setSearchQuery('');
     setShowHistory(true);
     setHasSearched(false);
+    setIsAiSearch(false);
     searchNotes('');
   };
 
@@ -119,7 +123,7 @@ export default function SearchScreen() {
           <TextInput
             ref={searchInputRef}
             style={styles.searchInput}
-            placeholder="Search recalls..."
+            placeholder="Search recalls with AI..."
             placeholderTextColor={colors.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -142,13 +146,19 @@ export default function SearchScreen() {
               !searchQuery.trim() && styles.searchIconDisabled
             ]}>
               <IconSymbol 
-                name="magnifyingglass" 
+                name="sparkles" 
                 size={18} 
                 color="#FFFFFF" 
               />
             </View>
           </Pressable>
         </View>
+        {isAiSearch && hasSearched && (
+          <View style={styles.aiIndicator}>
+            <IconSymbol name="sparkles" size={14} color={colors.primary} />
+            <Text style={styles.aiIndicatorText}>AI-powered search with NER</Text>
+          </View>
+        )}
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
@@ -170,21 +180,36 @@ export default function SearchScreen() {
         ) : loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Analyzing with AI...</Text>
           </View>
         ) : !hasSearched ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-            <IconSymbol name="magnifyingglass" size={80} color={colors.textTertiary} />
-            <Text style={styles.emptyTitle}>Search Your Recalls</Text>
+            <IconSymbol name="sparkles" size={80} color={colors.textTertiary} />
+            <Text style={styles.emptyTitle}>AI-Powered Search</Text>
             <Text style={styles.emptyText}>
-              Enter a search term and tap the search icon to find your recalls
+              Search your recalls using advanced NLP and named entity recognition
             </Text>
+            <View style={styles.featureList}>
+              <View style={styles.featureItem}>
+                <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+                <Text style={styles.featureText}>Semantic understanding</Text>
+              </View>
+              <View style={styles.featureItem}>
+                <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+                <Text style={styles.featureText}>Location-aware matching</Text>
+              </View>
+              <View style={styles.featureItem}>
+                <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+                <Text style={styles.featureText}>Entity recognition</Text>
+              </View>
+            </View>
           </Animated.View>
         ) : notes.length === 0 ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
             <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
             <Text style={styles.emptyTitle}>No Results Found</Text>
             <Text style={styles.emptyText}>
-              Try a different search term
+              Try a different search term or add more details
             </Text>
           </Animated.View>
         ) : (
@@ -193,11 +218,25 @@ export default function SearchScreen() {
               {notes.length} {notes.length === 1 ? 'result' : 'results'} found
             </Text>
             {notes.map((note) => (
-              <NoteCard
-                key={note.id}
-                note={note}
-                onPress={() => handleNotePress(note.id)}
-              />
+              <View key={note.id} style={styles.noteWrapper}>
+                <NoteCard
+                  note={note}
+                  onPress={() => handleNotePress(note.id)}
+                />
+                {note.relevance_score !== undefined && (
+                  <View style={styles.relevanceInfo}>
+                    <View style={styles.relevanceScore}>
+                      <IconSymbol name="star.fill" size={14} color={colors.primary} />
+                      <Text style={styles.relevanceScoreText}>
+                        {note.relevance_score}% match
+                      </Text>
+                    </View>
+                    {note.relevance_reason && (
+                      <Text style={styles.relevanceReason}>{note.relevance_reason}</Text>
+                    )}
+                  </View>
+                )}
+              </View>
             ))}
           </View>
         )}
@@ -252,6 +291,18 @@ const styles = StyleSheet.create({
   searchIconDisabled: {
     opacity: 0.4,
   },
+  aiIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  aiIndicatorText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+  },
   scrollView: {
     flex: 1,
   },
@@ -286,6 +337,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingTop: 100,
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 8,
   },
   emptyContainer: {
     flex: 1,
@@ -305,6 +362,20 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     paddingHorizontal: 32,
+    marginBottom: 24,
+  },
+  featureList: {
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  featureText: {
+    fontSize: 15,
+    color: colors.text,
   },
   notesContainer: {
     width: '100%',
@@ -313,5 +384,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     marginBottom: 16,
+  },
+  noteWrapper: {
+    marginBottom: 16,
+  },
+  relevanceInfo: {
+    backgroundColor: colors.card,
+    padding: 12,
+    borderRadius: 8,
+    marginTop: -8,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  relevanceScore: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  relevanceScoreText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  relevanceReason: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
   },
 });

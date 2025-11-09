@@ -10,6 +10,8 @@ export interface Note {
   longitude?: number;
   location?: string;
   user_id?: string;
+  relevance_score?: number; // AI-powered relevance score (0-100)
+  relevance_reason?: string; // Explanation of why this recall matches
 }
 
 export interface NoteImage {
