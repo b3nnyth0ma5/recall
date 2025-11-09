@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Dimensions, ScrollView, Linking, Modal } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
@@ -14,7 +14,8 @@ interface NoteCardProps {
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const IMAGE_WIDTH = SCREEN_WIDTH - 32;
+const CARD_PADDING = 4; // Padding on each side of the card
+const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 2);
 
 export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -23,6 +24,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [showImageModal, setShowImageModal] = useState(false);
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [loadedImages, setLoadedImages] = useState<{ [key: number]: boolean }>({});
+  const modalScrollViewRef = useRef<ScrollView>(null);
 
   const formatDateTime = (dateString: string) => {
     try {
@@ -68,7 +70,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     if (!note.text) return '';
     const lines = note.text.split('\n');
     const maxLines = hasUrl(note.text) ? 4 : 3;
-    const maxChars = hasUrl(note.text) ? 200 : 150;
+    const maxChars = hasUrl(note.text) ? 200 : 125;
     
     if (lines.length <= maxLines && note.text.length <= maxChars) {
       return note.text;
@@ -86,19 +88,21 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     if (!note.text) return false;
     const lines = note.text.split('\n');
     const maxLines = hasUrl(note.text) ? 4 : 3;
-    const maxChars = hasUrl(note.text) ? 200 : 150;
+    const maxChars = hasUrl(note.text) ? 200 : 125;
     return lines.length > maxLines || note.text.length > maxChars;
   };
 
   const handleScroll = (event: any) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / IMAGE_WIDTH);
+    console.log('Card carousel scroll - offset:', contentOffsetX, 'index:', index);
     setCurrentImageIndex(index);
   };
 
   const handleModalScroll = (event: any) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / SCREEN_WIDTH);
+    console.log('Modal carousel scroll - offset:', contentOffsetX, 'index:', index);
     setModalImageIndex(index);
   };
 
@@ -116,6 +120,12 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const handleImagePress = () => {
     setModalImageIndex(currentImageIndex);
     setShowImageModal(true);
+    // Scroll to the current image in the modal after a short delay to ensure modal is rendered
+    setTimeout(() => {
+      if (modalScrollViewRef.current) {
+        modalScrollViewRef.current.scrollTo({ x: currentImageIndex * SCREEN_WIDTH, animated: false });
+      }
+    }, 100);
     if (onImagePress) {
       onImagePress();
     }
@@ -140,6 +150,10 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
               showsHorizontalScrollIndicator={false}
               onScroll={handleScroll}
               scrollEventThrottle={16}
+              snapToInterval={IMAGE_WIDTH}
+              decelerationRate="fast"
+              contentContainerStyle={styles.scrollViewContent}
+              style={styles.scrollView}
             >
               {allImages.map((imageUrl, index) => {
                 if (imageErrors[index]) {
@@ -234,12 +248,16 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
           </Pressable>
 
           <ScrollView
+            ref={modalScrollViewRef}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             onScroll={handleModalScroll}
             scrollEventThrottle={16}
-            contentOffset={{ x: modalImageIndex * SCREEN_WIDTH, y: 0 }}
+            snapToInterval={SCREEN_WIDTH}
+            decelerationRate="fast"
+            contentContainerStyle={styles.modalScrollViewContent}
+            style={styles.modalScrollView}
           >
             {allImages.map((imageUrl, index) => {
               if (imageErrors[index]) {
@@ -291,13 +309,20 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     width: '100%',
-    height: 300,
+    height: 400,
     position: 'relative',
     backgroundColor: colors.cardDark,
   },
+  scrollView: {
+    width: IMAGE_WIDTH,
+    height: 400,
+  },
+  scrollViewContent: {
+    flexDirection: 'row',
+  },
   imageWrapper: {
     width: IMAGE_WIDTH,
-    height: 300,
+    height: 400,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -305,7 +330,7 @@ const styles = StyleSheet.create({
   imagePlaceholder: {
     position: 'absolute',
     width: IMAGE_WIDTH,
-    height: 300,
+    height: 400,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.cardDark,
@@ -317,7 +342,7 @@ const styles = StyleSheet.create({
   },
   image: {
     width: IMAGE_WIDTH,
-    height: 300,
+    height: 400,
   },
   indicatorContainer: {
     position: 'absolute',
@@ -404,6 +429,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  modalScrollView: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+  },
+  modalScrollViewContent: {
+    flexDirection: 'row',
   },
   modalImageWrapper: {
     width: SCREEN_WIDTH,

@@ -107,11 +107,11 @@ export const commonStyles = StyleSheet.create({
     width: '100%',
   },
   title: {
-    fontSize: 28,
+    fontSize: 20,
     fontWeight: 'bold',
     textAlign: 'center',
     color: colors.text,
-    marginBottom: 12,
+    marginBottom: 8,
     fontFamily: fontFamily.bold,
   },
   text: {
@@ -119,24 +119,24 @@ export const commonStyles = StyleSheet.create({
     fontWeight: '400',
     color: colors.text,
     marginBottom: 8,
-    lineHeight: 24,
+    lineHeight: 16,
     textAlign: 'center',
     fontFamily: fontFamily.regular,
   },
   section: {
     width: '100%',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
   buttonContainer: {
     width: '100%',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 8,
+    padding: 16,
     marginVertical: 8,
     width: '100%',
     // Modern shadow for iOS
