@@ -153,26 +153,28 @@ export default function LocationSearchScreen() {
     const firstPart = parts[0];
     const secondPart = parts[1];
     
-    if (firstPart && !/^\d/.test(firstPart)) {
-      return `${firstPart}, ${secondPart}`;
-    } else {
+    // If first part is a street number, use second and third parts
+    if (firstPart && /^\d/.test(firstPart)) {
       if (parts.length >= 3) {
         return `${secondPart}, ${parts[2]}`;
       }
-      return `${secondPart}`;
+      return secondPart;
     }
+    
+    // Otherwise use first and second parts
+    return `${firstPart}, ${secondPart}`;
   };
 
   const handleSelectLocation = async (location: LocationResult) => {
     try {
       const latitude = parseFloat(location.lat);
       const longitude = parseFloat(location.lon);
-      const locationName = extractLocationFromSelection(location.display_name);
+      const formattedLocationName = extractLocationFromSelection(location.display_name);
       
       console.log('Selected location data:', {
         latitude,
         longitude,
-        locationName,
+        formattedLocationName,
         fullDisplayName: location.display_name
       });
 
@@ -185,7 +187,7 @@ export default function LocationSearchScreen() {
           .update({
             latitude: latitude,
             longitude: longitude,
-            location: locationName,
+            location: formattedLocationName,
             updated_at: new Date().toISOString(),
           })
           .eq('id', noteId);
@@ -193,7 +195,7 @@ export default function LocationSearchScreen() {
         if (error) {
           console.error('Error updating location in database:', error);
         } else {
-          console.log('Location updated successfully in database');
+          console.log('Location updated successfully in database with formatted name:', formattedLocationName);
         }
       }
 
@@ -203,7 +205,7 @@ export default function LocationSearchScreen() {
         router.setParams({
           selectedLatitude: latitude.toString(),
           selectedLongitude: longitude.toString(),
-          selectedLocationName: locationName,
+          selectedLocationName: location.display_name,
         });
       }, 100);
     } catch (error) {
@@ -278,30 +280,36 @@ export default function LocationSearchScreen() {
           ) : results.length > 0 ? (
             <Animated.View entering={FadeInDown.duration(600)}>
               <Text style={styles.resultsTitle}>Top {results.length} Results (Australia)</Text>
-              {results.map((result) => (
-                <Pressable
-                  key={result.place_id}
-                  style={styles.resultItem}
-                  onPress={() => handleSelectLocation(result)}
-                >
-                  <View style={styles.resultIconContainer}>
-                    <IconSymbol name="mappin.circle.fill" size={24} color={colors.primary} />
-                  </View>
-                  <View style={styles.resultTextContainer}>
-                    <Text style={styles.resultText} numberOfLines={2}>
-                      {result.display_name}
-                    </Text>
-                    {result.distance !== undefined && (
-                      <Text style={styles.distanceText}>
-                        {result.distance < 1 
-                          ? `${Math.round(result.distance * 1000)}m away`
-                          : `${result.distance.toFixed(1)}km away`}
+              {results.map((result) => {
+                const formattedName = extractLocationFromSelection(result.display_name);
+                return (
+                  <Pressable
+                    key={result.place_id}
+                    style={styles.resultItem}
+                    onPress={() => handleSelectLocation(result)}
+                  >
+                    <View style={styles.resultIconContainer}>
+                      <IconSymbol name="mappin.circle.fill" size={24} color={colors.primary} />
+                    </View>
+                    <View style={styles.resultTextContainer}>
+                      <Text style={styles.resultTextBold} numberOfLines={1}>
+                        {formattedName}
                       </Text>
-                    )}
-                  </View>
-                  <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
-                </Pressable>
-              ))}
+                      <Text style={styles.resultText} numberOfLines={2}>
+                        {result.display_name}
+                      </Text>
+                      {result.distance !== undefined && (
+                        <Text style={styles.distanceText}>
+                          {result.distance < 1 
+                            ? `${Math.round(result.distance * 1000)}m away`
+                            : `${result.distance.toFixed(1)}km away`}
+                        </Text>
+                      )}
+                    </View>
+                    <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
+                  </Pressable>
+                );
+              })}
             </Animated.View>
           ) : searchQuery.trim() && !loading ? (
             <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
@@ -411,10 +419,17 @@ const styles = StyleSheet.create({
   resultTextContainer: {
     flex: 1,
   },
-  resultText: {
-    fontSize: 15,
+  resultTextBold: {
+    fontSize: 16,
+    fontWeight: '600',
     color: colors.text,
-    lineHeight: 20,
+    lineHeight: 22,
+    marginBottom: 4,
+  },
+  resultText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 18,
   },
   distanceText: {
     fontSize: 13,

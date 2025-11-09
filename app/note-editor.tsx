@@ -37,7 +37,7 @@ interface ImageData {
 export default function NoteEditorScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { notes, addNote, updateNote, deleteNote, refreshNotes } = useNotes();
+  const { notes, addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote } = useNotes();
 
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageData[]>([]);
@@ -51,6 +51,7 @@ export default function NoteEditorScreen() {
     latitude: number;
     longitude: number;
     displayName: string;
+    formattedName: string;
   } | null>(null);
   const textInputRef = useRef<TextInput>(null);
 
@@ -109,9 +110,12 @@ export default function NoteEditorScreen() {
 
       console.log('Location updated from search:', { latitude, longitude, displayName });
       
+      // Extract formatted location name
+      const formattedName = extractLocationFromSelection(displayName);
+      
       setLocation({ latitude, longitude });
-      setLocationName(displayName);
-      setSelectedLocationData({ latitude, longitude, displayName });
+      setLocationName(formattedName);
+      setSelectedLocationData({ latitude, longitude, displayName, formattedName });
       setIsLocationModalVisible(true);
 
       router.setParams({
@@ -142,6 +146,28 @@ export default function NoteEditorScreen() {
     } catch (error) {
       console.error('Error getting location:', error);
     }
+  };
+
+  const extractLocationFromSelection = (displayName: string): string => {
+    const parts = displayName.split(',').map(p => p.trim());
+    
+    if (parts.length < 2) {
+      return displayName;
+    }
+
+    const firstPart = parts[0];
+    const secondPart = parts[1];
+    
+    // If first part is a street number, use second and third parts
+    if (firstPart && /^\d/.test(firstPart)) {
+      if (parts.length >= 3) {
+        return `${secondPart}, ${parts[2]}`;
+      }
+      return secondPart;
+    }
+    
+    // Otherwise use first and second parts
+    return `${firstPart}, ${secondPart}`;
   };
 
   const convertImageToSuitableFormat = async (uri: string): Promise<{ uri: string; contentType: string }> => {
@@ -358,9 +384,18 @@ export default function NoteEditorScreen() {
       }
 
       router.back();
-      setTimeout(() => {
-        refreshNotes();
-      }, 500);
+      
+      // Refresh the specific note that was updated
+      if (isEditing && params.id) {
+        setTimeout(() => {
+          refreshSingleNote(params.id as string);
+        }, 300);
+      } else {
+        // For new notes, refresh the entire list
+        setTimeout(() => {
+          refreshNotes();
+        }, 300);
+      }
     } catch (error) {
       console.error('Error saving recall:', error);
       Alert.alert('Error', 'Failed to save recall. Check console logs for details.');
@@ -588,7 +623,12 @@ export default function NoteEditorScreen() {
               {selectedLocationData && (
                 <View style={styles.modalBody}>
                   <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Location Name:</Text>
+                    <Text style={styles.modalLabel}>Formatted Location:</Text>
+                    <Text style={styles.modalValue}>{selectedLocationData.formattedName}</Text>
+                  </View>
+
+                  <View style={styles.modalRow}>
+                    <Text style={styles.modalLabel}>Full Address:</Text>
                     <Text style={styles.modalValue}>{selectedLocationData.displayName}</Text>
                   </View>
 
