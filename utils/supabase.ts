@@ -16,7 +16,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-const STORAGE_BUCKET = 'recall-images';
+const STORAGE_BUCKET = 'media';
 
 /**
  * Upload image to Supabase Storage
@@ -102,7 +102,7 @@ export async function uploadImageToStorage(uri: string, recallId: string): Promi
       });
 
     if (error) {
-      console.error('=== Storage upload error ===');
+      console.error('=== Storage upload error v2 ===');
       console.error('Error message:', error.message);
       console.error('Error details:', JSON.stringify(error, null, 2));
       return null;

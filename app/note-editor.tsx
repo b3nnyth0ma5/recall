@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
@@ -71,7 +72,7 @@ export default function NoteEditorScreen() {
       if (!ready) {
         Alert.alert(
           'Storage Not Ready',
-          'The image storage bucket is not configured. Please create a bucket named "recall-images" in your Supabase Dashboard under Storage.',
+          'The image storage bucket is not configured. Please create a bucket named "media" in your Supabase Dashboard under Storage.',
           [{ text: 'OK' }]
         );
       }
@@ -149,6 +150,39 @@ export default function NoteEditorScreen() {
     }
   };
 
+  const convertImageToSuitableFormat = async (uri: string): Promise<{ uri: string; contentType: string }> => {
+    try {
+      console.log('Converting image to suitable format:', uri);
+      
+      // Manipulate the image to ensure it's in a suitable format (JPEG)
+      // and compress it to reduce file size
+      const manipulatedImage = await ImageManipulator.manipulateAsync(
+        uri,
+        [
+          // Resize if image is too large (max 2048px on longest side)
+          { resize: { width: 2048 } }
+        ],
+        {
+          compress: 0.8,
+          format: ImageManipulator.SaveFormat.JPEG,
+        }
+      );
+
+      console.log('Image converted successfully:', manipulatedImage.uri);
+      return {
+        uri: manipulatedImage.uri,
+        contentType: 'image/jpeg',
+      };
+    } catch (error) {
+      console.error('Error converting image:', error);
+      // If conversion fails, return original
+      return {
+        uri: uri,
+        contentType: 'image/jpeg',
+      };
+    }
+  };
+
   const pickImage = async () => {
     if (!storageReady) {
       Alert.alert(
@@ -167,7 +201,7 @@ export default function NoteEditorScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsMultipleSelection: true,
         quality: 0.8,
       });
@@ -177,19 +211,13 @@ export default function NoteEditorScreen() {
         const newImages: ImageData[] = [];
 
         for (const asset of result.assets) {
-          let contentType = 'image/jpeg';
-          if (asset.uri.toLowerCase().endsWith('.png')) {
-            contentType = 'image/png';
-          } else if (asset.uri.toLowerCase().endsWith('.gif')) {
-            contentType = 'image/gif';
-          } else if (asset.uri.toLowerCase().endsWith('.webp')) {
-            contentType = 'image/webp';
-          }
+          // Convert image to suitable format (JPEG)
+          const converted = await convertImageToSuitableFormat(asset.uri);
 
           newImages.push({
-            uri: asset.uri,
-            localUri: asset.uri,
-            contentType: contentType,
+            uri: converted.uri,
+            localUri: converted.uri,
+            contentType: converted.contentType,
           });
         }
 
@@ -221,7 +249,7 @@ export default function NoteEditorScreen() {
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         quality: 0.8,
       });
 
@@ -229,12 +257,13 @@ export default function NoteEditorScreen() {
         setLoading(true);
         const asset = result.assets[0];
         
-        const contentType = 'image/jpeg';
+        // Convert image to suitable format (JPEG)
+        const converted = await convertImageToSuitableFormat(asset.uri);
 
         setImages([...images, {
-          uri: asset.uri,
-          localUri: asset.uri,
-          contentType: contentType,
+          uri: converted.uri,
+          localUri: converted.uri,
+          contentType: converted.contentType,
         }]);
         
         setLoading(false);

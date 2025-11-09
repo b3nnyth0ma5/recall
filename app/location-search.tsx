@@ -16,12 +16,14 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { reverseGeocode } from '@/utils/supabase';
+import * as Location from 'expo-location';
 
 interface LocationResult {
   place_id: string;
   display_name: string;
   lat: string;
   lon: string;
+  distance?: number;
 }
 
 export default function LocationSearchScreen() {
@@ -31,6 +33,12 @@ export default function LocationSearchScreen() {
   const [results, setResults] = useState<LocationResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<LocationResult | null>(null);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  useEffect(() => {
+    // Get user's current location for proximity sorting
+    getUserLocation();
+  }, []);
 
   useEffect(() => {
     // Auto-search if query is provided
@@ -39,6 +47,36 @@ export default function LocationSearchScreen() {
       handleSearch(params.query);
     }
   }, [params.query]);
+
+  const getUserLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const currentLocation = await Location.getCurrentPositionAsync({});
+        setUserLocation({
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude,
+        });
+        console.log('User location obtained for proximity sorting');
+      }
+    } catch (error) {
+      console.error('Error getting user location:', error);
+    }
+  };
+
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    // Haversine formula to calculate distance between two points
+    const R = 6371; // Radius of the Earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c; // Distance in km
+    return distance;
+  };
 
   const handleSearch = async (query?: string) => {
     const searchText = query || searchQuery;
@@ -49,10 +87,11 @@ export default function LocationSearchScreen() {
 
     try {
       setLoading(true);
-      console.log('Searching for location:', searchText);
+      console.log('Searching for location in Australia:', searchText);
 
+      // Restrict search to Australia by adding countrycodes parameter
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchText)}&limit=5`,
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchText)}&countrycodes=au&limit=10`,
         {
           headers: {
             'User-Agent': 'RecallsApp/1.0',
@@ -61,10 +100,35 @@ export default function LocationSearchScreen() {
       );
 
       const data = await response.json();
-      console.log('Search results:', data.length);
+      console.log('Search results (Australia only):', data.length);
 
       if (data && data.length > 0) {
-        setResults(data);
+        // Calculate distance from user's location if available
+        let resultsWithDistance = data.map((result: LocationResult) => {
+          if (userLocation) {
+            const distance = calculateDistance(
+              userLocation.latitude,
+              userLocation.longitude,
+              parseFloat(result.lat),
+              parseFloat(result.lon)
+            );
+            return { ...result, distance };
+          }
+          return result;
+        });
+
+        // Sort by proximity if user location is available
+        if (userLocation) {
+          resultsWithDistance.sort((a, b) => {
+            const distA = a.distance || Infinity;
+            const distB = b.distance || Infinity;
+            return distA - distB;
+          });
+          console.log('Results sorted by proximity to user location');
+        }
+
+        // Limit to top 5 results
+        setResults(resultsWithDistance.slice(0, 5));
       } else {
         setResults([]);
       }
@@ -130,10 +194,6 @@ export default function LocationSearchScreen() {
 
       <View style={styles.content}>
         <Animated.View entering={FadeIn.duration(600)} style={styles.searchSection}>
-          <Text style={styles.description}>
-            Search for an address or business to update the location
-          </Text>
-
           <View style={styles.searchContainer}>
             <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
             <TextInput
@@ -178,7 +238,7 @@ export default function LocationSearchScreen() {
             </View>
           ) : results.length > 0 ? (
             <Animated.View entering={FadeInDown.duration(600)}>
-              <Text style={styles.resultsTitle}>Top {results.length} Results</Text>
+              <Text style={styles.resultsTitle}>Top {results.length} Results (Australia)</Text>
               {results.map((result, index) => (
                 <Pressable
                   key={result.place_id}
@@ -195,6 +255,13 @@ export default function LocationSearchScreen() {
                     <Text style={styles.resultText} numberOfLines={2}>
                       {result.display_name}
                     </Text>
+                    {result.distance !== undefined && (
+                      <Text style={styles.distanceText}>
+                        {result.distance < 1 
+                          ? `${Math.round(result.distance * 1000)}m away`
+                          : `${result.distance.toFixed(1)}km away`}
+                      </Text>
+                    )}
                   </View>
                   <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
                 </Pressable>
@@ -210,11 +277,6 @@ export default function LocationSearchScreen() {
             </Animated.View>
           ) : (
             <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-              <IconSymbol name="map" size={60} color={colors.textTertiary} />
-              <Text style={styles.emptyTitle}>Search for a Location</Text>
-              <Text style={styles.emptyText}>
-                Enter an address or business name to find locations
-              </Text>
             </Animated.View>
           )}
         </ScrollView>
@@ -331,6 +393,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
     lineHeight: 20,
+  },
+  distanceText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 4,
   },
   emptyContainer: {
     alignItems: 'center',

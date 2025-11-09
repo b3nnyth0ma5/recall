@@ -69,22 +69,22 @@ export default function StorageTestScreen() {
 
       console.log('Available buckets:', buckets?.map(b => b.name).join(', '));
       
-      const recallImagesBucket = buckets?.find(b => b.name === 'recall-images');
+      const recallImagesBucket = buckets?.find(b => b.name === 'media');
       
       if (recallImagesBucket) {
         setBucketInfo(recallImagesBucket);
         console.log('Bucket info:', recallImagesBucket);
         console.log('Bucket is public:', recallImagesBucket.public);
       } else {
-        console.error('recall-images bucket not found!');
-        Alert.alert('Error', 'The recall-images bucket does not exist. Please create it in Supabase Dashboard.');
+        console.error('media bucket not found!');
+        Alert.alert('Error', 'The media bucket does not exist. Please create it in Supabase Dashboard.');
         return;
       }
 
       // Try to list files in the bucket to test access
       try {
         const { data: files, error: listError } = await supabase.storage
-          .from('recall-images')
+          .from('media')
           .list('', { limit: 1 });
 
         if (listError) {
@@ -99,7 +99,7 @@ export default function StorageTestScreen() {
 
       // Note: Direct policy queries require admin access
       console.log('Note: Policy details require admin access to view directly');
-      console.log('You can check policies in Supabase Dashboard: Storage → recall-images → Policies');
+      console.log('You can check policies in Supabase Dashboard: Storage → media → Policies');
 
     } catch (error) {
       console.error('Error checking bucket policies:', error);
@@ -404,7 +404,7 @@ export default function StorageTestScreen() {
           <Text style={styles.sectionTitle}>Expected Policies</Text>
           <View style={styles.card}>
             <Text style={styles.instructionText}>
-              For the recall-images bucket to work properly, you need these policies:
+              For the media bucket to work properly, you need these policies:
             </Text>
             <Text style={styles.codeText}>
               1. INSERT policy: Allow authenticated users to upload
@@ -425,7 +425,7 @@ export default function StorageTestScreen() {
               📋 How to set up policies in Supabase Dashboard:
             </Text>
             <Text style={styles.codeText}>
-              1. Go to Storage → recall-images → Policies
+              1. Go to Storage → media → Policies
             </Text>
             <Text style={styles.codeText}>
               2. Click "New Policy"
@@ -443,7 +443,7 @@ export default function StorageTestScreen() {
               🔍 Example SQL for policies:
             </Text>
             <Text style={[styles.codeText, { fontSize: 10 }]}>
-              {`-- Allow authenticated users to upload\nCREATE POLICY "Users can upload images"\nON storage.objects FOR INSERT\nTO authenticated\nWITH CHECK (bucket_id = 'recall-images');`}
+              {`-- Allow authenticated users to upload\nCREATE POLICY "Users can upload images"\nON storage.objects FOR INSERT\nTO authenticated\nWITH CHECK (bucket_id = 'media');`}
             </Text>
           </View>
         </Animated.View>
