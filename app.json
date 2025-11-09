@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Recall",
@@ -43,6 +44,5 @@
     "extra": {
       "router": {}
     }
-  },
-  "scheme": "Recall"
+  }
 }

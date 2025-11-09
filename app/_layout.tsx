@@ -12,7 +12,7 @@ import 'react-native-reanimated';
 
 // Import Geist font CSS for web
 if (Platform.OS === 'web') {
-  require('./app.css');
+  require('../app.css');
 }
 
 SplashScreen.preventAutoHideAsync();
