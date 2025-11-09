@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, ScrollView, Linking } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { Note } from '@/types/Note';
@@ -30,10 +30,43 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
     }
   };
 
+  const hasUrl = (text: string): boolean => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return urlRegex.test(text);
+  };
+
+  const renderTextWithLinks = (text: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    
+    return parts.map((part, index) => {
+      if (part.match(urlRegex)) {
+        return (
+          <Text
+            key={index}
+            style={styles.linkText}
+            onPress={() => {
+              console.log('Opening URL:', part);
+              Linking.openURL(part).catch(err => {
+                console.error('Failed to open URL:', err);
+              });
+            }}
+          >
+            {part}
+          </Text>
+        );
+      }
+      return <Text key={index}>{part}</Text>;
+    });
+  };
+
   const getPreviewText = () => {
     if (!note.text) return '';
     const lines = note.text.split('\n');
-    if (lines.length <= 3 && note.text.length <= 150) {
+    const maxLines = hasUrl(note.text) ? 4 : 3;
+    const maxChars = hasUrl(note.text) ? 200 : 150;
+    
+    if (lines.length <= maxLines && note.text.length <= maxChars) {
       return note.text;
     }
     
@@ -41,15 +74,16 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
       return note.text;
     }
     
-    // Show first 3 lines or 150 characters
-    const preview = lines.slice(0, 3).join('\n');
-    return preview.length > 150 ? preview.substring(0, 150) + '...' : preview;
+    const preview = lines.slice(0, maxLines).join('\n');
+    return preview.length > maxChars ? preview.substring(0, maxChars) + '...' : preview;
   };
 
   const shouldShowToggle = () => {
     if (!note.text) return false;
     const lines = note.text.split('\n');
-    return lines.length > 3 || note.text.length > 150;
+    const maxLines = hasUrl(note.text) ? 4 : 3;
+    const maxChars = hasUrl(note.text) ? 200 : 150;
+    return lines.length > maxLines || note.text.length > maxChars;
   };
 
   const handleScroll = (event: any) => {
@@ -68,7 +102,6 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
     console.log(`Image ${index} loaded successfully for note ${note.id}`);
   };
 
-  // Get all images and filter out ones with errors
   const allImages = note.images || [];
   const validImages = allImages.filter((_, index) => !imageErrors[index]);
   const hasValidImages = validImages.length > 0;
@@ -76,7 +109,6 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
   return (
     <Animated.View entering={FadeInDown.duration(400)} style={styles.container}>
       <Pressable onPress={onPress} style={styles.pressable}>
-        {/* Image Carousel */}
         {hasValidImages && (
           <View style={styles.imageContainer}>
             <ScrollView
@@ -87,7 +119,6 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
               scrollEventThrottle={16}
             >
               {allImages.map((imageUrl, index) => {
-                // Skip images that have errors
                 if (imageErrors[index]) {
                   return null;
                 }
@@ -106,7 +137,6 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
               })}
             </ScrollView>
             
-            {/* Image indicators */}
             {validImages.length > 1 && (
               <View style={styles.indicatorContainer}>
                 {validImages.map((_, index) => (
@@ -123,10 +153,11 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
           </View>
         )}
 
-        {/* Note Text */}
         {note.text && (
           <View style={styles.textContainer}>
-            <Text style={styles.noteText}>{getPreviewText()}</Text>
+            <Text style={styles.noteText}>
+              {renderTextWithLinks(getPreviewText())}
+            </Text>
             {shouldShowToggle() && (
               <View style={styles.showMoreContainer}>
                 <Pressable onPress={() => setShowFullText(!showFullText)}>
@@ -139,7 +170,6 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
           </View>
         )}
 
-        {/* Location and Date */}
         <View style={styles.metadataContainer}>
           <View style={styles.locationContainer}>
             {note.location && (
@@ -214,6 +244,10 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.text,
     marginBottom: 8,
+  },
+  linkText: {
+    color: colors.primary,
+    textDecorationLine: 'underline',
   },
   showMoreContainer: {
     alignItems: 'flex-end',

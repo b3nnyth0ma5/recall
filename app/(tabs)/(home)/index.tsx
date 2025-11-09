@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -9,11 +9,10 @@ import { IconSymbol } from '@/components/IconSymbol';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes } = useNotes();
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore } = useNotes();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
-  // Simulate pull-to-refresh when returning to the screen
   useFocusEffect(
     useCallback(() => {
       console.log('Home screen focused, refreshing data...');
@@ -41,6 +40,17 @@ export default function HomeScreen() {
 
   const handleProfile = () => {
     router.push('/(tabs)/profile');
+  };
+
+  const handleScroll = (event: any) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const paddingToBottom = 20;
+    const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+
+    if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
+      console.log('Loading more notes...');
+      loadMoreNotes();
+    }
   };
 
   const renderEmptyState = () => (
@@ -79,6 +89,8 @@ export default function HomeScreen() {
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
+        onScroll={handleScroll}
+        scrollEventThrottle={400}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -103,11 +115,21 @@ export default function HomeScreen() {
                 onPress={() => handleNotePress(note.id)}
               />
             ))}
+            {isLoadingMore && (
+              <View style={styles.loadingMoreContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.loadingMoreText}>Loading more...</Text>
+              </View>
+            )}
+            {!hasMore && notes.length > 0 && (
+              <View style={styles.endContainer}>
+                <Text style={styles.endText}>You&apos;ve reached the end</Text>
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
 
-      {/* Bottom action buttons */}
       <View style={styles.bottomActions}>
         <Pressable
           onPress={handleSearch}
@@ -166,6 +188,26 @@ const styles = StyleSheet.create({
   },
   notesContainer: {
     width: '100%',
+  },
+  loadingMoreContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 20,
+    gap: 12,
+  },
+  loadingMoreText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  endContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  endText: {
+    fontSize: 14,
+    color: colors.textTertiary,
+    fontStyle: 'italic',
   },
   headerButton: {
     padding: 8,

@@ -166,3 +166,35 @@ export async function reverseGeocode(latitude: number, longitude: number): Promi
     return 'Unknown Location';
   }
 }
+
+export async function saveSearchHistory(userId: string, searchText: string): Promise<void> {
+  try {
+    if (!searchText.trim()) {
+      return;
+    }
+
+    console.log('Saving search history:', { userId, searchText: searchText.trim() });
+
+    const { error } = await supabase
+      .from('search_history')
+      .upsert(
+        { 
+          user_id: userId, 
+          search_text: searchText.trim(),
+          updated_at: new Date().toISOString()
+        },
+        { 
+          onConflict: 'user_id,search_text',
+          ignoreDuplicates: false
+        }
+      );
+
+    if (error) {
+      console.error('Error upserting search history:', error);
+    } else {
+      console.log('Search history saved successfully');
+    }
+  } catch (e) {
+    console.error('Error saving search history:', e);
+  }
+}

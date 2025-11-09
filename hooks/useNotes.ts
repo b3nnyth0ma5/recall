@@ -1,16 +1,21 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Note } from '@/types/Note';
-import { supabase, getImageDataUrl, deleteImageRecord } from '@/utils/supabase';
+import { supabase, getImageDataUrl, deleteImageRecord, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const { user } = useAuth();
 
-  const loadNotes = useCallback(async () => {
+  const ITEMS_PER_PAGE = 10;
+
+  const loadNotes = useCallback(async (pageNum: number = 1, append: boolean = false) => {
     if (!user) {
       setNotes([]);
       setLoading(false);
@@ -18,18 +23,39 @@ export function useNotes() {
     }
 
     try {
-      setLoading(true);
-      console.log('Loading notes from Supabase for user:', user.id);
+      if (!append) {
+        setLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
       
+      console.log(`Loading notes page ${pageNum} from Supabase for user:`, user.id);
+      
+      const from = (pageNum - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
       const { data: recallsData, error: recallsError } = await supabase
         .from('recalls')
         .select('*')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
       if (recallsError) {
         console.error('Error loading recalls:', recallsError);
         return;
+      }
+
+      if (!recallsData || recallsData.length === 0) {
+        setHasMore(false);
+        if (!append) {
+          setNotes([]);
+        }
+        return;
+      }
+
+      if (recallsData.length < ITEMS_PER_PAGE) {
+        setHasMore(false);
       }
 
       const notesWithImages = await Promise.all(
@@ -83,17 +109,39 @@ export function useNotes() {
         })
       );
 
-      setNotes(notesWithImages);
-      console.log('Loaded notes:', notesWithImages.length);
+      if (append) {
+        setNotes(prevNotes => [...prevNotes, ...notesWithImages]);
+      } else {
+        setNotes(notesWithImages);
+      }
+      
+      console.log(`Loaded ${notesWithImages.length} notes for page ${pageNum}`);
     } catch (error) {
       console.error('Error loading notes:', error);
     } finally {
       setLoading(false);
+      setIsLoadingMore(false);
     }
   }, [user]);
 
   useEffect(() => {
-    loadNotes();
+    loadNotes(1, false);
+    setPage(1);
+    setHasMore(true);
+  }, [user]);
+
+  const loadMoreNotes = useCallback(() => {
+    if (!isLoadingMore && hasMore && !loading) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      loadNotes(nextPage, true);
+    }
+  }, [page, hasMore, isLoadingMore, loading, loadNotes]);
+
+  const refreshNotes = useCallback(async () => {
+    setPage(1);
+    setHasMore(true);
+    await loadNotes(1, false);
   }, [loadNotes]);
 
   const addNote = useCallback(async (note: Omit<Note, 'id' | 'created_at' | 'updated_at'>) => {
@@ -123,13 +171,13 @@ export function useNotes() {
       }
 
       console.log('Recall added successfully:', recallData.id);
-      await loadNotes();
+      await refreshNotes();
       return recallData.id;
     } catch (error) {
       console.error('Error adding recall:', error);
       throw error;
     }
-  }, [loadNotes, user]);
+  }, [refreshNotes, user]);
 
   const updateNote = useCallback(async (noteId: string, updates: Partial<Note>) => {
     if (!user) {
@@ -158,12 +206,12 @@ export function useNotes() {
       }
 
       console.log('Recall updated successfully');
-      await loadNotes();
+      await refreshNotes();
     } catch (error) {
       console.error('Error updating recall:', error);
       throw error;
     }
-  }, [loadNotes, user]);
+  }, [refreshNotes, user]);
 
   const deleteNote = useCallback(async (noteId: string) => {
     if (!user) {
@@ -197,43 +245,12 @@ export function useNotes() {
       }
 
       console.log('Recall deleted successfully');
-      await loadNotes();
+      await refreshNotes();
     } catch (error) {
       console.error('Error deleting recall:', error);
       throw error;
     }
-  }, [loadNotes, user]);
-
-  const saveSearchHistory = useCallback(async (searchText: string) => {
-    if (!user || !searchText.trim()) {
-      return;
-    }
-
-    try {
-      const { data: existing } = await supabase
-        .from('search_history')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('search_text', searchText.trim())
-        .single();
-
-      if (existing) {
-        await supabase
-          .from('search_history')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', existing.id);
-      } else {
-        await supabase
-          .from('search_history')
-          .insert([{
-            user_id: user.id,
-            search_text: searchText.trim(),
-          }]);
-      }
-    } catch (error) {
-      console.error('Error saving search history:', error);
-    }
-  }, [user]);
+  }, [refreshNotes, user]);
 
   const searchNotes = useCallback(async (query: string) => {
     if (!user) {
@@ -243,7 +260,7 @@ export function useNotes() {
 
     setSearchQuery(query);
     if (!query.trim()) {
-      await loadNotes();
+      await refreshNotes();
       return;
     }
     
@@ -251,16 +268,14 @@ export function useNotes() {
       console.log('Searching recalls with OpenAI NER:', query);
       setLoading(true);
       
-      await saveSearchHistory(query);
+      await saveSearchHistory(user.id, query);
       
-      // Get the session token for authentication
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         console.error('No active session');
         return;
       }
 
-      // Call the OpenAI-powered search edge function
       const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls', {
         body: {
           query: query.trim(),
@@ -270,7 +285,6 @@ export function useNotes() {
 
       if (searchError) {
         console.error('Error calling search-recalls function:', searchError);
-        // Fallback to basic search
         const { data: recallsData, error: recallsError } = await supabase
           .from('recalls')
           .select('*')
@@ -291,7 +305,6 @@ export function useNotes() {
 
       console.log('OpenAI search results:', searchResults);
 
-      // Load images for the scored results
       const scoredRecalls = searchResults.results || [];
       const notesWithImages = await loadImagesForRecalls(scoredRecalls);
       
@@ -299,12 +312,11 @@ export function useNotes() {
       console.log('AI-powered search results:', notesWithImages.length);
     } catch (error) {
       console.error('Error searching recalls:', error);
-      // Fallback to loading all notes
-      await loadNotes();
+      await refreshNotes();
     } finally {
       setLoading(false);
     }
-  }, [loadNotes, user, saveSearchHistory]);
+  }, [refreshNotes, user]);
 
   const loadImagesForRecalls = async (recalls: any[]) => {
     return await Promise.all(
@@ -376,11 +388,14 @@ export function useNotes() {
     notes,
     loading,
     searchQuery,
+    isLoadingMore,
+    hasMore,
     addNote,
     updateNote,
     deleteNote,
     searchNotes,
-    refreshNotes: loadNotes,
+    refreshNotes,
+    loadMoreNotes,
     getSearchHistory,
   };
 }
