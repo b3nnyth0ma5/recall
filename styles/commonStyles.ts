@@ -30,40 +30,42 @@ export const fontFamily = {
 };
 
 export const colors = {
-  // Warm peachy background (from UI design)
-  background: '#E8B89A',
-  backgroundSecondary: '#D4A88A',
+  // Dark theme backgrounds (from UI design image)
+  background: '#1A1A1A', // Very dark background
+  backgroundSecondary: '#242424', // Slightly lighter dark
   
-  // Dark card backgrounds (from UI design)
-  card: '#1F1F1F',
-  cardHover: '#2A2A2A',
-  cardDark: '#1A1A1A',
+  // Card backgrounds
+  card: '#2A2A2A', // Dark card background
+  cardHover: '#333333', // Hover state
+  cardDark: '#1F1F1F', // Darker card variant
   
   // Text colors
   text: '#FFFFFF', // White text on dark backgrounds
-  textSecondary: '#A0A0A0', // Gray text for secondary info
-  textTertiary: '#808080', // Lighter gray for tertiary info
+  textSecondary: '#B0B0B0', // Light gray text for secondary info
+  textTertiary: '#808080', // Medium gray for tertiary info
   textOnLight: '#1A1A1A', // Dark text on light backgrounds
   
-  // Primary/Accent colors (orange/coral from UI)
-  primary: '#FF6B35',
-  primaryDark: '#E55A2B',
-  primaryLight: '#FF8555',
-  accent: '#FF6B35',
-  searchAccent: '#FF6B35',
+  // Primary/Accent colors (coral/pink from UI design)
+  primary: '#FF6B7A', // Coral/pink accent color
+  primaryDark: '#E55A68', // Darker coral
+  primaryLight: '#FF8A96', // Lighter coral
+  accent: '#FF6B7A', // Same as primary
+  searchAccent: '#FF6B7A',
   
   // UI element colors
-  border: '#2A2A2A',
-  borderLight: '#3A3A3A',
-  error: '#FF4444',
-  success: '#4CAF50',
-  overlay: 'rgba(0, 0, 0, 0.7)',
-  shadow: 'rgba(0, 0, 0, 0.3)',
-  highlight: 'rgba(255, 107, 53, 0.15)',
+  border: '#3A3A3A', // Subtle border
+  borderLight: '#4A4A4A', // Lighter border
+  error: '#FF4444', // Error red
+  success: '#4CAF50', // Success green
+  overlay: 'rgba(0, 0, 0, 0.8)', // Dark overlay
+  shadow: 'rgba(0, 0, 0, 0.5)', // Shadow
+  highlight: 'rgba(255, 107, 122, 0.15)', // Highlight with primary color
   
   // Additional colors for various states
-  inactive: '#666666',
-  divider: '#333333',
+  inactive: '#666666', // Inactive elements
+  divider: '#333333', // Dividers
+  appleRed: '#FF3B30', // Apple red for delete actions
+  borderColor: '#3A3A3A', // Border color for consistency
 };
 
 export const buttonStyles = StyleSheet.create({
@@ -71,11 +73,17 @@ export const buttonStyles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignSelf: 'center',
     width: '100%',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
   },
   backButton: {
     backgroundColor: colors.card,
     alignSelf: 'center',
     width: '100%',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
   },
 });
 
@@ -99,16 +107,16 @@ export const commonStyles = StyleSheet.create({
     width: '100%',
   },
   title: {
-    fontSize: 24,
-    fontWeight: '800',
+    fontSize: 28,
+    fontWeight: 'bold',
     textAlign: 'center',
     color: colors.text,
-    marginBottom: 10,
+    marginBottom: 12,
     fontFamily: fontFamily.bold,
   },
   text: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '400',
     color: colors.text,
     marginBottom: 8,
     lineHeight: 24,
@@ -127,14 +135,20 @@ export const commonStyles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
     borderRadius: 16,
-    padding: 16,
+    padding: 20,
     marginVertical: 8,
     width: '100%',
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.3)',
-    elevation: 4,
+    // Modern shadow for iOS
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    // Elevation for Android
+    elevation: 6,
   },
   icon: {
     width: 60,

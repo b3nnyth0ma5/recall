@@ -1,3 +1,4 @@
+
 import React from "react";
 import * as Haptics from "expo-haptics";
 import { Pressable, StyleSheet, useColorScheme, View, Text } from "react-native";
@@ -9,7 +10,7 @@ import Animated, {
   useAnimatedStyle,
 } from "react-native-reanimated";
 import Reanimated from "react-native-reanimated";
-import { appleRed, borderColor } from "@/constants/Colors";
+import { colors } from "@/styles/commonStyles";
 import { IconCircle } from "./IconCircle";
 import { IconSymbol } from "./IconSymbol";
 
@@ -37,7 +38,7 @@ export default function ListItem({ listId }: { listId: string }) {
         }}
       >
         <Reanimated.View style={[styleAnimation, styles.rightAction]}>
-          <IconSymbol name="trash.fill" size={24} color="white" />
+          <IconSymbol name="trash.fill" size={24} color={colors.text} />
         </Reanimated.View>
       </Pressable>
     );
@@ -55,7 +56,7 @@ export default function ListItem({ listId }: { listId: string }) {
         enableContextMenu
       >
         <View style={styles.listItemContainer}>
-          <Text style={[styles.listItemText, { color: isDark ? "#FFFFFF" : "#000000" }]}>{listId}</Text>
+          <Text style={[styles.listItemText, { color: isDark ? colors.text : colors.textOnLight }]}>{listId}</Text>
         </View>
 
       </ReanimatedSwipeable>
@@ -84,7 +85,7 @@ export const NicknameCircle = ({
         isEllipsis && styles.ellipsisCircle,
         {
           backgroundColor: color,
-          borderColor: isDark ? "#000000" : "#ffffff",
+          borderColor: isDark ? colors.background : colors.text,
           marginLeft: index > 0 ? -6 : 0,
         },
       ]}
@@ -98,7 +99,7 @@ const styles = StyleSheet.create({
   listItemContainer: {
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: borderColor,
+    borderBottomColor: colors.borderColor,
     backgroundColor: "transparent",
   },
   listItemText: {
@@ -107,7 +108,7 @@ const styles = StyleSheet.create({
   rightAction: {
     width: 200,
     height: 65,
-    backgroundColor: appleRed,
+    backgroundColor: colors.appleRed,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -117,7 +118,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: borderColor,
+    borderBottomColor: colors.borderColor,
     gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -133,7 +134,7 @@ const styles = StyleSheet.create({
   },
   productCount: {
     fontSize: 12,
-    color: "gray",
+    color: colors.textSecondary,
   },
   rightContent: {
     flexDirection: "row",
@@ -146,9 +147,8 @@ const styles = StyleSheet.create({
   },
   nicknameCircle: {
     fontSize: 12,
-    color: "white",
+    color: colors.text,
     borderWidth: 1,
-    borderColor: "white",
     borderRadius: 16,
     padding: 1,
     width: 24,

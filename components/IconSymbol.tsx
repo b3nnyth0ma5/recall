@@ -1,3 +1,4 @@
+
 // This file is a fallback for using MaterialIcons on Android and web.
 
 import React from "react";
@@ -17,7 +18,7 @@ const MAPPING = {
 
   // Navigation & Home
   "house.fill": "home",
-  "house": "home-outlined",
+  "house": "home",
   "arrow.left": "arrow-back",
   "arrow.right": "arrow-forward",
   "arrow.up": "arrow-upward",
@@ -31,15 +32,15 @@ const MAPPING = {
 
   // Communication & Social
   "paperplane.fill": "send",
-  "paperplane": "send-outlined",
-  "envelope.fill": "mail",
-  "envelope": "mail-outline",
+  "paperplane": "send",
+  "envelope.fill": "email",
+  "envelope": "email",
   "phone.fill": "phone",
-  "phone": "phone-outlined",
+  "phone": "phone",
   "message.fill": "chat",
-  "message": "chat-bubble-outline",
+  "message": "chat-bubble",
   "bell.fill": "notifications",
-  "bell": "notifications-none",
+  "bell": "notifications",
   "heart.fill": "favorite",
   "heart": "favorite-border",
 
@@ -49,12 +50,12 @@ const MAPPING = {
   "xmark": "close",
   "checkmark": "check",
   "checkmark.circle.fill": "check-circle",
-  "checkmark.circle": "check-circle-outline",
+  "checkmark.circle": "check-circle",
   "checkmark.square.fill": "check-box",
   "checkmark.square": "check-box-outline-blank",
   "multiply": "clear",
   "trash.fill": "delete",
-  "trash": "delete-outline",
+  "trash": "delete",
 
   // Editing & Creation
   "pencil": "edit",
@@ -63,17 +64,17 @@ const MAPPING = {
   "doc.text.fill": "description",
   "doc.text": "description",
   "folder.fill": "folder",
-  "folder": "folder-open",
+  "folder": "folder",
   "doc.fill": "insert-drive-file",
   "doc": "insert-drive-file",
 
   // Media & Content
-  "photo.fill": "image",
-  "photo": "image-outlined",
+  "photo.fill": "photo",
+  "photo": "photo",
   "camera.fill": "camera-alt",
   "camera": "camera-alt",
   "video.fill": "videocam",
-  "video": "videocam-off",
+  "video": "videocam",
   "music.note": "music-note",
   "speaker.wave.2.fill": "volume-up",
   "speaker.slash.fill": "volume-off",
@@ -86,14 +87,14 @@ const MAPPING = {
   "gearshape.fill": "settings",
   "slider.horizontal.3": "tune",
   "info.circle.fill": "info",
-  "info.circle": "info-outlined",
+  "info.circle": "info",
   "exclamationmark.triangle.fill": "warning",
-  "exclamationmark.triangle": "warning-amber",
+  "exclamationmark.triangle": "warning",
   "questionmark.circle.fill": "help",
-  "questionmark.circle": "help-outline",
+  "questionmark.circle": "help",
 
   // Shapes & Symbols
-  "square": "square",
+  "square": "crop-square",
   "square.grid.3x3": "apps",
   "circle": "circle",
   "triangle.fill": "change-history",
@@ -104,7 +105,7 @@ const MAPPING = {
 
   // Technology & Code
   "chevron.left.forwardslash.chevron.right": "code",
-  "qrcode.viewfinder": "qr-code",
+  "qrcode.viewfinder": "qr-code-scanner",
   "wifi": "wifi",
   "antenna.radiowaves.left.and.right": "signal-cellular-alt",
   "battery.100": "battery-full",
@@ -114,7 +115,7 @@ const MAPPING = {
 
   // Shopping & Commerce
   "cart.fill": "shopping-cart",
-  "cart": "shopping-cart-outlined",
+  "cart": "shopping-cart",
   "creditcard.fill": "credit-card",
   "creditcard": "credit-card",
   "dollarsign.circle.fill": "monetization-on",
@@ -129,8 +130,8 @@ const MAPPING = {
   "compass.drawing": "explore",
 
   // Time & Calendar
-  "clock.fill": "access-time",
-  "clock": "access-time",
+  "clock.fill": "schedule",
+  "clock": "schedule",
   "calendar": "event",
   "timer": "timer",
 
