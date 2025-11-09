@@ -58,7 +58,7 @@ export default function LocationSearchScreen() {
 
     try {
       setLoading(true);
-      console.log('Searching for location in Australia:', searchText);
+      console.log('Searching for locations in Australia:', searchText);
 
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchText)}&countrycodes=au&limit=10`,
@@ -168,7 +168,12 @@ export default function LocationSearchScreen() {
       const longitude = parseFloat(location.lon);
       const locationName = extractLocationFromSelection(location.display_name);
       
-      console.log('Extracted location:', locationName);
+      console.log('Selected location data:', {
+        latitude,
+        longitude,
+        locationName,
+        fullDisplayName: location.display_name
+      });
 
       router.back();
       

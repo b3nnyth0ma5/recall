@@ -144,6 +144,69 @@ export function useNotes() {
     await loadNotes(1, false);
   }, [loadNotes]);
 
+  const refreshSingleNote = useCallback(async (noteId: string) => {
+    if (!user) {
+      console.error('No user logged in');
+      return;
+    }
+
+    try {
+      console.log('Refreshing single note:', noteId);
+      
+      const { data: recallData, error: recallError } = await supabase
+        .from('recalls')
+        .select('*')
+        .eq('id', noteId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (recallError || !recallData) {
+        console.error('Error loading recall:', recallError);
+        return;
+      }
+
+      // Load images for this recall
+      const { data: imagesData } = await supabase
+        .from('recall_images')
+        .select('id')
+        .eq('recall_id', recallData.id)
+        .order('created_at', { ascending: true });
+
+      const imageResults = await Promise.all(
+        (imagesData || []).map(async (img) => {
+          try {
+            const dataUrl = await getImageDataUrl(img.id);
+            if (!dataUrl) {
+              return { url: '', id: img.id };
+            }
+            return { url: dataUrl, id: img.id };
+          } catch (error) {
+            console.error(`Exception processing image ${img.id}:`, error);
+            return { url: '', id: img.id };
+          }
+        })
+      );
+
+      const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
+      const imageIds = imageResults.map(result => result.id);
+      
+      const updatedNote = { 
+        ...recallData, 
+        images: validImageUrls, 
+        imageIds: imageIds
+      };
+
+      // Update the note in the list
+      setNotes(prevNotes => 
+        prevNotes.map(note => note.id === noteId ? updatedNote : note)
+      );
+      
+      console.log('Single note refreshed successfully');
+    } catch (error) {
+      console.error('Error refreshing single note:', error);
+    }
+  }, [user]);
+
   const addNote = useCallback(async (note: Omit<Note, 'id' | 'created_at' | 'updated_at'>) => {
     if (!user) {
       console.error('No user logged in');
@@ -206,12 +269,13 @@ export function useNotes() {
       }
 
       console.log('Recall updated successfully');
-      await refreshNotes();
+      // Refresh only the single note that was updated
+      await refreshSingleNote(noteId);
     } catch (error) {
       console.error('Error updating recall:', error);
       throw error;
     }
-  }, [refreshNotes, user]);
+  }, [refreshSingleNote, user]);
 
   const deleteNote = useCallback(async (noteId: string) => {
     if (!user) {
@@ -396,6 +460,7 @@ export function useNotes() {
     searchNotes,
     refreshNotes,
     loadMoreNotes,
+    refreshSingleNote,
     getSearchHistory,
   };
 }

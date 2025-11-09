@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  Linking,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -99,6 +100,7 @@ export default function NoteEditorScreen() {
       const longitude = parseFloat(params.selectedLongitude as string);
       const locationName = params.selectedLocationName as string;
 
+      console.log('Location updated from search:', { latitude, longitude, locationName });
       setLocation({ latitude, longitude });
       setLocationName(locationName);
 
@@ -248,6 +250,36 @@ export default function NoteEditorScreen() {
     setImages(newImages);
   };
 
+  const hasUrl = (text: string): boolean => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return urlRegex.test(text);
+  };
+
+  const renderTextWithLinks = (text: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    
+    return parts.map((part, index) => {
+      if (part.match(urlRegex)) {
+        return (
+          <Text
+            key={index}
+            style={styles.linkText}
+            onPress={() => {
+              console.log('Opening URL:', part);
+              Linking.openURL(part).catch(err => {
+                console.error('Failed to open URL:', err);
+              });
+            }}
+          >
+            {part}
+          </Text>
+        );
+      }
+      return <Text key={index} style={styles.normalText}>{part}</Text>;
+    });
+  };
+
   const handleSave = async () => {
     if (!canSave) {
       Alert.alert('Empty Recall', 'Please add some text or images');
@@ -263,6 +295,8 @@ export default function NoteEditorScreen() {
         longitude: location?.longitude,
         location: locationName,
       };
+
+      console.log('Saving note with location data:', noteData);
 
       let recallId: string;
 
@@ -410,16 +444,34 @@ export default function NoteEditorScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Animated.View entering={FadeIn.duration(600)} style={styles.textInputContainer}>
-          <TextInput
-            ref={textInputRef}
-            style={styles.textInput}
-            placeholder="Start writing your recall..."
-            placeholderTextColor={colors.textTertiary}
-            value={text}
-            onChangeText={setText}
-            multiline
-            autoFocus={!isEditing}
-          />
+          {hasUrl(text) ? (
+            <View style={styles.richTextContainer}>
+              <Text style={styles.richText}>
+                {renderTextWithLinks(text)}
+              </Text>
+              <TextInput
+                ref={textInputRef}
+                style={[styles.textInput, styles.hiddenInput]}
+                placeholder="Start writing your recall..."
+                placeholderTextColor={colors.textTertiary}
+                value={text}
+                onChangeText={setText}
+                multiline
+                autoFocus={!isEditing}
+              />
+            </View>
+          ) : (
+            <TextInput
+              ref={textInputRef}
+              style={styles.textInput}
+              placeholder="Start writing your recall..."
+              placeholderTextColor={colors.textTertiary}
+              value={text}
+              onChangeText={setText}
+              multiline
+              autoFocus={!isEditing}
+            />
+          )}
         </Animated.View>
       </ScrollView>
 
@@ -546,6 +598,30 @@ const styles = StyleSheet.create({
     color: colors.text,
     minHeight: 300,
     textAlignVertical: 'top',
+  },
+  richTextContainer: {
+    position: 'relative',
+    minHeight: 300,
+  },
+  richText: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.text,
+    minHeight: 300,
+  },
+  hiddenInput: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    opacity: 0,
+  },
+  normalText: {
+    color: colors.text,
+  },
+  linkText: {
+    color: colors.primary,
+    textDecorationLine: 'underline',
   },
   bottomSection: {
     backgroundColor: colors.background,
