@@ -94,27 +94,55 @@ export async function uploadImageToDatabase(
  */
 export async function getImageDataUrl(imageId: string): Promise<string | null> {
   try {
+    console.log('Fetching image data for ID:', imageId);
+    
     const { data, error } = await supabase
       .from('recall_images')
       .select('image_data, content_type')
       .eq('id', imageId)
       .single();
 
-    if (error || !data) {
-      console.error('Error fetching image data:', error);
+    if (error) {
+      console.error('Error fetching image data for ID:', imageId);
+      console.error('Error details:', error);
+      return null;
+    }
+
+    if (!data) {
+      console.error('No data returned for image ID:', imageId);
       return null;
     }
 
     if (!data.image_data) {
-      console.error('No image data found for ID:', imageId);
+      console.error('No image_data field found for ID:', imageId);
+      console.error('Data object:', data);
+      return null;
+    }
+
+    // Validate base64 data
+    if (typeof data.image_data !== 'string' || data.image_data.length === 0) {
+      console.error('Invalid image_data format for ID:', imageId);
+      console.error('Type:', typeof data.image_data);
+      console.error('Length:', data.image_data?.length);
       return null;
     }
 
     // Return as data URL
     const contentType = data.content_type || 'image/jpeg';
-    return `data:${contentType};base64,${data.image_data}`;
+    const dataUrl = `data:${contentType};base64,${data.image_data}`;
+    
+    console.log('Successfully created data URL for image:', imageId);
+    console.log('Data URL length:', dataUrl.length);
+    console.log('Content type:', contentType);
+    
+    return dataUrl;
   } catch (error) {
-    console.error('Error in getImageDataUrl:', error);
+    console.error('Exception in getImageDataUrl for ID:', imageId);
+    console.error('Error:', error);
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+    }
     return null;
   }
 }

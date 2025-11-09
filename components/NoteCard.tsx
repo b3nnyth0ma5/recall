@@ -60,17 +60,24 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
 
   const handleImageError = (index: number) => {
     console.error(`Error loading image at index ${index} for note ${note.id}`);
+    console.error('Image URL:', note.images?.[index]);
     setImageErrors(prev => ({ ...prev, [index]: true }));
   };
 
-  // Filter out images that have errors
-  const validImages = note.images?.filter((_, index) => !imageErrors[index]) || [];
+  const handleImageLoad = (index: number) => {
+    console.log(`Image ${index} loaded successfully for note ${note.id}`);
+  };
+
+  // Get all images and filter out ones with errors
+  const allImages = note.images || [];
+  const validImages = allImages.filter((_, index) => !imageErrors[index]);
+  const hasValidImages = validImages.length > 0;
 
   return (
     <Animated.View entering={FadeInDown.duration(400)} style={styles.container}>
       <Pressable onPress={onPress} style={styles.pressable}>
         {/* Image Carousel */}
-        {validImages.length > 0 && (
+        {hasValidImages && (
           <View style={styles.imageContainer}>
             <ScrollView
               horizontal
@@ -79,17 +86,24 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
               onScroll={handleScroll}
               scrollEventThrottle={16}
             >
-              {validImages.map((imageUrl, index) => (
-                <View key={index} style={styles.imageWrapper}>
-                  <Image
-                    source={{ uri: imageUrl }}
-                    style={styles.image}
-                    resizeMode="cover"
-                    onError={() => handleImageError(index)}
-                    onLoad={() => console.log(`Image ${index} loaded successfully for note ${note.id}`)}
-                  />
-                </View>
-              ))}
+              {allImages.map((imageUrl, index) => {
+                // Skip images that have errors
+                if (imageErrors[index]) {
+                  return null;
+                }
+
+                return (
+                  <View key={index} style={styles.imageWrapper}>
+                    <Image
+                      source={{ uri: imageUrl }}
+                      style={styles.image}
+                      resizeMode="cover"
+                      onError={() => handleImageError(index)}
+                      onLoad={() => handleImageLoad(index)}
+                    />
+                  </View>
+                );
+              })}
             </ScrollView>
             
             {/* Image indicators */}

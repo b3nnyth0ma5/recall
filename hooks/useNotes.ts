@@ -34,41 +34,53 @@ export function useNotes() {
 
       const notesWithImages = await Promise.all(
         (recallsData || []).map(async (recall) => {
-          const { data: imagesData, error: imagesError } = await supabase
-            .from('recall_images')
-            .select('id')
-            .eq('recall_id', recall.id)
-            .order('created_at', { ascending: true });
+          try {
+            const { data: imagesData, error: imagesError } = await supabase
+              .from('recall_images')
+              .select('id')
+              .eq('recall_id', recall.id)
+              .order('created_at', { ascending: true });
 
-          if (imagesError) {
-            console.error('Error loading images for recall:', recall.id, imagesError);
+            if (imagesError) {
+              console.error('Error loading images for recall:', recall.id, imagesError);
+              return { ...recall, images: [], imageIds: [] };
+            }
+
+            console.log(`Loaded ${imagesData?.length || 0} image records for recall ${recall.id}`);
+
+            // Get data URLs for each image
+            const imageResults = await Promise.all(
+              (imagesData || []).map(async (img, index) => {
+                try {
+                  console.log(`Processing image ${index + 1}/${imagesData?.length || 0} (ID: ${img.id}) for recall ${recall.id}`);
+                  const dataUrl = await getImageDataUrl(img.id);
+                  if (!dataUrl) {
+                    console.error(`Failed to get data URL for image ${img.id} (index ${index})`);
+                    return { url: '', id: img.id };
+                  }
+                  console.log(`Successfully got data URL for image ${img.id}`);
+                  return { url: dataUrl, id: img.id };
+                } catch (error) {
+                  console.error(`Exception processing image ${img.id}:`, error);
+                  return { url: '', id: img.id };
+                }
+              })
+            );
+
+            const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
+            const imageIds = imageResults.map(result => result.id);
+            
+            console.log(`Recall ${recall.id} has ${validImageUrls.length}/${imageResults.length} valid images`);
+            
+            return { 
+              ...recall, 
+              images: validImageUrls, 
+              imageIds: imageIds
+            };
+          } catch (error) {
+            console.error(`Exception processing recall ${recall.id}:`, error);
             return { ...recall, images: [], imageIds: [] };
           }
-
-          console.log(`Loaded ${imagesData?.length || 0} images for recall ${recall.id}`);
-
-          // Get data URLs for each image
-          const imageUrls = await Promise.all(
-            (imagesData || []).map(async (img) => {
-              const dataUrl = await getImageDataUrl(img.id);
-              if (!dataUrl) {
-                console.error('Failed to get data URL for image:', img.id);
-                return '';
-              }
-              return dataUrl;
-            })
-          );
-
-          const validImageUrls = imageUrls.filter(url => url !== '');
-          const imageIds = (imagesData || []).map(img => img.id);
-          
-          console.log(`Recall ${recall.id} has ${validImageUrls.length} valid images`);
-          
-          return { 
-            ...recall, 
-            images: validImageUrls, 
-            imageIds: imageIds
-          };
         })
       );
 
@@ -228,29 +240,39 @@ export function useNotes() {
 
       const notesWithImages = await Promise.all(
         (recallsData || []).map(async (recall) => {
-          const { data: imagesData } = await supabase
-            .from('recall_images')
-            .select('id')
-            .eq('recall_id', recall.id)
-            .order('created_at', { ascending: true });
+          try {
+            const { data: imagesData } = await supabase
+              .from('recall_images')
+              .select('id')
+              .eq('recall_id', recall.id)
+              .order('created_at', { ascending: true });
 
-          // Get data URLs for each image
-          const imageUrls = await Promise.all(
-            (imagesData || []).map(async (img) => {
-              const dataUrl = await getImageDataUrl(img.id);
-              if (!dataUrl) return '';
-              return dataUrl;
-            })
-          );
+            // Get data URLs for each image
+            const imageResults = await Promise.all(
+              (imagesData || []).map(async (img) => {
+                try {
+                  const dataUrl = await getImageDataUrl(img.id);
+                  if (!dataUrl) return { url: '', id: img.id };
+                  return { url: dataUrl, id: img.id };
+                } catch (error) {
+                  console.error(`Exception processing image ${img.id}:`, error);
+                  return { url: '', id: img.id };
+                }
+              })
+            );
 
-          const validImageUrls = imageUrls.filter(url => url !== '');
-          const imageIds = (imagesData || []).map(img => img.id);
-          
-          return { 
-            ...recall, 
-            images: validImageUrls, 
-            imageIds: imageIds
-          };
+            const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
+            const imageIds = imageResults.map(result => result.id);
+            
+            return { 
+              ...recall, 
+              images: validImageUrls, 
+              imageIds: imageIds
+            };
+          } catch (error) {
+            console.error(`Exception processing recall ${recall.id}:`, error);
+            return { ...recall, images: [], imageIds: [] };
+          }
         })
       );
 
