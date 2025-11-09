@@ -30,27 +30,40 @@ export const fontFamily = {
 };
 
 export const colors = {
-  // Dark theme colors
-  background: '#0A0A0A',
-  backgroundSecondary: '#1A1A1A',
-  card: '#1E1E1E',
-  cardHover: '#252525',
-  cardDark: '#151515',
-  text: '#FFFFFF',
-  textSecondary: '#A0A0A0',
-  textTertiary: '#707070',
-  primary: '#FF6B35', // Burnt orange
+  // Warm peachy background (from UI design)
+  background: '#E8B89A',
+  backgroundSecondary: '#D4A88A',
+  
+  // Dark card backgrounds (from UI design)
+  card: '#1F1F1F',
+  cardHover: '#2A2A2A',
+  cardDark: '#1A1A1A',
+  
+  // Text colors
+  text: '#FFFFFF', // White text on dark backgrounds
+  textSecondary: '#A0A0A0', // Gray text for secondary info
+  textTertiary: '#808080', // Lighter gray for tertiary info
+  textOnLight: '#1A1A1A', // Dark text on light backgrounds
+  
+  // Primary/Accent colors (orange/coral from UI)
+  primary: '#FF6B35',
   primaryDark: '#E55A2B',
   primaryLight: '#FF8555',
   accent: '#FF6B35',
-  searchAccent: '#4A90E2', // Blue accent for search
+  searchAccent: '#FF6B35',
+  
+  // UI element colors
   border: '#2A2A2A',
   borderLight: '#3A3A3A',
   error: '#FF4444',
   success: '#4CAF50',
   overlay: 'rgba(0, 0, 0, 0.7)',
-  shadow: 'rgba(0, 0, 0, 0.5)',
+  shadow: 'rgba(0, 0, 0, 0.3)',
   highlight: 'rgba(255, 107, 53, 0.15)',
+  
+  // Additional colors for various states
+  inactive: '#666666',
+  divider: '#333333',
 };
 
 export const buttonStyles = StyleSheet.create({
@@ -116,12 +129,12 @@ export const commonStyles = StyleSheet.create({
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     marginVertical: 8,
     width: '100%',
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.3)',
-    elevation: 2,
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.3)',
+    elevation: 4,
   },
   icon: {
     width: 60,
