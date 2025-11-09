@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, ScrollView, Linking } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, ScrollView, Linking, Modal } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { Note } from '@/types/Note';
@@ -10,15 +10,19 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 interface NoteCardProps {
   note: Note;
   onPress: () => void;
+  onImagePress?: () => void;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const IMAGE_WIDTH = SCREEN_WIDTH - 32;
 
-export function NoteCard({ note, onPress }: NoteCardProps) {
+export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showFullText, setShowFullText] = useState(false);
   const [imageErrors, setImageErrors] = useState<{ [key: number]: boolean }>({});
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [modalImageIndex, setModalImageIndex] = useState(0);
+  const [loadedImages, setLoadedImages] = useState<{ [key: number]: boolean }>({});
 
   const formatDateTime = (dateString: string) => {
     try {
@@ -92,6 +96,12 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
     setCurrentImageIndex(index);
   };
 
+  const handleModalScroll = (event: any) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / SCREEN_WIDTH);
+    setModalImageIndex(index);
+  };
+
   const handleImageError = (index: number) => {
     console.error(`Error loading image at index ${index} for note ${note.id}`);
     console.error('Image URL:', note.images?.[index]);
@@ -100,6 +110,19 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
 
   const handleImageLoad = (index: number) => {
     console.log(`Image ${index} loaded successfully for note ${note.id}`);
+    setLoadedImages(prev => ({ ...prev, [index]: true }));
+  };
+
+  const handleImagePress = () => {
+    setModalImageIndex(currentImageIndex);
+    setShowImageModal(true);
+    if (onImagePress) {
+      onImagePress();
+    }
+  };
+
+  const handleTextPress = () => {
+    onPress();
   };
 
   const allImages = note.images || [];
@@ -107,10 +130,10 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
   const hasValidImages = validImages.length > 0;
 
   return (
-    <Animated.View entering={FadeInDown.duration(400)} style={styles.container}>
-      <Pressable onPress={onPress} style={styles.pressable}>
+    <>
+      <Animated.View entering={FadeInDown.duration(400)} style={styles.container}>
         {hasValidImages && (
-          <View style={styles.imageContainer}>
+          <Pressable onPress={handleImagePress} style={styles.imageContainer}>
             <ScrollView
               horizontal
               pagingEnabled
@@ -125,6 +148,11 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
 
                 return (
                   <View key={index} style={styles.imageWrapper}>
+                    {!loadedImages[index] && (
+                      <View style={styles.imagePlaceholder}>
+                        <Text style={styles.placeholderText}>Loading...</Text>
+                      </View>
+                    )}
                     <Image
                       source={{ uri: imageUrl }}
                       style={styles.image}
@@ -150,39 +178,102 @@ export function NoteCard({ note, onPress }: NoteCardProps) {
                 ))}
               </View>
             )}
-          </View>
+          </Pressable>
         )}
 
-        {note.text && (
-          <View style={styles.textContainer}>
-            <Text style={styles.noteText}>
-              {renderTextWithLinks(getPreviewText())}
-            </Text>
-            {shouldShowToggle() && (
-              <View style={styles.showMoreContainer}>
-                <Pressable onPress={() => setShowFullText(!showFullText)}>
-                  <Text style={styles.showMoreText}>
-                    {showFullText ? 'Show Less' : 'Show More'}
-                  </Text>
-                </Pressable>
-              </View>
-            )}
-          </View>
-        )}
+        <Pressable onPress={handleTextPress} style={styles.pressable}>
+          {note.text && (
+            <View style={styles.textContainer}>
+              <Text style={styles.noteText}>
+                {renderTextWithLinks(getPreviewText())}
+              </Text>
+              {shouldShowToggle() && (
+                <View style={styles.showMoreContainer}>
+                  <Pressable onPress={(e) => {
+                    e.stopPropagation();
+                    setShowFullText(!showFullText);
+                  }}>
+                    <Text style={styles.showMoreText}>
+                      {showFullText ? 'Show Less' : 'Show More'}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          )}
 
-        <View style={styles.metadataContainer}>
-          <View style={styles.locationContainer}>
-            {note.location && (
-              <>
-                <IconSymbol name="location.fill" size={14} color={colors.textSecondary} />
-                <Text style={styles.locationText}>{note.location}</Text>
-              </>
-            )}
+          <View style={styles.metadataContainer}>
+            <View style={styles.locationContainer}>
+              {note.location && (
+                <>
+                  <IconSymbol name="location.fill" size={14} color={colors.textSecondary} />
+                  <Text style={styles.locationText}>{note.location}</Text>
+                </>
+              )}
+            </View>
+            <Text style={styles.dateText}>{formatDateTime(note.created_at)}</Text>
           </View>
-          <Text style={styles.dateText}>{formatDateTime(note.created_at)}</Text>
+        </Pressable>
+      </Animated.View>
+
+      {/* Full-screen image preview modal */}
+      <Modal
+        visible={showImageModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowImageModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <Pressable 
+            style={styles.modalCloseButton}
+            onPress={() => setShowImageModal(false)}
+          >
+            <View style={styles.closeButtonCircle}>
+              <IconSymbol name="xmark" size={24} color="#FFFFFF" />
+            </View>
+          </Pressable>
+
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleModalScroll}
+            scrollEventThrottle={16}
+            contentOffset={{ x: modalImageIndex * SCREEN_WIDTH, y: 0 }}
+          >
+            {allImages.map((imageUrl, index) => {
+              if (imageErrors[index]) {
+                return null;
+              }
+
+              return (
+                <View key={index} style={styles.modalImageWrapper}>
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.modalImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          {validImages.length > 1 && (
+            <View style={styles.modalIndicatorContainer}>
+              {validImages.map((_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.modalIndicator,
+                    index === modalImageIndex && styles.modalIndicatorActive,
+                  ]}
+                />
+              ))}
+            </View>
+          )}
         </View>
-      </Pressable>
-    </Animated.View>
+      </Modal>
+    </>
   );
 }
 
@@ -209,6 +300,20 @@ const styles = StyleSheet.create({
     height: 300,
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
+  },
+  imagePlaceholder: {
+    position: 'absolute',
+    width: IMAGE_WIDTH,
+    height: 300,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.cardDark,
+    zIndex: 1,
+  },
+  placeholderText: {
+    color: colors.textSecondary,
+    fontSize: 14,
   },
   image: {
     width: IMAGE_WIDTH,
@@ -278,5 +383,58 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+  },
+  closeButtonCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalImageWrapper: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalImage: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+  },
+  modalIndicatorContainer: {
+    position: 'absolute',
+    bottom: 50,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modalIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  modalIndicatorActive: {
+    backgroundColor: colors.primary,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
 });

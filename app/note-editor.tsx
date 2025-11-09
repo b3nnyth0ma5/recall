@@ -57,6 +57,7 @@ export default function NoteEditorScreen() {
     formattedName: string;
   } | null>(null);
   const textInputRef = useRef<TextInput>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const isEditing = !!params.id;
   const canSave = text.trim().length > 0 || images.length > 0;
@@ -449,18 +450,18 @@ export default function NoteEditorScreen() {
         );
       }
 
+      // Navigate back first
       router.back();
       
-      // Refresh the specific note that was updated
+      // Refresh the specific note that was updated or the entire list for new notes
       if (isEditing && params.id) {
         setTimeout(() => {
           refreshSingleNote(params.id as string);
-        }, 300);
+        }, 100);
       } else {
-        // For new notes, refresh the entire list
         setTimeout(() => {
           refreshNotes();
-        }, 300);
+        }, 100);
       }
     } catch (error) {
       console.error('Error saving recall:', error);
@@ -577,40 +578,46 @@ export default function NoteEditorScreen() {
       />
 
       <ScrollView 
+        ref={scrollViewRef}
         style={styles.scrollView} 
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        scrollEnabled={true}
       >
-        <Animated.View entering={FadeIn.duration(600)} style={styles.textInputContainer}>
-          {hasUrl(text) ? (
-            <View style={styles.richTextContainer}>
-              <Text style={styles.richText}>
-                {renderTextWithLinks(text)}
-              </Text>
+        <Pressable onPress={() => textInputRef.current?.focus()}>
+          <Animated.View entering={FadeIn.duration(600)} style={styles.textInputContainer}>
+            {hasUrl(text) ? (
+              <View style={styles.richTextContainer}>
+                <Text style={styles.richText}>
+                  {renderTextWithLinks(text)}
+                </Text>
+                <TextInput
+                  ref={textInputRef}
+                  style={[styles.textInput, styles.hiddenInput]}
+                  placeholder="Start writing your recall..."
+                  placeholderTextColor={colors.textTertiary}
+                  value={text}
+                  onChangeText={setText}
+                  multiline
+                  autoFocus={!isEditing}
+                  scrollEnabled={false}
+                />
+              </View>
+            ) : (
               <TextInput
                 ref={textInputRef}
-                style={[styles.textInput, styles.hiddenInput]}
+                style={styles.textInput}
                 placeholder="Start writing your recall..."
                 placeholderTextColor={colors.textTertiary}
                 value={text}
                 onChangeText={setText}
                 multiline
                 autoFocus={!isEditing}
+                scrollEnabled={false}
               />
-            </View>
-          ) : (
-            <TextInput
-              ref={textInputRef}
-              style={styles.textInput}
-              placeholder="Start writing your recall..."
-              placeholderTextColor={colors.textTertiary}
-              value={text}
-              onChangeText={setText}
-              multiline
-              autoFocus={!isEditing}
-            />
-          )}
-        </Animated.View>
+            )}
+          </Animated.View>
+        </Pressable>
       </ScrollView>
 
       <View style={styles.bottomSection}>
