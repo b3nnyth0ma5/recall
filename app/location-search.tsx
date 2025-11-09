@@ -51,7 +51,7 @@ export default function LocationSearchScreen() {
     return distance;
   };
 
-  const performSearch = async (searchText: string) => {
+  const performSearch = useCallback(async (searchText: string) => {
     if (!searchText.trim()) {
       setResults([]);
       return;
@@ -106,14 +106,14 @@ export default function LocationSearchScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userLocation]);
 
   useEffect(() => {
     if (params.query && typeof params.query === 'string') {
       setSearchQuery(params.query);
       performSearch(params.query);
     }
-  }, [params.query]);
+  }, [params.query, performSearch]);
 
   useEffect(() => {
     if (searchQuery.trim().length > 2) {
@@ -125,7 +125,7 @@ export default function LocationSearchScreen() {
     } else if (searchQuery.trim().length === 0) {
       setResults([]);
     }
-  }, [searchQuery, userLocation]);
+  }, [searchQuery, performSearch]);
 
   const getUserLocation = async () => {
     try {

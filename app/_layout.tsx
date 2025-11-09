@@ -10,8 +10,9 @@ import { colors } from '@/styles/commonStyles';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import 'react-native-reanimated';
 
+// Import CSS for web using dynamic import
 if (Platform.OS === 'web') {
-  require('../app.css');
+  import('../app.css');
 }
 
 SplashScreen.preventAutoHideAsync();
@@ -46,7 +47,7 @@ function RootLayoutNav() {
     } else if (session && inAuthGroup) {
       router.replace('/(tabs)/(home)');
     }
-  }, [session, loading, segments]);
+  }, [session, loading, segments, router]);
 
   return (
     <Stack

@@ -48,7 +48,7 @@ export default function SearchScreen() {
       keyboardDidHideListener.remove();
       keyboardDidShowListener.remove();
     };
-  }, []);
+  }, [loadSearchHistory]);
 
   const handleSearch = () => {
     if (searchQuery.trim()) {

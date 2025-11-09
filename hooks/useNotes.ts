@@ -134,7 +134,7 @@ export function useNotes() {
     loadNotes(1, false);
     setPage(1);
     setHasMore(true);
-  }, [user]);
+  }, [user, loadNotes]);
 
   const loadMoreNotes = useCallback(() => {
     if (!isLoadingMore && hasMore && !loading) {

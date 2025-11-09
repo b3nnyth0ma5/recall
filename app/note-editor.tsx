@@ -159,7 +159,7 @@ export default function NoteEditorScreen() {
     };
 
     loadNoteFromDatabase();
-  }, [params.id, isEditing, user]);
+  }, [params.id, isEditing, user, router]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -189,7 +189,7 @@ export default function NoteEditorScreen() {
         selectedLocationName: undefined,
       });
     }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName]);
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, router]);
 
   const requestLocationPermission = async () => {
     try {
