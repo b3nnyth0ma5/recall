@@ -1,7 +1,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 
 const supabaseUrl = 'https://cesmsdnblkdjkskmiqib.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4';
@@ -33,10 +33,9 @@ export async function uploadImageToDatabase(
     console.log('User authenticated:', session.user.id);
 
     console.log('Converting image to base64...');
-    // Use readAsStringAsync which is the correct method in expo-file-system
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: 'base64',
-    });
+    // Use the new File API from expo-file-system
+    const file = new File(uri);
+    const base64 = await file.base64();
     console.log('Base64 conversion successful, length:', base64.length);
 
     // Insert the base64 string directly into the database as text
