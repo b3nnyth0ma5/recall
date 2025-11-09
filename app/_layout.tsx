@@ -10,17 +10,12 @@ import { colors } from '@/styles/commonStyles';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import 'react-native-reanimated';
 
-// Import Geist font CSS for web
 if (Platform.OS === 'web') {
-  import('../app.css');
+  require('../app.css');
 }
 
 SplashScreen.preventAutoHideAsync();
 
-// Note: Geist font is loaded via web fonts for web platform
-// For native, we'll use system fonts as fallback
-
-// Custom dark theme
 const CustomDarkTheme = {
   ...DarkTheme,
   colors: {
@@ -40,18 +35,18 @@ function RootLayoutNav() {
   const router = useRouter();
 
   useEffect(() => {
-    if (loading) return;
+    if (loading) {
+      return;
+    }
 
     const inAuthGroup = segments[0] === 'login';
 
     if (!session && !inAuthGroup) {
-      // Redirect to login if not authenticated
       router.replace('/login');
     } else if (session && inAuthGroup) {
-      // Redirect to home if authenticated
       router.replace('/(tabs)/(home)');
     }
-  }, [session, loading, segments, router]);
+  }, [session, loading, segments]);
 
   return (
     <Stack

@@ -15,7 +15,6 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-import { reverseGeocode } from '@/utils/supabase';
 import * as Location from 'expo-location';
 
 interface LocationResult {
@@ -32,17 +31,14 @@ export default function LocationSearchScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<LocationResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState<LocationResult | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
   useEffect(() => {
-    // Get user's current location for proximity sorting
     getUserLocation();
   }, []);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    // Haversine formula to calculate distance between two points
-    const R = 6371; // Radius of the Earth in km
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = 
@@ -50,14 +46,13 @@ export default function LocationSearchScreen() {
       Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
       Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c; // Distance in km
+    const distance = R * c;
     return distance;
   };
 
-  const handleSearch = useCallback(async (query?: string) => {
-    const searchText = query || searchQuery;
-    
+  const performSearch = async (searchText: string) => {
     if (!searchText.trim()) {
+      setResults([]);
       return;
     }
 
@@ -65,7 +60,6 @@ export default function LocationSearchScreen() {
       setLoading(true);
       console.log('Searching for location in Australia:', searchText);
 
-      // Restrict search to Australia by adding countrycodes parameter
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchText)}&countrycodes=au&limit=10`,
         {
@@ -79,7 +73,6 @@ export default function LocationSearchScreen() {
       console.log('Search results (Australia only):', data.length);
 
       if (data && data.length > 0) {
-        // Calculate distance from user's location if available
         let resultsWithDistance = data.map((result: LocationResult) => {
           if (userLocation) {
             const distance = calculateDistance(
@@ -93,7 +86,6 @@ export default function LocationSearchScreen() {
           return result;
         });
 
-        // Sort by proximity if user location is available
         if (userLocation) {
           resultsWithDistance.sort((a, b) => {
             const distA = a.distance || Infinity;
@@ -103,7 +95,6 @@ export default function LocationSearchScreen() {
           console.log('Results sorted by proximity to user location');
         }
 
-        // Limit to top 5 results
         setResults(resultsWithDistance.slice(0, 5));
       } else {
         setResults([]);
@@ -114,28 +105,26 @@ export default function LocationSearchScreen() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, userLocation]);
+  };
 
   useEffect(() => {
-    // Auto-search if query is provided
     if (params.query && typeof params.query === 'string') {
       setSearchQuery(params.query);
-      handleSearch(params.query);
+      performSearch(params.query);
     }
-  }, [params.query, handleSearch]);
+  }, [params.query]);
 
-  // Auto-search as user types
   useEffect(() => {
     if (searchQuery.trim().length > 2) {
       const timeoutId = setTimeout(() => {
-        handleSearch(searchQuery);
-      }, 500); // Debounce for 500ms
+        performSearch(searchQuery);
+      }, 500);
 
       return () => clearTimeout(timeoutId);
     } else if (searchQuery.trim().length === 0) {
       setResults([]);
     }
-  }, [searchQuery, handleSearch]);
+  }, [searchQuery, userLocation]);
 
   const getUserLocation = async () => {
     try {
@@ -154,28 +143,18 @@ export default function LocationSearchScreen() {
   };
 
   const extractLocationFromSelection = (displayName: string): string => {
-    // Split the display name by commas
     const parts = displayName.split(',').map(p => p.trim());
     
     if (parts.length < 2) {
       return displayName;
     }
 
-    // Try to extract "business name, suburb" or "suburb, city"
-    // First part is usually the most specific (business name or street)
-    // Second part is usually suburb
-    // Third part is usually city
-    
-    // Check if first part looks like a business name (not a number/street)
     const firstPart = parts[0];
     const secondPart = parts[1];
     
-    // If first part doesn't start with a number, it's likely a business name
     if (firstPart && !/^\d/.test(firstPart)) {
-      // Return "business name, suburb"
       return `${firstPart}, ${secondPart}`;
     } else {
-      // Return "suburb, city" (skip the street address)
       if (parts.length >= 3) {
         return `${secondPart}, ${parts[2]}`;
       }
@@ -183,21 +162,16 @@ export default function LocationSearchScreen() {
     }
   };
 
-  const handleSelectLocation = async (location: LocationResult) => {
-    setSelectedLocation(location);
-    
+  const handleSelectLocation = (location: LocationResult) => {
     try {
       const latitude = parseFloat(location.lat);
       const longitude = parseFloat(location.lon);
-
-      // Extract location from display name
       const locationName = extractLocationFromSelection(location.display_name);
+      
       console.log('Extracted location:', locationName);
 
-      // Navigate back with the selected location
       router.back();
       
-      // Pass the location data back via router params
       if (router.canGoBack()) {
         router.setParams({
           selectedLatitude: latitude.toString(),
@@ -211,7 +185,7 @@ export default function LocationSearchScreen() {
   };
 
   const handleSubmitEditing = () => {
-    handleSearch();
+    performSearch(searchQuery);
   };
 
   return (
@@ -277,13 +251,10 @@ export default function LocationSearchScreen() {
           ) : results.length > 0 ? (
             <Animated.View entering={FadeInDown.duration(600)}>
               <Text style={styles.resultsTitle}>Top {results.length} Results (Australia)</Text>
-              {results.map((result, index) => (
+              {results.map((result) => (
                 <Pressable
                   key={result.place_id}
-                  style={[
-                    styles.resultItem,
-                    selectedLocation?.place_id === result.place_id && styles.resultItemSelected,
-                  ]}
+                  style={styles.resultItem}
                   onPress={() => handleSelectLocation(result)}
                 >
                   <View style={styles.resultIconContainer}>
@@ -346,11 +317,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  description: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginBottom: 16,
-  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -406,11 +372,6 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
     gap: 12,
-  },
-  resultItemSelected: {
-    backgroundColor: colors.cardHover,
-    borderWidth: 2,
-    borderColor: colors.primary,
   },
   resultIconContainer: {
     width: 40,

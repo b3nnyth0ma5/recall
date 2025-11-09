@@ -22,7 +22,7 @@ import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase, reverseGeocode, uploadImageToDatabase, getImageDataUrl, deleteImageRecord } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 interface ImageData {
@@ -64,8 +64,6 @@ export default function NoteEditorScreen() {
     };
   }, []);
 
-
-
   useEffect(() => {
     if (existingNote) {
       setText(existingNote.text || '');
@@ -95,7 +93,6 @@ export default function NoteEditorScreen() {
     }
   }, [isEditing]);
 
-  // Handle location selection from location-search screen
   useEffect(() => {
     if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
       const latitude = parseFloat(params.selectedLatitude as string);
@@ -105,14 +102,13 @@ export default function NoteEditorScreen() {
       setLocation({ latitude, longitude });
       setLocationName(locationName);
 
-      // Clear the params
       router.setParams({
         selectedLatitude: undefined,
         selectedLongitude: undefined,
         selectedLocationName: undefined,
       });
     }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, router]);
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName]);
 
   const requestLocationPermission = async () => {
     try {
@@ -140,12 +136,9 @@ export default function NoteEditorScreen() {
     try {
       console.log('Converting image to suitable format:', uri);
       
-      // Manipulate the image to ensure it's in a suitable format (JPEG)
-      // and compress it to reduce file size
       const manipulatedImage = await ImageManipulator.manipulateAsync(
         uri,
         [
-          // Resize if image is too large (max 2048px on longest side)
           { resize: { width: 2048 } }
         ],
         {
@@ -161,7 +154,6 @@ export default function NoteEditorScreen() {
       };
     } catch (error) {
       console.error('Error converting image:', error);
-      // If conversion fails, return original
       return {
         uri: uri,
         contentType: 'image/jpeg',
@@ -188,7 +180,6 @@ export default function NoteEditorScreen() {
         const newImages: ImageData[] = [];
 
         for (const asset of result.assets) {
-          // Convert image to suitable format (JPEG)
           const converted = await convertImageToSuitableFormat(asset.uri);
 
           newImages.push({
@@ -225,7 +216,6 @@ export default function NoteEditorScreen() {
         setLoading(true);
         const asset = result.assets[0];
         
-        // Convert image to suitable format (JPEG)
         const converted = await convertImageToSuitableFormat(asset.uri);
 
         setImages([...images, {
@@ -280,7 +270,6 @@ export default function NoteEditorScreen() {
         await updateNote(params.id as string, noteData);
         recallId = params.id as string;
 
-        // Delete existing images
         const { data: existingImages } = await supabase
           .from('recall_images')
           .select('id')
@@ -298,7 +287,6 @@ export default function NoteEditorScreen() {
       let uploadedCount = 0;
       let failedCount = 0;
 
-      // Upload images directly to database
       for (const image of images) {
         if (image.localUri) {
           console.log('Uploading image to database:', image.localUri);
@@ -338,7 +326,9 @@ export default function NoteEditorScreen() {
   };
 
   const handleDelete = () => {
-    if (!isEditing || !params.id) return;
+    if (!isEditing || !params.id) {
+      return;
+    }
 
     Alert.alert(
       'Delete Recall',

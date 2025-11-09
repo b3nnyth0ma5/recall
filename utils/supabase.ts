@@ -15,13 +15,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-/**
- * Upload image directly to database as base64
- * @param uri - Local file URI of the image
- * @param recallId - The recall ID to associate the image with
- * @param contentType - The content type of the image
- * @returns The image record ID or null if failed
- */
 export async function uploadImageToDatabase(
   uri: string,
   recallId: string,
@@ -32,7 +25,6 @@ export async function uploadImageToDatabase(
     console.log('URI:', uri);
     console.log('Recall ID:', recallId);
     
-    // Check if user is authenticated
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       console.error('No active session - user must be logged in to upload images');
@@ -40,14 +32,12 @@ export async function uploadImageToDatabase(
     }
     console.log('User authenticated:', session.user.id);
 
-    // Convert image to base64 using FileSystem
     console.log('Converting image to base64...');
     const base64 = await FileSystem.readAsStringAsync(uri, {
       encoding: 'base64',
     });
     console.log('Base64 conversion successful, length:', base64.length);
 
-    // Insert image data directly into database
     const { data, error } = await supabase
       .from('recall_images')
       .insert([{
@@ -80,11 +70,6 @@ export async function uploadImageToDatabase(
   }
 }
 
-/**
- * Get image data URL from database
- * @param imageId - The image record ID
- * @returns Data URL for the image or null if not found
- */
 export async function getImageDataUrl(imageId: string): Promise<string | null> {
   try {
     console.log('Fetching image data for ID:', imageId);
@@ -101,32 +86,20 @@ export async function getImageDataUrl(imageId: string): Promise<string | null> {
       return null;
     }
 
-    if (!data) {
-      console.error('No data returned for image ID:', imageId);
+    if (!data || !data.image_data) {
+      console.error('No image_data found for ID:', imageId);
       return null;
     }
 
-    if (!data.image_data) {
-      console.error('No image_data field found for ID:', imageId);
-      console.error('Data object:', data);
-      return null;
-    }
-
-    // Validate base64 data
     if (typeof data.image_data !== 'string' || data.image_data.length === 0) {
       console.error('Invalid image_data format for ID:', imageId);
-      console.error('Type:', typeof data.image_data);
-      console.error('Length:', data.image_data?.length);
       return null;
     }
 
-    // Return as data URL
     const contentType = data.content_type || 'image/jpeg';
     const dataUrl = `data:${contentType};base64,${data.image_data}`;
     
     console.log('Successfully created data URL for image:', imageId);
-    console.log('Data URL length:', dataUrl.length);
-    console.log('Content type:', contentType);
     
     return dataUrl;
   } catch (error) {
@@ -134,17 +107,11 @@ export async function getImageDataUrl(imageId: string): Promise<string | null> {
     console.error('Error:', error);
     if (error instanceof Error) {
       console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
     }
     return null;
   }
 }
 
-/**
- * Delete image record from database
- * @param imageId - The image record ID
- * @returns True if successful, false otherwise
- */
 export async function deleteImageRecord(imageId: string): Promise<boolean> {
   try {
     console.log('Deleting image record from database:', imageId);

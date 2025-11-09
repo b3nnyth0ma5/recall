@@ -48,7 +48,6 @@ export function useNotes() {
 
             console.log(`Loaded ${imagesData?.length || 0} image records for recall ${recall.id}`);
 
-            // Get data URLs for each image
             const imageResults = await Promise.all(
               (imagesData || []).map(async (img, index) => {
                 try {
@@ -175,20 +174,17 @@ export function useNotes() {
     try {
       console.log('Deleting recall from Supabase:', noteId);
       
-      // Get all images for this recall
       const { data: imagesData } = await supabase
         .from('recall_images')
         .select('id')
         .eq('recall_id', noteId);
 
-      // Delete images from database
       if (imagesData && imagesData.length > 0) {
         for (const img of imagesData) {
           await deleteImageRecord(img.id);
         }
       }
 
-      // Delete the recall
       const { error } = await supabase
         .from('recalls')
         .delete()
@@ -209,7 +205,9 @@ export function useNotes() {
   }, [loadNotes, user]);
 
   const saveSearchHistory = useCallback(async (searchText: string) => {
-    if (!user || !searchText.trim()) return;
+    if (!user || !searchText.trim()) {
+      return;
+    }
 
     try {
       const { data: existing } = await supabase
@@ -276,12 +274,13 @@ export function useNotes() {
               .eq('recall_id', recall.id)
               .order('created_at', { ascending: true });
 
-            // Get data URLs for each image
             const imageResults = await Promise.all(
               (imagesData || []).map(async (img) => {
                 try {
                   const dataUrl = await getImageDataUrl(img.id);
-                  if (!dataUrl) return { url: '', id: img.id };
+                  if (!dataUrl) {
+                    return { url: '', id: img.id };
+                  }
                   return { url: dataUrl, id: img.id };
                 } catch (error) {
                   console.error(`Exception processing image ${img.id}:`, error);
@@ -315,7 +314,9 @@ export function useNotes() {
   }, [loadNotes, user, saveSearchHistory]);
 
   const getSearchHistory = useCallback(async () => {
-    if (!user) return [];
+    if (!user) {
+      return [];
+    }
 
     try {
       const { data, error } = await supabase
