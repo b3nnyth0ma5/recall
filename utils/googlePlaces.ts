@@ -280,35 +280,7 @@ export function extractShortLocationName(formattedAddress: string, displayName?:
     return formattedAddress;
   }
 
-  const firstPart = parts[0];
-  const secondPart = parts[1];
-  
-  // If we have a display name (place name), use it with the suburb
-  if (displayName && displayName !== firstPart) {
-    // Try to find the suburb from the address parts
-    // Skip the first part if it's a street address
-    if (/^\d/.test(firstPart)) {
-      // First part is a street number, second part is likely street name
-      if (parts.length >= 3) {
-        return `${displayName}, ${parts[2]}`;
-      }
-      return `${displayName}, ${secondPart}`;
-    } else {
-      // First part might be the place name, use second part as suburb
-      return `${displayName}, ${secondPart}`;
-    }
-  }
-  
-  // If first part is a street number, use second and third parts
-  if (firstPart && /^\d/.test(firstPart)) {
-    if (parts.length >= 3) {
-      return `${secondPart}, ${parts[2]}`;
-    }
-    return secondPart;
-  }
-  
-  // Otherwise use first and second parts
-  return `${firstPart}, ${secondPart}`;
+	return `${displayName}`;	
 }
 
 /**

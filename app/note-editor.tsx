@@ -419,30 +419,54 @@ export default function NoteEditorScreen() {
       let recallId: string;
 
       if (isEditing && params.id) {
+        // Update the note (text and location only)
         await updateNote(params.id as string, noteData);
         recallId = params.id as string;
 
+        // Get existing images from database
         const { data: existingImages } = await supabase
           .from('recall_images')
           .select('id')
           .eq('recall_id', recallId);
 
+        // Create a set of current image IDs (images that should be kept)
+        const currentImageIds = new Set(
+          images
+            .filter(img => img.id) // Only existing images with IDs
+            .map(img => img.id!)
+        );
+
+        // Delete images that are no longer in the current images array
         if (existingImages) {
           for (const img of existingImages) {
-            await deleteImageRecord(img.id);
+            if (!currentImageIds.has(img.id)) {
+              console.log('Deleting removed image:', img.id);
+              await deleteImageRecord(img.id);
+            } else {
+              console.log('Keeping existing image:', img.id);
+            }
           }
         }
       } else {
+        // Create new note
         recallId = await addNote(noteData);
       }
 
+      // Only upload NEW images (those without an id)
       let uploadedCount = 0;
       let failedCount = 0;
       const uploadedImageIds: string[] = [];
 
       for (const image of images) {
+        // Skip images that already have an ID (already in database)
+        if (image.id) {
+          console.log('Skipping existing image:', image.id);
+          continue;
+        }
+
+        // Only upload new images (those with localUri but no id)
         if (image.localUri) {
-          console.log('Uploading image to database:', image.localUri);
+          console.log('Uploading new image to database:', image.localUri);
           
           const imageId = await uploadImageToDatabase(image.localUri, recallId, image.contentType);
           
@@ -469,7 +493,7 @@ export default function NoteEditorScreen() {
         }
       }
 
-      console.log(`Upload complete: ${uploadedCount} succeeded, ${failedCount} failed`);
+      console.log(`Upload complete: ${uploadedCount} new images uploaded, ${failedCount} failed`);
       if (uploadedImageIds.length > 0) {
         console.log(`OCR processing triggered for ${uploadedImageIds.length} images`);
       }
