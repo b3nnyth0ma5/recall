@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, Modal, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { Note } from '@/types/Note';
@@ -9,9 +9,6 @@ import Animated, {
   FadeIn, 
   FadeInDown, 
 } from 'react-native-reanimated';
-import Slider from 'react-slick';
-import 'slick-carousel/slick/slick.css';
-import 'slick-carousel/slick/slick-theme.css';
 
 interface NoteCardProps {
   note: Note;
@@ -31,8 +28,8 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [showImageModal, setShowImageModal] = useState(false);
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [loadedImages, setLoadedImages] = useState<{ [key: number]: boolean }>({});
-  const sliderRef = useRef<Slider>(null);
-  const modalSliderRef = useRef<Slider>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const modalScrollViewRef = useRef<ScrollView>(null);
 
   const formatDateTime = (dateString: string) => {
     try {
@@ -123,93 +120,80 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     onPress();
   };
 
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / IMAGE_WIDTH);
+    if (index !== currentImageIndex && index >= 0 && index < validImages.length) {
+      console.log('Image carousel changed to index:', index);
+      setCurrentImageIndex(index);
+    }
+  };
+
+  const handleModalScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / SCREEN_WIDTH);
+    if (index !== modalImageIndex && index >= 0 && index < validImages.length) {
+      console.log('Modal carousel changed to index:', index);
+      setModalImageIndex(index);
+    }
+  };
+
   const allImages = note.images || [];
   const validImages = allImages.filter((_, index) => !imageErrors[index]);
   const hasValidImages = validImages.length > 0;
-
-  // Slick carousel settings
-  const sliderSettings = {
-    dots: true,
-    infinite: false,
-    speed: 500,
-    slidesToShow: 1,
-    slidesToScroll: 1,
-    arrows: false,
-    beforeChange: (current: number, next: number) => {
-      console.log('Image carousel changed to index:', next);
-      setCurrentImageIndex(next);
-    },
-    customPaging: (i: number) => (
-      <div
-        style={{
-          width: currentImageIndex === i ? '24px' : '8px',
-          height: '8px',
-          borderRadius: '4px',
-          backgroundColor: currentImageIndex === i ? '#FFFFFF' : 'rgba(255, 255, 255, 0.5)',
-          transition: 'all 0.3s ease',
-        }}
-      />
-    ),
-    dotsClass: 'slick-dots custom-dots',
-  };
-
-  const modalSliderSettings = {
-    dots: true,
-    infinite: false,
-    speed: 500,
-    slidesToShow: 1,
-    slidesToScroll: 1,
-    arrows: false,
-    initialSlide: modalImageIndex,
-    beforeChange: (current: number, next: number) => {
-      console.log('Modal carousel changed to index:', next);
-      setModalImageIndex(next);
-    },
-    customPaging: (i: number) => (
-      <div
-        style={{
-          width: modalImageIndex === i ? '28px' : '10px',
-          height: '10px',
-          borderRadius: '5px',
-          backgroundColor: modalImageIndex === i ? '#FFFFFF' : 'rgba(255, 255, 255, 0.5)',
-          transition: 'all 0.3s ease',
-        }}
-      />
-    ),
-    dotsClass: 'slick-dots custom-modal-dots',
-  };
 
   return (
     <>
       <Animated.View entering={FadeInDown.duration(400)} style={styles.container}>
         {hasValidImages && (
           <Pressable onPress={handleImagePress} style={styles.imageContainer}>
-            <Slider ref={sliderRef} {...sliderSettings}>
+            <ScrollView
+              ref={scrollViewRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              style={styles.scrollView}
+            >
               {allImages.map((imageUrl, index) => {
                 if (imageErrors[index]) {
                   return null;
                 }
 
                 return (
-                  <div key={index} style={{ outline: 'none' }}>
-                    <View style={styles.imageWrapper}>
-                      {!loadedImages[index] && (
-                        <View style={styles.imagePlaceholder}>
-                          <ActivityIndicator size="large" color={colors.primary} />
-                        </View>
-                      )}
-                      <Image
-                        source={{ uri: imageUrl }}
-                        style={styles.image}
-                        resizeMode="cover"
-                        onError={() => handleImageError(index)}
-                        onLoad={() => handleImageLoad(index)}
-                      />
-                    </View>
-                  </div>
+                  <View key={index} style={styles.imageWrapper}>
+                    {!loadedImages[index] && (
+                      <View style={styles.imagePlaceholder}>
+                        <ActivityIndicator size="large" color={colors.primary} />
+                      </View>
+                    )}
+                    <Image
+                      source={{ uri: imageUrl }}
+                      style={styles.image}
+                      resizeMode="cover"
+                      onError={() => handleImageError(index)}
+                      onLoad={() => handleImageLoad(index)}
+                    />
+                  </View>
                 );
               })}
-            </Slider>
+            </ScrollView>
+
+            {/* Pagination dots */}
+            {validImages.length > 1 && (
+              <View style={styles.paginationContainer}>
+                {validImages.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.paginationDot,
+                      currentImageIndex === index && styles.paginationDotActive,
+                    ]}
+                  />
+                ))}
+              </View>
+            )}
 
             {/* Image counter badge */}
             {validImages.length > 1 && (
@@ -274,27 +258,47 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           </Pressable>
 
-          <View style={styles.modalSliderContainer}>
-            <Slider ref={modalSliderRef} {...modalSliderSettings}>
-              {allImages.map((imageUrl, index) => {
-                if (imageErrors[index]) {
-                  return null;
-                }
+          <ScrollView
+            ref={modalScrollViewRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleModalScroll}
+            scrollEventThrottle={16}
+            style={styles.modalScrollView}
+            contentOffset={{ x: modalImageIndex * SCREEN_WIDTH, y: 0 }}
+          >
+            {allImages.map((imageUrl, index) => {
+              if (imageErrors[index]) {
+                return null;
+              }
 
-                return (
-                  <div key={index} style={{ outline: 'none' }}>
-                    <View style={styles.modalImageWrapper}>
-                      <Image
-                        source={{ uri: imageUrl }}
-                        style={styles.modalImage}
-                        resizeMode="contain"
-                      />
-                    </View>
-                  </div>
-                );
-              })}
-            </Slider>
-          </View>
+              return (
+                <View key={index} style={styles.modalImageWrapper}>
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.modalImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          {/* Modal pagination dots */}
+          {validImages.length > 1 && (
+            <View style={styles.modalPaginationContainer}>
+              {validImages.map((_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.modalPaginationDot,
+                    modalImageIndex === index && styles.modalPaginationDotActive,
+                  ]}
+                />
+              ))}
+            </View>
+          )}
 
           {/* Modal counter badge */}
           {validImages.length > 1 && (
@@ -328,6 +332,10 @@ const styles = StyleSheet.create({
     position: 'relative',
     backgroundColor: colors.cardDark,
   },
+  scrollView: {
+    width: IMAGE_WIDTH,
+    height: IMAGE_HEIGHT,
+  },
   imageWrapper: {
     width: IMAGE_WIDTH,
     height: IMAGE_HEIGHT,
@@ -347,6 +355,26 @@ const styles = StyleSheet.create({
   image: {
     width: IMAGE_WIDTH,
     height: IMAGE_HEIGHT,
+  },
+  paginationContainer: {
+    position: 'absolute',
+    bottom: 16,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  paginationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  paginationDotActive: {
+    width: 24,
+    backgroundColor: '#FFFFFF',
   },
   counterBadge: {
     position: 'absolute',
@@ -427,7 +455,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalSliderContainer: {
+  modalScrollView: {
     width: SCREEN_WIDTH,
     height: '100%',
   },
@@ -440,6 +468,26 @@ const styles = StyleSheet.create({
   modalImage: {
     width: SCREEN_WIDTH,
     height: '100%',
+  },
+  modalPaginationContainer: {
+    position: 'absolute',
+    bottom: 100,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modalPaginationDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  modalPaginationDotActive: {
+    width: 28,
+    backgroundColor: '#FFFFFF',
   },
   modalCounterBadge: {
     position: 'absolute',
