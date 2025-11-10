@@ -9,11 +9,6 @@ import Animated, {
   FadeIn, 
   FadeInDown, 
 } from 'react-native-reanimated';
-import { Swiper, SwiperSlide } from 'swiper/react';
-import { Navigation, Pagination } from 'swiper/modules';
-import 'swiper/css';
-import 'swiper/css/navigation';
-import 'swiper/css/pagination';
 
 interface NoteCardProps {
   note: Note;
@@ -33,6 +28,8 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [showImageModal, setShowImageModal] = useState(false);
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [loadedImages, setLoadedImages] = useState<{ [key: number]: boolean }>({});
+  const scrollViewRef = useRef<ScrollView>(null);
+  const modalScrollViewRef = useRef<ScrollView>(null);
 
   const formatDateTime = (dateString: string) => {
     try {
@@ -123,6 +120,24 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     onPress();
   };
 
+  const handleScroll = (event: any) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / IMAGE_WIDTH);
+    if (index !== currentImageIndex && index >= 0 && index < allImages.length) {
+      console.log('Image carousel scrolled to index:', index);
+      setCurrentImageIndex(index);
+    }
+  };
+
+  const handleModalScroll = (event: any) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / SCREEN_WIDTH);
+    if (index !== modalImageIndex && index >= 0 && index < allImages.length) {
+      console.log('Modal carousel scrolled to index:', index);
+      setModalImageIndex(index);
+    }
+  };
+
   const allImages = note.images || [];
   const validImages = allImages.filter((_, index) => !imageErrors[index]);
   const hasValidImages = validImages.length > 0;
@@ -132,19 +147,14 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
       <Animated.View entering={FadeInDown.duration(400)} style={styles.container}>
         {hasValidImages && (
           <Pressable onPress={handleImagePress} style={styles.imageContainer}>
-            <Swiper
-              modules={[Navigation, Pagination]}
-              spaceBetween={0}
-              slidesPerView={1}
-              pagination={{ 
-                clickable: true,
-                dynamicBullets: true,
-              }}
-              onSlideChange={(swiper) => {
-                console.log('Swiper slide changed to:', swiper.activeIndex);
-                setCurrentImageIndex(swiper.activeIndex);
-              }}
-              style={{ width: IMAGE_WIDTH, height: IMAGE_HEIGHT }}
+            <ScrollView
+              ref={scrollViewRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              style={styles.scrollView}
             >
               {allImages.map((imageUrl, index) => {
                 if (imageErrors[index]) {
@@ -152,25 +162,23 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
                 }
 
                 return (
-                  <SwiperSlide key={index}>
-                    <View style={styles.imageWrapper}>
-                      {!loadedImages[index] && (
-                        <View style={styles.imagePlaceholder}>
-                          <ActivityIndicator size="large" color={colors.primary} />
-                        </View>
-                      )}
-                      <Image
-                        source={{ uri: imageUrl }}
-                        style={styles.image}
-                        resizeMode="cover"
-                        onError={() => handleImageError(index)}
-                        onLoad={() => handleImageLoad(index)}
-                      />
-                    </View>
-                  </SwiperSlide>
+                  <View key={index} style={styles.imageWrapper}>
+                    {!loadedImages[index] && (
+                      <View style={styles.imagePlaceholder}>
+                        <ActivityIndicator size="large" color={colors.primary} />
+                      </View>
+                    )}
+                    <Image
+                      source={{ uri: imageUrl }}
+                      style={styles.image}
+                      resizeMode="cover"
+                      onError={() => handleImageError(index)}
+                      onLoad={() => handleImageLoad(index)}
+                    />
+                  </View>
                 );
               })}
-            </Swiper>
+            </ScrollView>
 
             {/* Image counter badge */}
             {validImages.length > 1 && (
@@ -178,6 +186,25 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
                 <Text style={styles.counterText}>
                   {currentImageIndex + 1} / {validImages.length}
                 </Text>
+              </View>
+            )}
+
+            {/* Pagination dots */}
+            {validImages.length > 1 && (
+              <View style={styles.paginationContainer}>
+                {allImages.map((_, index) => {
+                  if (imageErrors[index]) return null;
+                  const validIndex = allImages.slice(0, index).filter((_, i) => !imageErrors[i]).length;
+                  return (
+                    <View
+                      key={index}
+                      style={[
+                        styles.paginationDot,
+                        currentImageIndex === index && styles.paginationDotActive,
+                      ]}
+                    />
+                  );
+                })}
               </View>
             )}
           </Pressable>
@@ -235,20 +262,15 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           </Pressable>
 
-          <Swiper
-            modules={[Navigation, Pagination]}
-            spaceBetween={0}
-            slidesPerView={1}
-            initialSlide={modalImageIndex}
-            pagination={{ 
-              clickable: true,
-              dynamicBullets: true,
-            }}
-            onSlideChange={(swiper) => {
-              console.log('Modal swiper slide changed to:', swiper.activeIndex);
-              setModalImageIndex(swiper.activeIndex);
-            }}
-            style={{ width: SCREEN_WIDTH, height: '100%' }}
+          <ScrollView
+            ref={modalScrollViewRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleModalScroll}
+            scrollEventThrottle={16}
+            style={styles.modalScrollView}
+            contentOffset={{ x: modalImageIndex * SCREEN_WIDTH, y: 0 }}
           >
             {allImages.map((imageUrl, index) => {
               if (imageErrors[index]) {
@@ -256,18 +278,16 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
               }
 
               return (
-                <SwiperSlide key={index}>
-                  <View style={styles.modalImageWrapper}>
-                    <Image
-                      source={{ uri: imageUrl }}
-                      style={styles.modalImage}
-                      resizeMode="contain"
-                    />
-                  </View>
-                </SwiperSlide>
+                <View key={index} style={styles.modalImageWrapper}>
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.modalImage}
+                    resizeMode="contain"
+                  />
+                </View>
               );
             })}
-          </Swiper>
+          </ScrollView>
 
           {/* Modal counter badge */}
           {validImages.length > 1 && (
@@ -275,6 +295,24 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
               <Text style={styles.modalCounterText}>
                 {modalImageIndex + 1} / {validImages.length}
               </Text>
+            </View>
+          )}
+
+          {/* Modal pagination dots */}
+          {validImages.length > 1 && (
+            <View style={styles.modalPaginationContainer}>
+              {allImages.map((_, index) => {
+                if (imageErrors[index]) return null;
+                return (
+                  <View
+                    key={index}
+                    style={[
+                      styles.modalPaginationDot,
+                      modalImageIndex === index && styles.modalPaginationDotActive,
+                    ]}
+                  />
+                );
+              })}
             </View>
           )}
         </View>
@@ -300,6 +338,10 @@ const styles = StyleSheet.create({
     height: IMAGE_HEIGHT,
     position: 'relative',
     backgroundColor: colors.cardDark,
+  },
+  scrollView: {
+    width: IMAGE_WIDTH,
+    height: IMAGE_HEIGHT,
   },
   imageWrapper: {
     width: IMAGE_WIDTH,
@@ -335,6 +377,27 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
+  },
+  paginationContainer: {
+    position: 'absolute',
+    bottom: 16,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    zIndex: 10,
+  },
+  paginationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  paginationDotActive: {
+    backgroundColor: '#FFFFFF',
+    width: 24,
   },
   textContainer: {
     padding: 16,
@@ -400,6 +463,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  modalScrollView: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+  },
   modalImageWrapper: {
     width: SCREEN_WIDTH,
     height: '100%',
@@ -424,5 +491,26 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
+  },
+  modalPaginationContainer: {
+    position: 'absolute',
+    bottom: 40,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    zIndex: 10,
+  },
+  modalPaginationDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  modalPaginationDotActive: {
+    backgroundColor: '#FFFFFF',
+    width: 28,
   },
 });
