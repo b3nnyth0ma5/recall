@@ -177,82 +177,82 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
 
   // Show results
   return (
-    <Animated.View entering={FadeInDown} style={styles.container}>
-      {/* OCR Text Section */}
-      {ocrText && ocrText !== 'No text detected.' && (
-        <View style={styles.section}>
-          <Pressable
-            style={styles.sectionHeader}
-            onPress={() => setShowOcrText(!showOcrText)}
-          >
-            <View style={styles.sectionHeaderLeft}>
-              <IconSymbol name="doc.text" size={18} color={colors.primary} />
-              <Text style={styles.sectionTitle}>Extracted Text</Text>
-            </View>
-            <IconSymbol
-              name={showOcrText ? 'chevron.up' : 'chevron.down'}
-              size={16}
-              color={colors.textSecondary}
-            />
-          </Pressable>
-          {showOcrText && (
-            <Animated.View entering={FadeIn} style={styles.sectionContent}>
-              <ScrollView
-                style={compact ? styles.compactScrollView : undefined}
-                nestedScrollEnabled
-              >
+    <ScrollView style={styles.scrollContainer} nestedScrollEnabled>
+      <Animated.View entering={FadeInDown} style={styles.container}>
+        {/* OCR Text Section */}
+        {ocrText && ocrText !== 'No text detected.' && (
+          <View style={styles.section}>
+            <Pressable
+              style={styles.sectionHeader}
+              onPress={() => setShowOcrText(!showOcrText)}
+            >
+              <View style={styles.sectionHeaderLeft}>
+                <IconSymbol name="doc.text" size={18} color={colors.primary} />
+                <Text style={styles.sectionTitle}>Extracted Text</Text>
+              </View>
+              <IconSymbol
+                name={showOcrText ? 'chevron.up' : 'chevron.down'}
+                size={16}
+                color={colors.textSecondary}
+              />
+            </Pressable>
+            {showOcrText && (
+              <Animated.View entering={FadeIn} style={styles.sectionContent}>
                 <Text style={styles.ocrText}>{ocrText}</Text>
-              </ScrollView>
-            </Animated.View>
-          )}
-        </View>
-      )}
+              </Animated.View>
+            )}
+          </View>
+        )}
 
-      {/* Explanation Section */}
-      {explanation && (
-        <View style={styles.section}>
-          <Pressable
-            style={styles.sectionHeader}
-            onPress={() => setShowExplanation(!showExplanation)}
-          >
-            <View style={styles.sectionHeaderLeft}>
-              <IconSymbol name="sparkles" size={18} color={colors.primary} />
-              <Text style={styles.sectionTitle}>AI Explanation</Text>
-            </View>
-            <IconSymbol
-              name={showExplanation ? 'chevron.up' : 'chevron.down'}
-              size={16}
-              color={colors.textSecondary}
-            />
-          </Pressable>
-          {showExplanation && (
-            <Animated.View entering={FadeIn} style={styles.sectionContent}>
-              <Text style={styles.explanationText}>{explanation}</Text>
-            </Animated.View>
-          )}
-        </View>
-      )}
+        {/* Explanation Section */}
+        {explanation && (
+          <View style={styles.section}>
+            <Pressable
+              style={styles.sectionHeader}
+              onPress={() => setShowExplanation(!showExplanation)}
+            >
+              <View style={styles.sectionHeaderLeft}>
+                <IconSymbol name="sparkles" size={18} color={colors.primary} />
+                <Text style={styles.sectionTitle}>AI Explanation</Text>
+              </View>
+              <IconSymbol
+                name={showExplanation ? 'chevron.up' : 'chevron.down'}
+                size={16}
+                color={colors.textSecondary}
+              />
+            </Pressable>
+            {showExplanation && (
+              <Animated.View entering={FadeIn} style={styles.sectionContent}>
+                <Text style={styles.explanationText}>{explanation}</Text>
+              </Animated.View>
+            )}
+          </View>
+        )}
 
-      {/* Metadata */}
-      {processedAt && (
-        <View style={styles.metadata}>
-          <IconSymbol name="clock" size={14} color={colors.textSecondary} />
-          <Text style={styles.metadataText}>
-            Processed {new Date(processedAt).toLocaleString()}
-          </Text>
-        </View>
-      )}
+        {/* Metadata */}
+        {processedAt && (
+          <View style={styles.metadata}>
+            <IconSymbol name="clock" size={14} color={colors.textSecondary} />
+            <Text style={styles.metadataText}>
+              Processed {new Date(processedAt).toLocaleString()}
+            </Text>
+          </View>
+        )}
 
-      {/* Retry button */}
-      <Pressable style={styles.retrySmallButton} onPress={handleRetry}>
-        <IconSymbol name="arrow.clockwise" size={14} color={colors.primary} />
-        <Text style={styles.retrySmallButtonText}>Reprocess</Text>
-      </Pressable>
-    </Animated.View>
+        {/* Retry button */}
+        <Pressable style={styles.retrySmallButton} onPress={handleRetry}>
+          <IconSymbol name="arrow.clockwise" size={14} color={colors.primary} />
+          <Text style={styles.retrySmallButtonText}>Reprocess</Text>
+        </Pressable>
+      </Animated.View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollContainer: {
+    maxHeight: 500,
+  },
   container: {
     backgroundColor: colors.cardBackground,
     borderRadius: 12,
@@ -328,9 +328,6 @@ const styles = StyleSheet.create({
   },
   sectionContent: {
     marginTop: 8,
-  },
-  compactScrollView: {
-    maxHeight: 150,
   },
   ocrText: {
     color: colors.text,
