@@ -1,18 +1,22 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Dimensions } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
+import Carousel from 'react-native-snap-carousel';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote } = useNotes();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const carouselRef = useRef<Carousel<any>>(null);
   const scrollPositionRef = useRef(0);
   const previousNotesCountRef = useRef(notes.length);
   const isFirstFocusRef = useRef(true);
@@ -104,6 +108,21 @@ export default function HomeScreen() {
     </Animated.View>
   );
 
+  const renderCarouselItem = ({ item, index }: { item: any; index: number }) => {
+    return (
+      <View style={styles.carouselItemContainer}>
+        <NoteCard
+          note={item}
+          onPress={() => handleNotePress(item.id)}
+        />
+      </View>
+    );
+  };
+
+  // Get notes with images for the carousel
+  const notesWithImages = notes.filter(note => note.images && note.images.length > 0);
+  const notesWithoutImages = notes.filter(note => !note.images || note.images.length === 0);
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -150,13 +169,39 @@ export default function HomeScreen() {
           renderEmptyState()
         ) : (
           <View style={styles.notesContainer}>
-            {notes.map((note) => (
-              <NoteCard
-                key={note.id}
-                note={note}
-                onPress={() => handleNotePress(note.id)}
-              />
-            ))}
+            {/* Carousel for notes with images */}
+            {notesWithImages.length > 0 && (
+              <View style={styles.carouselSection}>
+                <Text style={styles.sectionTitle}>Recent with Images</Text>
+                <Carousel
+                  ref={carouselRef}
+                  data={notesWithImages.slice(0, 5)}
+                  renderItem={renderCarouselItem}
+                  sliderWidth={SCREEN_WIDTH}
+                  itemWidth={SCREEN_WIDTH - 48}
+                  layout="default"
+                  loop={false}
+                  enableSnap={true}
+                  inactiveSlideScale={0.94}
+                  inactiveSlideOpacity={0.7}
+                  containerCustomStyle={styles.carouselContainer}
+                  contentContainerCustomStyle={styles.carouselContentContainer}
+                />
+              </View>
+            )}
+
+            {/* All notes section */}
+            <View style={styles.allNotesSection}>
+              <Text style={styles.sectionTitle}>All Recalls</Text>
+              {notes.map((note) => (
+                <NoteCard
+                  key={note.id}
+                  note={note}
+                  onPress={() => handleNotePress(note.id)}
+                />
+              ))}
+            </View>
+
             {isLoadingMore && (
               <View style={styles.loadingMoreContainer}>
                 <ActivityIndicator size="small" color={colors.primary} />
@@ -200,7 +245,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
     paddingBottom: 100,
   },
   loadingContainer: {
@@ -230,6 +274,29 @@ const styles = StyleSheet.create({
   },
   notesContainer: {
     width: '100%',
+  },
+  carouselSection: {
+    marginBottom: 24,
+    paddingTop: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 16,
+    paddingHorizontal: 16,
+  },
+  carouselContainer: {
+    flexGrow: 0,
+  },
+  carouselContentContainer: {
+    paddingVertical: 8,
+  },
+  carouselItemContainer: {
+    paddingHorizontal: 4,
+  },
+  allNotesSection: {
+    paddingHorizontal: 16,
   },
   loadingMoreContainer: {
     flexDirection: 'row',

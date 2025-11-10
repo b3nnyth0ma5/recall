@@ -11,11 +11,11 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-import * as Location from 'expo-location';
 import { supabase } from '@/utils/supabase';
 
 interface LocationResult {
