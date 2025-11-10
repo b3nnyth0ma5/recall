@@ -1,54 +1,65 @@
 
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, ScrollView, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, ScrollView, Modal, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { Note } from '@/types/Note';
 import { format } from 'date-fns';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import { fetchNotesWithImagesForReels } from '@/utils/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface StoryReelsProps {
-  notes: Note[];
   onNotePress: (noteId: string) => void;
+  refreshTrigger?: number; // Optional prop to trigger refresh from parent
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const STORY_SIZE = 80;
 const STORY_SPACING = 12;
 
-export function StoryReels({ notes, onNotePress }: StoryReelsProps) {
+export function StoryReels({ onNotePress, refreshTrigger }: StoryReelsProps) {
   const [selectedStory, setSelectedStory] = useState<Note | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [reelNotes, setReelNotes] = useState<Note[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
-  // Create up to 10 reels with randomized images from notes with images
-  const reelNotes = useMemo(() => {
-    const reels: Note[] = [];
-    
-    // Filter notes that have images
-    const notesWithImages = notes.filter(note => note.images && note.images.length > 0);
-    
-    // Randomize the order of notes
-    const shuffledNotes = [...notesWithImages].sort(() => Math.random() - 0.5);
-    
-    // Take up to 10 notes
-    const maxReels = Math.min(10, shuffledNotes.length);
-    
-    // Create reels with randomized images
-    for (let i = 0; i < maxReels; i++) {
-      const note = shuffledNotes[i];
-      
-      // Randomize the images in each note
-      const shuffledImages = [...note.images].sort(() => Math.random() - 0.5);
-      reels.push({
-        ...note,
-        images: shuffledImages,
-      });
-    }
-    
-    console.log(`Created ${reels.length} story reels from ${notesWithImages.length} notes with images (randomized order)`);
-    return reels;
-  }, [notes]);
+  // Fetch notes with images from Supabase
+  useEffect(() => {
+    const loadReels = async () => {
+      if (!user) {
+        setReelNotes([]);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        console.log('Loading story reels from Supabase...');
+        
+        // Fetch up to 10 notes with images, randomized
+        const notes = await fetchNotesWithImagesForReels(user.id, 10);
+        
+        // Randomize the images within each note as well
+        const notesWithShuffledImages = notes.map(note => ({
+          ...note,
+          images: [...note.images].sort(() => Math.random() - 0.5),
+        }));
+        
+        setReelNotes(notesWithShuffledImages);
+        console.log(`Loaded ${notesWithShuffledImages.length} story reels`);
+      } catch (error) {
+        console.error('Error loading story reels:', error);
+        setReelNotes([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadReels();
+  }, [user, refreshTrigger]);
 
   const handleStoryPress = (note: Note) => {
     setSelectedStory(note);
@@ -110,6 +121,15 @@ export function StoryReels({ notes, onNotePress }: StoryReelsProps) {
       return '';
     }
   };
+
+  // Show loading state
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="small" color={colors.primary} />
+      </View>
+    );
+  }
 
   // Don't render anything if there are no reels
   if (reelNotes.length === 0) {
@@ -253,6 +273,11 @@ export function StoryReels({ notes, onNotePress }: StoryReelsProps) {
 }
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   container: {
     marginBottom: 20,
   },

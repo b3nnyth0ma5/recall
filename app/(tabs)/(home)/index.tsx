@@ -13,6 +13,7 @@ export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote } = useNotes();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [reelsRefreshTrigger, setReelsRefreshTrigger] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollPositionRef = useRef(0);
   const previousNotesCountRef = useRef(notes.length);
@@ -40,6 +41,8 @@ export default function HomeScreen() {
       if (currentCount > previousCount) {
         console.log('New note detected, auto-refreshing...');
         refreshNotes();
+        // Trigger story reels refresh
+        setReelsRefreshTrigger(prev => prev + 1);
       }
       
       // Restore scroll position after a short delay
@@ -60,6 +63,8 @@ export default function HomeScreen() {
   const handleRefresh = async () => {
     setRefreshing(true);
     await refreshNotes();
+    // Trigger story reels refresh
+    setReelsRefreshTrigger(prev => prev + 1);
     setRefreshing(false);
   };
 
@@ -104,9 +109,6 @@ export default function HomeScreen() {
       </Text>
     </Animated.View>
   );
-
-  // Get notes with images for the story reels
-  const notesWithImages = notes.filter(note => note.images && note.images.length > 0);
 
   return (
     <View style={styles.container}>
@@ -154,11 +156,11 @@ export default function HomeScreen() {
           renderEmptyState()
         ) : (
           <View style={styles.notesContainer}>
-            {/* Story Reels - always show 10 reels */}
+            {/* Story Reels - fetches data independently from Supabase */}
             <View style={styles.storyReelsSection}>
               <StoryReels 
-                notes={notesWithImages} 
                 onNotePress={handleNotePress}
+                refreshTrigger={reelsRefreshTrigger}
               />
             </View>
 

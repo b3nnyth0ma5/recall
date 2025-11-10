@@ -213,6 +213,123 @@ export async function saveSearchHistory(userId: string, searchText: string): Pro
 }
 
 /**
+ * Fetch all notes with images for story reels
+ * This queries the database directly to get all recalls that have at least one image
+ * 
+ * @param userId - The user ID to fetch notes for
+ * @param limit - Maximum number of notes to fetch (default: 10)
+ * @returns Promise with array of notes with images
+ */
+export async function fetchNotesWithImagesForReels(userId: string, limit: number = 10): Promise<any[]> {
+  try {
+    console.log('=== Fetching notes with images for story reels ===');
+    console.log('User ID:', userId);
+    console.log('Limit:', limit);
+
+    // First, get all recall IDs that have images
+    const { data: recallsWithImages, error: recallsError } = await supabase
+      .from('recall_images')
+      .select('recall_id')
+      .eq('user_id', userId);
+
+    if (recallsError) {
+      console.error('Error fetching recalls with images:', recallsError);
+      return [];
+    }
+
+    if (!recallsWithImages || recallsWithImages.length === 0) {
+      console.log('No recalls with images found');
+      return [];
+    }
+
+    // Get unique recall IDs
+    const uniqueRecallIds = [...new Set(recallsWithImages.map(r => r.recall_id))];
+    console.log(`Found ${uniqueRecallIds.length} unique recalls with images`);
+
+    // Fetch the recall details for these IDs
+    const { data: recallsData, error: recallDetailsError } = await supabase
+      .from('recalls')
+      .select('*')
+      .in('id', uniqueRecallIds)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (recallDetailsError) {
+      console.error('Error fetching recall details:', recallDetailsError);
+      return [];
+    }
+
+    if (!recallsData || recallsData.length === 0) {
+      console.log('No recall details found');
+      return [];
+    }
+
+    console.log(`Fetched ${recallsData.length} recalls with images`);
+
+    // Load images for each recall
+    const notesWithImages = await Promise.all(
+      recallsData.map(async (recall) => {
+        try {
+          const { data: imagesData, error: imagesError } = await supabase
+            .from('recall_images')
+            .select('id')
+            .eq('recall_id', recall.id)
+            .order('created_at', { ascending: true });
+
+          if (imagesError) {
+            console.error('Error loading images for recall:', recall.id, imagesError);
+            return { ...recall, images: [], imageIds: [] };
+          }
+
+          const imageResults = await Promise.all(
+            (imagesData || []).map(async (img) => {
+              try {
+                const dataUrl = await getImageDataUrl(img.id);
+                if (!dataUrl) {
+                  return { url: '', id: img.id };
+                }
+                return { url: dataUrl, id: img.id };
+              } catch (error) {
+                console.error(`Exception processing image ${img.id}:`, error);
+                return { url: '', id: img.id };
+              }
+            })
+          );
+
+          const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
+          const imageIds = imageResults.map(result => result.id);
+          
+          return { 
+            ...recall, 
+            images: validImageUrls, 
+            imageIds: imageIds
+          };
+        } catch (error) {
+          console.error(`Exception processing recall ${recall.id}:`, error);
+          return { ...recall, images: [], imageIds: [] };
+        }
+      })
+    );
+
+    // Filter out notes without valid images
+    const validNotes = notesWithImages.filter(note => note.images && note.images.length > 0);
+    
+    // Randomize the order
+    const shuffledNotes = [...validNotes].sort(() => Math.random() - 0.5);
+    
+    // Take up to the limit
+    const limitedNotes = shuffledNotes.slice(0, limit);
+    
+    console.log(`Returning ${limitedNotes.length} randomized notes with images for story reels`);
+    
+    return limitedNotes;
+  } catch (error) {
+    console.error('Exception in fetchNotesWithImagesForReels:', error);
+    return [];
+  }
+}
+
+/**
  * Trigger OCR processing for an image
  * This calls the Supabase Edge Function to process the image with OpenAI Vision API
  * 
