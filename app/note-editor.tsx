@@ -43,7 +43,7 @@ interface OCRData {
   isProcessing?: boolean;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function NoteEditorScreen() {
   const router = useRouter();
@@ -553,74 +553,110 @@ export default function NoteEditorScreen() {
       return;
     }
 
-    setLoadingOCR(true);
     setIsOCRModalVisible(true);
+    setLoadingOCR(true);
 
     try {
       const ocrResults: OCRData[] = [];
+      const fetchPromises: Promise<void>[] = [];
 
+      // Fetch all OCR data in parallel
       for (const image of images) {
-        if (!image.id) {
-          // Image not yet saved, skip
-          ocrResults.push({
-            ocrText: 'Image not yet saved',
-            explanation: 'Please save the note first to process this image.',
-          });
-          continue;
-        }
-
-        // Check if image has been processed
-        const { data: imageData, error } = await supabase
-          .from('recall_images')
-          .select('processed_at')
-          .eq('id', image.id)
-          .single();
-
-        if (error) {
-          console.error('Error checking image processing status:', error);
-          ocrResults.push({
-            ocrText: 'Error loading OCR data',
-            explanation: 'Failed to check processing status.',
-          });
-          continue;
-        }
-
-        // If not processed, trigger OCR
-        if (!imageData.processed_at) {
-          console.log('Image not processed, triggering OCR:', image.id);
-          const triggerResult = await triggerOCRProcessing(image.id);
-          
-          if (!triggerResult.success) {
-            console.error('Failed to trigger OCR:', triggerResult.error);
+        const fetchPromise = (async () => {
+          if (!image.id) {
+            // Image not yet saved, skip
             ocrResults.push({
-              ocrText: 'Processing failed',
-              explanation: 'Failed to trigger OCR processing.',
+              ocrText: 'Image not yet saved',
+              explanation: 'Please save the note first to process this image.',
             });
-            continue;
+            return;
           }
 
-          // Wait a bit for processing to start
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
+          // Check if image has been processed
+          const { data: imageData, error } = await supabase
+            .from('recall_images')
+            .select('processed_at')
+            .eq('id', image.id)
+            .single();
 
-        // Fetch OCR results
-        const ocrData = await getImageOCRResults(image.id);
-        
-        if (ocrData) {
-          ocrResults.push({
-            ocrText: ocrData.ocrText || 'No text detected',
-            explanation: ocrData.explanation || 'No explanation available',
-            processedAt: ocrData.processedAt,
-            isProcessing: ocrData.isProcessing,
-          });
-        } else {
-          ocrResults.push({
-            ocrText: 'Loading...',
-            explanation: 'Processing in progress...',
-            isProcessing: true,
-          });
-        }
+          if (error) {
+            console.error('Error checking image processing status:', error);
+            ocrResults.push({
+              ocrText: 'Error loading OCR data',
+              explanation: 'Failed to check processing status.',
+            });
+            return;
+          }
+
+          // If not processed, trigger OCR
+          if (!imageData.processed_at) {
+            console.log('Image not processed, triggering OCR:', image.id);
+            const triggerResult = await triggerOCRProcessing(image.id);
+            
+            if (!triggerResult.success) {
+              console.error('Failed to trigger OCR:', triggerResult.error);
+              ocrResults.push({
+                ocrText: 'Processing failed',
+                explanation: 'Failed to trigger OCR processing.',
+              });
+              return;
+            }
+
+            // Wait for processing to complete (with timeout)
+            let attempts = 0;
+            const maxAttempts = 15; // 30 seconds max wait
+            
+            while (attempts < maxAttempts) {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              
+              const ocrData = await getImageOCRResults(image.id);
+              
+              if (ocrData && !ocrData.isProcessing && ocrData.processedAt) {
+                ocrResults.push({
+                  ocrText: ocrData.ocrText || 'No text detected',
+                  explanation: ocrData.explanation || 'No explanation available',
+                  processedAt: ocrData.processedAt,
+                  isProcessing: false,
+                });
+                return;
+              }
+              
+              attempts++;
+            }
+            
+            // Timeout - still processing
+            ocrResults.push({
+              ocrText: 'Processing...',
+              explanation: 'Image is still being processed. Please try again in a moment.',
+              isProcessing: true,
+            });
+            return;
+          }
+
+          // Fetch OCR results
+          const ocrData = await getImageOCRResults(image.id);
+          
+          if (ocrData) {
+            ocrResults.push({
+              ocrText: ocrData.ocrText || 'No text detected',
+              explanation: ocrData.explanation || 'No explanation available',
+              processedAt: ocrData.processedAt,
+              isProcessing: ocrData.isProcessing,
+            });
+          } else {
+            ocrResults.push({
+              ocrText: 'Loading...',
+              explanation: 'Processing in progress...',
+              isProcessing: true,
+            });
+          }
+        })();
+
+        fetchPromises.push(fetchPromise);
       }
+
+      // Wait for all fetches to complete
+      await Promise.all(fetchPromises);
 
       setOcrDataList(ocrResults);
     } catch (error) {
@@ -638,8 +674,8 @@ export default function NoteEditorScreen() {
 
   const handleImageScroll = (event: any) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const imageWidth = 300;
-    const index = Math.round(contentOffsetX / imageWidth);
+    const imageWidth = SCREEN_WIDTH - 32;
+    const index = Math.round(contentOffsetX / (imageWidth + 12));
     if (index !== currentImageIndex && index >= 0 && index < images.length) {
       setCurrentImageIndex(index);
     }
@@ -687,22 +723,29 @@ export default function NoteEditorScreen() {
             </Pressable>
           ),
           headerRight: () => (
-            <Pressable
-              onPress={handleSave}
-              disabled={saving || !canSave}
-              style={[
-                styles.saveButton,
-                (saving || !canSave) && styles.saveButtonDisabled,
-              ]}
-            >
-              {saving ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <View style={styles.checkmarkContainer}>
-                  <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
-                </View>
+            <View style={styles.headerRightContainer}>
+              {hasImages && (
+                <Pressable onPress={handleShowOCRInfo} style={styles.headerIconButton}>
+                  <IconSymbol name="sparkles" size={22} color={colors.primary} />
+                </Pressable>
               )}
-            </Pressable>
+              <Pressable
+                onPress={handleSave}
+                disabled={saving || !canSave}
+                style={[
+                  styles.saveButton,
+                  (saving || !canSave) && styles.saveButtonDisabled,
+                ]}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <View style={styles.checkmarkContainer}>
+                    <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
+                  </View>
+                )}
+              </Pressable>
+            </View>
           ),
         }}
       />
@@ -714,6 +757,7 @@ export default function NoteEditorScreen() {
         keyboardShouldPersistTaps="handled"
         scrollEnabled={true}
       >
+        {/* Text Input Section */}
         <Animated.View entering={FadeIn.duration(600)} style={styles.textInputContainer}>
           {hasUrl(text) ? (
             <View style={styles.richTextContainer}>
@@ -723,7 +767,7 @@ export default function NoteEditorScreen() {
               <TextInput
                 ref={textInputRef}
                 style={[styles.textInput, styles.hiddenInput]}
-                placeholder="Start writing your recall..."
+                placeholder="What's on your mind?"
                 placeholderTextColor={colors.textTertiary}
                 value={text}
                 onChangeText={setText}
@@ -736,7 +780,7 @@ export default function NoteEditorScreen() {
             <TextInput
               ref={textInputRef}
               style={styles.textInput}
-              placeholder="Start writing your recall..."
+              placeholder="What's on your mind?"
               placeholderTextColor={colors.textTertiary}
               value={text}
               onChangeText={setText}
@@ -747,6 +791,7 @@ export default function NoteEditorScreen() {
           )}
         </Animated.View>
 
+        {/* Location Info */}
         {locationName && (
           <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.locationInfo}>
             <IconSymbol name="location.fill" size={16} color={colors.textSecondary} />
@@ -754,27 +799,37 @@ export default function NoteEditorScreen() {
           </Animated.View>
         )}
 
+        {/* Images Section */}
         {hasImages && (
           <Animated.View entering={FadeInDown.duration(600).delay(400)} style={styles.imagesContainer}>
             <View style={styles.imagesHeader}>
-              <Text style={styles.imagesTitle}>Images ({images.length})</Text>
-              {hasImages && (
-                <Pressable onPress={handleShowOCRInfo} style={styles.sparkleButton}>
-                  <IconSymbol name="sparkles" size={20} color={colors.primary} />
-                </Pressable>
-              )}
+              <Text style={styles.imagesTitle}>{images.length} {images.length === 1 ? 'Image' : 'Images'}</Text>
+              <View style={styles.paginationDots}>
+                {images.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.paginationDot,
+                      index === currentImageIndex && styles.paginationDotActive,
+                    ]}
+                  />
+                ))}
+              </View>
             </View>
             <ScrollView
               ref={imageScrollRef}
               horizontal
+              pagingEnabled
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.imagesScrollContent}
               onScroll={handleImageScroll}
               scrollEventThrottle={16}
+              decelerationRate="fast"
+              snapToInterval={SCREEN_WIDTH - 32 + 12}
             >
               {images.map((image, index) => (
                 <View key={`${image.id || 'new'}-${index}`} style={styles.imageWrapper}>
-                  <Image source={{ uri: image.uri }} style={styles.image} />
+                  <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
                   <Pressable
                     onPress={() => removeImage(index)}
                     style={styles.removeImageButton}
@@ -790,6 +845,7 @@ export default function NoteEditorScreen() {
         )}
       </ScrollView>
 
+      {/* Toolbar */}
       <View style={styles.toolbar}>
         <View style={styles.toolbarLeft}>
           <Pressable
@@ -800,7 +856,7 @@ export default function NoteEditorScreen() {
             {loading ? (
               <ActivityIndicator size="small" color={colors.primary} />
             ) : (
-              <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+              <IconSymbol name="camera.fill" size={26} color={colors.primary} />
             )}
           </Pressable>
           <Pressable
@@ -808,13 +864,13 @@ export default function NoteEditorScreen() {
             disabled={loading}
             style={styles.toolbarButton}
           >
-            <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+            <IconSymbol name="photo.fill" size={26} color={colors.primary} />
           </Pressable>
           <Pressable
             onPress={handleLocationSearch}
             style={styles.toolbarButton}
           >
-            <IconSymbol name="mappin.circle.fill" size={28} color={colors.primary} />
+            <IconSymbol name="mappin.circle.fill" size={26} color={colors.primary} />
           </Pressable>
           <Pressable
             onPress={toggleKeyboard}
@@ -822,7 +878,7 @@ export default function NoteEditorScreen() {
           >
             <IconSymbol 
               name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-              size={28} 
+              size={26} 
               color={colors.primary} 
             />
           </Pressable>
@@ -833,7 +889,7 @@ export default function NoteEditorScreen() {
             onPress={handleDelete}
             style={styles.toolbarButton}
           >
-            <IconSymbol name="trash" size={28} color={colors.error} />
+            <IconSymbol name="trash" size={26} color={colors.error} />
           </Pressable>
         )}
       </View>
@@ -901,82 +957,86 @@ export default function NoteEditorScreen() {
         animationType="fade"
         onRequestClose={handleCloseOCRModal}
       >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={handleCloseOCRModal}
-        >
+        <View style={styles.modalOverlay}>
           <Animated.View 
             entering={FadeIn.duration(300)}
             style={[styles.modalContent, styles.ocrModalContent]}
           >
-            <Pressable onPress={(e) => e.stopPropagation()}>
-              <View style={styles.modalHeader}>
-                <IconSymbol name="sparkles" size={32} color={colors.primary} />
-                <Text style={styles.modalTitle}>Image Analysis</Text>
+            <View style={styles.modalHeader}>
+              <IconSymbol name="sparkles" size={32} color={colors.primary} />
+              <Text style={styles.modalTitle}>Image Analysis</Text>
+            </View>
+
+            {loadingOCR ? (
+              <View style={styles.ocrLoadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.ocrLoadingText}>Analyzing images...</Text>
+                <Text style={styles.ocrLoadingSubtext}>This may take a moment</Text>
               </View>
+            ) : (
+              <ScrollView 
+                style={styles.ocrScrollView} 
+                contentContainerStyle={styles.ocrScrollContent}
+                showsVerticalScrollIndicator={true}
+              >
+                {ocrDataList.map((ocrData, index) => (
+                  <View key={index} style={styles.ocrImageSection}>
+                    <View style={styles.ocrImageHeader}>
+                      <Image source={{ uri: images[index]?.uri }} style={styles.ocrImageThumbnail} />
+                      <Text style={styles.ocrImageTitle}>Image {index + 1} of {images.length}</Text>
+                    </View>
 
-              {loadingOCR ? (
-                <View style={styles.ocrLoadingContainer}>
-                  <ActivityIndicator size="large" color={colors.primary} />
-                  <Text style={styles.ocrLoadingText}>Analyzing images...</Text>
-                </View>
-              ) : (
-                <ScrollView style={styles.ocrScrollView} nestedScrollEnabled>
-                  {ocrDataList.map((ocrData, index) => (
-                    <View key={index} style={styles.ocrImageSection}>
-                      <View style={styles.ocrImageHeader}>
-                        <Image source={{ uri: images[index]?.uri }} style={styles.ocrImageThumbnail} />
-                        <Text style={styles.ocrImageTitle}>Image {index + 1}</Text>
+                    {ocrData.isProcessing ? (
+                      <View style={styles.ocrProcessingContainer}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={styles.ocrProcessingText}>Processing...</Text>
                       </View>
-
-                      {ocrData.isProcessing ? (
-                        <View style={styles.ocrProcessingContainer}>
-                          <ActivityIndicator size="small" color={colors.primary} />
-                          <Text style={styles.ocrProcessingText}>Processing...</Text>
-                        </View>
-                      ) : (
-                        <>
+                    ) : (
+                      <>
+                        {ocrData.ocrText && ocrData.ocrText !== 'No text detected' && (
                           <View style={styles.ocrSection}>
                             <View style={styles.ocrSectionHeader}>
                               <IconSymbol name="doc.text" size={18} color={colors.primary} />
-                              <Text style={styles.ocrSectionTitle}>OCR Text</Text>
+                              <Text style={styles.ocrSectionTitle}>Extracted Text</Text>
                             </View>
                             <Text style={styles.ocrText}>
-                              {ocrData.ocrText || 'No text detected'}
+                              {ocrData.ocrText}
                             </Text>
                           </View>
+                        )}
 
+                        {ocrData.explanation && (
                           <View style={styles.ocrSection}>
                             <View style={styles.ocrSectionHeader}>
                               <IconSymbol name="sparkles" size={18} color={colors.primary} />
-                              <Text style={styles.ocrSectionTitle}>Explanation</Text>
+                              <Text style={styles.ocrSectionTitle}>AI Explanation</Text>
                             </View>
                             <Text style={styles.ocrText}>
-                              {ocrData.explanation || 'No explanation available'}
+                              {ocrData.explanation}
                             </Text>
                           </View>
+                        )}
 
-                          {ocrData.processedAt && (
-                            <Text style={styles.ocrTimestamp}>
-                              Processed: {new Date(ocrData.processedAt).toLocaleString()}
-                            </Text>
-                          )}
-                        </>
-                      )}
-                    </View>
-                  ))}
-                </ScrollView>
-              )}
+                        {ocrData.processedAt && (
+                          <Text style={styles.ocrTimestamp}>
+                            Processed: {new Date(ocrData.processedAt).toLocaleString()}
+                          </Text>
+                        )}
+                      </>
+                    )}
+                  </View>
+                ))}
+              </ScrollView>
+            )}
 
-              <Pressable
-                onPress={handleCloseOCRModal}
-                style={styles.modalButton}
-              >
-                <Text style={styles.modalButtonText}>Close</Text>
-              </Pressable>
+            <Pressable
+              onPress={handleCloseOCRModal}
+              style={styles.modalButton}
+            >
+              <Text style={styles.modalButtonText}>Close</Text>
             </Pressable>
           </Animated.View>
-        </Pressable>
+        </View>
       </Modal>
     </KeyboardAvoidingView>
   );
@@ -1002,17 +1062,28 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    paddingBottom: 20,
   },
   headerButton: {
     padding: 8,
     marginHorizontal: 8,
+  },
+  headerRightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginRight: 8,
+  },
+  headerIconButton: {
+    padding: 8,
+    backgroundColor: colors.card,
+    borderRadius: 20,
   },
   saveButton: {
     backgroundColor: colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
-    marginRight: 8,
     minWidth: 40,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1028,25 +1099,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   textInputContainer: {
-    padding: 16,
-    minHeight: 200,
+    padding: 20,
+    minHeight: 150,
   },
   textInput: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 17,
+    lineHeight: 26,
     color: colors.text,
-    minHeight: 200,
+    minHeight: 150,
     textAlignVertical: 'top',
   },
   richTextContainer: {
     position: 'relative',
-    minHeight: 200,
+    minHeight: 150,
   },
   richText: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 17,
+    lineHeight: 26,
     color: colors.text,
-    minHeight: 200,
+    minHeight: 150,
   },
   hiddenInput: {
     position: 'absolute',
@@ -1066,12 +1137,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: colors.card,
+    marginHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 16,
   },
   locationText: {
     fontSize: 14,
     color: colors.textSecondary,
+    flex: 1,
   },
   imagesContainer: {
     paddingVertical: 16,
@@ -1080,42 +1156,53 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    paddingHorizontal: 20,
+    marginBottom: 16,
   },
   imagesTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: colors.text,
   },
-  sparkleButton: {
-    padding: 8,
-    backgroundColor: colors.card,
-    borderRadius: 20,
+  paginationDots: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  paginationDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.border,
+  },
+  paginationDotActive: {
+    backgroundColor: colors.primary,
+    width: 20,
   },
   imagesScrollContent: {
     paddingHorizontal: 16,
-    gap: 12,
   },
   imageWrapper: {
     position: 'relative',
     marginRight: 12,
+    width: SCREEN_WIDTH - 32,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   image: {
-    width: 300,
-    height: 200,
-    borderRadius: 12,
+    width: SCREEN_WIDTH - 32,
+    height: (SCREEN_WIDTH - 32) * 0.75,
+    borderRadius: 16,
     backgroundColor: colors.cardDark,
   },
   removeImageButton: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 12,
+    right: 12,
   },
   removeButtonCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1124,24 +1211,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingVertical: 12,
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
   },
   toolbarLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 24,
+    gap: 20,
   },
   toolbarButton: {
     padding: 8,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -1157,7 +1244,7 @@ const styles = StyleSheet.create({
   },
   ocrModalContent: {
     maxWidth: 500,
-    maxHeight: '80%',
+    maxHeight: SCREEN_HEIGHT * 0.85,
   },
   modalHeader: {
     alignItems: 'center',
@@ -1201,16 +1288,24 @@ const styles = StyleSheet.create({
   ocrLoadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 40,
-    gap: 16,
+    paddingVertical: 60,
+    gap: 12,
   },
   ocrLoadingText: {
     fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  ocrLoadingSubtext: {
+    fontSize: 14,
     color: colors.textSecondary,
   },
   ocrScrollView: {
-    maxHeight: 400,
+    maxHeight: SCREEN_HEIGHT * 0.6,
     marginBottom: 16,
+  },
+  ocrScrollContent: {
+    paddingBottom: 8,
   },
   ocrImageSection: {
     marginBottom: 24,
@@ -1225,13 +1320,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   ocrImageThumbnail: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
+    width: 60,
+    height: 60,
+    borderRadius: 12,
     backgroundColor: colors.background,
   },
   ocrImageTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     color: colors.text,
   },
@@ -1247,21 +1342,24 @@ const styles = StyleSheet.create({
   },
   ocrSection: {
     marginBottom: 16,
+    backgroundColor: colors.background,
+    padding: 16,
+    borderRadius: 12,
   },
   ocrSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 8,
+    marginBottom: 12,
   },
   ocrSectionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: colors.text,
   },
   ocrText: {
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 22,
     color: colors.text,
   },
   ocrTimestamp: {

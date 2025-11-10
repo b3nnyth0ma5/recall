@@ -319,6 +319,7 @@ export async function getBatchImageOCRResults(imageIds: string[]): Promise<Map<s
   ocrText?: string;
   explanation?: string;
   processedAt?: string;
+  isProcessing?: boolean;
 }>> {
   try {
     if (imageIds.length === 0) {
@@ -329,7 +330,7 @@ export async function getBatchImageOCRResults(imageIds: string[]): Promise<Map<s
 
     const { data, error } = await supabase
       .from('recall_images')
-      .select('id, ocr_text, image_explanation, processed_at')
+      .select('id, ocr_text, image_explanation, processed_at, created_at')
       .in('id', imageIds);
 
     if (error) {
@@ -341,10 +342,12 @@ export async function getBatchImageOCRResults(imageIds: string[]): Promise<Map<s
     
     if (data) {
       data.forEach(item => {
+        const isProcessing = !item.processed_at && item.created_at;
         resultsMap.set(item.id, {
           ocrText: item.ocr_text,
           explanation: item.image_explanation,
           processedAt: item.processed_at,
+          isProcessing,
         });
       });
     }
