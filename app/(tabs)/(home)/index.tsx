@@ -154,15 +154,13 @@ export default function HomeScreen() {
           renderEmptyState()
         ) : (
           <View style={styles.notesContainer}>
-            {/* Story Reels for notes with images */}
-            {notesWithImages.length > 0 && (
-              <View style={styles.storyReelsSection}>
-                <StoryReels 
-                  notes={notesWithImages.slice(0, 10)} 
-                  onNotePress={handleNotePress}
-                />
-              </View>
-            )}
+            {/* Story Reels - always show 10 reels */}
+            <View style={styles.storyReelsSection}>
+              <StoryReels 
+                notes={notesWithImages} 
+                onNotePress={handleNotePress}
+              />
+            </View>
 
             {/* All notes section */}
             <View style={styles.allNotesSection}>
