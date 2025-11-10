@@ -1,25 +1,23 @@
 
-import React, { useState, useRef, memo } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Dimensions, ScrollView, Linking, Modal, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { Note } from '@/types/Note';
 import { format } from 'date-fns';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { getOptimizedImageUrl, IMAGE_SIZES } from '@/utils/imageOptimization';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 interface NoteCardProps {
   note: Note;
   onPress: () => void;
   onImagePress?: () => void;
-  index?: number;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_PADDING = 4;
+const CARD_PADDING = 4; // Padding on each side of the card
 const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 2);
 
-function NoteCardComponent({ note, onPress, onImagePress, index = 0 }: NoteCardProps) {
+export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showFullText, setShowFullText] = useState(false);
   const [imageErrors, setImageErrors] = useState<{ [key: number]: boolean }>({});
@@ -48,11 +46,11 @@ function NoteCardComponent({ note, onPress, onImagePress, index = 0 }: NoteCardP
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = text.split(urlRegex);
     
-    return parts.map((part, idx) => {
+    return parts.map((part, index) => {
       if (part.match(urlRegex)) {
         return (
           <Text
-            key={idx}
+            key={index}
             style={styles.linkText}
             onPress={() => {
               console.log('Opening URL:', part);
@@ -65,7 +63,7 @@ function NoteCardComponent({ note, onPress, onImagePress, index = 0 }: NoteCardP
           </Text>
         );
       }
-      return <Text key={idx}>{part}</Text>;
+      return <Text key={index}>{part}</Text>;
     });
   };
 
@@ -97,28 +95,33 @@ function NoteCardComponent({ note, onPress, onImagePress, index = 0 }: NoteCardP
 
   const handleScroll = (event: any) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const idx = Math.round(contentOffsetX / IMAGE_WIDTH);
-    setCurrentImageIndex(idx);
+    const index = Math.round(contentOffsetX / IMAGE_WIDTH);
+    console.log('Card carousel scroll - offset:', contentOffsetX, 'index:', index);
+    setCurrentImageIndex(index);
   };
 
   const handleModalScroll = (event: any) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const idx = Math.round(contentOffsetX / SCREEN_WIDTH);
-    setModalImageIndex(idx);
+    const index = Math.round(contentOffsetX / SCREEN_WIDTH);
+    console.log('Modal carousel scroll - offset:', contentOffsetX, 'index:', index);
+    setModalImageIndex(index);
   };
 
-  const handleImageError = (idx: number) => {
-    console.error(`Error loading image at index ${idx} for note ${note.id}`);
-    setImageErrors(prev => ({ ...prev, [idx]: true }));
+  const handleImageError = (index: number) => {
+    console.error(`Error loading image at index ${index} for note ${note.id}`);
+    console.error('Image URL:', note.images?.[index]);
+    setImageErrors(prev => ({ ...prev, [index]: true }));
   };
 
-  const handleImageLoad = (idx: number) => {
-    setLoadedImages(prev => ({ ...prev, [idx]: true }));
+  const handleImageLoad = (index: number) => {
+    console.log(`Image ${index} loaded successfully for note ${note.id}`);
+    setLoadedImages(prev => ({ ...prev, [index]: true }));
   };
 
   const handleImagePress = () => {
     setModalImageIndex(currentImageIndex);
     setShowImageModal(true);
+    // Scroll to the current image in the modal after a short delay to ensure modal is rendered
     setTimeout(() => {
       if (modalScrollViewRef.current) {
         modalScrollViewRef.current.scrollTo({ x: currentImageIndex * SCREEN_WIDTH, animated: false });
@@ -134,18 +137,12 @@ function NoteCardComponent({ note, onPress, onImagePress, index = 0 }: NoteCardP
   };
 
   const allImages = note.images || [];
-  const validImages = allImages.filter((_, idx) => !imageErrors[idx]);
+  const validImages = allImages.filter((_, index) => !imageErrors[index]);
   const hasValidImages = validImages.length > 0;
-
-  // Optimize images for card display
-  const optimizedImages = allImages.map(url => getOptimizedImageUrl(url, IMAGE_SIZES.CARD));
 
   return (
     <>
-      <Animated.View 
-        entering={FadeInDown.duration(300).delay(index * 50)} 
-        style={styles.container}
-      >
+      <Animated.View entering={FadeInDown.duration(400)} style={styles.container}>
         {hasValidImages && (
           <Pressable onPress={handleImagePress} style={styles.imageContainer}>
             <ScrollView
@@ -160,14 +157,14 @@ function NoteCardComponent({ note, onPress, onImagePress, index = 0 }: NoteCardP
               contentContainerStyle={styles.scrollViewContent}
               style={styles.scrollView}
             >
-              {optimizedImages.map((imageUrl, idx) => {
-                if (imageErrors[idx]) {
+              {allImages.map((imageUrl, index) => {
+                if (imageErrors[index]) {
                   return null;
                 }
 
                 return (
-                  <View key={idx} style={styles.imageWrapper}>
-                    {!loadedImages[idx] && (
+                  <View key={index} style={styles.imageWrapper}>
+                    {!loadedImages[index] && (
                       <View style={styles.imagePlaceholder}>
                         <ActivityIndicator size="small" color={colors.primary} />
                       </View>
@@ -176,8 +173,8 @@ function NoteCardComponent({ note, onPress, onImagePress, index = 0 }: NoteCardP
                       source={{ uri: imageUrl }}
                       style={styles.image}
                       resizeMode="cover"
-                      onError={() => handleImageError(idx)}
-                      onLoad={() => handleImageLoad(idx)}
+                      onError={() => handleImageError(index)}
+                      onLoad={() => handleImageLoad(index)}
                     />
                   </View>
                 );
@@ -186,12 +183,12 @@ function NoteCardComponent({ note, onPress, onImagePress, index = 0 }: NoteCardP
             
             {validImages.length > 1 && (
               <View style={styles.indicatorContainer}>
-                {validImages.map((_, idx) => (
+                {validImages.map((_, index) => (
                   <View
-                    key={idx}
+                    key={index}
                     style={[
                       styles.indicator,
-                      idx === currentImageIndex && styles.indicatorActive,
+                      index === currentImageIndex && styles.indicatorActive,
                     ]}
                   />
                 ))}
@@ -235,6 +232,7 @@ function NoteCardComponent({ note, onPress, onImagePress, index = 0 }: NoteCardP
         </Pressable>
       </Animated.View>
 
+      {/* Full-screen image preview modal */}
       <Modal
         visible={showImageModal}
         transparent={true}
@@ -263,17 +261,15 @@ function NoteCardComponent({ note, onPress, onImagePress, index = 0 }: NoteCardP
             contentContainerStyle={styles.modalScrollViewContent}
             style={styles.modalScrollView}
           >
-            {allImages.map((imageUrl, idx) => {
-              if (imageErrors[idx]) {
+            {allImages.map((imageUrl, index) => {
+              if (imageErrors[index]) {
                 return null;
               }
 
-              const fullSizeUrl = getOptimizedImageUrl(imageUrl, IMAGE_SIZES.FULL);
-
               return (
-                <View key={idx} style={styles.modalImageWrapper}>
+                <View key={index} style={styles.modalImageWrapper}>
                   <Image
-                    source={{ uri: fullSizeUrl }}
+                    source={{ uri: imageUrl }}
                     style={styles.modalImage}
                     resizeMode="contain"
                   />
@@ -284,12 +280,12 @@ function NoteCardComponent({ note, onPress, onImagePress, index = 0 }: NoteCardP
 
           {validImages.length > 1 && (
             <View style={styles.modalIndicatorContainer}>
-              {validImages.map((_, idx) => (
+              {validImages.map((_, index) => (
                 <View
-                  key={idx}
+                  key={index}
                   style={[
                     styles.modalIndicator,
-                    idx === modalImageIndex && styles.modalIndicatorActive,
+                    index === modalImageIndex && styles.modalIndicatorActive,
                   ]}
                 />
               ))}
@@ -300,9 +296,6 @@ function NoteCardComponent({ note, onPress, onImagePress, index = 0 }: NoteCardP
     </>
   );
 }
-
-// Memoize the component to prevent unnecessary re-renders
-export const NoteCard = memo(NoteCardComponent);
 
 const styles = StyleSheet.create({
   container: {
@@ -414,6 +407,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
   },
+  // Modal styles
   modalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.95)',
