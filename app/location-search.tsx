@@ -120,11 +120,13 @@ export default function LocationSearchScreen() {
 
   const handleSelectLocation = async (location: PlaceResult) => {
     try {
-      const formattedLocationName = extractShortLocationName(location.formattedAddress);
+      // Format location as "place name, suburb" using the display name and formatted address
+      const formattedLocationName = extractShortLocationName(location.formattedAddress, location.displayName);
       
       console.log('Selected location data:', {
         latitude: location.latitude,
         longitude: location.longitude,
+        displayName: location.displayName,
         formattedLocationName,
         fullAddress: location.formattedAddress,
       });
@@ -157,7 +159,8 @@ export default function LocationSearchScreen() {
         router.setParams({
           selectedLatitude: location.latitude.toString(),
           selectedLongitude: location.longitude.toString(),
-          selectedLocationName: location.formattedAddress,
+          selectedLocationName: formattedLocationName,
+          selectedDisplayName: location.displayName,
         });
       }, 100);
     } catch (error) {
@@ -254,7 +257,7 @@ export default function LocationSearchScreen() {
             <Animated.View entering={FadeInDown.duration(600)}>
               <Text style={styles.resultsTitle}>Top {results.length} Results</Text>
               {results.map((result) => {
-                const shortName = extractShortLocationName(result.formattedAddress);
+                const shortName = extractShortLocationName(result.formattedAddress, result.displayName);
                 return (
                   <Pressable
                     key={result.placeId}
@@ -267,6 +270,9 @@ export default function LocationSearchScreen() {
                     <View style={styles.resultTextContainer}>
                       <Text style={styles.resultTextBold} numberOfLines={1}>
                         {result.displayName}
+                      </Text>
+                      <Text style={styles.resultTextFormatted} numberOfLines={1}>
+                        Will be saved as: {shortName}
                       </Text>
                       <Text style={styles.resultText} numberOfLines={2}>
                         {result.formattedAddress}
@@ -404,6 +410,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     lineHeight: 22,
+    marginBottom: 4,
+  },
+  resultTextFormatted: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.primary,
+    lineHeight: 18,
     marginBottom: 4,
   },
   resultText: {

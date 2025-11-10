@@ -191,12 +191,10 @@ export default function NoteEditorScreen() {
     if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
       const latitude = parseFloat(params.selectedLatitude as string);
       const longitude = parseFloat(params.selectedLongitude as string);
-      const displayName = params.selectedLocationName as string;
+      const formattedName = params.selectedLocationName as string;
+      const displayName = params.selectedDisplayName as string || formattedName;
 
-      console.log('Location updated from search:', { latitude, longitude, displayName });
-      
-      // Extract formatted location name
-      const formattedName = extractLocationFromSelection(displayName);
+      console.log('Location updated from search:', { latitude, longitude, formattedName, displayName });
       
       setLocation({ latitude, longitude });
       setLocationName(formattedName);
@@ -207,9 +205,10 @@ export default function NoteEditorScreen() {
         selectedLatitude: undefined,
         selectedLongitude: undefined,
         selectedLocationName: undefined,
+        selectedDisplayName: undefined,
       });
     }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, router]);
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedDisplayName, router]);
 
   const requestLocationPermission = async () => {
     try {
@@ -230,37 +229,6 @@ export default function NoteEditorScreen() {
       }
     } catch (error) {
       console.error('Error getting location:', error);
-    }
-  };
-
-  const extractLocationFromSelection = (displayName: string): string => {
-    // Use the Google Places utility function for consistent formatting
-    try {
-      const { extractShortLocationName } = require('@/utils/googlePlaces');
-      return extractShortLocationName(displayName);
-    } catch (error) {
-      console.error('Error using extractShortLocationName, falling back to manual extraction:', error);
-      
-      // Fallback to manual extraction
-      const parts = displayName.split(',').map(p => p.trim());
-      
-      if (parts.length < 2) {
-        return displayName;
-      }
-
-      const firstPart = parts[0];
-      const secondPart = parts[1];
-      
-      // If first part is a street number, use second and third parts
-      if (firstPart && /^\d/.test(firstPart)) {
-        if (parts.length >= 3) {
-          return `${secondPart}, ${parts[2]}`;
-        }
-        return secondPart;
-      }
-      
-      // Otherwise use first and second parts
-      return `${firstPart}, ${secondPart}`;
     }
   };
 
@@ -965,12 +933,12 @@ export default function NoteEditorScreen() {
               {selectedLocationData && (
                 <View style={styles.modalBody}>
                   <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Formatted Location:</Text>
+                    <Text style={styles.modalLabel}>Saved Location:</Text>
                     <Text style={styles.modalValue}>{selectedLocationData.formattedName}</Text>
                   </View>
 
                   <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Full Address:</Text>
+                    <Text style={styles.modalLabel}>Place Name:</Text>
                     <Text style={styles.modalValue}>{selectedLocationData.displayName}</Text>
                   </View>
 

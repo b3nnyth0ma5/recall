@@ -10,7 +10,7 @@
  * - Geocoding API
  */
 
-const GOOGLE_PLACES_API_KEY = 'YOUR_GOOGLE_PLACES_API_KEY'; // Replace with your actual API key
+const GOOGLE_PLACES_API_KEY = 'AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48'; // Replace with your actual API key
 
 export interface PlaceResult {
   placeId: string;
@@ -127,9 +127,10 @@ export async function searchPlaces(
 
 /**
  * Reverse geocode coordinates to get place information
+ * Returns formatted as "place name, suburb"
  * @param latitude - Latitude coordinate
  * @param longitude - Longitude coordinate
- * @returns Formatted location name
+ * @returns Formatted location name as "place name, suburb"
  */
 export async function reverseGeocodeGoogle(
   latitude: number,
@@ -138,7 +139,7 @@ export async function reverseGeocodeGoogle(
   try {
     console.log('Reverse geocoding with Google:', { latitude, longitude });
 
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_PLACES_API_KEY}&result_type=locality|sublocality|neighborhood`;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_PLACES_API_KEY}`;
 
     const response = await fetch(url);
 
@@ -154,40 +155,79 @@ export async function reverseGeocodeGoogle(
       return 'Unknown Location';
     }
 
-    // Extract suburb and city from the first result
-    const result = data.results[0];
-    const addressComponents = result.address_components || [];
-
+    // Extract place name and suburb from the results
+    let placeName = '';
     let suburb = '';
     let city = '';
 
-    for (const component of addressComponents) {
-      const types = component.types || [];
-      
-      if (types.includes('locality')) {
-        city = component.long_name;
-      } else if (types.includes('sublocality') || types.includes('sublocality_level_1')) {
-        suburb = component.long_name;
-      } else if (types.includes('neighborhood')) {
-        if (!suburb) {
-          suburb = component.long_name;
+    // Try to find the most specific place first (POI, establishment, etc.)
+    for (const result of data.results) {
+      const types = result.types || [];
+      const addressComponents = result.address_components || [];
+
+      // Look for a specific place (POI, establishment, premise, etc.)
+      if (!placeName && (
+        types.includes('point_of_interest') ||
+        types.includes('establishment') ||
+        types.includes('premise') ||
+        types.includes('street_address')
+      )) {
+        // Use the first part of formatted address as place name
+        const addressParts = result.formatted_address.split(',');
+        if (addressParts.length > 0) {
+          placeName = addressParts[0].trim();
         }
+      }
+
+      // Extract suburb and city from address components
+      for (const component of addressComponents) {
+        const componentTypes = component.types || [];
+        
+        if (componentTypes.includes('locality')) {
+          city = component.long_name;
+        } else if (componentTypes.includes('sublocality') || componentTypes.includes('sublocality_level_1')) {
+          suburb = component.long_name;
+        } else if (componentTypes.includes('neighborhood')) {
+          if (!suburb) {
+            suburb = component.long_name;
+          }
+        }
+      }
+
+      // If we have both place name and suburb, we can stop
+      if (placeName && suburb) {
+        break;
       }
     }
 
-    // Format the location name
-    if (suburb && city) {
+    // Format the location name as "place name, suburb"
+    if (placeName && suburb) {
+      console.log('Formatted location:', `${placeName}, ${suburb}`);
+      return `${placeName}, ${suburb}`;
+    } else if (placeName && city) {
+      console.log('Formatted location:', `${placeName}, ${city}`);
+      return `${placeName}, ${city}`;
+    } else if (suburb && city) {
+      console.log('Formatted location:', `${suburb}, ${city}`);
       return `${suburb}, ${city}`;
-    } else if (city) {
-      return city;
+    } else if (placeName) {
+      console.log('Formatted location:', placeName);
+      return placeName;
     } else if (suburb) {
+      console.log('Formatted location:', suburb);
       return suburb;
-    } else if (result.formatted_address) {
+    } else if (city) {
+      console.log('Formatted location:', city);
+      return city;
+    } else if (data.results[0].formatted_address) {
       // Fallback to formatted address, but try to shorten it
-      const parts = result.formatted_address.split(',');
+      const parts = data.results[0].formatted_address.split(',');
       if (parts.length >= 2) {
-        return `${parts[0].trim()}, ${parts[1].trim()}`;
+        const formatted = `${parts[0].trim()}, ${parts[1].trim()}`;
+        console.log('Formatted location (fallback):', formatted);
+        return formatted;
       }
+      console.log('Formatted location (fallback):', parts[0].trim());
       return parts[0].trim();
     }
 
@@ -227,11 +267,13 @@ function calculateDistance(
 }
 
 /**
- * Extract a short location name from a formatted address
+ * Extract a short location name from a formatted address or place result
+ * Formats as "place name, suburb"
  * @param formattedAddress - Full formatted address
- * @returns Shortened location name
+ * @param displayName - Optional display name (place name)
+ * @returns Shortened location name as "place name, suburb"
  */
-export function extractShortLocationName(formattedAddress: string): string {
+export function extractShortLocationName(formattedAddress: string, displayName?: string): string {
   const parts = formattedAddress.split(',').map(p => p.trim());
   
   if (parts.length < 2) {
@@ -240,6 +282,22 @@ export function extractShortLocationName(formattedAddress: string): string {
 
   const firstPart = parts[0];
   const secondPart = parts[1];
+  
+  // If we have a display name (place name), use it with the suburb
+  if (displayName && displayName !== firstPart) {
+    // Try to find the suburb from the address parts
+    // Skip the first part if it's a street address
+    if (/^\d/.test(firstPart)) {
+      // First part is a street number, second part is likely street name
+      if (parts.length >= 3) {
+        return `${displayName}, ${parts[2]}`;
+      }
+      return `${displayName}, ${secondPart}`;
+    } else {
+      // First part might be the place name, use second part as suburb
+      return `${displayName}, ${secondPart}`;
+    }
+  }
   
   // If first part is a street number, use second and third parts
   if (firstPart && /^\d/.test(firstPart)) {
