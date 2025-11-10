@@ -751,12 +751,22 @@ export default function NoteEditorScreen() {
       </View>
 
       <View style={styles.bottomSection}>
+        {/* Image Carousel - Above location and toolbar */}
         {images.length > 0 && (
           <Animated.View entering={FadeInDown.duration(400)} style={styles.imagesContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false} 
+              style={styles.imagesScroll}
+              contentContainerStyle={styles.imagesScrollContent}
+            >
               {images.map((image, index) => (
-                <View key={index} style={styles.imageWrapper}>
-                  <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+                <View key={`${image.id || 'new'}-${index}`} style={styles.imageWrapper}>
+                  <Image 
+                    source={{ uri: image.uri }} 
+                    style={styles.imagePreview}
+                    resizeMode="cover"
+                  />
                   <Pressable
                     onPress={() => removeImage(index)}
                     style={styles.removeImageButton}
@@ -769,6 +779,7 @@ export default function NoteEditorScreen() {
           </Animated.View>
         )}
 
+        {/* Location Info - Below images, above toolbar */}
         {locationName && (
           <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.locationInfo}>
             <IconSymbol name="location.fill" size={16} color={colors.textSecondary} />
@@ -776,6 +787,7 @@ export default function NoteEditorScreen() {
           </Animated.View>
         )}
 
+        {/* Toolbar - At the bottom */}
         <View style={styles.toolbar}>
           <View style={styles.toolbarLeft}>
             <Pressable
@@ -1077,28 +1089,36 @@ const styles = StyleSheet.create({
   },
   imagesContainer: {
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingTop: 16,
+    paddingBottom: 12,
+    backgroundColor: colors.background,
   },
   imagesScroll: {
-    flex: 1,
+    flexGrow: 0,
+  },
+  imagesScrollContent: {
+    paddingRight: 16,
   },
   imageWrapper: {
     marginRight: 12,
     position: 'relative',
   },
   imagePreview: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
+    width: 100,
+    height: 100,
+    borderRadius: 12,
     backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   removeImageButton: {
     position: 'absolute',
     top: -8,
     right: -8,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: colors.background,
     borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.background,
   },
   locationInfo: {
     flexDirection: 'row',
