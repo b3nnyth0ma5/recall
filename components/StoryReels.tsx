@@ -25,13 +25,18 @@ export function StoryReels({ notes, onNotePress }: StoryReelsProps) {
   const reelNotes = useMemo(() => {
     const reels: Note[] = [];
     
-    // Filter notes that have images and take up to 10
+    // Filter notes that have images
     const notesWithImages = notes.filter(note => note.images && note.images.length > 0);
-    const maxReels = Math.min(10, notesWithImages.length);
+    
+    // Randomize the order of notes
+    const shuffledNotes = [...notesWithImages].sort(() => Math.random() - 0.5);
+    
+    // Take up to 10 notes
+    const maxReels = Math.min(10, shuffledNotes.length);
     
     // Create reels with randomized images
     for (let i = 0; i < maxReels; i++) {
-      const note = notesWithImages[i];
+      const note = shuffledNotes[i];
       
       // Randomize the images in each note
       const shuffledImages = [...note.images].sort(() => Math.random() - 0.5);
@@ -41,7 +46,7 @@ export function StoryReels({ notes, onNotePress }: StoryReelsProps) {
       });
     }
     
-    console.log(`Created ${reels.length} story reels from ${notesWithImages.length} notes with images`);
+    console.log(`Created ${reels.length} story reels from ${notesWithImages.length} notes with images (randomized order)`);
     return reels;
   }, [notes]);
 
