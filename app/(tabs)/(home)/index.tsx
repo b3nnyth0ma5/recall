@@ -1,24 +1,19 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
+import { StoryReels } from '@/components/StoryReels';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
 import Animated, { FadeIn } from 'react-native-reanimated';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CAROUSEL_ITEM_WIDTH = SCREEN_WIDTH - 48;
-const CAROUSEL_ITEM_SPACING = 16;
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote } = useNotes();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeCarouselIndex, setActiveCarouselIndex] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
-  const carouselScrollRef = useRef<ScrollView>(null);
   const scrollPositionRef = useRef(0);
   const previousNotesCountRef = useRef(notes.length);
   const isFirstFocusRef = useRef(true);
@@ -100,12 +95,6 @@ export default function HomeScreen() {
     }
   }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
 
-  const handleCarouselScroll = (event: any) => {
-    const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / (CAROUSEL_ITEM_WIDTH + CAROUSEL_ITEM_SPACING));
-    setActiveCarouselIndex(index);
-  };
-
   const renderEmptyState = () => (
     <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
       <IconSymbol name="note.text" size={80} color={colors.textTertiary} />
@@ -116,7 +105,7 @@ export default function HomeScreen() {
     </Animated.View>
   );
 
-  // Get notes with images for the carousel
+  // Get notes with images for the story reels
   const notesWithImages = notes.filter(note => note.images && note.images.length > 0);
 
   return (
@@ -165,53 +154,14 @@ export default function HomeScreen() {
           renderEmptyState()
         ) : (
           <View style={styles.notesContainer}>
-            {/* Carousel for notes with images */}
+            {/* Story Reels for notes with images */}
             {notesWithImages.length > 0 && (
-              <View style={styles.carouselSection}>
-                <Text style={styles.sectionTitle}>Recent Recalls with Images</Text>
-                <ScrollView
-                  ref={carouselScrollRef}
-                  horizontal
-                  pagingEnabled={false}
-                  showsHorizontalScrollIndicator={false}
-                  decelerationRate="fast"
-                  snapToInterval={CAROUSEL_ITEM_WIDTH + CAROUSEL_ITEM_SPACING}
-                  snapToAlignment="start"
-                  contentContainerStyle={styles.carouselContentContainer}
-                  onScroll={handleCarouselScroll}
-                  scrollEventThrottle={16}
-                >
-                  {notesWithImages.slice(0, 5).map((note, index) => (
-                    <View 
-                      key={note.id} 
-                      style={[
-                        styles.carouselItem,
-                        index === 0 && styles.carouselItemFirst,
-                        index === notesWithImages.slice(0, 5).length - 1 && styles.carouselItemLast,
-                      ]}
-                    >
-                      <NoteCard
-                        note={note}
-                        onPress={() => handleNotePress(note.id)}
-                      />
-                    </View>
-                  ))}
-                </ScrollView>
-                
-                {/* Pagination dots */}
-                {notesWithImages.slice(0, 5).length > 1 && (
-                  <View style={styles.paginationContainer}>
-                    {notesWithImages.slice(0, 5).map((_, index) => (
-                      <View
-                        key={index}
-                        style={[
-                          styles.paginationDot,
-                          index === activeCarouselIndex && styles.paginationDotActive,
-                        ]}
-                      />
-                    ))}
-                  </View>
-                )}
+              <View style={styles.storyReelsSection}>
+                <Text style={styles.sectionTitle}>Recent Recalls</Text>
+                <StoryReels 
+                  notes={notesWithImages.slice(0, 10)} 
+                  onNotePress={handleNotePress}
+                />
               </View>
             )}
 
@@ -300,48 +250,16 @@ const styles = StyleSheet.create({
   notesContainer: {
     width: '100%',
   },
-  carouselSection: {
+  storyReelsSection: {
     marginBottom: 24,
-    paddingTop: 16,
+    paddingTop: 8,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 16,
+    marginBottom: 12,
     paddingHorizontal: 16,
-  },
-  carouselContentContainer: {
-    paddingVertical: 8,
-  },
-  carouselItem: {
-    width: CAROUSEL_ITEM_WIDTH,
-    marginRight: CAROUSEL_ITEM_SPACING,
-  },
-  carouselItemFirst: {
-    marginLeft: 24,
-  },
-  carouselItemLast: {
-    marginRight: 24,
-  },
-  paginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 16,
-    gap: 8,
-  },
-  paginationDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.textTertiary,
-    opacity: 0.3,
-  },
-  paginationDotActive: {
-    backgroundColor: colors.primary,
-    opacity: 1,
-    width: 24,
   },
   allNotesSection: {
     paddingHorizontal: 16,
