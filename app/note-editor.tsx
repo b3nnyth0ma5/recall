@@ -234,26 +234,34 @@ export default function NoteEditorScreen() {
   };
 
   const extractLocationFromSelection = (displayName: string): string => {
-    const parts = displayName.split(',').map(p => p.trim());
-    
-    if (parts.length < 2) {
-      return displayName;
-    }
-
-    const firstPart = parts[0];
-    const secondPart = parts[1];
-		const fourthPart = parts[3];
-    
-    // If first part is a street number, use second and third parts
-    if (firstPart && /^\d/.test(firstPart)) {
-      if (parts.length >= 3) {
-        return `${secondPart}, ${parts[2]}`;
+    // Use the Google Places utility function for consistent formatting
+    try {
+      const { extractShortLocationName } = require('@/utils/googlePlaces');
+      return extractShortLocationName(displayName);
+    } catch (error) {
+      console.error('Error using extractShortLocationName, falling back to manual extraction:', error);
+      
+      // Fallback to manual extraction
+      const parts = displayName.split(',').map(p => p.trim());
+      
+      if (parts.length < 2) {
+        return displayName;
       }
-      return secondPart;
+
+      const firstPart = parts[0];
+      const secondPart = parts[1];
+      
+      // If first part is a street number, use second and third parts
+      if (firstPart && /^\d/.test(firstPart)) {
+        if (parts.length >= 3) {
+          return `${secondPart}, ${parts[2]}`;
+        }
+        return secondPart;
+      }
+      
+      // Otherwise use first and second parts
+      return `${firstPart}, ${secondPart}`;
     }
-    
-    // Otherwise use first and fourth parts
-    return `${firstPart}, ${fourthPart}`;
   };
 
   const convertImageToSuitableFormat = async (uri: string): Promise<{ uri: string; contentType: string }> => {

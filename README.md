@@ -252,16 +252,39 @@ For production deployments, set these environment variables:
 - `EXPO_PUBLIC_SUPABASE_URL` - Your Supabase project URL
 - `EXPO_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anonymous key
 
+## Documentation
+
+- **`GOOGLE_PLACES_SETUP.md`** - Complete guide to setting up Google Places API
+- **`LOCATION_UPDATE_SUMMARY.md`** - Summary of location feature implementation
+- **`LOCATION_API_COMPARISON.md`** - Comparison between Google Places and OpenStreetMap
+- **`LOCATION_API_QUICK_START.md`** - Quick reference for developers
+
 ## Features in Detail
 
 ### Image Storage
 Images are stored directly in the Supabase database as base64-encoded data in the `recall_images` table. This eliminates the need for separate storage buckets.
 
 ### Location Search
-Location search uses OpenStreetMap's Nominatim API and is restricted to Australian results. Results are sorted by proximity to the user's current location.
+Location search now supports **Google Places API** for enhanced accuracy and better results. The app includes an intelligent fallback to OpenStreetMap's Nominatim API if Google Places is not configured.
 
-### Auto-Search
-The location search automatically triggers as you type (with a 500ms debounce) for a seamless user experience.
+**Features:**
+- Google Places API integration (optional, requires API key)
+- Automatic fallback to OpenStreetMap (free, no setup)
+- Proximity-based result sorting
+- Distance display for each result
+- Auto-search with 500ms debounce
+
+**Setup Google Places API (Optional but Recommended):**
+
+See `GOOGLE_PLACES_SETUP.md` for detailed instructions, or quick start:
+
+1. Get API key from [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable "Places API (New)" and "Geocoding API"
+3. Add key to `utils/googlePlaces.ts`
+4. Restart app
+
+**Without Google Places API:**
+The app works perfectly with OpenStreetMap (no setup required).
 
 ## Troubleshooting
 
@@ -305,5 +328,5 @@ For issues and questions:
 
 - Built with [Expo](https://expo.dev/)
 - Backend powered by [Supabase](https://supabase.com/)
-- Location data from [OpenStreetMap](https://www.openstreetmap.org/)
+- Location services: [Google Places API](https://developers.google.com/maps/documentation/places) & [OpenStreetMap](https://www.openstreetmap.org/)
 - UI inspired by modern design principles with Geist Sans typography

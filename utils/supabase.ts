@@ -149,6 +149,21 @@ export async function deleteImageRecord(imageId: string): Promise<boolean> {
 
 export async function reverseGeocode(latitude: number, longitude: number): Promise<string> {
   try {
+    // Try Google Places API first
+    const { reverseGeocodeGoogle, isGooglePlacesConfigured } = await import('./googlePlaces');
+    
+    if (isGooglePlacesConfigured()) {
+      console.log('Using Google Places API for reverse geocoding');
+      const result = await reverseGeocodeGoogle(latitude, longitude);
+      if (result !== 'Unknown Location') {
+        return result;
+      }
+      console.log('Google Places API returned Unknown Location, falling back to OpenStreetMap');
+    } else {
+      console.log('Google Places API not configured, using OpenStreetMap');
+    }
+
+    // Fallback to OpenStreetMap Nominatim
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
       {

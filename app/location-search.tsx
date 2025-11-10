@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -17,38 +18,38 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/utils/supabase';
-
-interface LocationResult {
-  place_id: string;
-  display_name: string;
-  lat: string;
-  lon: string;
-  distance?: number;
-}
+import { searchPlaces, PlaceResult, extractShortLocationName, isGooglePlacesConfigured } from '@/utils/googlePlaces';
 
 export default function LocationSearchScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
-  const [results, setResults] = useState<LocationResult[]>([]);
+  const [results, setResults] = useState<PlaceResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [apiConfigured, setApiConfigured] = useState(true);
 
   useEffect(() => {
     getUserLocation();
+    checkApiConfiguration();
   }, []);
 
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
-    return distance;
+  const checkApiConfiguration = () => {
+    const configured = isGooglePlacesConfigured();
+    setApiConfigured(configured);
+    
+    if (!configured) {
+      Alert.alert(
+        'Google Places API Not Configured',
+        'Please add your Google Places API key in utils/googlePlaces.ts to use location search.\n\n' +
+        'Steps:\n' +
+        '1. Go to Google Cloud Console\n' +
+        '2. Enable Places API (New) and Geocoding API\n' +
+        '3. Create an API key\n' +
+        '4. Add the key to utils/googlePlaces.ts',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   const performSearch = useCallback(async (searchText: string) => {
@@ -57,56 +58,30 @@ export default function LocationSearchScreen() {
       return;
     }
 
+    if (!apiConfigured) {
+      Alert.alert('API Not Configured', 'Please configure your Google Places API key first.');
+      return;
+    }
+
     try {
       setLoading(true);
-      console.log('Searching for locations in Australia:', searchText);
+      console.log('Searching for locations with Google Places API:', searchText);
 
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchText)}&countrycodes=au&limit=10`,
-        {
-          headers: {
-            'User-Agent': 'RecallsApp/1.0',
-          },
-        }
-      );
-
-      const data = await response.json();
-      console.log('Search results (Australia only):', data.length);
-
-      if (data && data.length > 0) {
-        let resultsWithDistance = data.map((result: LocationResult) => {
-          if (userLocation) {
-            const distance = calculateDistance(
-              userLocation.latitude,
-              userLocation.longitude,
-              parseFloat(result.lat),
-              parseFloat(result.lon)
-            );
-            return { ...result, distance };
-          }
-          return result;
-        });
-
-        if (userLocation) {
-          resultsWithDistance.sort((a, b) => {
-            const distA = a.distance || Infinity;
-            const distB = b.distance || Infinity;
-            return distA - distB;
-          });
-          console.log('Results sorted by proximity to user location');
-        }
-
-        setResults(resultsWithDistance.slice(0, 5));
-      } else {
-        setResults([]);
-      }
+      const places = await searchPlaces(searchText, userLocation || undefined);
+      
+      console.log('Search results:', places.length);
+      setResults(places);
     } catch (error) {
       console.error('Error searching location:', error);
+      Alert.alert(
+        'Search Error',
+        'Failed to search locations. Please check your API key and internet connection.'
+      );
       setResults([]);
     } finally {
       setLoading(false);
     }
-  }, [userLocation]);
+  }, [userLocation, apiConfigured]);
 
   useEffect(() => {
     if (params.query && typeof params.query === 'string') {
@@ -143,41 +118,15 @@ export default function LocationSearchScreen() {
     }
   };
 
-  const extractLocationFromSelection = (displayName: string): string => {
-    const parts = displayName.split(',').map(p => p.trim());
-    
-    if (parts.length < 2) {
-      return displayName;
-    }
-
-    const firstPart = parts[0];
-    const secondPart = parts[1];
-		const thirdPart = parts[2];
-		const fourthPart = parts[3];
-    
-    // If first part is a street number, use second and third parts
-    if (firstPart && /^\d/.test(firstPart)) {
-      if (parts.length >= 3) {
-        return `${secondPart}, ${thirdPart}`;
-      }
-      return secondPart;
-    }
-    
-    // Otherwise use first and third parts
-    return `${firstPart}, ${thirdPart}`;
-  };
-
-  const handleSelectLocation = async (location: LocationResult) => {
+  const handleSelectLocation = async (location: PlaceResult) => {
     try {
-      const latitude = parseFloat(location.lat);
-      const longitude = parseFloat(location.lon);
-      const formattedLocationName = extractLocationFromSelection(location.display_name);
+      const formattedLocationName = extractShortLocationName(location.formattedAddress);
       
       console.log('Selected location data:', {
-        latitude,
-        longitude,
+        latitude: location.latitude,
+        longitude: location.longitude,
         formattedLocationName,
-        fullDisplayName: location.display_name
+        fullAddress: location.formattedAddress,
       });
 
       if (params.id) {
@@ -187,8 +136,8 @@ export default function LocationSearchScreen() {
         const { error } = await supabase
           .from('recalls')
           .update({
-            latitude: latitude,
-            longitude: longitude,
+            latitude: location.latitude,
+            longitude: location.longitude,
             location: formattedLocationName,
             updated_at: new Date().toISOString(),
           })
@@ -196,6 +145,7 @@ export default function LocationSearchScreen() {
 
         if (error) {
           console.error('Error updating location in database:', error);
+          Alert.alert('Error', 'Failed to update location');
         } else {
           console.log('Location updated successfully in database with formatted name:', formattedLocationName);
         }
@@ -205,13 +155,14 @@ export default function LocationSearchScreen() {
       
       setTimeout(() => {
         router.setParams({
-          selectedLatitude: latitude.toString(),
-          selectedLongitude: longitude.toString(),
-          selectedLocationName: location.display_name,
+          selectedLatitude: location.latitude.toString(),
+          selectedLongitude: location.longitude.toString(),
+          selectedLocationName: location.formattedAddress,
         });
       }, 100);
     } catch (error) {
       console.error('Error processing location:', error);
+      Alert.alert('Error', 'Failed to process location');
     }
   };
 
@@ -247,14 +198,14 @@ export default function LocationSearchScreen() {
             <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search location in Australia..."
+              placeholder="Search location..."
               placeholderTextColor={colors.textTertiary}
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoFocus
               returnKeyType="search"
               onSubmitEditing={handleSubmitEditing}
-              editable={true}
+              editable={apiConfigured}
               selectTextOnFocus={true}
             />
             {searchQuery.length > 0 && (
@@ -276,19 +227,37 @@ export default function LocationSearchScreen() {
           contentContainerStyle={styles.resultsContent}
           keyboardShouldPersistTaps="handled"
         >
-          {loading ? (
+          {!apiConfigured ? (
+            <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+              <IconSymbol name="exclamationmark.triangle" size={60} color={colors.error} />
+              <Text style={styles.emptyTitle}>API Not Configured</Text>
+              <Text style={styles.emptyText}>
+                Please configure your Google Places API key in utils/googlePlaces.ts
+              </Text>
+              <View style={styles.instructionsContainer}>
+                <Text style={styles.instructionsTitle}>Setup Instructions:</Text>
+                <Text style={styles.instructionsText}>
+                  1. Go to Google Cloud Console{'\n'}
+                  2. Enable Places API (New){'\n'}
+                  3. Enable Geocoding API{'\n'}
+                  4. Create an API key{'\n'}
+                  5. Add key to utils/googlePlaces.ts
+                </Text>
+              </View>
+            </Animated.View>
+          ) : loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>Searching...</Text>
+              <Text style={styles.loadingText}>Searching with Google Places...</Text>
             </View>
           ) : results.length > 0 ? (
             <Animated.View entering={FadeInDown.duration(600)}>
-              <Text style={styles.resultsTitle}>Top {results.length} Results (Australia)</Text>
+              <Text style={styles.resultsTitle}>Top {results.length} Results</Text>
               {results.map((result) => {
-                const formattedName = extractLocationFromSelection(result.display_name);
+                const shortName = extractShortLocationName(result.formattedAddress);
                 return (
                   <Pressable
-                    key={result.place_id}
+                    key={result.placeId}
                     style={styles.resultItem}
                     onPress={() => handleSelectLocation(result)}
                   >
@@ -297,10 +266,10 @@ export default function LocationSearchScreen() {
                     </View>
                     <View style={styles.resultTextContainer}>
                       <Text style={styles.resultTextBold} numberOfLines={1}>
-                        {formattedName}
+                        {result.displayName}
                       </Text>
                       <Text style={styles.resultText} numberOfLines={2}>
-                        {result.display_name}
+                        {result.formattedAddress}
                       </Text>
                       {result.distance !== undefined && (
                         <Text style={styles.distanceText}>
@@ -325,13 +294,19 @@ export default function LocationSearchScreen() {
             </Animated.View>
           ) : (
             <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+              <IconSymbol name="location.fill" size={60} color={colors.textTertiary} />
+              <Text style={styles.emptyTitle}>Search for a Location</Text>
+              <Text style={styles.emptyText}>
+                Enter a place name, address, or landmark
+              </Text>
             </Animated.View>
           )}
         </ScrollView>
 
         <View style={styles.noteContainer}>
+          <IconSymbol name="info.circle" size={16} color={colors.textTertiary} />
           <Text style={styles.noteText}>
-            Note: react-native-maps is not supported in Natively. Location search uses OpenStreetMap&apos;s Nominatim service.
+            Powered by Google Places API
           </Text>
         </View>
       </View>
@@ -458,8 +433,31 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     textAlign: 'center',
+    lineHeight: 22,
+  },
+  instructionsContainer: {
+    marginTop: 24,
+    padding: 16,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    width: '100%',
+  },
+  instructionsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  instructionsText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 22,
   },
   noteContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     padding: 16,
     borderTopWidth: 1,
     borderTopColor: colors.border,
