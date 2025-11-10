@@ -7,6 +7,7 @@ import { Note } from '@/types/Note';
 import { format } from 'date-fns';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import ImageOCRDisplay from './ImageOCRDisplay';
+import { getImageOCRResults, triggerOCRProcessing } from '@/utils/supabase';
 
 interface NoteCardProps {
   note: Note;
@@ -26,6 +27,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [loadedImages, setLoadedImages] = useState<{ [key: number]: boolean }>({});
   const [showOCRModal, setShowOCRModal] = useState(false);
+  const [isProcessingOCR, setIsProcessingOCR] = useState(false);
   const modalScrollViewRef = useRef<ScrollView>(null);
   const cardScrollViewRef = useRef<ScrollView>(null);
 
@@ -138,8 +140,34 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     onPress();
   };
 
-  const handleShowOCRModal = () => {
-    setShowOCRModal(true);
+  const handleShowOCRModal = async () => {
+    const currentImageId = getImageIdForIndex(modalImageIndex);
+    
+    if (!currentImageId) {
+      console.error('No image ID available for current modal image');
+      return;
+    }
+
+    // Check if the image needs processing
+    setIsProcessingOCR(true);
+    try {
+      const ocrResults = await getImageOCRResults(currentImageId);
+      
+      // If processed_at is null, trigger OCR processing
+      if (!ocrResults?.processedAt) {
+        console.log('Image not processed yet, triggering OCR processing...');
+        const result = await triggerOCRProcessing(currentImageId);
+        
+        if (!result.success) {
+          console.error('Failed to trigger OCR processing:', result.error);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking OCR status:', error);
+    } finally {
+      setIsProcessingOCR(false);
+      setShowOCRModal(true);
+    }
   };
 
   const handleCloseOCRModal = () => {
@@ -269,14 +297,19 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           </Pressable>
 
-          {/* Sparkle button for OCR */}
+          {/* Floating Sparkle button for OCR - Bottom Right */}
           {currentModalImageId && (
             <Pressable 
-              style={styles.modalSparkleButton}
+              style={styles.floatingSparkleButton}
               onPress={handleShowOCRModal}
+              disabled={isProcessingOCR}
             >
               <View style={styles.sparkleButtonCircle}>
-                <IconSymbol name="sparkles" size={24} color="#FFFFFF" />
+                {isProcessingOCR ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <IconSymbol name="sparkles" size={24} color="#FFFFFF" />
+                )}
               </View>
             </Pressable>
           )}
@@ -499,19 +532,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalSparkleButton: {
+  floatingSparkleButton: {
     position: 'absolute',
-    top: 50,
-    left: 20,
+    bottom: 100,
+    right: 20,
     zIndex: 10,
   },
   sparkleButtonCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.4)',
+    elevation: 8,
   },
   modalScrollView: {
     width: SCREEN_WIDTH,
