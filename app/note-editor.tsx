@@ -24,7 +24,7 @@ import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, getImageOCRResults } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -33,6 +33,13 @@ interface ImageData {
   uri: string;
   localUri?: string;
   contentType: string;
+}
+
+interface OCRData {
+  ocrText?: string;
+  explanation?: string;
+  processedAt?: string;
+  isProcessing?: boolean;
 }
 
 export default function NoteEditorScreen() {
@@ -56,11 +63,15 @@ export default function NoteEditorScreen() {
     displayName: string;
     formattedName: string;
   } | null>(null);
+  const [isOCRModalVisible, setIsOCRModalVisible] = useState(false);
+  const [ocrDataList, setOcrDataList] = useState<OCRData[]>([]);
+  const [loadingOCR, setLoadingOCR] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
   const isEditing = !!params.id;
   const canSave = text.trim().length > 0 || images.length > 0;
+  const hasImages = images.length > 0;
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
@@ -532,6 +543,94 @@ export default function NoteEditorScreen() {
     setSelectedLocationData(null);
   };
 
+  const handleShowOCRInfo = async () => {
+    if (!hasImages) {
+      return;
+    }
+
+    setLoadingOCR(true);
+    setIsOCRModalVisible(true);
+
+    try {
+      const ocrResults: OCRData[] = [];
+
+      for (const image of images) {
+        if (!image.id) {
+          // Image not yet saved, skip
+          ocrResults.push({
+            ocrText: 'Image not yet saved',
+            explanation: 'Please save the note first to process this image.',
+          });
+          continue;
+        }
+
+        // Check if image has been processed
+        const { data: imageData, error } = await supabase
+          .from('recall_images')
+          .select('processed_at')
+          .eq('id', image.id)
+          .single();
+
+        if (error) {
+          console.error('Error checking image processing status:', error);
+          ocrResults.push({
+            ocrText: 'Error loading OCR data',
+            explanation: 'Failed to check processing status.',
+          });
+          continue;
+        }
+
+        // If not processed, trigger OCR
+        if (!imageData.processed_at) {
+          console.log('Image not processed, triggering OCR:', image.id);
+          const triggerResult = await triggerOCRProcessing(image.id);
+          
+          if (!triggerResult.success) {
+            console.error('Failed to trigger OCR:', triggerResult.error);
+            ocrResults.push({
+              ocrText: 'Processing failed',
+              explanation: 'Failed to trigger OCR processing.',
+            });
+            continue;
+          }
+
+          // Wait a bit for processing to start
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+
+        // Fetch OCR results
+        const ocrData = await getImageOCRResults(image.id);
+        
+        if (ocrData) {
+          ocrResults.push({
+            ocrText: ocrData.ocrText || 'No text detected',
+            explanation: ocrData.explanation || 'No explanation available',
+            processedAt: ocrData.processedAt,
+            isProcessing: ocrData.isProcessing,
+          });
+        } else {
+          ocrResults.push({
+            ocrText: 'Loading...',
+            explanation: 'Processing in progress...',
+            isProcessing: true,
+          });
+        }
+      }
+
+      setOcrDataList(ocrResults);
+    } catch (error) {
+      console.error('Error loading OCR data:', error);
+      Alert.alert('Error', 'Failed to load OCR data');
+    } finally {
+      setLoadingOCR(false);
+    }
+  };
+
+  const handleCloseOCRModal = () => {
+    setIsOCRModalVisible(false);
+    setOcrDataList([]);
+  };
+
   // Show loading state while fetching note data
   if (loadingNote) {
     return (
@@ -640,19 +739,31 @@ export default function NoteEditorScreen() {
       <View style={styles.bottomSection}>
         {images.length > 0 && (
           <Animated.View entering={FadeInDown.duration(400)} style={styles.imagesContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {images.map((image, index) => (
-                <View key={index} style={styles.imageWrapper}>
-                  <Image source={{ uri: image.uri }} style={styles.imagePreview} />
-                  <Pressable
-                    onPress={() => removeImage(index)}
-                    style={styles.removeImageButton}
-                  >
-                    <IconSymbol name="xmark.circle.fill" size={24} color={colors.error} />
-                  </Pressable>
-                </View>
-              ))}
-            </ScrollView>
+            <View style={styles.imagesHeader}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
+                {images.map((image, index) => (
+                  <View key={index} style={styles.imageWrapper}>
+                    <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+                    <Pressable
+                      onPress={() => removeImage(index)}
+                      style={styles.removeImageButton}
+                    >
+                      <IconSymbol name="xmark.circle.fill" size={24} color={colors.error} />
+                    </Pressable>
+                  </View>
+                ))}
+              </ScrollView>
+              <Pressable
+                onPress={handleShowOCRInfo}
+                disabled={!hasImages}
+                style={[
+                  styles.sparkleButton,
+                  !hasImages && styles.sparkleButtonDisabled,
+                ]}
+              >
+                <IconSymbol name="sparkles" size={24} color={hasImages ? colors.primary : colors.textTertiary} />
+              </Pressable>
+            </View>
           </Animated.View>
         )}
 
@@ -712,6 +823,7 @@ export default function NoteEditorScreen() {
         </View>
       </View>
 
+      {/* Location Modal */}
       <Modal
         visible={isLocationModalVisible}
         transparent={true}
@@ -758,6 +870,91 @@ export default function NoteEditorScreen() {
 
               <Pressable
                 onPress={handleCloseLocationModal}
+                style={styles.modalButton}
+              >
+                <Text style={styles.modalButtonText}>Close</Text>
+              </Pressable>
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+
+      {/* OCR Information Modal */}
+      <Modal
+        visible={isOCRModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCloseOCRModal}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={handleCloseOCRModal}
+        >
+          <Animated.View 
+            entering={FadeIn.duration(300)}
+            style={[styles.modalContent, styles.ocrModalContent]}
+          >
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={styles.modalHeader}>
+                <IconSymbol name="sparkles" size={32} color={colors.primary} />
+                <Text style={styles.modalTitle}>Image Analysis</Text>
+              </View>
+
+              {loadingOCR ? (
+                <View style={styles.ocrLoadingContainer}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.ocrLoadingText}>Analyzing images...</Text>
+                </View>
+              ) : (
+                <ScrollView style={styles.ocrScrollView}>
+                  {ocrDataList.map((ocrData, index) => (
+                    <View key={index} style={styles.ocrImageSection}>
+                      <View style={styles.ocrImageHeader}>
+                        <Image source={{ uri: images[index]?.uri }} style={styles.ocrImageThumbnail} />
+                        <Text style={styles.ocrImageTitle}>Image {index + 1}</Text>
+                      </View>
+
+                      {ocrData.isProcessing ? (
+                        <View style={styles.ocrProcessingContainer}>
+                          <ActivityIndicator size="small" color={colors.primary} />
+                          <Text style={styles.ocrProcessingText}>Processing...</Text>
+                        </View>
+                      ) : (
+                        <>
+                          <View style={styles.ocrSection}>
+                            <View style={styles.ocrSectionHeader}>
+                              <IconSymbol name="doc.text" size={18} color={colors.primary} />
+                              <Text style={styles.ocrSectionTitle}>OCR Text</Text>
+                            </View>
+                            <Text style={styles.ocrText}>
+                              {ocrData.ocrText || 'No text detected'}
+                            </Text>
+                          </View>
+
+                          <View style={styles.ocrSection}>
+                            <View style={styles.ocrSectionHeader}>
+                              <IconSymbol name="sparkles" size={18} color={colors.primary} />
+                              <Text style={styles.ocrSectionTitle}>Explanation</Text>
+                            </View>
+                            <Text style={styles.ocrText}>
+                              {ocrData.explanation || 'No explanation available'}
+                            </Text>
+                          </View>
+
+                          {ocrData.processedAt && (
+                            <Text style={styles.ocrTimestamp}>
+                              Processed: {new Date(ocrData.processedAt).toLocaleString()}
+                            </Text>
+                          )}
+                        </>
+                      )}
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+
+              <Pressable
+                onPress={handleCloseOCRModal}
                 style={styles.modalButton}
               >
                 <Text style={styles.modalButtonText}>Close</Text>
@@ -861,6 +1058,14 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 8,
   },
+  imagesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  imagesScroll: {
+    flex: 1,
+  },
   imageWrapper: {
     marginRight: 12,
     position: 'relative',
@@ -877,6 +1082,16 @@ const styles = StyleSheet.create({
     right: -8,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     borderRadius: 12,
+  },
+  sparkleButton: {
+    padding: 8,
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sparkleButtonDisabled: {
+    opacity: 0.3,
   },
   locationInfo: {
     flexDirection: 'row',
@@ -920,6 +1135,10 @@ const styles = StyleSheet.create({
     boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.6)',
     elevation: 10,
   },
+  ocrModalContent: {
+    maxWidth: 500,
+    maxHeight: '80%',
+  },
   modalHeader: {
     alignItems: 'center',
     marginBottom: 24,
@@ -958,5 +1177,77 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  ocrLoadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    gap: 16,
+  },
+  ocrLoadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  ocrScrollView: {
+    maxHeight: 400,
+    marginBottom: 16,
+  },
+  ocrImageSection: {
+    marginBottom: 24,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  ocrImageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  ocrImageThumbnail: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    backgroundColor: colors.background,
+  },
+  ocrImageTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  ocrProcessingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 20,
+  },
+  ocrProcessingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  ocrSection: {
+    marginBottom: 16,
+  },
+  ocrSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  ocrSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  ocrText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.text,
+  },
+  ocrTimestamp: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
 });
