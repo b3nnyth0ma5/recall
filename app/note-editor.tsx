@@ -357,16 +357,33 @@ export default function NoteEditorScreen() {
   const removeImage = async (index: number) => {
     const image = images[index];
     
-    if (image.id) {
-      try {
-        await deleteImageRecord(image.id);
-      } catch (error) {
-        console.error('Error deleting image:', error);
-      }
-    }
-    
-    const newImages = images.filter((_, i) => i !== index);
-    setImages(newImages);
+    // Show confirmation dialog
+    Alert.alert(
+      'Delete Image',
+      'Are you sure you want to delete this image?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            if (image.id) {
+              try {
+                await deleteImageRecord(image.id);
+              } catch (error) {
+                console.error('Error deleting image:', error);
+              }
+            }
+            
+            const newImages = images.filter((_, i) => i !== index);
+            setImages(newImages);
+          },
+        },
+      ]
+    );
   };
 
   const hasUrl = (text: string): boolean => {
@@ -757,13 +774,19 @@ export default function NoteEditorScreen() {
         keyboardShouldPersistTaps="handled"
         scrollEnabled={true}
       >
-        {/* Text Input Section */}
+        {/* Text Input Section with fixed height and scrolling */}
         <Animated.View entering={FadeIn.duration(600)} style={styles.textInputContainer}>
           {hasUrl(text) ? (
             <View style={styles.richTextContainer}>
-              <Text style={styles.richText}>
-                {renderTextWithLinks(text)}
-              </Text>
+              <ScrollView 
+                style={styles.textInputScrollView}
+                nestedScrollEnabled={true}
+                showsVerticalScrollIndicator={true}
+              >
+                <Text style={styles.richText}>
+                  {renderTextWithLinks(text)}
+                </Text>
+              </ScrollView>
               <TextInput
                 ref={textInputRef}
                 style={[styles.textInput, styles.hiddenInput]}
@@ -777,73 +800,82 @@ export default function NoteEditorScreen() {
               />
             </View>
           ) : (
-            <TextInput
-              ref={textInputRef}
-              style={styles.textInput}
-              placeholder="What's on your mind?"
-              placeholderTextColor={colors.textTertiary}
-              value={text}
-              onChangeText={setText}
-              multiline
-              autoFocus={!isEditing}
-              scrollEnabled={false}
-            />
+            <ScrollView 
+              style={styles.textInputScrollView}
+              nestedScrollEnabled={true}
+              showsVerticalScrollIndicator={true}
+            >
+              <TextInput
+                ref={textInputRef}
+                style={styles.textInputMultiline}
+                placeholder="What's on your mind?"
+                placeholderTextColor={colors.textTertiary}
+                value={text}
+                onChangeText={setText}
+                multiline
+                autoFocus={!isEditing}
+                scrollEnabled={false}
+              />
+            </ScrollView>
           )}
         </Animated.View>
 
-        {/* Location Info */}
-        {locationName && (
-          <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.locationInfo}>
-            <IconSymbol name="location.fill" size={16} color={colors.textSecondary} />
-            <Text style={styles.locationText}>{locationName}</Text>
-          </Animated.View>
-        )}
-
-        {/* Images Section */}
-        {hasImages && (
-          <Animated.View entering={FadeInDown.duration(600).delay(400)} style={styles.imagesContainer}>
-            <View style={styles.imagesHeader}>
-              <Text style={styles.imagesTitle}>{images.length} {images.length === 1 ? 'Image' : 'Images'}</Text>
-              <View style={styles.paginationDots}>
-                {images.map((_, index) => (
-                  <View
-                    key={index}
-                    style={[
-                      styles.paginationDot,
-                      index === currentImageIndex && styles.paginationDotActive,
-                    ]}
-                  />
-                ))}
-              </View>
-            </View>
-            <ScrollView
-              ref={imageScrollRef}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.imagesScrollContent}
-              onScroll={handleImageScroll}
-              scrollEventThrottle={16}
-              decelerationRate="fast"
-              snapToInterval={SCREEN_WIDTH - 32 + 12}
-            >
-              {images.map((image, index) => (
-                <View key={`${image.id || 'new'}-${index}`} style={styles.imageWrapper}>
-                  <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
-                  <Pressable
-                    onPress={() => removeImage(index)}
-                    style={styles.removeImageButton}
-                  >
-                    <View style={styles.removeButtonCircle}>
-                      <IconSymbol name="xmark" size={16} color="#FFFFFF" />
-                    </View>
-                  </Pressable>
-                </View>
-              ))}
-            </ScrollView>
-          </Animated.View>
-        )}
+        {/* Spacer to push content down */}
+        <View style={styles.spacer} />
       </ScrollView>
+
+      {/* Images Section - Above Location */}
+      {hasImages && (
+        <Animated.View entering={FadeInDown.duration(600).delay(400)} style={styles.imagesContainer}>
+          <View style={styles.imagesHeader}>
+            <Text style={styles.imagesTitle}>{images.length} {images.length === 1 ? 'Image' : 'Images'}</Text>
+            <View style={styles.paginationDots}>
+              {images.map((_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.paginationDot,
+                    index === currentImageIndex && styles.paginationDotActive,
+                  ]}
+                />
+              ))}
+            </View>
+          </View>
+          <ScrollView
+            ref={imageScrollRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.imagesScrollContent}
+            onScroll={handleImageScroll}
+            scrollEventThrottle={16}
+            decelerationRate="fast"
+            snapToInterval={SCREEN_WIDTH - 32 + 12}
+          >
+            {images.map((image, index) => (
+              <View key={`${image.id || 'new'}-${index}`} style={styles.imageWrapper}>
+                <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
+                <Pressable
+                  onPress={() => removeImage(index)}
+                  style={styles.removeImageButton}
+                >
+                  <View style={styles.removeButtonCircle}>
+                    <IconSymbol name="xmark" size={16} color="#FFFFFF" />
+                  </View>
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        </Animated.View>
+      )}
+
+      {/* Location Info - Above Toolbar */}
+      {locationName && (
+        <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.locationInfo}>
+          <IconSymbol name="location.fill" size={16} color={colors.textSecondary} />
+          <Text style={styles.locationText}>{locationName}</Text>
+        </Animated.View>
+      )}
 
       {/* Toolbar */}
       <View style={styles.toolbar}>
@@ -1093,31 +1125,39 @@ const styles = StyleSheet.create({
   },
   checkmarkContainer: {
     width: 24,
-    height: 24,
+    height: 18,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   textInputContainer: {
     padding: 20,
-    minHeight: 150,
+    height: 260, // Fixed height for 10 lines (26 line height * 10)
+  },
+  textInputScrollView: {
+    flex: 1,
   },
   textInput: {
     fontSize: 17,
     lineHeight: 26,
     color: colors.text,
-    minHeight: 150,
+    textAlignVertical: 'top',
+  },
+  textInputMultiline: {
+    fontSize: 17,
+    lineHeight: 26,
+    color: colors.text,
+    minHeight: 220, // 10 lines worth of content
     textAlignVertical: 'top',
   },
   richTextContainer: {
     position: 'relative',
-    minHeight: 150,
+    flex: 1,
   },
   richText: {
     fontSize: 17,
     lineHeight: 26,
     color: colors.text,
-    minHeight: 150,
   },
   hiddenInput: {
     position: 'absolute',
@@ -1133,6 +1173,9 @@ const styles = StyleSheet.create({
     color: colors.primary,
     textDecorationLine: 'underline',
   },
+  spacer: {
+    flex: 1,
+  },
   locationInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1142,7 +1185,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     marginHorizontal: 16,
     borderRadius: 8,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   locationText: {
     fontSize: 14,
@@ -1151,6 +1194,7 @@ const styles = StyleSheet.create({
   },
   imagesContainer: {
     paddingVertical: 16,
+    marginBottom: 8,
   },
   imagesHeader: {
     flexDirection: 'row',
