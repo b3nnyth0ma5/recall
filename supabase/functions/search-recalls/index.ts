@@ -1,4 +1,5 @@
 
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 interface RecallRecord {
@@ -37,11 +38,11 @@ interface OpenAIMessage {
 }
 
 interface OpenAIResponse {
-  choices: Array<{
+  choices: {
     message: {
       content: string;
     };
-  }>;
+  }[];
 }
 
 Deno.serve(async (req) => {
@@ -310,3 +311,4 @@ Return the top ${limit} most relevant recalls as a JSON array.`;
     );
   }
 });
+

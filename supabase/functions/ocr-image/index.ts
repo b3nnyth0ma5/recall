@@ -1,4 +1,5 @@
 
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 const corsHeaders = {
@@ -15,11 +16,11 @@ interface ImageRecord {
 }
 
 interface OpenAIVisionResponse {
-  choices: Array<{
+  choices: {
     message: {
       content: string;
     };
-  }>;
+  }[];
   usage?: {
     prompt_tokens: number;
     completion_tokens: number;
@@ -438,3 +439,4 @@ EXPLANATION:
     );
   }
 });
+
