@@ -168,7 +168,7 @@ export default function HomeScreen() {
             {/* Carousel for notes with images */}
             {notesWithImages.length > 0 && (
               <View style={styles.carouselSection}>
-                <Text style={styles.sectionTitle}>Recent with Images</Text>
+                <Text style={styles.sectionTitle}>Recent Recalls with Images</Text>
                 <ScrollView
                   ref={carouselScrollRef}
                   horizontal
