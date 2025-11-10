@@ -15,6 +15,7 @@ import {
   Keyboard,
   Linking,
   Modal,
+  Dimensions,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -42,6 +43,12 @@ interface OCRData {
   isProcessing?: boolean;
 }
 
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const HERO_IMAGE_HEIGHT = SCREEN_HEIGHT * 0.45; // 45% of screen height for hero images
+const TEXT_LINE_HEIGHT = 24;
+const TEXT_LINES = 5;
+const TEXT_INPUT_HEIGHT = TEXT_LINE_HEIGHT * TEXT_LINES;
+
 export default function NoteEditorScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -66,8 +73,10 @@ export default function NoteEditorScreen() {
   const [isOCRModalVisible, setIsOCRModalVisible] = useState(false);
   const [ocrDataList, setOcrDataList] = useState<OCRData[]>([]);
   const [loadingOCR, setLoadingOCR] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const imageScrollRef = useRef<ScrollView>(null);
 
   const isEditing = !!params.id;
   const canSave = text.trim().length > 0 || images.length > 0;
@@ -631,6 +640,14 @@ export default function NoteEditorScreen() {
     setOcrDataList([]);
   };
 
+  const handleImageScroll = (event: any) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / SCREEN_WIDTH);
+    if (index !== currentImageIndex && index >= 0 && index < images.length) {
+      setCurrentImageIndex(index);
+    }
+  };
+
   // Show loading state while fetching note data
   if (loadingNote) {
     return (
@@ -693,148 +710,177 @@ export default function NoteEditorScreen() {
         }}
       />
 
-      <View style={styles.contentWrapper}>
-        <ScrollView 
-          ref={scrollViewRef}
-          style={styles.scrollView} 
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          scrollEnabled={true}
-        >
-          <Pressable onPress={() => textInputRef.current?.focus()}>
-            <Animated.View entering={FadeIn.duration(600)} style={styles.textInputContainer}>
-              {hasUrl(text) ? (
-                <View style={styles.richTextContainer}>
-                  <Text style={styles.richText}>
-                    {renderTextWithLinks(text)}
-                  </Text>
-                  <TextInput
-                    ref={textInputRef}
-                    style={[styles.textInput, styles.hiddenInput]}
-                    placeholder="Start writing your recall..."
-                    placeholderTextColor={colors.textTertiary}
-                    value={text}
-                    onChangeText={setText}
-                    multiline
-                    autoFocus={!isEditing}
-                    scrollEnabled={false}
+      <ScrollView 
+        ref={scrollViewRef}
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        scrollEnabled={true}
+      >
+        {/* Hero Images Section */}
+        {hasImages && (
+          <Animated.View entering={FadeIn.duration(600)} style={styles.heroImagesContainer}>
+            <ScrollView
+              ref={imageScrollRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={handleImageScroll}
+              scrollEventThrottle={16}
+              style={styles.heroImagesScroll}
+            >
+              {images.map((image, index) => (
+                <View key={`${image.id || 'new'}-${index}`} style={styles.heroImageWrapper}>
+                  <Image 
+                    source={{ uri: image.uri }} 
+                    style={styles.heroImage}
+                    resizeMode="cover"
                   />
+                  <Pressable
+                    onPress={() => removeImage(index)}
+                    style={styles.removeHeroImageButton}
+                  >
+                    <View style={styles.removeButtonCircle}>
+                      <IconSymbol name="xmark" size={20} color="#FFFFFF" />
+                    </View>
+                  </Pressable>
                 </View>
-              ) : (
+              ))}
+            </ScrollView>
+
+            {/* Image counter badge */}
+            {images.length > 1 && (
+              <View style={styles.heroCounterBadge}>
+                <Text style={styles.heroCounterText}>
+                  {currentImageIndex + 1} / {images.length}
+                </Text>
+              </View>
+            )}
+
+            {/* Pagination dots */}
+            {images.length > 1 && (
+              <View style={styles.heroPaginationContainer}>
+                {images.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.heroPaginationDot,
+                      currentImageIndex === index && styles.heroPaginationDotActive,
+                    ]}
+                  />
+                ))}
+              </View>
+            )}
+
+            {/* Floating Sparkle Button - On Hero Images */}
+            <Pressable
+              onPress={handleShowOCRInfo}
+              style={styles.heroSparkleButton}
+            >
+              <View style={styles.sparkleButtonCircle}>
+                <IconSymbol name="sparkles" size={24} color="#FFFFFF" />
+              </View>
+            </Pressable>
+          </Animated.View>
+        )}
+
+        {/* Text Input Section - 5 lines */}
+        <Pressable onPress={() => textInputRef.current?.focus()}>
+          <Animated.View 
+            entering={FadeIn.duration(600).delay(hasImages ? 200 : 0)} 
+            style={styles.textInputContainer}
+          >
+            {hasUrl(text) ? (
+              <View style={styles.richTextContainer}>
+                <Text style={styles.richText}>
+                  {renderTextWithLinks(text)}
+                </Text>
                 <TextInput
                   ref={textInputRef}
-                  style={styles.textInput}
+                  style={[styles.textInput, styles.hiddenInput]}
                   placeholder="Start writing your recall..."
                   placeholderTextColor={colors.textTertiary}
                   value={text}
                   onChangeText={setText}
                   multiline
-                  autoFocus={!isEditing}
+                  autoFocus={!isEditing && !hasImages}
                   scrollEnabled={false}
+                  numberOfLines={TEXT_LINES}
                 />
-              )}
-            </Animated.View>
-          </Pressable>
-        </ScrollView>
-
-        {/* Floating Sparkle Button - Bottom Right of Text Area */}
-        {hasImages && (
-          <Pressable
-            onPress={handleShowOCRInfo}
-            style={styles.floatingSparkleButton}
-          >
-            <View style={styles.sparkleButtonCircle}>
-              <IconSymbol name="sparkles" size={28} color="#FFFFFF" />
-            </View>
-          </Pressable>
-        )}
-      </View>
-
-      <View style={styles.bottomSection}>
-        {/* Image Carousel - Above location and toolbar */}
-        {images.length > 0 && (
-          <Animated.View entering={FadeInDown.duration(400)} style={styles.imagesContainer}>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
-              style={styles.imagesScroll}
-              contentContainerStyle={styles.imagesScrollContent}
-            >
-              {images.map((image, index) => (
-                <View key={`${image.id || 'new'}-${index}`} style={styles.imageWrapper}>
-                  <Image 
-                    source={{ uri: image.uri }} 
-                    style={styles.imagePreview}
-                    resizeMode="cover"
-                  />
-                  <Pressable
-                    onPress={() => removeImage(index)}
-                    style={styles.removeImageButton}
-                  >
-                    <IconSymbol name="xmark.circle.fill" size={24} color={colors.error} />
-                  </Pressable>
-                </View>
-              ))}
-            </ScrollView>
+              </View>
+            ) : (
+              <TextInput
+                ref={textInputRef}
+                style={styles.textInput}
+                placeholder="Start writing your recall..."
+                placeholderTextColor={colors.textTertiary}
+                value={text}
+                onChangeText={setText}
+                multiline
+                autoFocus={!isEditing && !hasImages}
+                scrollEnabled={false}
+                numberOfLines={TEXT_LINES}
+              />
+            )}
           </Animated.View>
-        )}
+        </Pressable>
 
-        {/* Location Info - Below images, above toolbar */}
+        {/* Location Info */}
         {locationName && (
-          <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.locationInfo}>
+          <Animated.View entering={FadeIn.duration(600).delay(400)} style={styles.locationInfo}>
             <IconSymbol name="location.fill" size={16} color={colors.textSecondary} />
             <Text style={styles.locationText}>{locationName}</Text>
           </Animated.View>
         )}
+      </ScrollView>
 
-        {/* Toolbar - At the bottom */}
-        <View style={styles.toolbar}>
-          <View style={styles.toolbarLeft}>
-            <Pressable
-              onPress={takePhoto}
-              disabled={loading}
-              style={styles.toolbarButton}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <IconSymbol name="camera.fill" size={28} color={colors.primary} />
-              )}
-            </Pressable>
-            <Pressable
-              onPress={pickImage}
-              disabled={loading}
-              style={styles.toolbarButton}
-            >
-              <IconSymbol name="photo.fill" size={28} color={colors.primary} />
-            </Pressable>
-            <Pressable
-              onPress={handleLocationSearch}
-              style={styles.toolbarButton}
-            >
-              <IconSymbol name="mappin.circle.fill" size={28} color={colors.primary} />
-            </Pressable>
-            <Pressable
-              onPress={toggleKeyboard}
-              style={styles.toolbarButton}
-            >
-              <IconSymbol 
-                name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-                size={28} 
-                color={colors.primary} 
-              />
-            </Pressable>
-          </View>
-
-          {isEditing && (
-            <Pressable
-              onPress={handleDelete}
-              style={styles.toolbarButton}
-            >
-              <IconSymbol name="trash" size={28} color={colors.error} />
-            </Pressable>
-          )}
+      {/* Toolbar - At the bottom */}
+      <View style={styles.toolbar}>
+        <View style={styles.toolbarLeft}>
+          <Pressable
+            onPress={takePhoto}
+            disabled={loading}
+            style={styles.toolbarButton}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+            )}
+          </Pressable>
+          <Pressable
+            onPress={pickImage}
+            disabled={loading}
+            style={styles.toolbarButton}
+          >
+            <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+          </Pressable>
+          <Pressable
+            onPress={handleLocationSearch}
+            style={styles.toolbarButton}
+          >
+            <IconSymbol name="mappin.circle.fill" size={28} color={colors.primary} />
+          </Pressable>
+          <Pressable
+            onPress={toggleKeyboard}
+            style={styles.toolbarButton}
+          >
+            <IconSymbol 
+              name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+              size={28} 
+              color={colors.primary} 
+            />
+          </Pressable>
         </View>
+
+        {isEditing && (
+          <Pressable
+            onPress={handleDelete}
+            style={styles.toolbarButton}
+          >
+            <IconSymbol name="trash" size={28} color={colors.error} />
+          </Pressable>
+        )}
       </View>
 
       {/* Location Modal */}
@@ -996,16 +1042,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
   },
-  contentWrapper: {
-    flex: 1,
-    position: 'relative',
-  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 20,
+    flexGrow: 1,
   },
   headerButton: {
     padding: 8,
@@ -1031,25 +1072,114 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  heroImagesContainer: {
+    width: SCREEN_WIDTH,
+    height: HERO_IMAGE_HEIGHT,
+    position: 'relative',
+    backgroundColor: colors.cardDark,
+  },
+  heroImagesScroll: {
+    width: SCREEN_WIDTH,
+    height: HERO_IMAGE_HEIGHT,
+  },
+  heroImageWrapper: {
+    width: SCREEN_WIDTH,
+    height: HERO_IMAGE_HEIGHT,
+    position: 'relative',
+  },
+  heroImage: {
+    width: SCREEN_WIDTH,
+    height: HERO_IMAGE_HEIGHT,
+  },
+  removeHeroImageButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 10,
+  },
+  removeButtonCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heroCounterBadge: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    zIndex: 10,
+  },
+  heroCounterText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  heroPaginationContainer: {
+    position: 'absolute',
+    bottom: 16,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    zIndex: 10,
+  },
+  heroPaginationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  heroPaginationDotActive: {
+    backgroundColor: '#FFFFFF',
+    width: 24,
+  },
+  heroSparkleButton: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    zIndex: 10,
+  },
+  sparkleButtonCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 16px rgba(255, 107, 122, 0.4)',
+    elevation: 8,
+  },
   textInputContainer: {
-    minHeight: 300,
+    padding: 16,
+    minHeight: TEXT_INPUT_HEIGHT + 32,
   },
   textInput: {
     fontSize: 16,
-    lineHeight: 24,
+    lineHeight: TEXT_LINE_HEIGHT,
     color: colors.text,
-    minHeight: 300,
+    minHeight: TEXT_INPUT_HEIGHT,
+    maxHeight: TEXT_INPUT_HEIGHT,
     textAlignVertical: 'top',
   },
   richTextContainer: {
     position: 'relative',
-    minHeight: 300,
+    minHeight: TEXT_INPUT_HEIGHT,
+    maxHeight: TEXT_INPUT_HEIGHT,
   },
   richText: {
     fontSize: 16,
-    lineHeight: 24,
+    lineHeight: TEXT_LINE_HEIGHT,
     color: colors.text,
-    minHeight: 300,
+    minHeight: TEXT_INPUT_HEIGHT,
+    maxHeight: TEXT_INPUT_HEIGHT,
   },
   hiddenInput: {
     position: 'absolute',
@@ -1065,67 +1195,12 @@ const styles = StyleSheet.create({
     color: colors.primary,
     textDecorationLine: 'underline',
   },
-  floatingSparkleButton: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    zIndex: 10,
-  },
-  sparkleButtonCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(255, 107, 122, 0.4)',
-    elevation: 8,
-  },
-  bottomSection: {
-    backgroundColor: colors.background,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
-  },
-  imagesContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: colors.background,
-  },
-  imagesScroll: {
-    flexGrow: 0,
-  },
-  imagesScrollContent: {
-    paddingRight: 16,
-  },
-  imageWrapper: {
-    marginRight: 12,
-    position: 'relative',
-  },
-  imagePreview: {
-    width: 100,
-    height: 100,
-    borderRadius: 12,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  removeImageButton: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: colors.background,
-  },
   locationInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 12,
   },
   locationText: {
     fontSize: 14,
@@ -1137,6 +1212,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
   },
   toolbarLeft: {
     flexDirection: 'row',

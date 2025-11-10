@@ -157,7 +157,6 @@ export default function HomeScreen() {
             {/* Story Reels for notes with images */}
             {notesWithImages.length > 0 && (
               <View style={styles.storyReelsSection}>
-                <Text style={styles.sectionTitle}>Recent Recalls</Text>
                 <StoryReels 
                   notes={notesWithImages.slice(0, 10)} 
                   onNotePress={handleNotePress}
@@ -167,7 +166,6 @@ export default function HomeScreen() {
 
             {/* All notes section */}
             <View style={styles.allNotesSection}>
-              <Text style={styles.sectionTitle}>All Recalls</Text>
               {notes.map((note) => (
                 <NoteCard
                   key={note.id}
