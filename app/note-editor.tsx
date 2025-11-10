@@ -59,6 +59,7 @@ export default function NoteEditorScreen() {
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationName, setLocationName] = useState<string>('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isLocationModalVisible, setIsLocationModalVisible] = useState(false);
   const [selectedLocationData, setSelectedLocationData] = useState<{
     latitude: number;
@@ -79,11 +80,13 @@ export default function NoteEditorScreen() {
   const hasImages = images.length > 0;
 
   useEffect(() => {
-    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
       setKeyboardVisible(true);
+      setKeyboardHeight(e.endCoordinates.height);
     });
     const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
       setKeyboardVisible(false);
+      setKeyboardHeight(0);
     });
 
     return () => {
@@ -721,11 +724,7 @@ export default function NoteEditorScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
+    <View style={styles.container}>
       <Stack.Screen
         options={{
           headerShown: true,
@@ -743,7 +742,7 @@ export default function NoteEditorScreen() {
             <View style={styles.headerRightContainer}>
               {hasImages && (
                 <Pressable onPress={handleShowOCRInfo} style={styles.headerIconButton}>
-                  <IconSymbol name="sparkles" size={22} color={colors.primary} />
+                  <IconSymbol name="sparkles" size={24} color={colors.primary} />
                 </Pressable>
               )}
               <Pressable
@@ -877,8 +876,16 @@ export default function NoteEditorScreen() {
         </Animated.View>
       )}
 
-      {/* Toolbar */}
-      <View style={styles.toolbar}>
+      {/* Toolbar - Positioned above keyboard when visible */}
+      <View style={[
+        styles.toolbar,
+        keyboardVisible && Platform.OS === 'ios' && { 
+          position: 'absolute',
+          bottom: keyboardHeight,
+          left: 0,
+          right: 0,
+        }
+      ]}>
         <View style={styles.toolbarLeft}>
           <Pressable
             onPress={takePhoto}
@@ -1070,7 +1077,7 @@ export default function NoteEditorScreen() {
           </Animated.View>
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -1103,13 +1110,15 @@ const styles = StyleSheet.create({
   headerRightContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 16,
     marginRight: 8,
   },
   headerIconButton: {
-    padding: 8,
+    padding: 10,
     backgroundColor: colors.card,
-    borderRadius: 20,
+    borderRadius: 22,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
+    elevation: 3,
   },
   saveButton: {
     backgroundColor: colors.primary,
