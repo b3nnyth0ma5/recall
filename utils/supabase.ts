@@ -33,12 +33,10 @@ export async function uploadImageToDatabase(
     console.log('User authenticated:', session.user.id);
 
     console.log('Converting image to base64...');
-    // Use the new File API from expo-file-system
     const file = new File(uri);
     const base64 = await file.base64();
     console.log('Base64 conversion successful, length:', base64.length);
 
-    // Insert the base64 string directly into the database as text
     const { data, error } = await supabase
       .from('recall_images')
       .insert([{
@@ -60,7 +58,6 @@ export async function uploadImageToDatabase(
     console.log('=== Upload successful ===');
     console.log('Image ID:', data.id);
     
-    // Automatically trigger OCR processing after successful upload
     console.log('Triggering OCR processing...');
     triggerOCRProcessing(data.id).then(result => {
       if (result.success) {
@@ -105,11 +102,9 @@ export async function getImageDataUrl(imageId: string): Promise<string | null> {
       return null;
     }
 
-    // The image_data is stored as a base64 string in the text column
     const base64String = data.image_data;
     const contentType = data.content_type || 'image/jpeg';
     
-    // Convert to data URL for display
     const dataUrl = `data:${contentType};base64,${base64String}`;
     
     console.log('Successfully created data URL for image:', imageId);
@@ -212,13 +207,6 @@ export async function saveSearchHistory(userId: string, searchText: string): Pro
   }
 }
 
-/**
- * Trigger OCR processing for an image
- * This calls the Supabase Edge Function to process the image with OpenAI Vision API
- * 
- * @param imageId - The ID of the image in the recall_images table
- * @returns Promise with success status and optional error message
- */
 export async function triggerOCRProcessing(imageId: string): Promise<{ success: boolean; error?: string; data?: any }> {
   try {
     console.log('=== Triggering OCR processing ===');
@@ -254,13 +242,6 @@ export async function triggerOCRProcessing(imageId: string): Promise<{ success: 
   }
 }
 
-/**
- * Get OCR results for an image
- * Fetches the processed OCR text and explanation from the database
- * 
- * @param imageId - The ID of the image in the recall_images table
- * @returns Promise with OCR results or null if not found/error
- */
 export async function getImageOCRResults(imageId: string): Promise<{
   ocrText?: string;
   explanation?: string;
@@ -286,7 +267,6 @@ export async function getImageOCRResults(imageId: string): Promise<{
       return null;
     }
 
-    // Determine if the image is still being processed
     const isProcessing = !data.processed_at && data.created_at;
     
     console.log('OCR results fetched:', {
@@ -308,13 +288,6 @@ export async function getImageOCRResults(imageId: string): Promise<{
   }
 }
 
-/**
- * Batch get OCR results for multiple images
- * Useful for displaying OCR data for all images in a note
- * 
- * @param imageIds - Array of image IDs
- * @returns Promise with map of imageId to OCR results
- */
 export async function getBatchImageOCRResults(imageIds: string[]): Promise<Map<string, {
   ocrText?: string;
   explanation?: string;
@@ -358,18 +331,10 @@ export async function getBatchImageOCRResults(imageIds: string[]): Promise<Map<s
   }
 }
 
-/**
- * Retry OCR processing for a failed image
- * Useful if the initial processing failed or timed out
- * 
- * @param imageId - The ID of the image to reprocess
- * @returns Promise with success status
- */
 export async function retryOCRProcessing(imageId: string): Promise<{ success: boolean; error?: string }> {
   try {
     console.log('Retrying OCR processing for image:', imageId);
 
-    // Clear any existing OCR data to indicate reprocessing
     const { error: clearError } = await supabase
       .from('recall_images')
       .update({
@@ -384,7 +349,6 @@ export async function retryOCRProcessing(imageId: string): Promise<{ success: bo
       return { success: false, error: 'Failed to clear existing OCR data' };
     }
 
-    // Trigger new processing
     return await triggerOCRProcessing(imageId);
   } catch (error) {
     console.error('Exception in retryOCRProcessing:', error);

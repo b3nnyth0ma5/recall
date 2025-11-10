@@ -152,8 +152,7 @@ export default function LocationSearchScreen() {
 
     const firstPart = parts[0];
     const secondPart = parts[1];
-		const thirdPart = parts[2];
-		const fourthPart = parts[3];
+    const thirdPart = parts[2];
     
     // If first part is a street number, use second and third parts
     if (firstPart && /^\d/.test(firstPart)) {

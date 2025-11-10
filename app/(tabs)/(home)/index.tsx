@@ -9,18 +9,26 @@ import { IconSymbol } from '@/components/IconSymbol';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote } = useNotes();
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore } = useNotes();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollPositionRef = useRef(0);
   const previousNotesCountRef = useRef(notes.length);
   const isFirstFocusRef = useRef(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Update the previous notes count whenever notes change
   useEffect(() => {
     previousNotesCountRef.current = notes.length;
   }, [notes.length]);
+
+  // Mark initial load as complete after first render
+  useEffect(() => {
+    if (notes.length > 0 && isInitialLoad) {
+      setIsInitialLoad(false);
+    }
+  }, [notes.length, isInitialLoad]);
 
   useFocusEffect(
     useCallback(() => {
@@ -142,7 +150,7 @@ export default function HomeScreen() {
           />
         }
       >
-        {loading && !refreshing ? (
+        {loading && isInitialLoad ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
@@ -150,11 +158,12 @@ export default function HomeScreen() {
           renderEmptyState()
         ) : (
           <View style={styles.notesContainer}>
-            {notes.map((note) => (
+            {notes.map((note, index) => (
               <NoteCard
                 key={note.id}
                 note={note}
                 onPress={() => handleNotePress(note.id)}
+                index={index}
               />
             ))}
             {isLoadingMore && (
