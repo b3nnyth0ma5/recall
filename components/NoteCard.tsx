@@ -6,8 +6,6 @@ import { IconSymbol } from './IconSymbol';
 import { Note } from '@/types/Note';
 import { format } from 'date-fns';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-import ImageOCRDisplay from './ImageOCRDisplay';
-import { getImageOCRResults, triggerOCRProcessing } from '@/utils/supabase';
 
 interface NoteCardProps {
   note: Note;
@@ -26,8 +24,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [showImageModal, setShowImageModal] = useState(false);
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [loadedImages, setLoadedImages] = useState<{ [key: number]: boolean }>({});
-  const [showOCRModal, setShowOCRModal] = useState(false);
-  const [isProcessingOCR, setIsProcessingOCR] = useState(false);
   const modalScrollViewRef = useRef<ScrollView>(null);
   const cardScrollViewRef = useRef<ScrollView>(null);
 
@@ -140,53 +136,9 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     onPress();
   };
 
-  const handleShowOCRModal = async () => {
-    const currentImageId = getImageIdForIndex(modalImageIndex);
-    
-    if (!currentImageId) {
-      console.error('No image ID available for current modal image');
-      return;
-    }
-
-    // Check if the image needs processing
-    setIsProcessingOCR(true);
-    try {
-      const ocrResults = await getImageOCRResults(currentImageId);
-      
-      // If processed_at is null, trigger OCR processing
-      if (!ocrResults?.processedAt) {
-        console.log('Image not processed yet, triggering OCR processing...');
-        const result = await triggerOCRProcessing(currentImageId);
-        
-        if (!result.success) {
-          console.error('Failed to trigger OCR processing:', result.error);
-        }
-      }
-    } catch (error) {
-      console.error('Error checking OCR status:', error);
-    } finally {
-      setIsProcessingOCR(false);
-      setShowOCRModal(true);
-    }
-  };
-
-  const handleCloseOCRModal = () => {
-    setShowOCRModal(false);
-  };
-
   const allImages = note.images || [];
   const validImages = allImages.filter((_, index) => !imageErrors[index]);
   const hasValidImages = validImages.length > 0;
-
-  // Get image IDs for OCR display
-  const getImageIdForIndex = (index: number): string | undefined => {
-    if (!note.imageIds || index >= note.imageIds.length) {
-      return undefined;
-    }
-    return note.imageIds[index];
-  };
-
-  const currentModalImageId = getImageIdForIndex(modalImageIndex);
 
   return (
     <>
@@ -297,23 +249,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           </Pressable>
 
-          {/* Floating Sparkle button for OCR - Bottom Right */}
-          {currentModalImageId && (
-            <Pressable 
-              style={styles.floatingSparkleButton}
-              onPress={handleShowOCRModal}
-              disabled={isProcessingOCR}
-            >
-              <View style={styles.sparkleButtonCircle}>
-                {isProcessingOCR ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <IconSymbol name="sparkles" size={24} color="#FFFFFF" />
-                )}
-              </View>
-            </Pressable>
-          )}
-
           <ScrollView
             ref={modalScrollViewRef}
             horizontal
@@ -357,45 +292,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           )}
         </View>
-      </Modal>
-
-      {/* OCR Information Modal */}
-      <Modal
-        visible={showOCRModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={handleCloseOCRModal}
-      >
-        <Pressable 
-          style={styles.ocrModalOverlay}
-          onPress={handleCloseOCRModal}
-        >
-          <Animated.View 
-            entering={FadeIn.duration(300)}
-            style={styles.ocrModalContent}
-          >
-            <Pressable onPress={(e) => e.stopPropagation()}>
-              <View style={styles.ocrModalHeader}>
-                <IconSymbol name="sparkles" size={32} color={colors.primary} />
-                <Text style={styles.ocrModalTitle}>Image Analysis</Text>
-                <Pressable 
-                  style={styles.ocrModalCloseButton}
-                  onPress={handleCloseOCRModal}
-                >
-                  <IconSymbol name="xmark.circle.fill" size={28} color={colors.textSecondary} />
-                </Pressable>
-              </View>
-
-              {currentModalImageId ? (
-                <ImageOCRDisplay imageId={currentModalImageId} autoLoad={true} />
-              ) : (
-                <View style={styles.ocrErrorContainer}>
-                  <Text style={styles.ocrErrorText}>Image ID not available</Text>
-                </View>
-              )}
-            </Pressable>
-          </Animated.View>
-        </Pressable>
       </Modal>
     </>
   );
@@ -532,22 +428,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  floatingSparkleButton: {
-    position: 'absolute',
-    bottom: 100,
-    right: 20,
-    zIndex: 10,
-  },
-  sparkleButtonCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.4)',
-    elevation: 8,
-  },
   modalScrollView: {
     width: SCREEN_WIDTH,
     height: '100%',
@@ -586,47 +466,5 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-  },
-  // OCR Modal styles
-  ocrModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  ocrModalContent: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    padding: 24,
-    width: '100%',
-    maxWidth: 500,
-    maxHeight: '80%',
-    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.6)',
-    elevation: 10,
-  },
-  ocrModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  ocrModalTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: colors.text,
-    flex: 1,
-    textAlign: 'center',
-  },
-  ocrModalCloseButton: {
-    padding: 4,
-  },
-  ocrErrorContainer: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  ocrErrorText: {
-    color: colors.textSecondary,
-    fontSize: 14,
   },
 });

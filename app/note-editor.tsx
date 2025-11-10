@@ -693,23 +693,37 @@ export default function NoteEditorScreen() {
         }}
       />
 
-      <ScrollView 
-        ref={scrollViewRef}
-        style={styles.scrollView} 
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        scrollEnabled={true}
-      >
-        <Pressable onPress={() => textInputRef.current?.focus()}>
-          <Animated.View entering={FadeIn.duration(600)} style={styles.textInputContainer}>
-            {hasUrl(text) ? (
-              <View style={styles.richTextContainer}>
-                <Text style={styles.richText}>
-                  {renderTextWithLinks(text)}
-                </Text>
+      <View style={styles.contentWrapper}>
+        <ScrollView 
+          ref={scrollViewRef}
+          style={styles.scrollView} 
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          scrollEnabled={true}
+        >
+          <Pressable onPress={() => textInputRef.current?.focus()}>
+            <Animated.View entering={FadeIn.duration(600)} style={styles.textInputContainer}>
+              {hasUrl(text) ? (
+                <View style={styles.richTextContainer}>
+                  <Text style={styles.richText}>
+                    {renderTextWithLinks(text)}
+                  </Text>
+                  <TextInput
+                    ref={textInputRef}
+                    style={[styles.textInput, styles.hiddenInput]}
+                    placeholder="Start writing your recall..."
+                    placeholderTextColor={colors.textTertiary}
+                    value={text}
+                    onChangeText={setText}
+                    multiline
+                    autoFocus={!isEditing}
+                    scrollEnabled={false}
+                  />
+                </View>
+              ) : (
                 <TextInput
                   ref={textInputRef}
-                  style={[styles.textInput, styles.hiddenInput]}
+                  style={styles.textInput}
                   placeholder="Start writing your recall..."
                   placeholderTextColor={colors.textTertiary}
                   value={text}
@@ -718,52 +732,40 @@ export default function NoteEditorScreen() {
                   autoFocus={!isEditing}
                   scrollEnabled={false}
                 />
-              </View>
-            ) : (
-              <TextInput
-                ref={textInputRef}
-                style={styles.textInput}
-                placeholder="Start writing your recall..."
-                placeholderTextColor={colors.textTertiary}
-                value={text}
-                onChangeText={setText}
-                multiline
-                autoFocus={!isEditing}
-                scrollEnabled={false}
-              />
-            )}
-          </Animated.View>
-        </Pressable>
-      </ScrollView>
+              )}
+            </Animated.View>
+          </Pressable>
+        </ScrollView>
+
+        {/* Floating Sparkle Button - Bottom Right of Text Area */}
+        {hasImages && (
+          <Pressable
+            onPress={handleShowOCRInfo}
+            style={styles.floatingSparkleButton}
+          >
+            <View style={styles.sparkleButtonCircle}>
+              <IconSymbol name="sparkles" size={28} color="#FFFFFF" />
+            </View>
+          </Pressable>
+        )}
+      </View>
 
       <View style={styles.bottomSection}>
         {images.length > 0 && (
           <Animated.View entering={FadeInDown.duration(400)} style={styles.imagesContainer}>
-            <View style={styles.imagesHeader}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
-                {images.map((image, index) => (
-                  <View key={index} style={styles.imageWrapper}>
-                    <Image source={{ uri: image.uri }} style={styles.imagePreview} />
-                    <Pressable
-                      onPress={() => removeImage(index)}
-                      style={styles.removeImageButton}
-                    >
-                      <IconSymbol name="xmark.circle.fill" size={24} color={colors.error} />
-                    </Pressable>
-                  </View>
-                ))}
-              </ScrollView>
-              <Pressable
-                onPress={handleShowOCRInfo}
-                disabled={!hasImages}
-                style={[
-                  styles.sparkleButton,
-                  !hasImages && styles.sparkleButtonDisabled,
-                ]}
-              >
-                <IconSymbol name="sparkles" size={24} color={hasImages ? colors.primary : colors.textTertiary} />
-              </Pressable>
-            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
+              {images.map((image, index) => (
+                <View key={index} style={styles.imageWrapper}>
+                  <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+                  <Pressable
+                    onPress={() => removeImage(index)}
+                    style={styles.removeImageButton}
+                  >
+                    <IconSymbol name="xmark.circle.fill" size={24} color={colors.error} />
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
           </Animated.View>
         )}
 
@@ -982,6 +984,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
   },
+  contentWrapper: {
+    flex: 1,
+    position: 'relative',
+  },
   scrollView: {
     flex: 1,
   },
@@ -1047,6 +1053,22 @@ const styles = StyleSheet.create({
     color: colors.primary,
     textDecorationLine: 'underline',
   },
+  floatingSparkleButton: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    zIndex: 10,
+  },
+  sparkleButtonCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 16px rgba(255, 107, 122, 0.4)',
+    elevation: 8,
+  },
   bottomSection: {
     backgroundColor: colors.background,
     borderTopWidth: 1,
@@ -1057,11 +1079,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 8,
-  },
-  imagesHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
   },
   imagesScroll: {
     flex: 1,
@@ -1082,16 +1099,6 @@ const styles = StyleSheet.create({
     right: -8,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     borderRadius: 12,
-  },
-  sparkleButton: {
-    padding: 8,
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sparkleButtonDisabled: {
-    opacity: 0.3,
   },
   locationInfo: {
     flexDirection: 'row',
