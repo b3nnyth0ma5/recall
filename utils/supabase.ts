@@ -15,6 +15,13 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// CDN configuration
+const CDN_ENABLED = true; // Toggle CDN usage
+const CDN_BASE_URL = `${supabaseUrl}/functions/v1/serve-image`;
+
+// In-memory cache for image URLs
+const imageUrlCache = new Map<string, string>();
+
 export async function uploadImageToDatabase(
   uri: string,
   recallId: string,
@@ -60,6 +67,9 @@ export async function uploadImageToDatabase(
     console.log('=== Upload successful ===');
     console.log('Image ID:', data.id);
     
+    // Clear cache for this image
+    imageUrlCache.delete(data.id);
+    
     // Automatically trigger OCR processing after successful upload
     console.log('Triggering OCR processing...');
     triggerOCRProcessing(data.id).then(result => {
@@ -84,8 +94,64 @@ export async function uploadImageToDatabase(
   }
 }
 
+/**
+ * Get CDN URL for an image
+ * Uses Supabase Edge Function with aggressive caching headers
+ * 
+ * @param imageId - The ID of the image
+ * @param options - Optional size and quality parameters
+ * @returns CDN URL for the image
+ */
+export function getImageCDNUrl(
+  imageId: string,
+  options?: {
+    width?: number;
+    height?: number;
+    quality?: number;
+  }
+): string {
+  const params = new URLSearchParams({ id: imageId });
+  
+  if (options?.width) {
+    params.append('width', options.width.toString());
+  }
+  if (options?.height) {
+    params.append('height', options.height.toString());
+  }
+  if (options?.quality) {
+    params.append('quality', options.quality.toString());
+  }
+  
+  return `${CDN_BASE_URL}?${params.toString()}`;
+}
+
+/**
+ * Get image data URL (legacy method, now uses CDN)
+ * Returns a CDN URL for faster loading with browser caching
+ * 
+ * @param imageId - The ID of the image
+ * @returns CDN URL or data URL as fallback
+ */
 export async function getImageDataUrl(imageId: string): Promise<string | null> {
   try {
+    // Check in-memory cache first
+    if (imageUrlCache.has(imageId)) {
+      console.log('Returning cached URL for image:', imageId);
+      return imageUrlCache.get(imageId)!;
+    }
+
+    if (CDN_ENABLED) {
+      // Use CDN URL for faster loading
+      const cdnUrl = getImageCDNUrl(imageId);
+      console.log('Using CDN URL for image:', imageId);
+      
+      // Cache the URL
+      imageUrlCache.set(imageId, cdnUrl);
+      
+      return cdnUrl;
+    }
+
+    // Fallback to data URL (legacy method)
     console.log('Fetching image data for ID:', imageId);
     
     const { data, error } = await supabase
@@ -112,6 +178,9 @@ export async function getImageDataUrl(imageId: string): Promise<string | null> {
     // Convert to data URL for display
     const dataUrl = `data:${contentType};base64,${base64String}`;
     
+    // Cache the URL
+    imageUrlCache.set(imageId, dataUrl);
+    
     console.log('Successfully created data URL for image:', imageId);
     
     return dataUrl;
@@ -125,9 +194,76 @@ export async function getImageDataUrl(imageId: string): Promise<string | null> {
   }
 }
 
+/**
+ * Get optimized image URL for specific use cases
+ * 
+ * @param imageId - The ID of the image
+ * @param size - Predefined size (thumbnail, card, preview, full)
+ * @returns Optimized CDN URL
+ */
+export function getOptimizedImageUrl(
+  imageId: string,
+  size: 'thumbnail' | 'card' | 'preview' | 'full' = 'card'
+): string {
+  const sizeMap = {
+    thumbnail: { width: 150, height: 150, quality: 70 },
+    card: { width: 400, height: 400, quality: 80 },
+    preview: { width: 800, height: 800, quality: 85 },
+    full: { width: 1200, height: 1200, quality: 90 },
+  };
+
+  return getImageCDNUrl(imageId, sizeMap[size]);
+}
+
+/**
+ * Preload images for better performance
+ * Triggers browser/native cache by making requests
+ * 
+ * @param imageIds - Array of image IDs to preload
+ */
+export async function preloadImages(imageIds: string[]): Promise<void> {
+  try {
+    console.log(`Preloading ${imageIds.length} images...`);
+    
+    const promises = imageIds.map(async (imageId) => {
+      const url = await getImageDataUrl(imageId);
+      if (url && CDN_ENABLED) {
+        // Make a HEAD request to warm up the cache
+        try {
+          await fetch(url, { method: 'HEAD' });
+        } catch (error) {
+          console.error(`Failed to preload image ${imageId}:`, error);
+        }
+      }
+    });
+
+    await Promise.all(promises);
+    console.log(`Successfully preloaded ${imageIds.length} images`);
+  } catch (error) {
+    console.error('Error preloading images:', error);
+  }
+}
+
+/**
+ * Clear image URL cache
+ * Useful when images are updated or deleted
+ */
+export function clearImageCache(imageId?: string): void {
+  if (imageId) {
+    imageUrlCache.delete(imageId);
+    console.log('Cleared cache for image:', imageId);
+  } else {
+    imageUrlCache.clear();
+    console.log('Cleared entire image cache');
+  }
+}
+
 export async function deleteImageRecord(imageId: string): Promise<boolean> {
   try {
     console.log('Deleting image record from database:', imageId);
+    
+    // Clear cache for this image
+    clearImageCache(imageId);
     
     const { error } = await supabase
       .from('recall_images')

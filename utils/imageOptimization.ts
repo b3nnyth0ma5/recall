@@ -4,6 +4,8 @@
  * Provides functions to generate optimized image URLs with proper sizing
  */
 
+import { getImageCDNUrl, getOptimizedImageUrl as getOptimizedUrl } from './supabase';
+
 export interface ImageSize {
   width: number;
   height: number;
@@ -21,42 +23,20 @@ export const IMAGE_SIZES = {
 } as const;
 
 /**
- * Get optimized image URL for Supabase storage
- * Note: This is a placeholder for future Supabase image transformation support
- * Currently returns the original URL, but structure is ready for optimization
+ * Get optimized image URL using CDN
+ * Now uses the Supabase Edge Function with caching
  */
 export function getOptimizedImageUrl(
-  originalUrl: string,
+  imageId: string,
   size: ImageSize = IMAGE_SIZES.CARD
 ): string {
-  // For now, return the original URL
-  // In the future, this could use Supabase image transformations or a CDN
-  // Example: `${originalUrl}?width=${size.width}&height=${size.height}&quality=${size.quality}`
+  console.log(`Getting optimized image URL: ${size.width}x${size.height} @ ${size.quality}% quality`);
   
-  console.log(`Image optimization requested: ${size.width}x${size.height} @ ${size.quality}% quality`);
-  
-  return originalUrl;
-}
-
-/**
- * Preload images for better performance
- */
-export async function preloadImages(urls: string[]): Promise<void> {
-  const promises = urls.map(url => {
-    return new Promise<void>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve();
-      img.onerror = () => reject();
-      img.src = url;
-    });
+  return getImageCDNUrl(imageId, {
+    width: size.width,
+    height: size.height,
+    quality: size.quality || 85,
   });
-
-  try {
-    await Promise.all(promises);
-    console.log(`Preloaded ${urls.length} images`);
-  } catch (error) {
-    console.error('Error preloading images:', error);
-  }
 }
 
 /**
@@ -70,4 +50,14 @@ export function getImageSizeForScreen(screenWidth: number): ImageSize {
   } else {
     return IMAGE_SIZES.FULL;
   }
+}
+
+/**
+ * Get optimized image URL by size name
+ */
+export function getOptimizedImageUrlBySize(
+  imageId: string,
+  sizeName: 'thumbnail' | 'card' | 'preview' | 'full' = 'card'
+): string {
+  return getOptimizedUrl(imageId, sizeName);
 }
