@@ -10,7 +10,8 @@ const corsHeaders = {
 interface ImageRecord {
   id: string;
   recall_id: string;
-  image_data: string;
+  cdn_url?: string;
+  image_data?: string;
   content_type: string;
   user_id: string;
 }
@@ -135,7 +136,7 @@ Deno.serve(async (req) => {
     console.log('Fetching image data from database...');
     const { data: imageData, error: fetchError } = await supabase
       .from('recall_images')
-      .select('image_data, content_type, user_id')
+      .select('cdn_url, image_data, content_type, user_id')
       .eq('id', record.id)
       .single();
 
@@ -153,7 +154,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!imageData || !imageData.image_data) {
+    if (!imageData) {
       console.error('No image data found for ID:', record.id);
       return new Response(
         JSON.stringify({ error: 'Image data not found in database' }),
@@ -165,22 +166,10 @@ Deno.serve(async (req) => {
     }
 
     console.log('Image data fetched successfully');
+    console.log('Has CDN URL:', !!imageData.cdn_url);
+    console.log('Has base64 data:', !!imageData.image_data);
     console.log('Content type:', imageData.content_type);
-    console.log('Base64 data length:', imageData.image_data.length);
     console.log('User ID:', imageData.user_id);
-
-    // Validate image data
-    const base64Image = imageData.image_data.trim();
-    if (base64Image.length === 0) {
-      console.error('Empty image data');
-      return new Response(
-        JSON.stringify({ error: 'Image data is empty' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
 
     // Prepare content type with fallback
     const contentType = imageData.content_type || 'image/jpeg';
@@ -191,8 +180,40 @@ Deno.serve(async (req) => {
       console.warn('Unusual content type:', contentType, '- proceeding with caution');
     }
 
-    // Construct the data URL for OpenAI
-    const imageDataUrl = `data:${contentType};base64,${base64Image}`;
+    // Construct the image URL for OpenAI
+    let imageDataUrl: string;
+
+    if (imageData.cdn_url) {
+      // Use CDN URL directly
+      console.log('Using CDN URL for OCR');
+      imageDataUrl = imageData.cdn_url;
+    } else if (imageData.image_data) {
+      // Fallback to base64 data
+      console.log('Using base64 data for OCR');
+      const base64Image = imageData.image_data.trim();
+      
+      if (base64Image.length === 0) {
+        console.error('Empty image data');
+        return new Response(
+          JSON.stringify({ error: 'Image data is empty' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+      
+      imageDataUrl = `data:${contentType};base64,${base64Image}`;
+    } else {
+      console.error('No image data or CDN URL found for ID:', record.id);
+      return new Response(
+        JSON.stringify({ error: 'No image data or CDN URL available' }),
+        { 
+          status: 404, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     // Call OpenAI Vision API with enhanced prompt
     console.log('Calling OpenAI Vision API...');

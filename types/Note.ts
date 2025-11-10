@@ -31,7 +31,8 @@ export interface SearchHistory {
 export interface ImageRecord {
   id: string;
   recall_id: string;
-  image_data: string; // Base64 encoded image data
+  cdn_url?: string; // Gcore CDN URL (if using CDN)
+  image_data?: string; // Base64 encoded image data (fallback)
   content_type: string;
   created_at: string;
   user_id: string;
