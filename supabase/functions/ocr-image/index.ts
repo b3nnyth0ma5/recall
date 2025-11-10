@@ -20,7 +20,38 @@ interface OpenAIVisionResponse {
       content: string;
     };
   }>;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
+
+interface OpenAIErrorResponse {
+  error: {
+    message: string;
+    type: string;
+    code?: string;
+  };
+}
+
+/**
+ * Enhanced OCR and Image Explanation Edge Function
+ * 
+ * This function:
+ * 1. Receives an image record ID from a database webhook or manual trigger
+ * 2. Fetches the image data from the recall_images table
+ * 3. Sends the image to OpenAI's Vision API (gpt-4o-mini) for OCR and explanation
+ * 4. Parses the response to extract OCR text and explanation separately
+ * 5. Updates the database with the results
+ * 
+ * Features:
+ * - Robust error handling with detailed logging
+ * - Cost-optimized using gpt-4o-mini model
+ * - Structured prompt for consistent response format
+ * - Automatic retry logic for transient failures
+ * - Comprehensive validation and sanitization
+ */
 
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
@@ -28,16 +59,19 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  try {
-    console.log('=== OCR Image Edge Function Started ===');
+  const startTime = Date.now();
+  console.log('=== OCR Image Edge Function Started ===');
+  console.log('Timestamp:', new Date().toISOString());
 
-    // Get the image record from the request
-    const { record } = await req.json() as { record: ImageRecord };
-    
-    if (!record || !record.id) {
-      console.error('No record provided in request');
+  try {
+    // Parse and validate request body
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (parseError) {
+      console.error('Failed to parse request body:', parseError);
       return new Response(
-        JSON.stringify({ error: 'No record provided' }),
+        JSON.stringify({ error: 'Invalid JSON in request body' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -45,17 +79,42 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Processing image:', record.id);
+    const { record } = requestBody as { record: ImageRecord };
+    
+    if (!record || !record.id) {
+      console.error('No record or record.id provided in request');
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: record.id' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
-    // Initialize Supabase client with service role key for admin access
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    console.log('Processing image ID:', record.id);
+    console.log('Recall ID:', record.recall_id);
+
+    // Validate environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('Missing Supabase configuration');
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error: Supabase credentials missing' }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     if (!openaiApiKey) {
       console.error('OPENAI_API_KEY not configured');
       return new Response(
-        JSON.stringify({ error: 'OpenAI API key not configured' }),
+        JSON.stringify({ error: 'Server configuration error: OpenAI API key missing' }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -63,19 +122,29 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Initialize Supabase client with service role key for admin access
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
 
     // Fetch the image data from the database
+    console.log('Fetching image data from database...');
     const { data: imageData, error: fetchError } = await supabase
       .from('recall_images')
-      .select('image_data, content_type')
+      .select('image_data, content_type, user_id')
       .eq('id', record.id)
       .single();
 
-    if (fetchError || !imageData) {
-      console.error('Error fetching image data:', fetchError);
+    if (fetchError) {
+      console.error('Database fetch error:', fetchError);
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch image data' }),
+        JSON.stringify({ 
+          error: 'Failed to fetch image data from database',
+          details: fetchError.message 
+        }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -83,49 +152,151 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Image data fetched, content type:', imageData.content_type);
-
-    // Prepare the image for OpenAI Vision API
-    const base64Image = imageData.image_data;
-    const contentType = imageData.content_type || 'image/jpeg';
-
-    // Call OpenAI Vision API
-    console.log('Calling OpenAI Vision API...');
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Please perform OCR on this image and extract all visible text. Then, provide a concise explanation of what the image shows in under 120 words. Format your response as follows:\n\nOCR TEXT:\n[extracted text here]\n\nEXPLANATION:\n[explanation here]'
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:${contentType};base64,${base64Image}`,
-                  detail: 'high'
-                }
-              }
-            ]
-          }
-        ],
-        max_tokens: 500,
-      }),
-    });
-
-    if (!openaiResponse.ok) {
-      const errorText = await openaiResponse.text();
-      console.error('OpenAI API error:', errorText);
+    if (!imageData || !imageData.image_data) {
+      console.error('No image data found for ID:', record.id);
       return new Response(
-        JSON.stringify({ error: 'OpenAI API request failed', details: errorText }),
+        JSON.stringify({ error: 'Image data not found in database' }),
+        { 
+          status: 404, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    console.log('Image data fetched successfully');
+    console.log('Content type:', imageData.content_type);
+    console.log('Base64 data length:', imageData.image_data.length);
+    console.log('User ID:', imageData.user_id);
+
+    // Validate image data
+    const base64Image = imageData.image_data.trim();
+    if (base64Image.length === 0) {
+      console.error('Empty image data');
+      return new Response(
+        JSON.stringify({ error: 'Image data is empty' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Prepare content type with fallback
+    const contentType = imageData.content_type || 'image/jpeg';
+    
+    // Validate content type
+    const validContentTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validContentTypes.includes(contentType.toLowerCase())) {
+      console.warn('Unusual content type:', contentType, '- proceeding with caution');
+    }
+
+    // Construct the data URL for OpenAI
+    const imageDataUrl = `data:${contentType};base64,${base64Image}`;
+
+    // Call OpenAI Vision API with enhanced prompt
+    console.log('Calling OpenAI Vision API...');
+    console.log('Model: gpt-4o-mini');
+    console.log('Max tokens: 500');
+
+    const openaiRequestBody = {
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `Analyze this image and provide two things:
+
+1. OCR TEXT: Extract ALL visible text from the image. If there is no text, write "No text detected."
+
+2. EXPLANATION: Describe what the image shows in under 120 words. Be concise and informative.
+
+Format your response EXACTLY like this:
+
+OCR TEXT:
+[extracted text or "No text detected."]
+
+EXPLANATION:
+[your description here]`
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: imageDataUrl,
+                detail: 'high'
+              }
+            }
+          ]
+        }
+      ],
+      max_tokens: 500,
+      temperature: 0.3, // Lower temperature for more consistent results
+    };
+
+    let openaiResponse;
+    let retryCount = 0;
+    const maxRetries = 2;
+
+    // Retry logic for transient failures
+    while (retryCount <= maxRetries) {
+      try {
+        openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openaiApiKey}`,
+          },
+          body: JSON.stringify(openaiRequestBody),
+        });
+
+        if (openaiResponse.ok) {
+          break; // Success, exit retry loop
+        }
+
+        // Handle rate limiting with exponential backoff
+        if (openaiResponse.status === 429 && retryCount < maxRetries) {
+          const waitTime = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+          console.log(`Rate limited. Waiting ${waitTime}ms before retry ${retryCount + 1}/${maxRetries}`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          retryCount++;
+          continue;
+        }
+
+        // For other errors, break and handle below
+        break;
+      } catch (fetchError) {
+        console.error(`Fetch attempt ${retryCount + 1} failed:`, fetchError);
+        if (retryCount < maxRetries) {
+          const waitTime = Math.pow(2, retryCount) * 1000;
+          console.log(`Waiting ${waitTime}ms before retry ${retryCount + 1}/${maxRetries}`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          retryCount++;
+        } else {
+          throw fetchError;
+        }
+      }
+    }
+
+    if (!openaiResponse || !openaiResponse.ok) {
+      const errorText = await openaiResponse?.text() || 'No response';
+      console.error('OpenAI API error response:', errorText);
+      
+      let errorMessage = 'OpenAI API request failed';
+      try {
+        const errorJson = JSON.parse(errorText) as OpenAIErrorResponse;
+        errorMessage = errorJson.error?.message || errorMessage;
+      } catch {
+        // If parsing fails, use the raw error text
+        errorMessage = errorText.substring(0, 200);
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          error: 'OpenAI API request failed', 
+          details: errorMessage,
+          status: openaiResponse?.status 
+        }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -134,34 +305,75 @@ Deno.serve(async (req) => {
     }
 
     const openaiData = await openaiResponse.json() as OpenAIVisionResponse;
-    const responseText = openaiData.choices[0]?.message?.content || '';
+    
+    if (!openaiData.choices || openaiData.choices.length === 0) {
+      console.error('No choices in OpenAI response');
+      return new Response(
+        JSON.stringify({ error: 'Invalid response from OpenAI API' }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
-    console.log('OpenAI response received:', responseText.substring(0, 100) + '...');
+    const responseText = openaiData.choices[0]?.message?.content || '';
+    
+    console.log('OpenAI response received');
+    console.log('Response length:', responseText.length);
+    if (openaiData.usage) {
+      console.log('Token usage:', JSON.stringify(openaiData.usage));
+    }
 
     // Parse the response to extract OCR text and explanation
     let ocrText = '';
     let explanation = '';
 
-    const ocrMatch = responseText.match(/OCR TEXT:\s*([\s\S]*?)(?=\n\nEXPLANATION:|$)/i);
+    // Enhanced parsing with multiple fallback strategies
+    const ocrMatch = responseText.match(/OCR TEXT:\s*([\s\S]*?)(?=\n\s*EXPLANATION:|$)/i);
     const explanationMatch = responseText.match(/EXPLANATION:\s*([\s\S]*?)$/i);
 
     if (ocrMatch) {
       ocrText = ocrMatch[1].trim();
+      console.log('Extracted OCR text (length):', ocrText.length);
+    } else {
+      console.warn('Could not parse OCR TEXT section');
     }
 
     if (explanationMatch) {
       explanation = explanationMatch[1].trim();
+      console.log('Extracted explanation (length):', explanation.length);
+    } else {
+      console.warn('Could not parse EXPLANATION section');
     }
 
-    // If parsing failed, use the whole response as explanation
+    // Fallback: if parsing completely failed, try alternative format
     if (!ocrText && !explanation) {
-      explanation = responseText.trim();
+      console.log('Primary parsing failed, attempting fallback parsing...');
+      
+      // Try splitting by double newline
+      const parts = responseText.split(/\n\s*\n/);
+      if (parts.length >= 2) {
+        ocrText = parts[0].replace(/^OCR TEXT:\s*/i, '').trim();
+        explanation = parts.slice(1).join('\n\n').replace(/^EXPLANATION:\s*/i, '').trim();
+        console.log('Fallback parsing successful');
+      } else {
+        // Last resort: use entire response as explanation
+        console.log('All parsing failed, using entire response as explanation');
+        explanation = responseText.trim();
+        ocrText = 'No text detected.';
+      }
     }
 
-    console.log('Parsed OCR text length:', ocrText.length);
-    console.log('Parsed explanation length:', explanation.length);
+    // Sanitize and validate results
+    ocrText = ocrText.substring(0, 10000); // Limit to 10k chars
+    explanation = explanation.substring(0, 2000); // Limit to 2k chars
+
+    console.log('Final OCR text length:', ocrText.length);
+    console.log('Final explanation length:', explanation.length);
 
     // Update the database with OCR results
+    console.log('Updating database with results...');
     const { error: updateError } = await supabase
       .from('recall_images')
       .update({
@@ -172,9 +384,12 @@ Deno.serve(async (req) => {
       .eq('id', record.id);
 
     if (updateError) {
-      console.error('Error updating image record:', updateError);
+      console.error('Database update error:', updateError);
       return new Response(
-        JSON.stringify({ error: 'Failed to update image record', details: updateError }),
+        JSON.stringify({ 
+          error: 'Failed to update database with OCR results', 
+          details: updateError.message 
+        }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -182,14 +397,19 @@ Deno.serve(async (req) => {
       );
     }
 
+    const processingTime = Date.now() - startTime;
     console.log('=== OCR processing completed successfully ===');
+    console.log('Total processing time:', processingTime, 'ms');
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         imageId: record.id,
-        ocrText: ocrText.substring(0, 100) + (ocrText.length > 100 ? '...' : ''),
-        explanation: explanation.substring(0, 100) + (explanation.length > 100 ? '...' : ''),
+        processingTimeMs: processingTime,
+        ocrTextLength: ocrText.length,
+        explanationLength: explanation.length,
+        ocrTextPreview: ocrText.substring(0, 100) + (ocrText.length > 100 ? '...' : ''),
+        explanationPreview: explanation.substring(0, 100) + (explanation.length > 100 ? '...' : ''),
       }),
       { 
         status: 200, 
@@ -198,13 +418,18 @@ Deno.serve(async (req) => {
     );
 
   } catch (error) {
+    const processingTime = Date.now() - startTime;
     console.error('=== Error in OCR Image Edge Function ===');
-    console.error('Error:', error);
+    console.error('Error type:', error?.constructor?.name);
+    console.error('Error message:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('Processing time before error:', processingTime, 'ms');
     
     return new Response(
       JSON.stringify({ 
         error: 'Internal server error', 
-        details: error instanceof Error ? error.message : 'Unknown error' 
+        details: error instanceof Error ? error.message : 'Unknown error',
+        processingTimeMs: processingTime,
       }),
       { 
         status: 500, 
