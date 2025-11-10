@@ -17,71 +17,35 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const STORY_SIZE = 80;
 const STORY_SPACING = 12;
 
-// Unsplash stock images for variety
-const STOCK_IMAGES = [
-  'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400',
-  'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=400',
-  'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=400',
-  'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=400',
-  'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=400',
-  'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=400',
-  'https://images.unsplash.com/photo-1426604966848-d7adac402bff?w=400',
-  'https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?w=400',
-  'https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=400',
-  'https://images.unsplash.com/photo-1518173946687-a4c8892bbd9f?w=400',
-];
-
 export function StoryReels({ notes, onNotePress }: StoryReelsProps) {
   const [selectedStory, setSelectedStory] = useState<Note | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  // Create exactly 10 reels with randomized images
+  // Create up to 10 reels with randomized images from notes with images
   const reelNotes = useMemo(() => {
     const reels: Note[] = [];
     
-    // If we have notes with images, use them
-    if (notes.length > 0) {
-      for (let i = 0; i < Math.min(10, notes.length); i++) {
-        const note = notes[i];
-        
-        // Randomize the images in each note
-        if (note.images && note.images.length > 0) {
-          const shuffledImages = [...note.images].sort(() => Math.random() - 0.5);
-          reels.push({
-            ...note,
-            images: shuffledImages,
-          });
-        } else {
-          reels.push(note);
-        }
-      }
-    }
+    // Filter notes that have images and take up to 10
+    const notesWithImages = notes.filter(note => note.images && note.images.length > 0);
+    const maxReels = Math.min(10, notesWithImages.length);
     
-    // If we have less than 10 notes, fill with stock images
-    while (reels.length < 10) {
-      const randomStockImage = STOCK_IMAGES[Math.floor(Math.random() * STOCK_IMAGES.length)];
-      const daysAgo = Math.floor(Math.random() * 7) + 1;
-      const date = new Date();
-      date.setDate(date.getDate() - daysAgo);
+    // Create reels with randomized images
+    for (let i = 0; i < maxReels; i++) {
+      const note = notesWithImages[i];
       
+      // Randomize the images in each note
+      const shuffledImages = [...note.images].sort(() => Math.random() - 0.5);
       reels.push({
-        id: `stock-${reels.length}`,
-        text: 'Explore your memories',
-        images: [randomStockImage],
-        created_at: date.toISOString(),
-        updated_at: date.toISOString(),
-        user_id: '',
+        ...note,
+        images: shuffledImages,
       });
     }
     
+    console.log(`Created ${reels.length} story reels from ${notesWithImages.length} notes with images`);
     return reels;
   }, [notes]);
 
   const handleStoryPress = (note: Note) => {
-    // Don't open stock image stories
-    if (note.id.startsWith('stock-')) {
-      return;
-    }
     setSelectedStory(note);
     setCurrentImageIndex(0);
   };
@@ -100,13 +64,8 @@ export function StoryReels({ notes, onNotePress }: StoryReelsProps) {
         const currentIndex = reelNotes.findIndex(n => n.id === selectedStory.id);
         if (currentIndex < reelNotes.length - 1) {
           const nextNote = reelNotes[currentIndex + 1];
-          // Skip stock images
-          if (!nextNote.id.startsWith('stock-')) {
-            setSelectedStory(nextNote);
-            setCurrentImageIndex(0);
-          } else {
-            handleCloseStory();
-          }
+          setSelectedStory(nextNote);
+          setCurrentImageIndex(0);
         } else {
           handleCloseStory();
         }
@@ -123,11 +82,8 @@ export function StoryReels({ notes, onNotePress }: StoryReelsProps) {
         const currentIndex = reelNotes.findIndex(n => n.id === selectedStory.id);
         if (currentIndex > 0) {
           const prevNote = reelNotes[currentIndex - 1];
-          // Skip stock images
-          if (!prevNote.id.startsWith('stock-')) {
-            setSelectedStory(prevNote);
-            setCurrentImageIndex((prevNote.images?.length || 1) - 1);
-          }
+          setSelectedStory(prevNote);
+          setCurrentImageIndex((prevNote.images?.length || 1) - 1);
         }
       }
     }
@@ -149,6 +105,11 @@ export function StoryReels({ notes, onNotePress }: StoryReelsProps) {
       return '';
     }
   };
+
+  // Don't render anything if there are no reels
+  if (reelNotes.length === 0) {
+    return null;
+  }
 
   return (
     <>
