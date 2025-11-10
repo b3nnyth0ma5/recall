@@ -43,11 +43,7 @@ interface OCRData {
   isProcessing?: boolean;
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const HERO_IMAGE_HEIGHT = SCREEN_HEIGHT * 0.45; // 45% of screen height for hero images
-const TEXT_LINE_HEIGHT = 24;
-const TEXT_LINES = 5;
-const TEXT_INPUT_HEIGHT = TEXT_LINE_HEIGHT * TEXT_LINES;
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function NoteEditorScreen() {
   const router = useRouter();
@@ -642,7 +638,8 @@ export default function NoteEditorScreen() {
 
   const handleImageScroll = (event: any) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / SCREEN_WIDTH);
+    const imageWidth = 300;
+    const index = Math.round(contentOffsetX / imageWidth);
     if (index !== currentImageIndex && index >= 0 && index < images.length) {
       setCurrentImageIndex(index);
     }
@@ -717,124 +714,82 @@ export default function NoteEditorScreen() {
         keyboardShouldPersistTaps="handled"
         scrollEnabled={true}
       >
-        {/* Hero Images Section */}
-        {hasImages && (
-          <Animated.View entering={FadeIn.duration(600)} style={styles.heroImagesContainer}>
-            <ScrollView
-              ref={imageScrollRef}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              onScroll={handleImageScroll}
-              scrollEventThrottle={16}
-              style={styles.heroImagesScroll}
-            >
-              {images.map((image, index) => (
-                <View key={`${image.id || 'new'}-${index}`} style={styles.heroImageWrapper}>
-                  <Image 
-                    source={{ uri: image.uri }} 
-                    style={styles.heroImage}
-                    resizeMode="cover"
-                  />
-                  <Pressable
-                    onPress={() => removeImage(index)}
-                    style={styles.removeHeroImageButton}
-                  >
-                    <View style={styles.removeButtonCircle}>
-                      <IconSymbol name="xmark" size={20} color="#FFFFFF" />
-                    </View>
-                  </Pressable>
-                </View>
-              ))}
-            </ScrollView>
-
-            {/* Image counter badge */}
-            {images.length > 1 && (
-              <View style={styles.heroCounterBadge}>
-                <Text style={styles.heroCounterText}>
-                  {currentImageIndex + 1} / {images.length}
-                </Text>
-              </View>
-            )}
-
-            {/* Pagination dots */}
-            {images.length > 1 && (
-              <View style={styles.heroPaginationContainer}>
-                {images.map((_, index) => (
-                  <View
-                    key={index}
-                    style={[
-                      styles.heroPaginationDot,
-                      currentImageIndex === index && styles.heroPaginationDotActive,
-                    ]}
-                  />
-                ))}
-              </View>
-            )}
-
-            {/* Floating Sparkle Button - On Hero Images */}
-            <Pressable
-              onPress={handleShowOCRInfo}
-              style={styles.heroSparkleButton}
-            >
-              <View style={styles.sparkleButtonCircle}>
-                <IconSymbol name="sparkles" size={24} color="#FFFFFF" />
-              </View>
-            </Pressable>
-          </Animated.View>
-        )}
-
-        {/* Text Input Section - 5 lines */}
-        <Pressable onPress={() => textInputRef.current?.focus()}>
-          <Animated.View 
-            entering={FadeIn.duration(600).delay(hasImages ? 200 : 0)} 
-            style={styles.textInputContainer}
-          >
-            {hasUrl(text) ? (
-              <View style={styles.richTextContainer}>
-                <Text style={styles.richText}>
-                  {renderTextWithLinks(text)}
-                </Text>
-                <TextInput
-                  ref={textInputRef}
-                  style={[styles.textInput, styles.hiddenInput]}
-                  placeholder="Start writing your recall..."
-                  placeholderTextColor={colors.textTertiary}
-                  value={text}
-                  onChangeText={setText}
-                  multiline
-                  autoFocus={!isEditing && !hasImages}
-                  scrollEnabled={false}
-                  numberOfLines={TEXT_LINES}
-                />
-              </View>
-            ) : (
+        <Animated.View entering={FadeIn.duration(600)} style={styles.textInputContainer}>
+          {hasUrl(text) ? (
+            <View style={styles.richTextContainer}>
+              <Text style={styles.richText}>
+                {renderTextWithLinks(text)}
+              </Text>
               <TextInput
                 ref={textInputRef}
-                style={styles.textInput}
+                style={[styles.textInput, styles.hiddenInput]}
                 placeholder="Start writing your recall..."
                 placeholderTextColor={colors.textTertiary}
                 value={text}
                 onChangeText={setText}
                 multiline
-                autoFocus={!isEditing && !hasImages}
+                autoFocus={!isEditing}
                 scrollEnabled={false}
-                numberOfLines={TEXT_LINES}
               />
-            )}
-          </Animated.View>
-        </Pressable>
+            </View>
+          ) : (
+            <TextInput
+              ref={textInputRef}
+              style={styles.textInput}
+              placeholder="Start writing your recall..."
+              placeholderTextColor={colors.textTertiary}
+              value={text}
+              onChangeText={setText}
+              multiline
+              autoFocus={!isEditing}
+              scrollEnabled={false}
+            />
+          )}
+        </Animated.View>
 
-        {/* Location Info */}
         {locationName && (
-          <Animated.View entering={FadeIn.duration(600).delay(400)} style={styles.locationInfo}>
+          <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.locationInfo}>
             <IconSymbol name="location.fill" size={16} color={colors.textSecondary} />
             <Text style={styles.locationText}>{locationName}</Text>
           </Animated.View>
         )}
+
+        {hasImages && (
+          <Animated.View entering={FadeInDown.duration(600).delay(400)} style={styles.imagesContainer}>
+            <View style={styles.imagesHeader}>
+              <Text style={styles.imagesTitle}>Images ({images.length})</Text>
+              {hasImages && (
+                <Pressable onPress={handleShowOCRInfo} style={styles.sparkleButton}>
+                  <IconSymbol name="sparkles" size={20} color={colors.primary} />
+                </Pressable>
+              )}
+            </View>
+            <ScrollView
+              ref={imageScrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.imagesScrollContent}
+              onScroll={handleImageScroll}
+              scrollEventThrottle={16}
+            >
+              {images.map((image, index) => (
+                <View key={`${image.id || 'new'}-${index}`} style={styles.imageWrapper}>
+                  <Image source={{ uri: image.uri }} style={styles.image} />
+                  <Pressable
+                    onPress={() => removeImage(index)}
+                    style={styles.removeImageButton}
+                  >
+                    <View style={styles.removeButtonCircle}>
+                      <IconSymbol name="xmark" size={16} color="#FFFFFF" />
+                    </View>
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          </Animated.View>
+        )}
       </ScrollView>
 
-      {/* Toolbar - At the bottom */}
       <View style={styles.toolbar}>
         <View style={styles.toolbarLeft}>
           <Pressable
@@ -1072,114 +1027,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroImagesContainer: {
-    width: SCREEN_WIDTH,
-    height: HERO_IMAGE_HEIGHT,
-    position: 'relative',
-    backgroundColor: colors.cardDark,
-  },
-  heroImagesScroll: {
-    width: SCREEN_WIDTH,
-    height: HERO_IMAGE_HEIGHT,
-  },
-  heroImageWrapper: {
-    width: SCREEN_WIDTH,
-    height: HERO_IMAGE_HEIGHT,
-    position: 'relative',
-  },
-  heroImage: {
-    width: SCREEN_WIDTH,
-    height: HERO_IMAGE_HEIGHT,
-  },
-  removeHeroImageButton: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    zIndex: 10,
-  },
-  removeButtonCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  heroCounterBadge: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    zIndex: 10,
-  },
-  heroCounterText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  heroPaginationContainer: {
-    position: 'absolute',
-    bottom: 16,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-    zIndex: 10,
-  },
-  heroPaginationDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-  },
-  heroPaginationDotActive: {
-    backgroundColor: '#FFFFFF',
-    width: 24,
-  },
-  heroSparkleButton: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-    zIndex: 10,
-  },
-  sparkleButtonCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(255, 107, 122, 0.4)',
-    elevation: 8,
-  },
   textInputContainer: {
     padding: 16,
-    minHeight: TEXT_INPUT_HEIGHT + 32,
+    minHeight: 200,
   },
   textInput: {
     fontSize: 16,
-    lineHeight: TEXT_LINE_HEIGHT,
+    lineHeight: 24,
     color: colors.text,
-    minHeight: TEXT_INPUT_HEIGHT,
-    maxHeight: TEXT_INPUT_HEIGHT,
+    minHeight: 200,
     textAlignVertical: 'top',
   },
   richTextContainer: {
     position: 'relative',
-    minHeight: TEXT_INPUT_HEIGHT,
-    maxHeight: TEXT_INPUT_HEIGHT,
+    minHeight: 200,
   },
   richText: {
     fontSize: 16,
-    lineHeight: TEXT_LINE_HEIGHT,
+    lineHeight: 24,
     color: colors.text,
-    minHeight: TEXT_INPUT_HEIGHT,
-    maxHeight: TEXT_INPUT_HEIGHT,
+    minHeight: 200,
   },
   hiddenInput: {
     position: 'absolute',
@@ -1205,6 +1072,53 @@ const styles = StyleSheet.create({
   locationText: {
     fontSize: 14,
     color: colors.textSecondary,
+  },
+  imagesContainer: {
+    paddingVertical: 16,
+  },
+  imagesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  imagesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  sparkleButton: {
+    padding: 8,
+    backgroundColor: colors.card,
+    borderRadius: 20,
+  },
+  imagesScrollContent: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  imageWrapper: {
+    position: 'relative',
+    marginRight: 12,
+  },
+  image: {
+    width: 300,
+    height: 200,
+    borderRadius: 12,
+    backgroundColor: colors.cardDark,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+  },
+  removeButtonCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   toolbar: {
     flexDirection: 'row',
