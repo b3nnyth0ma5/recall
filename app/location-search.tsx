@@ -135,6 +135,7 @@ export default function LocationSearchScreen() {
         const noteId = params.id as string;
         console.log('Updating location for note:', noteId);
 
+        // Only update location-related fields, no other data is changed
         const { error } = await supabase
           .from('recalls')
           .update({
@@ -161,6 +162,7 @@ export default function LocationSearchScreen() {
           selectedLongitude: location.longitude.toString(),
           selectedLocationName: formattedLocationName,
           selectedDisplayName: location.displayName,
+          selectedFullAddress: location.formattedAddress,
         });
       }, 100);
     } catch (error) {

@@ -66,6 +66,7 @@ export default function NoteEditorScreen() {
     longitude: number;
     displayName: string;
     formattedName: string;
+    fullAddress: string;
   } | null>(null);
   const [isOCRModalVisible, setIsOCRModalVisible] = useState(false);
   const [ocrDataList, setOcrDataList] = useState<OCRData[]>([]);
@@ -193,12 +194,13 @@ export default function NoteEditorScreen() {
       const longitude = parseFloat(params.selectedLongitude as string);
       const formattedName = params.selectedLocationName as string;
       const displayName = params.selectedDisplayName as string || formattedName;
+      const fullAddress = params.selectedFullAddress as string || formattedName;
 
-      console.log('Location updated from search:', { latitude, longitude, formattedName, displayName });
+      console.log('Location updated from search:', { latitude, longitude, formattedName, displayName, fullAddress });
       
       setLocation({ latitude, longitude });
       setLocationName(formattedName);
-      setSelectedLocationData({ latitude, longitude, displayName, formattedName });
+      setSelectedLocationData({ latitude, longitude, displayName, formattedName, fullAddress });
       setIsLocationModalVisible(true);
 
       router.setParams({
@@ -206,9 +208,10 @@ export default function NoteEditorScreen() {
         selectedLongitude: undefined,
         selectedLocationName: undefined,
         selectedDisplayName: undefined,
+        selectedFullAddress: undefined,
       });
     }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedDisplayName, router]);
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedDisplayName, params.selectedFullAddress, router]);
 
   const requestLocationPermission = async () => {
     try {
@@ -943,13 +946,15 @@ export default function NoteEditorScreen() {
                   </View>
 
                   <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Latitude:</Text>
-                    <Text style={styles.modalValue}>{selectedLocationData.latitude.toFixed(6)}</Text>
+                    <Text style={styles.modalLabel}>Full Address:</Text>
+                    <Text style={styles.modalValue}>{selectedLocationData.fullAddress}</Text>
                   </View>
 
                   <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Longitude:</Text>
-                    <Text style={styles.modalValue}>{selectedLocationData.longitude.toFixed(6)}</Text>
+                    <Text style={styles.modalLabel}>Coordinates:</Text>
+                    <Text style={styles.modalValue}>
+                      {selectedLocationData.latitude.toFixed(6)}, {selectedLocationData.longitude.toFixed(6)}
+                    </Text>
                   </View>
                 </View>
               )}
