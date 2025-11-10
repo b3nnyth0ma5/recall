@@ -920,7 +920,7 @@ export default function NoteEditorScreen() {
                   <Text style={styles.ocrLoadingText}>Analyzing images...</Text>
                 </View>
               ) : (
-                <ScrollView style={styles.ocrScrollView}>
+                <ScrollView style={styles.ocrScrollView} nestedScrollEnabled>
                   {ocrDataList.map((ocrData, index) => (
                     <View key={index} style={styles.ocrImageSection}>
                       <View style={styles.ocrImageHeader}>

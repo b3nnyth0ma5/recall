@@ -252,8 +252,10 @@ export default function LocationSearchScreen() {
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoFocus
-              returnKeyType="done"
+              returnKeyType="search"
               onSubmitEditing={handleSubmitEditing}
+              editable={true}
+              selectTextOnFocus={true}
             />
             {searchQuery.length > 0 && (
               <Pressable onPress={() => setSearchQuery('')}>
@@ -367,6 +369,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: colors.text,
+    outlineStyle: 'none',
   },
   searchingIndicator: {
     flexDirection: 'row',
