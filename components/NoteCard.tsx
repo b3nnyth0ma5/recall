@@ -9,7 +9,6 @@ import Animated, {
   FadeIn, 
   FadeInDown, 
 } from 'react-native-reanimated';
-import Carousel from 'react-native-snap-carousel';
 
 interface NoteCardProps {
   note: Note;
@@ -29,8 +28,8 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [showImageModal, setShowImageModal] = useState(false);
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [loadedImages, setLoadedImages] = useState<{ [key: number]: boolean }>({});
-  const carouselRef = useRef<Carousel<string>>(null);
-  const modalCarouselRef = useRef<Carousel<string>>(null);
+  const imageScrollRef = useRef<ScrollView>(null);
+  const modalScrollRef = useRef<ScrollView>(null);
 
   const formatDateTime = (dateString: string) => {
     try {
@@ -121,79 +120,75 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     onPress();
   };
 
+  const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / IMAGE_WIDTH);
+    if (index !== currentImageIndex && index >= 0 && index < allImages.length) {
+      setCurrentImageIndex(index);
+      console.log('Image carousel changed to index:', index);
+    }
+  };
+
+  const handleModalScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / SCREEN_WIDTH);
+    if (index !== modalImageIndex && index >= 0 && index < allImages.length) {
+      setModalImageIndex(index);
+      console.log('Modal carousel changed to index:', index);
+    }
+  };
+
   const allImages = note.images || [];
   const validImages = allImages.filter((_, index) => !imageErrors[index]);
   const hasValidImages = validImages.length > 0;
-
-  const renderCarouselItem = ({ item, index }: { item: string; index: number }) => {
-    if (imageErrors[index]) {
-      return null;
-    }
-
-    return (
-      <View style={styles.imageWrapper}>
-        {!loadedImages[index] && (
-          <View style={styles.imagePlaceholder}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
-        )}
-        <Image
-          source={{ uri: item }}
-          style={styles.image}
-          resizeMode="cover"
-          onError={() => handleImageError(index)}
-          onLoad={() => handleImageLoad(index)}
-        />
-      </View>
-    );
-  };
-
-  const renderModalCarouselItem = ({ item, index }: { item: string; index: number }) => {
-    if (imageErrors[index]) {
-      return null;
-    }
-
-    return (
-      <View style={styles.modalImageWrapper}>
-        <Image
-          source={{ uri: item }}
-          style={styles.modalImage}
-          resizeMode="contain"
-        />
-      </View>
-    );
-  };
 
   return (
     <>
       <Animated.View entering={FadeInDown.duration(400)} style={styles.container}>
         {hasValidImages && (
           <Pressable onPress={handleImagePress} style={styles.imageContainer}>
-            <Carousel
-              ref={carouselRef}
-              data={allImages}
-              renderItem={renderCarouselItem}
-              sliderWidth={IMAGE_WIDTH}
-              itemWidth={IMAGE_WIDTH}
-              onSnapToItem={(index) => {
-                console.log('Image carousel changed to index:', index);
-                setCurrentImageIndex(index);
-              }}
-              inactiveSlideScale={1}
-              inactiveSlideOpacity={1}
-              enableMomentum={true}
+            <ScrollView
+              ref={imageScrollRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={handleImageScroll}
+              scrollEventThrottle={16}
               decelerationRate="fast"
-              activeSlideAlignment="center"
-              containerCustomStyle={styles.carouselContainer}
-              contentContainerCustomStyle={styles.carouselContentContainer}
-            />
+              snapToInterval={IMAGE_WIDTH}
+              snapToAlignment="center"
+              contentContainerStyle={styles.imageScrollContent}
+            >
+              {allImages.map((imageUri, index) => {
+                if (imageErrors[index]) {
+                  return null;
+                }
+
+                return (
+                  <View key={`image-${index}`} style={styles.imageWrapper}>
+                    {!loadedImages[index] && (
+                      <View style={styles.imagePlaceholder}>
+                        <ActivityIndicator size="large" color={colors.primary} />
+                      </View>
+                    )}
+                    <Image
+                      source={{ uri: imageUri }}
+                      style={styles.image}
+                      resizeMode="cover"
+                      onError={() => handleImageError(index)}
+                      onLoad={() => handleImageLoad(index)}
+                    />
+                  </View>
+                );
+              })}
+            </ScrollView>
 
             {/* Pagination dots */}
             {validImages.length > 1 && (
               <View style={styles.paginationContainer}>
                 {validImages.map((_, index) => (
                   <View
-                    key={index}
+                    key={`dot-${index}`}
                     style={[
                       styles.paginationDot,
                       currentImageIndex === index && styles.paginationDotActive,
@@ -266,32 +261,41 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           </Pressable>
 
-          <Carousel
-            ref={modalCarouselRef}
-            data={allImages}
-            renderItem={renderModalCarouselItem}
-            sliderWidth={SCREEN_WIDTH}
-            itemWidth={SCREEN_WIDTH}
-            firstItem={modalImageIndex}
-            onSnapToItem={(index) => {
-              console.log('Modal carousel changed to index:', index);
-              setModalImageIndex(index);
-            }}
-            inactiveSlideScale={1}
-            inactiveSlideOpacity={1}
-            enableMomentum={true}
+          <ScrollView
+            ref={modalScrollRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleModalScroll}
+            scrollEventThrottle={16}
             decelerationRate="fast"
-            activeSlideAlignment="center"
-            containerCustomStyle={styles.modalCarouselContainer}
-            contentContainerCustomStyle={styles.modalCarouselContentContainer}
-          />
+            snapToInterval={SCREEN_WIDTH}
+            snapToAlignment="center"
+            contentOffset={{ x: modalImageIndex * SCREEN_WIDTH, y: 0 }}
+          >
+            {allImages.map((imageUri, index) => {
+              if (imageErrors[index]) {
+                return null;
+              }
+
+              return (
+                <View key={`modal-image-${index}`} style={styles.modalImageWrapper}>
+                  <Image
+                    source={{ uri: imageUri }}
+                    style={styles.modalImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              );
+            })}
+          </ScrollView>
 
           {/* Modal pagination dots */}
           {validImages.length > 1 && (
             <View style={styles.modalPaginationContainer}>
               {validImages.map((_, index) => (
                 <View
-                  key={index}
+                  key={`modal-dot-${index}`}
                   style={[
                     styles.modalPaginationDot,
                     modalImageIndex === index && styles.modalPaginationDotActive,
@@ -333,11 +337,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     backgroundColor: colors.cardDark,
   },
-  carouselContainer: {
-    width: IMAGE_WIDTH,
-    height: IMAGE_HEIGHT,
-  },
-  carouselContentContainer: {
+  imageScrollContent: {
     alignItems: 'center',
   },
   imageWrapper: {
@@ -457,13 +457,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalCarouselContainer: {
-    width: SCREEN_WIDTH,
-    height: '100%',
-  },
-  modalCarouselContentContainer: {
     alignItems: 'center',
   },
   modalImageWrapper: {
