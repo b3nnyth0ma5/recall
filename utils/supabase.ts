@@ -2,7 +2,6 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { File } from 'expo-file-system';
-import { uploadImageToGcore, deleteImageFromGcore, isGcoreCDNConfigured } from './gcoreCDN';
 
 const supabaseUrl = 'https://cesmsdnblkdjkskmiqib.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4';
@@ -16,19 +15,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-// Toggle to use Gcore CDN or fallback to base64 storage
-const USE_GCORE_CDN = true;
-
 export async function uploadImageToDatabase(
   uri: string,
   recallId: string,
   contentType: string = 'image/jpeg'
 ): Promise<string | null> {
   try {
-    console.log('=== Starting image upload ===');
+    console.log('=== Starting image upload to database ===');
     console.log('URI:', uri);
     console.log('Recall ID:', recallId);
-    console.log('Use Gcore CDN:', USE_GCORE_CDN);
     
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -43,40 +38,12 @@ export async function uploadImageToDatabase(
     const base64 = await file.base64();
     console.log('Base64 conversion successful, length:', base64.length);
 
-    let cdnUrl: string | null = null;
-    let imageData: string | null = null;
-
-    // Try to upload to Gcore CDN if enabled
-    if (USE_GCORE_CDN) {
-      const isConfigured = await isGcoreCDNConfigured();
-      
-      if (isConfigured) {
-        console.log('Uploading to Gcore CDN...');
-        const fileName = `${recallId}-${Date.now()}.${contentType.split('/')[1] || 'jpg'}`;
-        cdnUrl = await uploadImageToGcore(base64, fileName, contentType);
-        
-        if (cdnUrl) {
-          console.log('Successfully uploaded to Gcore CDN:', cdnUrl);
-        } else {
-          console.warn('Failed to upload to Gcore CDN, falling back to base64 storage');
-          imageData = base64;
-        }
-      } else {
-        console.warn('Gcore CDN not configured, using base64 storage');
-        imageData = base64;
-      }
-    } else {
-      console.log('Gcore CDN disabled, using base64 storage');
-      imageData = base64;
-    }
-
-    // Insert record into database with either CDN URL or base64 data
+    // Insert the base64 string directly into the database as text
     const { data, error } = await supabase
       .from('recall_images')
       .insert([{
         recall_id: recallId,
-        cdn_url: cdnUrl,
-        image_data: imageData,
+        image_data: base64,
         content_type: contentType,
         user_id: session.user.id,
       }])
@@ -87,19 +54,11 @@ export async function uploadImageToDatabase(
       console.error('=== Database insert error ===');
       console.error('Error message:', error.message);
       console.error('Error details:', JSON.stringify(error, null, 2));
-      
-      // If database insert failed and we uploaded to CDN, clean up
-      if (cdnUrl) {
-        console.log('Cleaning up CDN upload due to database error...');
-        await deleteImageFromGcore(cdnUrl);
-      }
-      
       return null;
     }
 
     console.log('=== Upload successful ===');
     console.log('Image ID:', data.id);
-    console.log('Storage method:', cdnUrl ? 'Gcore CDN' : 'Base64');
     
     // Automatically trigger OCR processing after successful upload
     console.log('Triggering OCR processing...');
@@ -131,7 +90,7 @@ export async function getImageDataUrl(imageId: string): Promise<string | null> {
     
     const { data, error } = await supabase
       .from('recall_images')
-      .select('cdn_url, image_data, content_type')
+      .select('image_data, content_type')
       .eq('id', imageId)
       .single();
 
@@ -141,33 +100,21 @@ export async function getImageDataUrl(imageId: string): Promise<string | null> {
       return null;
     }
 
-    if (!data) {
-      console.error('No data found for ID:', imageId);
+    if (!data || !data.image_data) {
+      console.error('No image_data found for ID:', imageId);
       return null;
     }
 
-    // If CDN URL exists, use it directly
-    if (data.cdn_url) {
-      console.log('Using CDN URL for image:', imageId);
-      return data.cdn_url;
-    }
-
-    // Fallback to base64 data if no CDN URL
-    if (data.image_data) {
-      console.log('Using base64 data for image:', imageId);
-      const base64String = data.image_data;
-      const contentType = data.content_type || 'image/jpeg';
-      
-      // Convert to data URL for display
-      const dataUrl = `data:${contentType};base64,${base64String}`;
-      
-      console.log('Successfully created data URL for image:', imageId);
-      
-      return dataUrl;
-    }
-
-    console.error('No image data or CDN URL found for ID:', imageId);
-    return null;
+    // The image_data is stored as a base64 string in the text column
+    const base64String = data.image_data;
+    const contentType = data.content_type || 'image/jpeg';
+    
+    // Convert to data URL for display
+    const dataUrl = `data:${contentType};base64,${base64String}`;
+    
+    console.log('Successfully created data URL for image:', imageId);
+    
+    return dataUrl;
   } catch (error) {
     console.error('Exception in getImageDataUrl for ID:', imageId);
     console.error('Error:', error);
@@ -182,27 +129,6 @@ export async function deleteImageRecord(imageId: string): Promise<boolean> {
   try {
     console.log('Deleting image record from database:', imageId);
     
-    // First, get the CDN URL if it exists
-    const { data: imageData, error: fetchError } = await supabase
-      .from('recall_images')
-      .select('cdn_url')
-      .eq('id', imageId)
-      .single();
-
-    if (fetchError) {
-      console.error('Error fetching image data for deletion:', fetchError);
-    }
-
-    // Delete from CDN if URL exists
-    if (imageData?.cdn_url) {
-      console.log('Deleting from Gcore CDN:', imageData.cdn_url);
-      const cdnDeleted = await deleteImageFromGcore(imageData.cdn_url);
-      if (!cdnDeleted) {
-        console.warn('Failed to delete from CDN, continuing with database deletion');
-      }
-    }
-
-    // Delete from database
     const { error } = await supabase
       .from('recall_images')
       .delete()
