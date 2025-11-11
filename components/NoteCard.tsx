@@ -143,16 +143,16 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   };
 
   const handleBrainIconPress = async () => {
-    const currentImage = note.images?.[modalImageIndex];
-    if (!currentImage) return;
-
-    // Extract image ID from the URL or use the image object if it has an id
-    const imageId = extractImageId(currentImage);
+    // Get the image ID from the imageIds array
+    const imageId = note.imageIds?.[modalImageIndex];
+    
     if (!imageId) {
-      console.error('Could not extract image ID');
+      console.error('Could not extract image ID for index:', modalImageIndex);
+      console.log('Available imageIds:', note.imageIds);
       return;
     }
 
+    console.log('Loading analysis for image ID:', imageId);
     setLoadingAnalysis(true);
     setShowAnalysisModal(true);
 
@@ -178,21 +178,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     } finally {
       setLoadingAnalysis(false);
     }
-  };
-
-  const extractImageId = (imageUrl: string): string | null => {
-    // Try to extract image ID from recall_images table
-    // The image URL might be a CDN URL or a data URL
-    // We need to get the image ID from the note's images array
-    const allImages = note.images || [];
-    const imageIndex = allImages.indexOf(imageUrl);
-    
-    // Check if note has image IDs stored
-    if (note.recall_images && note.recall_images[imageIndex]) {
-      return note.recall_images[imageIndex].id;
-    }
-    
-    return null;
   };
 
   const allImages = note.images || [];
@@ -317,14 +302,12 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           </Pressable>
 
-          {/* Floating Pink Brain Icon */}
+          {/* Floating Brain Icon - Bottom Right, styled like plus/search */}
           <Pressable 
             style={styles.brainButton}
             onPress={handleBrainIconPress}
           >
-            <View style={styles.brainButtonCircle}>
-              <Text style={styles.brainEmoji}>🧠</Text>
-            </View>
+            <Text style={styles.brainEmoji}>🧠</Text>
           </Pressable>
 
           <ScrollView
@@ -382,7 +365,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
         </View>
       </Modal>
 
-      {/* Image Analysis Modal */}
+      {/* Image Analysis Modal - Same as note-editor */}
       <Modal
         visible={showAnalysisModal}
         transparent={true}
@@ -399,7 +382,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
           >
             <Pressable onPress={(e) => e.stopPropagation()}>
               <View style={styles.analysisModalHeader}>
-                <Text style={styles.brainEmoji}>🧠</Text>
+                <Text style={styles.analysisHeaderEmoji}>🧠</Text>
                 <Text style={styles.analysisModalTitle}>Image Analysis</Text>
                 <Pressable 
                   onPress={() => setShowAnalysisModal(false)}
@@ -588,22 +571,20 @@ const styles = StyleSheet.create({
   },
   brainButton: {
     position: 'absolute',
-    bottom: 50,
-    left: 20,
+    bottom: 24,
+    right: 24,
     zIndex: 10,
-  },
-  brainButtonCircle: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#FF69B4',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(255, 105, 180, 0.5)',
+    boxShadow: '0px 4px 16px rgba(255, 107, 122, 0.4)',
     elevation: 8,
   },
   brainEmoji: {
-    fontSize: 32,
+    fontSize: 28,
   },
   modalScrollView: {
     width: SCREEN_WIDTH,
@@ -677,6 +658,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
     gap: 12,
+  },
+  analysisHeaderEmoji: {
+    fontSize: 32,
   },
   analysisModalTitle: {
     fontSize: 22,

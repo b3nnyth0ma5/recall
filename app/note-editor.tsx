@@ -731,6 +731,7 @@ export default function NoteEditorScreen() {
       return;
     }
 
+    console.log('Loading analysis for image ID:', currentImage.id);
     setLoadingAnalysis(true);
     setShowAnalysisModal(true);
 
@@ -1013,14 +1014,12 @@ export default function NoteEditorScreen() {
             </View>
           </Pressable>
 
-          {/* Floating Pink Brain Icon */}
+          {/* Floating Brain Icon - Bottom Right, styled like plus/search */}
           <Pressable 
             style={styles.brainButton}
             onPress={handleBrainIconPress}
           >
-            <View style={styles.brainButtonCircle}>
-              <Text style={styles.brainEmoji}>🧠</Text>
-            </View>
+            <Text style={styles.brainEmoji}>🧠</Text>
           </Pressable>
 
           <ScrollView
@@ -1072,7 +1071,7 @@ export default function NoteEditorScreen() {
         </View>
       </Modal>
 
-      {/* Image Analysis Modal */}
+      {/* Image Analysis Modal - Same as NoteCard */}
       <Modal
         visible={showAnalysisModal}
         transparent={true}
@@ -1089,7 +1088,7 @@ export default function NoteEditorScreen() {
           >
             <Pressable onPress={(e) => e.stopPropagation()}>
               <View style={styles.analysisModalHeader}>
-                <Text style={styles.brainEmoji}>🧠</Text>
+                <Text style={styles.analysisHeaderEmoji}>🧠</Text>
                 <Text style={styles.analysisModalTitle}>Image Analysis</Text>
                 <Pressable 
                   onPress={() => setShowAnalysisModal(false)}
@@ -1508,22 +1507,20 @@ const styles = StyleSheet.create({
   },
   brainButton: {
     position: 'absolute',
-    bottom: 50,
-    left: 20,
+    bottom: 24,
+    right: 24,
     zIndex: 10,
-  },
-  brainButtonCircle: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#FF69B4',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(255, 105, 180, 0.5)',
+    boxShadow: '0px 4px 16px rgba(255, 107, 122, 0.4)',
     elevation: 8,
   },
   brainEmoji: {
-    fontSize: 32,
+    fontSize: 28,
   },
   fullScreenScrollView: {
     width: SCREEN_WIDTH,
@@ -1596,6 +1593,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
     gap: 12,
+  },
+  analysisHeaderEmoji: {
+    fontSize: 32,
   },
   analysisModalTitle: {
     fontSize: 22,
