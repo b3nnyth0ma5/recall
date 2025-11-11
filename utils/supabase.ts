@@ -618,3 +618,164 @@ export async function retryOCRProcessing(imageId: string): Promise<{ success: bo
     };
   }
 }
+
+/**
+ * Batch upload images to Cloudflare CDN
+ * This function finds all images without a cdn_url and uploads them to Cloudflare
+ * using the cloudflare-upload edge function
+ * 
+ * @param batchSize - Number of images to process in one batch (default: 100)
+ * @returns Promise with results of the batch upload
+ */
+export async function batchUploadImagesToCloudflare(batchSize: number = 100): Promise<{
+  success: boolean;
+  processed: number;
+  updated: number;
+  failed: number;
+  errors: Array<{ imageId: string; error: string }>;
+}> {
+  try {
+    console.log('=== Starting batch upload to Cloudflare ===');
+    console.log('Batch size:', batchSize);
+
+    // Fetch images without cdn_url
+    const { data: images, error: fetchError } = await supabase
+      .from('recall_images')
+      .select('id, image_data, content_type')
+      .is('cdn_url', null)
+      .not('image_data', 'eq', '')
+      .limit(batchSize);
+
+    if (fetchError) {
+      console.error('Error fetching images:', fetchError);
+      return {
+        success: false,
+        processed: 0,
+        updated: 0,
+        failed: 0,
+        errors: [{ imageId: 'fetch', error: fetchError.message }],
+      };
+    }
+
+    if (!images || images.length === 0) {
+      console.log('No images without CDN URLs found');
+      return {
+        success: true,
+        processed: 0,
+        updated: 0,
+        failed: 0,
+        errors: [],
+      };
+    }
+
+    console.log(`Found ${images.length} images to upload`);
+
+    const errors: Array<{ imageId: string; error: string }> = [];
+    let updatedCount = 0;
+
+    // Process images in parallel with Promise.all
+    const uploadResults = await Promise.all(
+      images.map(async (image) => {
+        try {
+          console.log(`Uploading image ${image.id} to Cloudflare...`);
+
+          // Call the cloudflare-upload edge function
+          const { data: uploadData, error: uploadError } = await supabase.functions.invoke(
+            'cloudflare-upload',
+            {
+              body: {
+                base64Data: image.image_data,
+                fileName: `image-${image.id}-${Date.now()}.${image.content_type?.split('/')[1] || 'jpg'}`,
+                contentType: image.content_type || 'image/jpeg',
+              },
+            }
+          );
+
+          if (uploadError) {
+            console.error(`Upload failed for image ${image.id}:`, uploadError);
+            errors.push({ imageId: image.id, error: uploadError.message });
+            return null;
+          }
+
+          if (!uploadData || !uploadData.cdnUrl) {
+            console.error(`No CDN URL returned for image ${image.id}`);
+            errors.push({ imageId: image.id, error: 'No CDN URL in response' });
+            return null;
+          }
+
+          console.log(`Upload successful for image ${image.id}, CDN URL:`, uploadData.cdnUrl);
+
+          // Return the update data
+          return {
+            id: image.id,
+            cdn_url: uploadData.cdnUrl,
+            image_data: '', // Clear the base64 data to save space
+          };
+        } catch (error) {
+          console.error(`Exception uploading image ${image.id}:`, error);
+          errors.push({
+            imageId: image.id,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+          return null;
+        }
+      })
+    );
+
+    // Filter out failed uploads
+    const validUpdates = uploadResults.filter((result) => result !== null);
+
+    console.log(`Successfully uploaded ${validUpdates.length} images`);
+
+    // Update the database with CDN URLs
+    if (validUpdates.length > 0) {
+      const { error: updateError } = await supabase
+        .from('recall_images')
+        .upsert(validUpdates, { onConflict: 'id' });
+
+      if (updateError) {
+        console.error('Error updating CDN URLs in database:', updateError);
+        return {
+          success: false,
+          processed: images.length,
+          updated: 0,
+          failed: images.length,
+          errors: [
+            ...errors,
+            { imageId: 'batch_update', error: updateError.message },
+          ],
+        };
+      }
+
+      updatedCount = validUpdates.length;
+      console.log(`Successfully updated ${updatedCount} CDN URLs in database`);
+    }
+
+    const result = {
+      success: true,
+      processed: images.length,
+      updated: updatedCount,
+      failed: errors.length,
+      errors,
+    };
+
+    console.log('=== Batch upload complete ===');
+    console.log('Results:', result);
+
+    return result;
+  } catch (error) {
+    console.error('Exception in batchUploadImagesToCloudflare:', error);
+    return {
+      success: false,
+      processed: 0,
+      updated: 0,
+      failed: 0,
+      errors: [
+        {
+          imageId: 'exception',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+      ],
+    };
+  }
+}
