@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, batchUploadImagesToCloudflare } from '@/utils/supabase';
+import { supabase } from '@/utils/supabase';
 import { IconSymbol } from '@/components/IconSymbol';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
@@ -57,72 +57,15 @@ const styles = StyleSheet.create({
   dangerButton: {
     backgroundColor: colors.error,
   },
-  secondaryButton: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  secondaryButtonText: {
-    color: colors.text,
-  },
-  batchUploadSection: {
-    backgroundColor: colors.surface,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
-  },
-  batchUploadTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  batchUploadDescription: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  batchUploadResults: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: colors.background,
-    borderRadius: 8,
-  },
-  resultText: {
-    fontSize: 14,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  successText: {
-    color: colors.success,
-  },
-  errorText: {
-    color: colors.error,
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  loadingText: {
-    marginLeft: 12,
-    fontSize: 16,
-    color: colors.text,
+  headerButton: {
+    padding: 8,
+    marginHorizontal: 8,
   },
 });
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadResults, setUploadResults] = useState<{
-    processed: number;
-    updated: number;
-    failed: number;
-    errors: Array<{ imageId: string; error: string }>;
-  } | null>(null);
 
   const handleSignOut = async () => {
     Alert.alert(
@@ -145,56 +88,6 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleBatchUpload = async () => {
-    Alert.alert(
-      'Batch Upload to Cloudflare',
-      'This will upload all images without CDN URLs to Cloudflare. This may take a few minutes. Continue?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Start Upload',
-          onPress: async () => {
-            setIsUploading(true);
-            setUploadResults(null);
-
-            try {
-              console.log('Starting batch upload...');
-              const results = await batchUploadImagesToCloudflare(100);
-              
-              setUploadResults(results);
-              
-              if (results.success) {
-                Alert.alert(
-                  'Upload Complete',
-                  `Successfully uploaded ${results.updated} images.\n${results.failed > 0 ? `Failed: ${results.failed}` : ''}`,
-                  [{ text: 'OK' }]
-                );
-              } else {
-                Alert.alert(
-                  'Upload Failed',
-                  'There was an error during the batch upload. Check the results below.',
-                  [{ text: 'OK' }]
-                );
-              }
-            } catch (error) {
-              console.error('Error in batch upload:', error);
-              Alert.alert(
-                'Error',
-                'An unexpected error occurred during the batch upload.',
-                [{ text: 'OK' }]
-              );
-            } finally {
-              setIsUploading(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
   return (
     <>
       <Stack.Screen
@@ -204,6 +97,11 @@ export default function ProfileScreen() {
             backgroundColor: colors.background,
           },
           headerTintColor: colors.text,
+          headerLeft: () => (
+            <Pressable onPress={() => router.back()} style={styles.headerButton}>
+              <IconSymbol name="chevron.left" size={24} color={colors.text} />
+            </Pressable>
+          ),
         }}
       />
       <ScrollView style={styles.container}>
@@ -223,59 +121,8 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* Batch Upload Section */}
-          <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
-            <Text style={styles.sectionTitle}>Image Management</Text>
-            <View style={styles.batchUploadSection}>
-              <Text style={styles.batchUploadTitle}>Batch Upload to Cloudflare</Text>
-              <Text style={styles.batchUploadDescription}>
-                Upload all images that don&apos;t have a CDN URL to Cloudflare. 
-                This will improve loading times and reduce database storage.
-              </Text>
-              
-              {isUploading ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                  <Text style={styles.loadingText}>Uploading images...</Text>
-                </View>
-              ) : (
-                <Pressable
-                  style={[styles.button, styles.secondaryButton]}
-                  onPress={handleBatchUpload}
-                >
-                  <Text style={[styles.buttonText, styles.secondaryButtonText]}>
-                    Start Batch Upload
-                  </Text>
-                </Pressable>
-              )}
-
-              {uploadResults && (
-                <View style={styles.batchUploadResults}>
-                  <Text style={[styles.resultText, styles.successText]}>
-                    Processed: {uploadResults.processed}
-                  </Text>
-                  <Text style={[styles.resultText, styles.successText]}>
-                    Updated: {uploadResults.updated}
-                  </Text>
-                  {uploadResults.failed > 0 && (
-                    <>
-                      <Text style={[styles.resultText, styles.errorText]}>
-                        Failed: {uploadResults.failed}
-                      </Text>
-                      {uploadResults.errors.length > 0 && (
-                        <Text style={[styles.resultText, styles.errorText]}>
-                          First error: {uploadResults.errors[0].error}
-                        </Text>
-                      )}
-                    </>
-                  )}
-                </View>
-              )}
-            </View>
-          </Animated.View>
-
           {/* Actions Section */}
-          <Animated.View entering={FadeInDown.delay(200)} style={styles.section}>
+          <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
             <Text style={styles.sectionTitle}>Actions</Text>
             <Pressable
               style={[styles.button, styles.dangerButton]}

@@ -9,6 +9,7 @@ import Animated, {
   FadeIn, 
   FadeInDown, 
 } from 'react-native-reanimated';
+import { getImageOCRResults } from '@/utils/supabase';
 
 interface NoteCardProps {
   note: Note;
@@ -28,6 +29,9 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [showImageModal, setShowImageModal] = useState(false);
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [loadedImages, setLoadedImages] = useState<{ [key: number]: boolean }>({});
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+  const [analysisData, setAnalysisData] = useState<{ ocrText?: string; explanation?: string } | null>(null);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const modalScrollViewRef = useRef<ScrollView>(null);
 
@@ -138,6 +142,59 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     }
   };
 
+  const handleBrainIconPress = async () => {
+    const currentImage = note.images?.[modalImageIndex];
+    if (!currentImage) return;
+
+    // Extract image ID from the URL or use the image object if it has an id
+    const imageId = extractImageId(currentImage);
+    if (!imageId) {
+      console.error('Could not extract image ID');
+      return;
+    }
+
+    setLoadingAnalysis(true);
+    setShowAnalysisModal(true);
+
+    try {
+      const ocrData = await getImageOCRResults(imageId);
+      if (ocrData) {
+        setAnalysisData({
+          ocrText: ocrData.ocrText,
+          explanation: ocrData.explanation,
+        });
+      } else {
+        setAnalysisData({
+          ocrText: 'No analysis available',
+          explanation: 'This image has not been analyzed yet.',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading analysis:', error);
+      setAnalysisData({
+        ocrText: 'Error loading analysis',
+        explanation: 'Failed to load image analysis data.',
+      });
+    } finally {
+      setLoadingAnalysis(false);
+    }
+  };
+
+  const extractImageId = (imageUrl: string): string | null => {
+    // Try to extract image ID from recall_images table
+    // The image URL might be a CDN URL or a data URL
+    // We need to get the image ID from the note's images array
+    const allImages = note.images || [];
+    const imageIndex = allImages.indexOf(imageUrl);
+    
+    // Check if note has image IDs stored
+    if (note.recall_images && note.recall_images[imageIndex]) {
+      return note.recall_images[imageIndex].id;
+    }
+    
+    return null;
+  };
+
   const allImages = note.images || [];
   const validImages = allImages.filter((_, index) => !imageErrors[index]);
   const hasValidImages = validImages.length > 0;
@@ -154,6 +211,8 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
               showsHorizontalScrollIndicator={false}
               onScroll={handleScroll}
               scrollEventThrottle={16}
+              snapToInterval={IMAGE_WIDTH}
+              decelerationRate="fast"
               style={styles.scrollView}
             >
               {allImages.map((imageUrl, index) => {
@@ -258,6 +317,16 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           </Pressable>
 
+          {/* Floating Pink Brain Icon */}
+          <Pressable 
+            style={styles.brainButton}
+            onPress={handleBrainIconPress}
+          >
+            <View style={styles.brainButtonCircle}>
+              <Text style={styles.brainEmoji}>🧠</Text>
+            </View>
+          </Pressable>
+
           <ScrollView
             ref={modalScrollViewRef}
             horizontal
@@ -265,6 +334,8 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             showsHorizontalScrollIndicator={false}
             onScroll={handleModalScroll}
             scrollEventThrottle={16}
+            snapToInterval={SCREEN_WIDTH}
+            decelerationRate="fast"
             style={styles.modalScrollView}
             contentOffset={{ x: modalImageIndex * SCREEN_WIDTH, y: 0 }}
           >
@@ -309,6 +380,66 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           )}
         </View>
+      </Modal>
+
+      {/* Image Analysis Modal */}
+      <Modal
+        visible={showAnalysisModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowAnalysisModal(false)}
+      >
+        <Pressable 
+          style={styles.analysisModalOverlay}
+          onPress={() => setShowAnalysisModal(false)}
+        >
+          <Animated.View 
+            entering={FadeIn.duration(300)}
+            style={styles.analysisModalContent}
+          >
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={styles.analysisModalHeader}>
+                <Text style={styles.brainEmoji}>🧠</Text>
+                <Text style={styles.analysisModalTitle}>Image Analysis</Text>
+                <Pressable 
+                  onPress={() => setShowAnalysisModal(false)}
+                  style={styles.analysisCloseButton}
+                >
+                  <IconSymbol name="xmark" size={20} color={colors.textSecondary} />
+                </Pressable>
+              </View>
+
+              {loadingAnalysis ? (
+                <View style={styles.analysisLoadingContainer}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.analysisLoadingText}>Loading analysis...</Text>
+                </View>
+              ) : (
+                <ScrollView style={styles.analysisScrollView}>
+                  {analysisData?.ocrText && (
+                    <View style={styles.analysisSection}>
+                      <View style={styles.analysisSectionHeader}>
+                        <IconSymbol name="doc.text" size={18} color={colors.primary} />
+                        <Text style={styles.analysisSectionTitle}>Extracted Text</Text>
+                      </View>
+                      <Text style={styles.analysisText}>{analysisData.ocrText}</Text>
+                    </View>
+                  )}
+
+                  {analysisData?.explanation && (
+                    <View style={styles.analysisSection}>
+                      <View style={styles.analysisSectionHeader}>
+                        <IconSymbol name="sparkles" size={18} color={colors.primary} />
+                        <Text style={styles.analysisSectionTitle}>AI Explanation</Text>
+                      </View>
+                      <Text style={styles.analysisText}>{analysisData.explanation}</Text>
+                    </View>
+                  )}
+                </ScrollView>
+              )}
+            </Pressable>
+          </Animated.View>
+        </Pressable>
       </Modal>
     </>
   );
@@ -455,6 +586,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  brainButton: {
+    position: 'absolute',
+    bottom: 50,
+    left: 20,
+    zIndex: 10,
+  },
+  brainButtonCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FF69B4',
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 16px rgba(255, 105, 180, 0.5)',
+    elevation: 8,
+  },
+  brainEmoji: {
+    fontSize: 32,
+  },
   modalScrollView: {
     width: SCREEN_WIDTH,
     height: '100%',
@@ -503,5 +653,73 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
+  },
+  // Analysis Modal styles
+  analysisModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  analysisModalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '80%',
+    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.6)',
+    elevation: 10,
+  },
+  analysisModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    gap: 12,
+  },
+  analysisModalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: colors.text,
+    flex: 1,
+  },
+  analysisCloseButton: {
+    padding: 4,
+  },
+  analysisLoadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  analysisLoadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  analysisScrollView: {
+    maxHeight: 400,
+  },
+  analysisSection: {
+    marginBottom: 20,
+    backgroundColor: colors.background,
+    padding: 16,
+    borderRadius: 12,
+  },
+  analysisSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  analysisSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  analysisText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: colors.text,
   },
 });

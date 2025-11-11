@@ -44,6 +44,8 @@ interface OCRData {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const IMAGE_CAROUSEL_WIDTH = SCREEN_WIDTH - 32;
+const IMAGE_CAROUSEL_SPACING = 12;
 
 export default function NoteEditorScreen() {
   const router = useRouter();
@@ -72,9 +74,15 @@ export default function NoteEditorScreen() {
   const [ocrDataList, setOcrDataList] = useState<OCRData[]>([]);
   const [loadingOCR, setLoadingOCR] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [showFullScreenImage, setShowFullScreenImage] = useState(false);
+  const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+  const [currentAnalysisData, setCurrentAnalysisData] = useState<OCRData | null>(null);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
+  const fullScreenScrollRef = useRef<ScrollView>(null);
 
   const isEditing = !!params.id;
   const canSave = text.trim().length > 0 || images.length > 0;
@@ -697,10 +705,58 @@ export default function NoteEditorScreen() {
 
   const handleImageScroll = (event: any) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const imageWidth = SCREEN_WIDTH - 32;
-    const index = Math.round(contentOffsetX / (imageWidth + 12));
+    const index = Math.round(contentOffsetX / (IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING));
     if (index !== currentImageIndex && index >= 0 && index < images.length) {
       setCurrentImageIndex(index);
+    }
+  };
+
+  const handleImagePress = (index: number) => {
+    setFullScreenImageIndex(index);
+    setShowFullScreenImage(true);
+  };
+
+  const handleFullScreenScroll = (event: any) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / SCREEN_WIDTH);
+    if (index !== fullScreenImageIndex && index >= 0 && index < images.length) {
+      setFullScreenImageIndex(index);
+    }
+  };
+
+  const handleBrainIconPress = async () => {
+    const currentImage = images[fullScreenImageIndex];
+    if (!currentImage || !currentImage.id) {
+      Alert.alert('Image Not Saved', 'Please save the note first to analyze this image.');
+      return;
+    }
+
+    setLoadingAnalysis(true);
+    setShowAnalysisModal(true);
+
+    try {
+      const ocrData = await getImageOCRResults(currentImage.id);
+      if (ocrData) {
+        setCurrentAnalysisData({
+          ocrText: ocrData.ocrText,
+          explanation: ocrData.explanation,
+          processedAt: ocrData.processedAt,
+          isProcessing: ocrData.isProcessing,
+        });
+      } else {
+        setCurrentAnalysisData({
+          ocrText: 'No analysis available',
+          explanation: 'This image has not been analyzed yet.',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading analysis:', error);
+      setCurrentAnalysisData({
+        ocrText: 'Error loading analysis',
+        explanation: 'Failed to load image analysis data.',
+      });
+    } finally {
+      setLoadingAnalysis(false);
     }
   };
 
@@ -852,10 +908,14 @@ export default function NoteEditorScreen() {
             onScroll={handleImageScroll}
             scrollEventThrottle={16}
             decelerationRate="fast"
-            snapToInterval={SCREEN_WIDTH - 32 + 12}
+            snapToInterval={IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING}
           >
             {images.map((image, index) => (
-              <View key={`${image.id || 'new'}-${index}`} style={styles.imageWrapper}>
+              <Pressable 
+                key={`${image.id || 'new'}-${index}`} 
+                style={styles.imageWrapper}
+                onPress={() => handleImagePress(index)}
+              >
                 <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
                 <Pressable
                   onPress={() => removeImage(index)}
@@ -865,7 +925,7 @@ export default function NoteEditorScreen() {
                     <IconSymbol name="xmark" size={16} color="#FFFFFF" />
                   </View>
                 </Pressable>
-              </View>
+              </Pressable>
             ))}
           </ScrollView>
         </Animated.View>
@@ -935,6 +995,148 @@ export default function NoteEditorScreen() {
           </Pressable>
         )}
       </View>
+
+      {/* Full Screen Image Modal */}
+      <Modal
+        visible={showFullScreenImage}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowFullScreenImage(false)}
+      >
+        <View style={styles.fullScreenContainer}>
+          <Pressable 
+            style={styles.fullScreenCloseButton}
+            onPress={() => setShowFullScreenImage(false)}
+          >
+            <View style={styles.closeButtonCircle}>
+              <IconSymbol name="xmark" size={24} color="#FFFFFF" />
+            </View>
+          </Pressable>
+
+          {/* Floating Pink Brain Icon */}
+          <Pressable 
+            style={styles.brainButton}
+            onPress={handleBrainIconPress}
+          >
+            <View style={styles.brainButtonCircle}>
+              <Text style={styles.brainEmoji}>🧠</Text>
+            </View>
+          </Pressable>
+
+          <ScrollView
+            ref={fullScreenScrollRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleFullScreenScroll}
+            scrollEventThrottle={16}
+            snapToInterval={SCREEN_WIDTH}
+            decelerationRate="fast"
+            style={styles.fullScreenScrollView}
+            contentOffset={{ x: fullScreenImageIndex * SCREEN_WIDTH, y: 0 }}
+          >
+            {images.map((image, index) => (
+              <View key={`fullscreen-${image.id || 'new'}-${index}`} style={styles.fullScreenImageWrapper}>
+                <Image
+                  source={{ uri: image.uri }}
+                  style={styles.fullScreenImage}
+                  resizeMode="contain"
+                />
+              </View>
+            ))}
+          </ScrollView>
+
+          {/* Pagination dots */}
+          {images.length > 1 && (
+            <View style={styles.fullScreenPaginationContainer}>
+              {images.map((_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.fullScreenPaginationDot,
+                    fullScreenImageIndex === index && styles.fullScreenPaginationDotActive,
+                  ]}
+                />
+              ))}
+            </View>
+          )}
+
+          {/* Counter badge */}
+          {images.length > 1 && (
+            <View style={styles.fullScreenCounterBadge}>
+              <Text style={styles.fullScreenCounterText}>
+                {fullScreenImageIndex + 1} / {images.length}
+              </Text>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* Image Analysis Modal */}
+      <Modal
+        visible={showAnalysisModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowAnalysisModal(false)}
+      >
+        <Pressable 
+          style={styles.analysisModalOverlay}
+          onPress={() => setShowAnalysisModal(false)}
+        >
+          <Animated.View 
+            entering={FadeIn.duration(300)}
+            style={styles.analysisModalContent}
+          >
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={styles.analysisModalHeader}>
+                <Text style={styles.brainEmoji}>🧠</Text>
+                <Text style={styles.analysisModalTitle}>Image Analysis</Text>
+                <Pressable 
+                  onPress={() => setShowAnalysisModal(false)}
+                  style={styles.analysisCloseButton}
+                >
+                  <IconSymbol name="xmark" size={20} color={colors.textSecondary} />
+                </Pressable>
+              </View>
+
+              {loadingAnalysis ? (
+                <View style={styles.analysisLoadingContainer}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.analysisLoadingText}>Loading analysis...</Text>
+                </View>
+              ) : (
+                <ScrollView style={styles.analysisScrollView}>
+                  {currentAnalysisData?.ocrText && (
+                    <View style={styles.analysisSection}>
+                      <View style={styles.analysisSectionHeader}>
+                        <IconSymbol name="doc.text" size={18} color={colors.primary} />
+                        <Text style={styles.analysisSectionTitle}>Extracted Text</Text>
+                      </View>
+                      <Text style={styles.analysisText}>{currentAnalysisData.ocrText}</Text>
+                    </View>
+                  )}
+
+                  {currentAnalysisData?.explanation && (
+                    <View style={styles.analysisSection}>
+                      <View style={styles.analysisSectionHeader}>
+                        <IconSymbol name="sparkles" size={18} color={colors.primary} />
+                        <Text style={styles.analysisSectionTitle}>AI Explanation</Text>
+                      </View>
+                      <Text style={styles.analysisText}>{currentAnalysisData.explanation}</Text>
+                    </View>
+                  )}
+
+                  {currentAnalysisData?.processedAt && (
+                    <Text style={styles.analysisTimestamp}>
+                      Processed: {new Date(currentAnalysisData.processedAt).toLocaleString()}
+                    </Text>
+                  )}
+                </ScrollView>
+              )}
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
 
       {/* Location Modal */}
       <Modal
@@ -1146,7 +1348,7 @@ const styles = StyleSheet.create({
   },
   textInputContainer: {
     padding: 20,
-    height: 260, // Fixed height for 10 lines (26 line height * 10)
+    height: 260,
   },
   textInputScrollView: {
     flex: 1,
@@ -1161,7 +1363,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 26,
     color: colors.text,
-    minHeight: 220, // 10 lines worth of content
+    minHeight: 220,
     textAlignVertical: 'top',
   },
   richTextContainer: {
@@ -1241,14 +1443,14 @@ const styles = StyleSheet.create({
   },
   imageWrapper: {
     position: 'relative',
-    marginRight: 12,
-    width: SCREEN_WIDTH - 32,
+    marginRight: IMAGE_CAROUSEL_SPACING,
+    width: IMAGE_CAROUSEL_WIDTH,
     borderRadius: 16,
     overflow: 'hidden',
   },
   image: {
-    width: SCREEN_WIDTH - 32,
-    height: (SCREEN_WIDTH - 32) * 0.75,
+    width: IMAGE_CAROUSEL_WIDTH,
+    height: IMAGE_CAROUSEL_WIDTH * 0.75,
     borderRadius: 16,
     backgroundColor: colors.cardDark,
   },
@@ -1283,6 +1485,167 @@ const styles = StyleSheet.create({
   },
   toolbarButton: {
     padding: 8,
+  },
+  fullScreenContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenCloseButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+  },
+  closeButtonCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  brainButton: {
+    position: 'absolute',
+    bottom: 50,
+    left: 20,
+    zIndex: 10,
+  },
+  brainButtonCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FF69B4',
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 16px rgba(255, 105, 180, 0.5)',
+    elevation: 8,
+  },
+  brainEmoji: {
+    fontSize: 32,
+  },
+  fullScreenScrollView: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+  },
+  fullScreenImageWrapper: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenImage: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+  },
+  fullScreenPaginationContainer: {
+    position: 'absolute',
+    bottom: 100,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  fullScreenPaginationDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  fullScreenPaginationDotActive: {
+    width: 28,
+    backgroundColor: '#FFFFFF',
+  },
+  fullScreenCounterBadge: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 24,
+    zIndex: 10,
+  },
+  fullScreenCounterText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  analysisModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  analysisModalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: SCREEN_HEIGHT * 0.8,
+    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.6)',
+    elevation: 10,
+  },
+  analysisModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    gap: 12,
+  },
+  analysisModalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: colors.text,
+    flex: 1,
+  },
+  analysisCloseButton: {
+    padding: 4,
+  },
+  analysisLoadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  analysisLoadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  analysisScrollView: {
+    maxHeight: SCREEN_HEIGHT * 0.5,
+  },
+  analysisSection: {
+    marginBottom: 20,
+    backgroundColor: colors.background,
+    padding: 16,
+    borderRadius: 12,
+  },
+  analysisSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  analysisSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  analysisText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: colors.text,
+  },
+  analysisTimestamp: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
   modalOverlay: {
     flex: 1,
