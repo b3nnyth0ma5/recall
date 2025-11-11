@@ -9,7 +9,6 @@ import Animated, {
   FadeIn, 
   FadeInDown, 
 } from 'react-native-reanimated';
-import { getImageOCRResults } from '@/utils/supabase';
 
 interface NoteCardProps {
   note: Note;
@@ -29,9 +28,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [showImageModal, setShowImageModal] = useState(false);
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [loadedImages, setLoadedImages] = useState<{ [key: number]: boolean }>({});
-  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
-  const [analysisData, setAnalysisData] = useState<{ ocrText?: string; explanation?: string } | null>(null);
-  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const modalScrollViewRef = useRef<ScrollView>(null);
 
@@ -139,44 +135,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     if (index !== modalImageIndex && index >= 0 && index < validImages.length) {
       console.log('Modal carousel changed to index:', index);
       setModalImageIndex(index);
-    }
-  };
-
-  const handleBrainIconPress = async () => {
-    // Get the image ID from the imageIds array
-    const imageId = note.imageIds?.[modalImageIndex];
-    
-    if (!imageId) {
-      console.error('Could not extract image ID for index:', modalImageIndex);
-      console.log('Available imageIds:', note.imageIds);
-      return;
-    }
-
-    console.log('Loading analysis for image ID:', imageId);
-    setLoadingAnalysis(true);
-    setShowAnalysisModal(true);
-
-    try {
-      const ocrData = await getImageOCRResults(imageId);
-      if (ocrData) {
-        setAnalysisData({
-          ocrText: ocrData.ocrText,
-          explanation: ocrData.explanation,
-        });
-      } else {
-        setAnalysisData({
-          ocrText: 'No analysis available',
-          explanation: 'This image has not been analyzed yet.',
-        });
-      }
-    } catch (error) {
-      console.error('Error loading analysis:', error);
-      setAnalysisData({
-        ocrText: 'Error loading analysis',
-        explanation: 'Failed to load image analysis data.',
-      });
-    } finally {
-      setLoadingAnalysis(false);
     }
   };
 
@@ -302,14 +260,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           </Pressable>
 
-          {/* Floating Brain Icon - Bottom Right, styled like plus/search */}
-          <Pressable 
-            style={styles.brainButton}
-            onPress={handleBrainIconPress}
-          >
-            <Text style={styles.brainEmoji}>🧠</Text>
-          </Pressable>
-
           <ScrollView
             ref={modalScrollViewRef}
             horizontal
@@ -363,66 +313,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           )}
         </View>
-      </Modal>
-
-      {/* Image Analysis Modal - Same as note-editor */}
-      <Modal
-        visible={showAnalysisModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowAnalysisModal(false)}
-      >
-        <Pressable 
-          style={styles.analysisModalOverlay}
-          onPress={() => setShowAnalysisModal(false)}
-        >
-          <Animated.View 
-            entering={FadeIn.duration(300)}
-            style={styles.analysisModalContent}
-          >
-            <Pressable onPress={(e) => e.stopPropagation()}>
-              <View style={styles.analysisModalHeader}>
-                <Text style={styles.analysisHeaderEmoji}>🧠</Text>
-                <Text style={styles.analysisModalTitle}>Image Analysis</Text>
-                <Pressable 
-                  onPress={() => setShowAnalysisModal(false)}
-                  style={styles.analysisCloseButton}
-                >
-                  <IconSymbol name="xmark" size={20} color={colors.textSecondary} />
-                </Pressable>
-              </View>
-
-              {loadingAnalysis ? (
-                <View style={styles.analysisLoadingContainer}>
-                  <ActivityIndicator size="large" color={colors.primary} />
-                  <Text style={styles.analysisLoadingText}>Loading analysis...</Text>
-                </View>
-              ) : (
-                <ScrollView style={styles.analysisScrollView}>
-                  {analysisData?.ocrText && (
-                    <View style={styles.analysisSection}>
-                      <View style={styles.analysisSectionHeader}>
-                        <IconSymbol name="doc.text" size={18} color={colors.primary} />
-                        <Text style={styles.analysisSectionTitle}>Extracted Text</Text>
-                      </View>
-                      <Text style={styles.analysisText}>{analysisData.ocrText}</Text>
-                    </View>
-                  )}
-
-                  {analysisData?.explanation && (
-                    <View style={styles.analysisSection}>
-                      <View style={styles.analysisSectionHeader}>
-                        <IconSymbol name="sparkles" size={18} color={colors.primary} />
-                        <Text style={styles.analysisSectionTitle}>AI Explanation</Text>
-                      </View>
-                      <Text style={styles.analysisText}>{analysisData.explanation}</Text>
-                    </View>
-                  )}
-                </ScrollView>
-              )}
-            </Pressable>
-          </Animated.View>
-        </Pressable>
       </Modal>
     </>
   );
@@ -569,23 +459,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  brainButton: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    zIndex: 10,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(255, 107, 122, 0.4)',
-    elevation: 8,
-  },
-  brainEmoji: {
-    fontSize: 28,
-  },
   modalScrollView: {
     width: SCREEN_WIDTH,
     height: '100%',
@@ -634,76 +507,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
-  },
-  // Analysis Modal styles
-  analysisModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  analysisModalContent: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    padding: 24,
-    width: '100%',
-    maxWidth: 500,
-    maxHeight: '80%',
-    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.6)',
-    elevation: 10,
-  },
-  analysisModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    gap: 12,
-  },
-  analysisHeaderEmoji: {
-    fontSize: 32,
-  },
-  analysisModalTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: colors.text,
-    flex: 1,
-  },
-  analysisCloseButton: {
-    padding: 4,
-  },
-  analysisLoadingContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-    gap: 12,
-  },
-  analysisLoadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-  analysisScrollView: {
-    maxHeight: 400,
-  },
-  analysisSection: {
-    marginBottom: 20,
-    backgroundColor: colors.background,
-    padding: 16,
-    borderRadius: 12,
-  },
-  analysisSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  analysisSectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  analysisText: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: colors.text,
   },
 });
