@@ -2,7 +2,7 @@
 import { supabase } from './supabase';
 
 const GCORE_API_BASE_URL = 'https://api.gcore.com/storage';
-const GCORE_STORAGE_NAME = 'natively-images'; // You can customize this
+const GCORE_STORAGE_NAME = '919491-recall-images'; // You can customize this
 
 /**
  * Upload an image to Gcore CDN via Supabase Edge Function

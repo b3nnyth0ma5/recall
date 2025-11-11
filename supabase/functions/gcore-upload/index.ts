@@ -57,24 +57,25 @@ Deno.serve(async (req) => {
       bytes[i] = binaryString.charCodeAt(i);
     }
 
-    // Create form data for upload
-    const formData = new FormData();
-    const blob = new Blob([bytes], { type: contentType });
-    formData.append('file', blob, fileName);
-
-    // Upload to Gcore Storage
-    // Note: You'll need to adjust the storage name and path as per your Gcore setup
+    // Get storage configuration
     const storageName = Deno.env.get('GCORE_STORAGE_NAME') || 'natively-images';
-    const uploadUrl = `https://api.gcore.com/storage/v1/storage/${storageName}/upload`;
+    
+    // Gcore Storage API uses PUT method to upload files directly to the path
+    // Format: https://api.gcore.com/storage/v1/storage/{storage_name}/{path}
+    const filePath = `images/${fileName}`;
+    const uploadUrl = `https://api.gcore.com/storage/v1/storage/${storageName}/${filePath}`;
 
     console.log('Uploading to:', uploadUrl);
+    console.log('Storage name:', storageName);
+    console.log('File path:', filePath);
 
     const uploadResponse = await fetch(uploadUrl, {
-      method: 'POST',
+      method: 'PUT',
       headers: {
         'Authorization': `APIKey ${gcoreApiKey}`,
+        'Content-Type': contentType,
       },
-      body: formData,
+      body: bytes,
     });
 
     if (!uploadResponse.ok) {
@@ -82,9 +83,10 @@ Deno.serve(async (req) => {
       console.error('Gcore upload failed:', uploadResponse.status, errorText);
       return new Response(
         JSON.stringify({ 
-          error: 'Failed to upload to Gcore CDN',
+          error: `Gcore upload failed: ${uploadResponse.status} ${errorText}`,
           details: errorText,
-          status: uploadResponse.status
+          status: uploadResponse.status,
+          url: uploadUrl
         }),
         {
           status: uploadResponse.status,
@@ -96,24 +98,11 @@ Deno.serve(async (req) => {
     const uploadResult = await uploadResponse.json();
     console.log('Upload result:', uploadResult);
 
-    // Extract CDN URL from response
-    // The exact structure depends on Gcore's API response
-    // Adjust this based on actual Gcore API response format
-    const cdnUrl = uploadResult.url || uploadResult.cdn_url || uploadResult.file_url;
-
-    if (!cdnUrl) {
-      console.error('No CDN URL in Gcore response:', uploadResult);
-      return new Response(
-        JSON.stringify({ 
-          error: 'No CDN URL returned from Gcore',
-          response: uploadResult
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
+    // Construct the CDN URL
+    // Gcore CDN URL format: https://{cdn-domain}/{storage_name}/{path}
+    // You may need to adjust this based on your Gcore CDN configuration
+    const cdnDomain = Deno.env.get('GCORE_CDN_DOMAIN') || `${storageName}.gcdn.co`;
+    const cdnUrl = `https://${cdnDomain}/${filePath}`;
 
     console.log('=== Upload successful ===');
     console.log('CDN URL:', cdnUrl);

@@ -48,17 +48,21 @@ Deno.serve(async (req) => {
     console.log('CDN URL:', cdnUrl);
 
     // Extract file path from CDN URL
-    // This depends on your Gcore CDN URL structure
-    // Example: https://cdn.gcore.com/storage/natively-images/image-123.jpg
+    // Example: https://natively-images.gcdn.co/images/image-123.jpg
     const urlParts = new URL(cdnUrl);
-    const pathParts = urlParts.pathname.split('/');
-    const fileName = pathParts[pathParts.length - 1];
+    const pathParts = urlParts.pathname.split('/').filter(p => p);
+    
+    // The path should be everything after the domain
+    // e.g., "images/image-123.jpg"
+    const filePath = pathParts.join('/');
     const storageName = Deno.env.get('GCORE_STORAGE_NAME') || 'natively-images';
 
-    console.log('Deleting file:', fileName);
+    console.log('Deleting file path:', filePath);
+    console.log('Storage name:', storageName);
 
-    // Delete from Gcore Storage
-    const deleteUrl = `https://api.gcore.com/storage/v1/storage/${storageName}/files/${fileName}`;
+    // Delete from Gcore Storage using DELETE method
+    // Format: https://api.gcore.com/storage/v1/storage/{storage_name}/{path}
+    const deleteUrl = `https://api.gcore.com/storage/v1/storage/${storageName}/${filePath}`;
 
     console.log('Delete URL:', deleteUrl);
 
@@ -66,7 +70,6 @@ Deno.serve(async (req) => {
       method: 'DELETE',
       headers: {
         'Authorization': `APIKey ${gcoreApiKey}`,
-        'Content-Type': 'application/json',
       },
     });
 
