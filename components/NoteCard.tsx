@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, Modal, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, Modal, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent, TouchableOpacity, Platform } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { Note } from '@/types/Note';
@@ -138,6 +138,25 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     }
   };
 
+  const handleLocationPress = () => {
+    if (!note.location) return;
+
+    const encodedLocation = encodeURIComponent(note.location);
+    
+    const url = Platform.select({
+      ios: `maps:0,0?q=${encodedLocation}`,
+      android: `geo:0,0?q=${encodedLocation}`,
+      default: `https://www.google.com/maps/search/?api=1&query=${encodedLocation}`,
+    });
+
+    console.log('Opening maps with location:', note.location);
+    console.log('Maps URL:', url);
+
+    Linking.openURL(url).catch((err) => {
+      console.error('Could not open maps:', err);
+    });
+  };
+
   const allImages = note.images || [];
   const validImages = allImages.filter((_, index) => !imageErrors[index]);
   const hasValidImages = validImages.length > 0;
@@ -231,14 +250,22 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
           )}
 
           <View style={styles.metadataContainer}>
-            <View style={styles.locationContainer}>
-              {note.location && (
-                <>
-                  <IconSymbol name="location.fill" size={14} color={colors.textSecondary} />
-                  <Text style={styles.locationText}>{note.location}</Text>
-                </>
-              )}
-            </View>
+            {note.location ? (
+              <TouchableOpacity 
+                style={styles.locationContainer}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleLocationPress();
+                }}
+                activeOpacity={0.7}
+              >
+                <IconSymbol name="location.fill" size={14} color={colors.textSecondary} />
+                <Text style={styles.locationText}>{note.location}</Text>
+                <IconSymbol name="chevron.right" size={12} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.locationContainer} />
+            )}
             <Text style={styles.dateText}>{formatDateTime(note.created_at)}</Text>
           </View>
         </Pressable>
@@ -429,10 +456,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     flex: 1,
+    paddingVertical: 4,
+    paddingRight: 8,
   },
   locationText: {
     fontSize: 13,
     color: colors.textSecondary,
+    flex: 1,
   },
   dateText: {
     fontSize: 13,
