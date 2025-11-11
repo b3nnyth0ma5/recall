@@ -139,6 +139,68 @@ export async function uploadImageToDatabase(
   }
 }
 
+/**
+ * Asynchronously upload image to Cloudflare CDN and update the database
+ * This function runs in the background and doesn't block the UI
+ * 
+ * @param imageId - The ID of the image to upload
+ * @param imageData - The base64 image data
+ * @param contentType - The content type of the image
+ */
+async function uploadImageToCloudflareAsync(
+  imageId: string,
+  imageData: string,
+  contentType: string
+): Promise<void> {
+  try {
+    console.log(`[Async CDN Upload] Starting upload for image ${imageId}`);
+    
+    // Call the cloudflare-upload edge function
+    const fileName = `image-${imageId}-${Date.now()}.${contentType?.split('/')[1] || 'jpg'}`;
+    
+    const { data: uploadData, error: uploadError } = await supabase.functions.invoke(
+      'cloudflare-upload',
+      {
+        body: {
+          base64Data: imageData,
+          fileName,
+          contentType: contentType || 'image/jpeg',
+        },
+      }
+    );
+
+    if (uploadError) {
+      console.error(`[Async CDN Upload] Upload failed for image ${imageId}:`, uploadError);
+      return;
+    }
+
+    if (!uploadData || !uploadData.cdnUrl) {
+      console.error(`[Async CDN Upload] No CDN URL returned for image ${imageId}`);
+      return;
+    }
+
+    console.log(`[Async CDN Upload] Upload successful for image ${imageId}, CDN URL:`, uploadData.cdnUrl);
+
+    // Update the database with the CDN URL and clear the base64 data
+    const { error: updateError } = await supabase
+      .from('recall_images')
+      .update({
+        cdn_url: uploadData.cdnUrl,
+        image_data: '', // Clear the base64 data to save space
+      })
+      .eq('id', imageId);
+
+    if (updateError) {
+      console.error(`[Async CDN Upload] Error updating CDN URL for image ${imageId}:`, updateError);
+      return;
+    }
+
+    console.log(`[Async CDN Upload] Successfully updated CDN URL for image ${imageId}`);
+  } catch (error) {
+    console.error(`[Async CDN Upload] Exception uploading image ${imageId}:`, error);
+  }
+}
+
 export async function getImageDataUrl(imageId: string): Promise<string | null> {
   try {
     console.log('Fetching image data for ID:', imageId);
@@ -176,6 +238,16 @@ export async function getImageDataUrl(imageId: string): Promise<string | null> {
       const dataUrl = `data:${contentType};base64,${base64String}`;
       
       console.log('Successfully created data URL for image:', imageId);
+      
+      // Asynchronously upload to Cloudflare CDN in the background
+      console.log('[CDN Fallback] Triggering async upload to Cloudflare for image:', imageId);
+      uploadImageToCloudflareAsync(imageId, base64String, contentType)
+        .then(() => {
+          console.log('[CDN Fallback] Async upload completed for image:', imageId);
+        })
+        .catch((error) => {
+          console.error('[CDN Fallback] Async upload failed for image:', imageId, error);
+        });
       
       return dataUrl;
     }
