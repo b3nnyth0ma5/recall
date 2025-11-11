@@ -62,7 +62,7 @@ export async function deleteImageFromCloudflare(cdnUrl: string): Promise<boolean
 
     // Extract the image ID from the CDN URL
     const urlParts = cdnUrl.split('/');
-    const imageId = urlParts[urlParts.length - 1];
+    const imageId = urlParts[urlParts.length - 2];
 
     const { data, error } = await supabase.functions.invoke('cloudflare-delete', {
       body: {

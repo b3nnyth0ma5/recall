@@ -9,6 +9,7 @@ import Animated, {
   FadeIn, 
   FadeInDown, 
 } from 'react-native-reanimated';
+import Carousel from 'react-native-snap-carousel';
 
 interface NoteCardProps {
   note: Note;
@@ -28,8 +29,8 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [showImageModal, setShowImageModal] = useState(false);
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [loadedImages, setLoadedImages] = useState<{ [key: number]: boolean }>({});
-  const scrollViewRef = useRef<ScrollView>(null);
-  const modalScrollViewRef = useRef<ScrollView>(null);
+  const carouselRef = useRef<Carousel<string>>(null);
+  const modalCarouselRef = useRef<Carousel<string>>(null);
 
   const formatDateTime = (dateString: string) => {
     try {
@@ -120,67 +121,72 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     onPress();
   };
 
-  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / IMAGE_WIDTH);
-    if (index !== currentImageIndex && index >= 0 && index < validImages.length) {
-      console.log('Image carousel changed to index:', index);
-      setCurrentImageIndex(index);
-    }
-  };
-
-  const handleModalScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / SCREEN_WIDTH);
-    if (index !== modalImageIndex && index >= 0 && index < validImages.length) {
-      console.log('Modal carousel changed to index:', index);
-      setModalImageIndex(index);
-    }
-  };
-
   const allImages = note.images || [];
   const validImages = allImages.filter((_, index) => !imageErrors[index]);
   const hasValidImages = validImages.length > 0;
+
+  const renderCarouselItem = ({ item, index }: { item: string; index: number }) => {
+    if (imageErrors[index]) {
+      return null;
+    }
+
+    return (
+      <View style={styles.imageWrapper}>
+        {!loadedImages[index] && (
+          <View style={styles.imagePlaceholder}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        )}
+        <Image
+          source={{ uri: item }}
+          style={styles.image}
+          resizeMode="cover"
+          onError={() => handleImageError(index)}
+          onLoad={() => handleImageLoad(index)}
+        />
+      </View>
+    );
+  };
+
+  const renderModalCarouselItem = ({ item, index }: { item: string; index: number }) => {
+    if (imageErrors[index]) {
+      return null;
+    }
+
+    return (
+      <View style={styles.modalImageWrapper}>
+        <Image
+          source={{ uri: item }}
+          style={styles.modalImage}
+          resizeMode="contain"
+        />
+      </View>
+    );
+  };
 
   return (
     <>
       <Animated.View entering={FadeInDown.duration(400)} style={styles.container}>
         {hasValidImages && (
           <Pressable onPress={handleImagePress} style={styles.imageContainer}>
-            <ScrollView
-              ref={scrollViewRef}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              onScroll={handleScroll}
-              scrollEventThrottle={16}
-              snapToInterval={IMAGE_WIDTH}
+            <Carousel
+              ref={carouselRef}
+              data={allImages}
+              renderItem={renderCarouselItem}
+              sliderWidth={IMAGE_WIDTH}
+              itemWidth={IMAGE_WIDTH}
+              onSnapToItem={(index) => {
+                console.log('Image carousel changed to index:', index);
+                setCurrentImageIndex(index);
+              }}
+              inactiveSlideScale={1}
+              inactiveSlideOpacity={1}
+              enableMomentum={true}
               decelerationRate="fast"
-              style={styles.scrollView}
-            >
-              {allImages.map((imageUrl, index) => {
-                if (imageErrors[index]) {
-                  return null;
-                }
-
-                return (
-                  <View key={index} style={styles.imageWrapper}>
-                    {!loadedImages[index] && (
-                      <View style={styles.imagePlaceholder}>
-                        <ActivityIndicator size="large" color={colors.primary} />
-                      </View>
-                    )}
-                    <Image
-                      source={{ uri: imageUrl }}
-                      style={styles.image}
-                      resizeMode="cover"
-                      onError={() => handleImageError(index)}
-                      onLoad={() => handleImageLoad(index)}
-                    />
-                  </View>
-                );
-              })}
-            </ScrollView>
+              activeSlideAlignment="center"
+              containerCustomStyle={styles.carouselContainer}
+              contentContainerCustomStyle={styles.carouselContentContainer}
+            />
 
             {/* Pagination dots */}
             {validImages.length > 1 && (
@@ -260,34 +266,25 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           </Pressable>
 
-          <ScrollView
-            ref={modalScrollViewRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onScroll={handleModalScroll}
-            scrollEventThrottle={16}
-            snapToInterval={SCREEN_WIDTH}
+          <Carousel
+            ref={modalCarouselRef}
+            data={allImages}
+            renderItem={renderModalCarouselItem}
+            sliderWidth={SCREEN_WIDTH}
+            itemWidth={SCREEN_WIDTH}
+            firstItem={modalImageIndex}
+            onSnapToItem={(index) => {
+              console.log('Modal carousel changed to index:', index);
+              setModalImageIndex(index);
+            }}
+            inactiveSlideScale={1}
+            inactiveSlideOpacity={1}
+            enableMomentum={true}
             decelerationRate="fast"
-            style={styles.modalScrollView}
-            contentOffset={{ x: modalImageIndex * SCREEN_WIDTH, y: 0 }}
-          >
-            {allImages.map((imageUrl, index) => {
-              if (imageErrors[index]) {
-                return null;
-              }
-
-              return (
-                <View key={index} style={styles.modalImageWrapper}>
-                  <Image
-                    source={{ uri: imageUrl }}
-                    style={styles.modalImage}
-                    resizeMode="contain"
-                  />
-                </View>
-              );
-            })}
-          </ScrollView>
+            activeSlideAlignment="center"
+            containerCustomStyle={styles.modalCarouselContainer}
+            contentContainerCustomStyle={styles.modalCarouselContentContainer}
+          />
 
           {/* Modal pagination dots */}
           {validImages.length > 1 && (
@@ -336,9 +333,12 @@ const styles = StyleSheet.create({
     position: 'relative',
     backgroundColor: colors.cardDark,
   },
-  scrollView: {
+  carouselContainer: {
     width: IMAGE_WIDTH,
     height: IMAGE_HEIGHT,
+  },
+  carouselContentContainer: {
+    alignItems: 'center',
   },
   imageWrapper: {
     width: IMAGE_WIDTH,
@@ -459,9 +459,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalScrollView: {
+  modalCarouselContainer: {
     width: SCREEN_WIDTH,
     height: '100%',
+  },
+  modalCarouselContentContainer: {
+    alignItems: 'center',
   },
   modalImageWrapper: {
     width: SCREEN_WIDTH,
