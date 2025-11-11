@@ -400,8 +400,11 @@ export default function NoteEditorScreen() {
     }
 
     const { latitude, longitude } = location;
-    const locationQuery = `${latitude},${longitude}`;
-
+    // Updated locationQuery to include formatted name with GPS coordinates
+    // Format: "Eiffel+Tower&center=48.85837,2.29448"
+    const formattedNameEncoded = encodeURIComponent(locationName).replace(/%20/g, '+');
+    const locationQuery = `${formattedNameEncoded}&center=${latitude},${longitude}`;
+		
     try {
       // Try Google Maps first
       const googleMapsUrl = Platform.select({
@@ -410,7 +413,8 @@ export default function NoteEditorScreen() {
         default: `https://www.google.com/maps/search/?api=1&query=${locationQuery}`,
       });
 
-      console.log('Attempting to open Google Maps:', googleMapsUrl);
+      console.log('Attempting to open Google Maps with query:', locationQuery);
+      console.log('Google Maps URL:', googleMapsUrl);
       const canOpenGoogleMaps = await Linking.canOpenURL(googleMapsUrl!);
 
       if (canOpenGoogleMaps) {
@@ -418,9 +422,9 @@ export default function NoteEditorScreen() {
         console.log('Opened Google Maps');
         return;
       }
-
+			
       // Fallback to Apple Maps on iOS
-      if (Platform.OS === 'ios') {
+      /*if (Platform.OS === 'ios') {
         const appleMapsUrl = `http://maps.apple.com/?q=${locationQuery}`;
         console.log('Attempting to open Apple Maps:', appleMapsUrl);
         const canOpenAppleMaps = await Linking.canOpenURL(appleMapsUrl);
@@ -430,7 +434,7 @@ export default function NoteEditorScreen() {
           console.log('Opened Apple Maps');
           return;
         }
-      }
+      }*/
 
       // Final fallback to web
       const webUrl = `https://www.google.com/maps/search/?api=1&query=${locationQuery}`;
