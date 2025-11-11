@@ -16,7 +16,6 @@ import {
   Linking,
   Modal,
   Dimensions,
-  TouchableOpacity,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -588,25 +587,6 @@ export default function NoteEditorScreen() {
     }
   };
 
-  const handleLocationPress = () => {
-    if (!locationName) return;
-
-    const encodedLocation = encodeURIComponent(locationName);
-    
-    const url = Platform.select({
-      ios: `maps:0,0?q=${encodedLocation}`,
-      android: `geo:0,0?q=${encodedLocation}`,
-      default: `https://www.google.com/maps/search/?api=1&query=${encodedLocation}`,
-    });
-
-    console.log('Opening maps with location:', locationName);
-    console.log('Maps URL:', url);
-
-    Linking.openURL(url).catch((err) => {
-      console.error('Could not open maps:', err);
-    });
-  };
-
   // Show loading state while fetching note data
   if (loadingNote) {
     return (
@@ -775,16 +755,9 @@ export default function NoteEditorScreen() {
 
       {/* Location Info - Above Toolbar */}
       {locationName && (
-        <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.locationInfoContainer}>
-          <TouchableOpacity 
-            style={styles.locationInfo}
-            onPress={handleLocationPress}
-            activeOpacity={0.7}
-          >
-            <IconSymbol name="location.fill" size={16} color={colors.textSecondary} />
-            <Text style={styles.locationText}>{locationName}</Text>
-            <IconSymbol name="chevron.right" size={14} color={colors.textSecondary} />
-          </TouchableOpacity>
+        <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.locationInfo}>
+          <IconSymbol name="location.fill" size={16} color={colors.textSecondary} />
+          <Text style={styles.locationText}>{locationName}</Text>
         </Animated.View>
       )}
 
@@ -1069,18 +1042,16 @@ const styles = StyleSheet.create({
   spacer: {
     flex: 1,
   },
-  locationInfoContainer: {
-    paddingHorizontal: 16,
-    marginBottom: 8,
-  },
   locationInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     backgroundColor: colors.card,
+    marginHorizontal: 16,
     borderRadius: 8,
+    marginBottom: 8,
   },
   locationText: {
     fontSize: 14,
