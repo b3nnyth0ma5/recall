@@ -21,7 +21,7 @@ export async function uploadImageToDatabase(
   contentType: string = 'image/jpeg'
 ): Promise<string | null> {
   try {
-    console.log('=== Starting image upload to database ===');
+    console.log('=== Starting image upload to Cloudflare CDN ===');
     console.log('URI:', uri);
     console.log('Recall ID:', recallId);
     
@@ -38,14 +38,63 @@ export async function uploadImageToDatabase(
     const base64 = await file.base64();
     console.log('Base64 conversion successful, length:', base64.length);
 
-    // Insert the base64 string directly into the database as text
+    // Upload to Cloudflare CDN
+    const { uploadImageToCloudflare } = await import('./cloudflareCDN');
+    const fileName = `image-${Date.now()}-${Math.random().toString(36).substring(7)}.${contentType.split('/')[1]}`;
+    
+    console.log('Uploading to Cloudflare CDN...');
+    const cdnUrl = await uploadImageToCloudflare(base64, fileName, contentType);
+    
+    if (!cdnUrl) {
+      console.error('Failed to upload to Cloudflare CDN, falling back to database storage');
+      // Fallback: store in database if CDN upload fails
+      const { data, error } = await supabase
+        .from('recall_images')
+        .insert([{
+          recall_id: recallId,
+          image_data: base64,
+          content_type: contentType,
+          user_id: session.user.id,
+          cdn_url: null,
+        }])
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error('=== Database insert error ===');
+        console.error('Error message:', error.message);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        return null;
+      }
+
+      console.log('=== Fallback upload successful ===');
+      console.log('Image ID:', data.id);
+      
+      // Trigger OCR processing
+      triggerOCRProcessing(data.id).then(result => {
+        if (result.success) {
+          console.log('OCR processing triggered successfully for image:', data.id);
+        } else {
+          console.error('Failed to trigger OCR processing:', result.error);
+        }
+      }).catch(err => {
+        console.error('Exception while triggering OCR:', err);
+      });
+      
+      return data.id;
+    }
+
+    console.log('CDN upload successful, storing metadata in database...');
+    
+    // Store the CDN URL in the database (without storing base64 data)
     const { data, error } = await supabase
       .from('recall_images')
       .insert([{
         recall_id: recallId,
-        image_data: base64,
+        image_data: '', // Empty string since we're using CDN
         content_type: contentType,
         user_id: session.user.id,
+        cdn_url: cdnUrl,
       }])
       .select('id')
       .single();
@@ -54,11 +103,17 @@ export async function uploadImageToDatabase(
       console.error('=== Database insert error ===');
       console.error('Error message:', error.message);
       console.error('Error details:', JSON.stringify(error, null, 2));
+      
+      // Try to clean up the CDN upload
+      const { deleteImageFromCloudflare } = await import('./cloudflareCDN');
+      await deleteImageFromCloudflare(cdnUrl);
+      
       return null;
     }
 
     console.log('=== Upload successful ===');
     console.log('Image ID:', data.id);
+    console.log('CDN URL:', cdnUrl);
     
     // Automatically trigger OCR processing after successful upload
     console.log('Triggering OCR processing...');
@@ -90,7 +145,7 @@ export async function getImageDataUrl(imageId: string): Promise<string | null> {
     
     const { data, error } = await supabase
       .from('recall_images')
-      .select('image_data, content_type')
+      .select('image_data, content_type, cdn_url')
       .eq('id', imageId)
       .single();
 
@@ -100,21 +155,33 @@ export async function getImageDataUrl(imageId: string): Promise<string | null> {
       return null;
     }
 
-    if (!data || !data.image_data) {
-      console.error('No image_data found for ID:', imageId);
+    if (!data) {
+      console.error('No data found for ID:', imageId);
       return null;
     }
 
-    // The image_data is stored as a base64 string in the text column
-    const base64String = data.image_data;
-    const contentType = data.content_type || 'image/jpeg';
-    
-    // Convert to data URL for display
-    const dataUrl = `data:${contentType};base64,${base64String}`;
-    
-    console.log('Successfully created data URL for image:', imageId);
-    
-    return dataUrl;
+    // Prioritize CDN URL if available
+    if (data.cdn_url) {
+      console.log('Using CDN URL for image:', imageId);
+      return data.cdn_url;
+    }
+
+    // Fallback to base64 data if CDN URL is not available
+    if (data.image_data) {
+      console.log('Using base64 data for image:', imageId);
+      const base64String = data.image_data;
+      const contentType = data.content_type || 'image/jpeg';
+      
+      // Convert to data URL for display
+      const dataUrl = `data:${contentType};base64,${base64String}`;
+      
+      console.log('Successfully created data URL for image:', imageId);
+      
+      return dataUrl;
+    }
+
+    console.error('No image data or CDN URL found for ID:', imageId);
+    return null;
   } catch (error) {
     console.error('Exception in getImageDataUrl for ID:', imageId);
     console.error('Error:', error);
@@ -129,6 +196,28 @@ export async function deleteImageRecord(imageId: string): Promise<boolean> {
   try {
     console.log('Deleting image record from database:', imageId);
     
+    // First, get the CDN URL if it exists
+    const { data: imageData, error: fetchError } = await supabase
+      .from('recall_images')
+      .select('cdn_url')
+      .eq('id', imageId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching image data for deletion:', fetchError);
+    }
+
+    // Delete from Cloudflare CDN if URL exists
+    if (imageData?.cdn_url) {
+      console.log('Deleting from Cloudflare CDN...');
+      const { deleteImageFromCloudflare } = await import('./cloudflareCDN');
+      const cdnDeleted = await deleteImageFromCloudflare(imageData.cdn_url);
+      if (!cdnDeleted) {
+        console.warn('Failed to delete from CDN, but continuing with database deletion');
+      }
+    }
+    
+    // Delete from database
     const { error } = await supabase
       .from('recall_images')
       .delete()

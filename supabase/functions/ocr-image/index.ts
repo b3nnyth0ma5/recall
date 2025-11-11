@@ -13,6 +13,7 @@ interface ImageRecord {
   image_data: string;
   content_type: string;
   user_id: string;
+  cdn_url?: string;
 }
 
 interface OpenAIVisionResponse {
@@ -135,7 +136,7 @@ Deno.serve(async (req) => {
     console.log('Fetching image data from database...');
     const { data: imageData, error: fetchError } = await supabase
       .from('recall_images')
-      .select('image_data, content_type, user_id')
+      .select('image_data, content_type, user_id, cdn_url')
       .eq('id', record.id)
       .single();
 
@@ -153,7 +154,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!imageData || !imageData.image_data) {
+    if (!imageData) {
       console.error('No image data found for ID:', record.id);
       return new Response(
         JSON.stringify({ error: 'Image data not found in database' }),
@@ -166,33 +167,56 @@ Deno.serve(async (req) => {
 
     console.log('Image data fetched successfully');
     console.log('Content type:', imageData.content_type);
-    console.log('Base64 data length:', imageData.image_data.length);
+    console.log('Has CDN URL:', !!imageData.cdn_url);
     console.log('User ID:', imageData.user_id);
 
-    // Validate image data
-    const base64Image = imageData.image_data.trim();
-    if (base64Image.length === 0) {
-      console.error('Empty image data');
-      return new Response(
-        JSON.stringify({ error: 'Image data is empty' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
+    let imageDataUrl: string;
 
-    // Prepare content type with fallback
-    const contentType = imageData.content_type || 'image/jpeg';
-    
-    // Validate content type
-    const validContentTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-    if (!validContentTypes.includes(contentType.toLowerCase())) {
-      console.warn('Unusual content type:', contentType, '- proceeding with caution');
-    }
+    // Check if we have a CDN URL (Cloudflare)
+    if (imageData.cdn_url) {
+      console.log('Using CDN URL for OCR processing');
+      imageDataUrl = imageData.cdn_url;
+    } else {
+      // Fallback to base64 data
+      if (!imageData.image_data) {
+        console.error('No image data or CDN URL found for ID:', record.id);
+        return new Response(
+          JSON.stringify({ error: 'Image data not found in database' }),
+          { 
+            status: 404, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
 
-    // Construct the data URL for OpenAI
-    const imageDataUrl = `data:${contentType};base64,${base64Image}`;
+      console.log('Using base64 data for OCR processing');
+      console.log('Base64 data length:', imageData.image_data.length);
+
+      // Validate image data
+      const base64Image = imageData.image_data.trim();
+      if (base64Image.length === 0) {
+        console.error('Empty image data');
+        return new Response(
+          JSON.stringify({ error: 'Image data is empty' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      // Prepare content type with fallback
+      const contentType = imageData.content_type || 'image/jpeg';
+      
+      // Validate content type
+      const validContentTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      if (!validContentTypes.includes(contentType.toLowerCase())) {
+        console.warn('Unusual content type:', contentType, '- proceeding with caution');
+      }
+
+      // Construct the data URL for OpenAI
+      imageDataUrl = `data:${contentType};base64,${base64Image}`;
+    }
 
     // Call OpenAI Vision API with enhanced prompt
     console.log('Calling OpenAI Vision API...');
