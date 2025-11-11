@@ -393,6 +393,55 @@ export default function NoteEditorScreen() {
     });
   };
 
+  const handleLocationPress = async () => {
+    if (!location) {
+      console.log('No location available');
+      return;
+    }
+
+    const { latitude, longitude } = location;
+    const locationQuery = `${latitude},${longitude}`;
+
+    try {
+      // Try Google Maps first
+      const googleMapsUrl = Platform.select({
+        ios: `comgooglemaps://?q=${locationQuery}`,
+        android: `geo:${latitude},${longitude}?q=${locationQuery}`,
+        default: `https://www.google.com/maps/search/?api=1&query=${locationQuery}`,
+      });
+
+      console.log('Attempting to open Google Maps:', googleMapsUrl);
+      const canOpenGoogleMaps = await Linking.canOpenURL(googleMapsUrl!);
+
+      if (canOpenGoogleMaps) {
+        await Linking.openURL(googleMapsUrl!);
+        console.log('Opened Google Maps');
+        return;
+      }
+
+      // Fallback to Apple Maps on iOS
+      if (Platform.OS === 'ios') {
+        const appleMapsUrl = `http://maps.apple.com/?q=${locationQuery}`;
+        console.log('Attempting to open Apple Maps:', appleMapsUrl);
+        const canOpenAppleMaps = await Linking.canOpenURL(appleMapsUrl);
+
+        if (canOpenAppleMaps) {
+          await Linking.openURL(appleMapsUrl);
+          console.log('Opened Apple Maps');
+          return;
+        }
+      }
+
+      // Final fallback to web
+      const webUrl = `https://www.google.com/maps/search/?api=1&query=${locationQuery}`;
+      console.log('Opening web maps:', webUrl);
+      await Linking.openURL(webUrl);
+    } catch (error) {
+      console.error('Error opening maps:', error);
+      Alert.alert('Error', 'Could not open maps application');
+    }
+  };
+
   const handleSave = async () => {
     if (!canSave) {
       Alert.alert('Empty Recall', 'Please add some text or images');
@@ -753,11 +802,17 @@ export default function NoteEditorScreen() {
         </Animated.View>
       )}
 
-      {/* Location Info - Above Toolbar */}
+      {/* Location Info - Above Toolbar - Now Clickable */}
       {locationName && (
-        <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.locationInfo}>
-          <IconSymbol name="location.fill" size={16} color={colors.textSecondary} />
-          <Text style={styles.locationText}>{locationName}</Text>
+        <Animated.View entering={FadeIn.duration(600).delay(200)}>
+          <Pressable 
+            onPress={handleLocationPress}
+            style={styles.locationInfo}
+          >
+            <IconSymbol name="location.fill" size={16} color={colors.primary} />
+            <Text style={styles.locationText}>{locationName}</Text>
+            <IconSymbol name="chevron.right" size={14} color={colors.primary} />
+          </Pressable>
         </Animated.View>
       )}
 
@@ -1047,16 +1102,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingVertical: 12,
     backgroundColor: colors.card,
     marginHorizontal: 16,
     borderRadius: 8,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.primary,
   },
   locationText: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: colors.primary,
     flex: 1,
+    fontWeight: '500',
   },
   imagesContainer: {
     paddingVertical: 16,
