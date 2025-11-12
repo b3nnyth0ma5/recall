@@ -147,16 +147,18 @@ export async function deleteImageRecord(imageId: string): Promise<boolean> {
   try {
     console.log('Deleting image record from database:', imageId);
     
-    // First, get the CDN URL if it exists
+    // First, get the CDN URL and recall_id if it exists
     const { data: imageData, error: fetchError } = await supabase
       .from('recall_images')
-      .select('cdn_url')
+      .select('cdn_url, recall_id')
       .eq('id', imageId)
       .single();
 
     if (fetchError) {
       console.error('Error fetching image data for deletion:', fetchError);
     }
+
+    const recallId = imageData?.recall_id;
 
     // Delete from Cloudflare CDN if URL exists
     if (imageData?.cdn_url) {
@@ -180,6 +182,21 @@ export async function deleteImageRecord(imageId: string): Promise<boolean> {
     }
 
     console.log('Image record deleted successfully');
+
+    // Trigger category matching after image deletion
+    if (recallId) {
+      console.log('Triggering category matching after image deletion for recall:', recallId);
+      triggerCategoryMatching(recallId).then(result => {
+        if (result.success) {
+          console.log('Category matching triggered successfully after image deletion');
+        } else {
+          console.error('Failed to trigger category matching:', result.error);
+        }
+      }).catch(err => {
+        console.error('Exception while triggering category matching:', err);
+      });
+    }
+
     return true;
   } catch (error) {
     console.error('Error in deleteImageRecord:', error);
@@ -563,6 +580,48 @@ export async function retryOCRProcessing(imageId: string): Promise<{ success: bo
     return await triggerOCRProcessing(imageId);
   } catch (error) {
     console.error('Exception in retryOCRProcessing:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
+}
+
+/**
+ * Trigger category matching for a recall
+ * This calls the match-recollection-category edge function to categorize the recall
+ * 
+ * @param recallId - The ID of the recall to categorize
+ * @returns Promise with success status and optional error message
+ */
+export async function triggerCategoryMatching(recallId: string): Promise<{ success: boolean; error?: string; data?: any }> {
+  try {
+    console.log('=== Triggering category matching ===');
+    console.log('Recall ID:', recallId);
+
+    const { data, error } = await supabase.functions.invoke('match-recollection-category', {
+      body: { 
+        recallId: recallId 
+      },
+    });
+
+    if (error) {
+      console.error('Error invoking category matching function:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Failed to invoke category matching function' 
+      };
+    }
+
+    console.log('Category matching function invoked successfully');
+    console.log('Response:', data);
+    
+    return { 
+      success: true, 
+      data 
+    };
+  } catch (error) {
+    console.error('Exception in triggerCategoryMatching:', error);
     return { 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 

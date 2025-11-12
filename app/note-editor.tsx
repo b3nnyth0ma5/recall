@@ -25,7 +25,7 @@ import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -349,6 +349,7 @@ export default function NoteEditorScreen() {
           onPress: async () => {
             if (image.id) {
               try {
+                // deleteImageRecord now handles triggering category matching
                 await deleteImageRecord(image.id);
               } catch (error) {
                 console.error('Error deleting image:', error);
@@ -489,6 +490,7 @@ export default function NoteEditorScreen() {
           for (const img of existingImages) {
             if (!currentImageIds.has(img.id)) {
               console.log('Deleting removed image:', img.id);
+              // deleteImageRecord now handles triggering category matching
               await deleteImageRecord(img.id);
             } else {
               console.log('Keeping existing image:', img.id);
@@ -524,6 +526,7 @@ export default function NoteEditorScreen() {
             console.log('Image uploaded successfully to database');
             
             // Trigger OCR processing for the uploaded image
+            // OCR function will trigger category matching after completion
             console.log('Triggering OCR processing for image:', imageId);
             triggerOCRProcessing(imageId).then(result => {
               if (result.success) {
@@ -545,6 +548,18 @@ export default function NoteEditorScreen() {
       if (uploadedImageIds.length > 0) {
         console.log(`OCR processing triggered for ${uploadedImageIds.length} images`);
       }
+
+      // Trigger category matching after note save
+      console.log('Triggering category matching after note save for recall:', recallId);
+      triggerCategoryMatching(recallId).then(result => {
+        if (result.success) {
+          console.log('Category matching triggered successfully after note save');
+        } else {
+          console.error('Failed to trigger category matching:', result.error);
+        }
+      }).catch(error => {
+        console.error('Error triggering category matching:', error);
+      });
 
       if (failedCount > 0) {
         Alert.alert(
