@@ -50,9 +50,7 @@ export default function HomeScreen() {
   const [filteredNotes, setFilteredNotes] = useState<RecollectionWithCategory[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingFilteredNotes, setLoadingFilteredNotes] = useState(false);
-
-  // DEBUG: Single category for testing
-  const [debugCategory, setDebugCategory] = useState<Category | null>(null);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
 
   // Update the previous notes count whenever notes change
   useEffect(() => {
@@ -62,7 +60,10 @@ export default function HomeScreen() {
   // Load categories on mount
   useEffect(() => {
     if (user) {
+      console.log('[HomeScreen] User detected, loading categories...');
       loadCategories();
+    } else {
+      console.log('[HomeScreen] No user detected');
     }
   }, [user]);
 
@@ -77,13 +78,14 @@ export default function HomeScreen() {
 
   const loadCategories = async () => {
     if (!user) {
-      console.log('No user found, skipping category load');
+      console.log('[loadCategories] No user found, skipping category load');
       return;
     }
 
     try {
       setLoadingCategories(true);
-      console.log('Loading categories for user:', user.id);
+      setCategoryError(null);
+      console.log('[loadCategories] Starting category load for user:', user.id);
 
       // Get distinct category_ids from recollections for this user
       const { data: recollectionsData, error: recollectionsError } = await supabase
@@ -92,53 +94,78 @@ export default function HomeScreen() {
         .eq('user_id', user.id)
         .not('category_id', 'is', null);
 
+      console.log('[loadCategories] Recollections query completed');
+      console.log('[loadCategories] Error:', recollectionsError);
+      console.log('[loadCategories] Data:', recollectionsData);
+
       if (recollectionsError) {
-        console.error('Error loading recollections:', recollectionsError);
+        console.error('[loadCategories] Error loading recollections:', recollectionsError);
+        setCategoryError(`Error loading recollections: ${recollectionsError.message}`);
+        setLoadingCategories(false);
         return;
       }
 
-      console.log('Recollections data:', recollectionsData);
-
-      if (!recollectionsData || recollectionsData.length === 0) {
-        console.log('No recollections found for user');
+      if (!recollectionsData) {
+        console.log('[loadCategories] No recollections data returned (null)');
         setCategories([]);
-        setDebugCategory(null);
+        setLoadingCategories(false);
+        return;
+      }
+
+      console.log('[loadCategories] Recollections data length:', recollectionsData.length);
+
+      if (recollectionsData.length === 0) {
+        console.log('[loadCategories] No recollections found for user');
+        setCategories([]);
+        setLoadingCategories(false);
         return;
       }
 
       // Get unique category IDs and filter out any nulls/undefined
-      const uniqueCategoryIds = [...new Set(recollectionsData.map(r => r.category_id))].filter(id => id != null);
-      console.log('Found unique category IDs:', uniqueCategoryIds);
+      const categoryIds = recollectionsData
+        .map(r => r.category_id)
+        .filter(id => id != null && id !== undefined);
+      
+      const uniqueCategoryIds = [...new Set(categoryIds)];
+      console.log('[loadCategories] Unique category IDs:', uniqueCategoryIds);
 
       if (uniqueCategoryIds.length === 0) {
-        console.log('No valid category IDs found');
+        console.log('[loadCategories] No valid category IDs found after filtering');
         setCategories([]);
-        setDebugCategory(null);
+        setLoadingCategories(false);
         return;
       }
 
       // Fetch category details
+      console.log('[loadCategories] Fetching category details for IDs:', uniqueCategoryIds);
       const { data: categoriesData, error: categoriesError } = await supabase
         .from('recollection_categories')
         .select('id, category_name, icon_cdn_url')
         .in('id', uniqueCategoryIds);
 
+      console.log('[loadCategories] Categories query completed');
+      console.log('[loadCategories] Categories error:', categoriesError);
+      console.log('[loadCategories] Categories data:', categoriesData);
+
       if (categoriesError) {
-        console.error('Error loading categories:', categoriesError);
+        console.error('[loadCategories] Error loading categories:', categoriesError);
+        setCategoryError(`Error loading categories: ${categoriesError.message}`);
+        setLoadingCategories(false);
         return;
       }
 
-      console.log('Loaded categories:', categoriesData);
-      setCategories(categoriesData || []);
-      
-      // DEBUG: Set only the first category for testing
-      if (categoriesData && categoriesData.length > 0) {
-        const firstCategory = categoriesData[0];
-        console.log('DEBUG: Setting first category for testing:', firstCategory);
-        setDebugCategory(firstCategory);
+      if (!categoriesData) {
+        console.log('[loadCategories] No categories data returned (null)');
+        setCategories([]);
+        setLoadingCategories(false);
+        return;
       }
+
+      console.log('[loadCategories] Successfully loaded categories:', categoriesData.length);
+      setCategories(categoriesData);
     } catch (error) {
-      console.error('Error loading categories:', error);
+      console.error('[loadCategories] Exception loading categories:', error);
+      setCategoryError(`Exception: ${error}`);
     } finally {
       setLoadingCategories(false);
     }
@@ -149,7 +176,7 @@ export default function HomeScreen() {
 
     try {
       setLoadingFilteredNotes(true);
-      console.log('Loading recollections for category:', categoryId);
+      console.log('[loadRecollectionsByCategory] Loading recollections for category:', categoryId);
 
       // Get recollections for this category, sorted by match_score
       const { data: recollectionsData, error: recollectionsError } = await supabase
@@ -160,19 +187,19 @@ export default function HomeScreen() {
         .order('match_score', { ascending: false });
 
       if (recollectionsError) {
-        console.error('Error loading recollections:', recollectionsError);
+        console.error('[loadRecollectionsByCategory] Error loading recollections:', recollectionsError);
         return;
       }
 
       if (!recollectionsData || recollectionsData.length === 0) {
-        console.log('No recollections found for category');
+        console.log('[loadRecollectionsByCategory] No recollections found for category');
         setFilteredNotes([]);
         return;
       }
 
       // Get recall IDs
       const recallIds = recollectionsData.map(r => r.recall_id);
-      console.log('Found recall IDs:', recallIds);
+      console.log('[loadRecollectionsByCategory] Found recall IDs:', recallIds);
 
       // Fetch recall details
       const { data: recallsData, error: recallsError } = await supabase
@@ -181,7 +208,7 @@ export default function HomeScreen() {
         .in('id', recallIds);
 
       if (recallsError) {
-        console.error('Error loading recalls:', recallsError);
+        console.error('[loadRecollectionsByCategory] Error loading recalls:', recallsError);
         return;
       }
 
@@ -196,7 +223,7 @@ export default function HomeScreen() {
               .order('created_at', { ascending: true });
 
             if (imagesError) {
-              console.error('Error loading images for recall:', recall.id, imagesError);
+              console.error('[loadRecollectionsByCategory] Error loading images for recall:', recall.id, imagesError);
               return { ...recall, images: [], imageIds: [], match_score: 0 };
             }
 
@@ -209,7 +236,7 @@ export default function HomeScreen() {
                   }
                   return { url: dataUrl, id: img.id };
                 } catch (error) {
-                  console.error(`Exception processing image ${img.id}:`, error);
+                  console.error(`[loadRecollectionsByCategory] Exception processing image ${img.id}:`, error);
                   return { url: '', id: img.id };
                 }
               })
@@ -229,7 +256,7 @@ export default function HomeScreen() {
               match_score: matchScore,
             };
           } catch (error) {
-            console.error(`Exception processing recall ${recall.id}:`, error);
+            console.error(`[loadRecollectionsByCategory] Exception processing recall ${recall.id}:`, error);
             return { ...recall, images: [], imageIds: [], match_score: 0 };
           }
         })
@@ -238,10 +265,10 @@ export default function HomeScreen() {
       // Sort by match_score (highest first)
       const sortedNotes = notesWithImages.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
 
-      console.log('Loaded filtered notes:', sortedNotes.length);
+      console.log('[loadRecollectionsByCategory] Loaded filtered notes:', sortedNotes.length);
       setFilteredNotes(sortedNotes);
     } catch (error) {
-      console.error('Error loading recollections by category:', error);
+      console.error('[loadRecollectionsByCategory] Error loading recollections by category:', error);
     } finally {
       setLoadingFilteredNotes(false);
     }
@@ -263,7 +290,7 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      console.log('Home screen focused');
+      console.log('[useFocusEffect] Home screen focused');
       
       // Skip auto-refresh on first focus (initial load)
       if (isFirstFocusRef.current) {
@@ -276,7 +303,7 @@ export default function HomeScreen() {
       const previousCount = previousNotesCountRef.current;
       
       if (currentCount > previousCount) {
-        console.log('New note detected, auto-refreshing...');
+        console.log('[useFocusEffect] New note detected, auto-refreshing...');
         refreshNotes();
         // Reload categories in case new categories were added
         loadCategories();
@@ -292,7 +319,7 @@ export default function HomeScreen() {
       
       // Cleanup function
       return () => {
-        console.log('Home screen unfocused');
+        console.log('[useFocusEffect] Home screen unfocused');
       };
     }, [notes.length, refreshNotes])
   );
@@ -337,7 +364,7 @@ export default function HomeScreen() {
       const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
 
       if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
-        console.log('Loading more notes...');
+        console.log('[handleScroll] Loading more notes...');
         loadMoreNotes();
       }
     }
@@ -367,9 +394,9 @@ export default function HomeScreen() {
   const displayNotes = selectedCategoryId ? filteredNotes : notes;
   const isDisplayLoading = selectedCategoryId ? loadingFilteredNotes : loading;
 
-  console.log('Render - Categories count:', categories.length);
-  console.log('Render - Categories:', categories);
-  console.log('Render - Debug category:', debugCategory);
+  console.log('[Render] Categories count:', categories.length);
+  console.log('[Render] Loading categories:', loadingCategories);
+  console.log('[Render] Category error:', categoryError);
 
   return (
     <View style={styles.container}>
@@ -394,73 +421,105 @@ export default function HomeScreen() {
         }}
       />
 
-      {/* DEBUG: Single Category Display */}
-      {loadingCategories ? (
-        <View style={styles.categoryLoadingContainer}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={styles.debugText}>Loading categories...</Text>
-        </View>
-      ) : debugCategory ? (
-        <Animated.View entering={FadeIn.duration(400)} style={styles.categoryDebugSection}>
-          <Text style={styles.debugTitle}>DEBUG: Single Category Test</Text>
-          <View style={styles.debugInfo}>
-            <Text style={styles.debugText}>Category ID: {debugCategory.id}</Text>
-            <Text style={styles.debugText}>Name: {debugCategory.category_name}</Text>
-            <Text style={styles.debugText}>Icon URL: {debugCategory.icon_cdn_url || 'null'}</Text>
-            <Text style={styles.debugText}>Total Categories: {categories.length}</Text>
+      {/* Category Row */}
+      <View style={styles.categorySection}>
+        {loadingCategories ? (
+          <View style={styles.categoryLoadingContainer}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.loadingText}>Loading categories...</Text>
           </View>
-          
-          <View style={styles.categoryDebugDisplay}>
-            <Pressable
-              onPress={() => handleCategoryPress(debugCategory.id)}
-              style={styles.categoryReelItem}
+        ) : categoryError ? (
+          <View style={styles.categoryErrorContainer}>
+            <Text style={styles.errorText}>Error: {categoryError}</Text>
+            <Pressable onPress={loadCategories} style={styles.retryButton}>
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : categories.length === 0 ? (
+          <View style={styles.categoryEmptyContainer}>
+            <Text style={styles.emptyText}>No categories yet</Text>
+          </View>
+        ) : (
+          <Animated.View entering={FadeIn.duration(400)}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryScrollContent}
             >
-              <LinearGradient
-                colors={selectedCategoryId === debugCategory.id 
-                  ? ['#FF6B35', '#F7931E', '#FDC830']
-                  : ['rgba(255, 107, 53, 0.3)', 'rgba(247, 147, 30, 0.3)', 'rgba(253, 200, 48, 0.3)']
-                }
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.categoryGradientBorder}
+              {/* "All" button */}
+              <Pressable
+                onPress={handleClearFilter}
+                style={styles.categoryReelItem}
               >
-                <View style={styles.categoryImageContainer}>
-                  {debugCategory.icon_cdn_url ? (
-                    <Image
-                      source={{ uri: debugCategory.icon_cdn_url }}
-                      style={styles.categoryImage}
-                      resizeMode="cover"
-                      onError={(e) => console.log('Image load error:', e.nativeEvent.error)}
-                      onLoad={() => console.log('Image loaded successfully')}
-                    />
-                  ) : (
+                <LinearGradient
+                  colors={!selectedCategoryId 
+                    ? ['#FF6B35', '#F7931E', '#FDC830']
+                    : ['rgba(255, 107, 53, 0.3)', 'rgba(247, 147, 30, 0.3)', 'rgba(253, 200, 48, 0.3)']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.categoryGradientBorder}
+                >
+                  <View style={styles.categoryImageContainer}>
                     <View style={styles.categoryPlaceholder}>
                       <IconSymbol 
-                        name="folder.fill" 
+                        name="square.grid.2x2.fill" 
                         size={32} 
                         color={colors.textSecondary} 
                       />
                     </View>
-                  )}
-                </View>
-              </LinearGradient>
-              <Text style={styles.categoryLabel} numberOfLines={1}>
-                {debugCategory.category_name}
-              </Text>
-            </Pressable>
-          </View>
+                  </View>
+                </LinearGradient>
+                <Text style={styles.categoryLabel} numberOfLines={1}>
+                  All
+                </Text>
+              </Pressable>
 
-          {selectedCategoryId && (
-            <Pressable onPress={handleClearFilter} style={styles.clearFilterButton}>
-              <Text style={styles.clearFilterText}>Clear Filter</Text>
-            </Pressable>
-          )}
-        </Animated.View>
-      ) : (
-        <View style={styles.categoryLoadingContainer}>
-          <Text style={styles.debugText}>No categories found</Text>
-        </View>
-      )}
+              {/* Category items */}
+              {categories.map((category) => (
+                <Pressable
+                  key={category.id}
+                  onPress={() => handleCategoryPress(category.id)}
+                  style={styles.categoryReelItem}
+                >
+                  <LinearGradient
+                    colors={selectedCategoryId === category.id 
+                      ? ['#FF6B35', '#F7931E', '#FDC830']
+                      : ['rgba(255, 107, 53, 0.3)', 'rgba(247, 147, 30, 0.3)', 'rgba(253, 200, 48, 0.3)']
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.categoryGradientBorder}
+                  >
+                    <View style={styles.categoryImageContainer}>
+                      {category.icon_cdn_url ? (
+                        <Image
+                          source={{ uri: category.icon_cdn_url }}
+                          style={styles.categoryImage}
+                          resizeMode="cover"
+                          onError={(e) => console.log('[Image] Load error:', category.category_name, e.nativeEvent.error)}
+                          onLoad={() => console.log('[Image] Loaded successfully:', category.category_name)}
+                        />
+                      ) : (
+                        <View style={styles.categoryPlaceholder}>
+                          <IconSymbol 
+                            name="folder.fill" 
+                            size={32} 
+                            color={colors.textSecondary} 
+                          />
+                        </View>
+                      )}
+                    </View>
+                  </LinearGradient>
+                  <Text style={styles.categoryLabel} numberOfLines={1}>
+                    {category.category_name}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Animated.View>
+        )}
+      </View>
 
       {/* Main Content ScrollView */}
       <ScrollView
@@ -570,61 +629,56 @@ const styles = StyleSheet.create({
   notesContainer: {
     width: '100%',
   },
-  // DEBUG: Category Debug Section
-  categoryDebugSection: {
+  // Category Section
+  categorySection: {
     paddingVertical: 16,
-    paddingHorizontal: 16,
-    backgroundColor: colors.card,
-    borderBottomWidth: 2,
-    borderBottomColor: colors.primary,
-  },
-  debugTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.primary,
-    marginBottom: 8,
-  },
-  debugInfo: {
-    backgroundColor: colors.background,
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  debugText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 4,
-    fontFamily: 'monospace',
-  },
-  categoryDebugDisplay: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  clearFilterButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignSelf: 'center',
-    marginTop: 8,
-  },
-  clearFilterText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  categoryLoadingContainer: {
-    paddingVertical: 24,
-    alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.card,
   },
+  categoryScrollContent: {
+    paddingHorizontal: 16,
+    gap: CATEGORY_SPACING,
+  },
+  categoryLoadingContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 24,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  categoryErrorContainer: {
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 14,
+    color: colors.error || '#FF3B30',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  categoryEmptyContainer: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
   categoryReelItem: {
     alignItems: 'center',
-    marginHorizontal: CATEGORY_SPACING,
     width: CATEGORY_SIZE + 6,
   },
   categoryGradientBorder: {
