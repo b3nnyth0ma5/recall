@@ -47,30 +47,18 @@ export default function HomeScreen() {
       try {
         setLoadingFiltered(true);
         console.log('Filtering notes by category:', selectedCategoryId);
+        console.log('User ID:', user.id);
 
-        // Fetch recalls directly from database with JOIN to get match_score
-        const { data: recollections, error } = await supabase
+        // First, get the recollections for this category and user
+        const { data: recollections, error: recollectionsError } = await supabase
           .from('recollections')
-          .select(`
-            recall_id,
-            match_score,
-            recalls:recall_id (
-              id,
-              text,
-              location,
-              latitude,
-              longitude,
-              created_at,
-              updated_at,
-              user_id
-            )
-          `)
+          .select('recall_id, match_score')
           .eq('category_id', selectedCategoryId)
           .eq('user_id', user.id)
           .order('match_score', { ascending: false });
 
-        if (error) {
-          console.error('Error fetching recollections:', error);
+        if (recollectionsError) {
+          console.error('Error fetching recollections:', recollectionsError);
           setFilteredNotes([]);
           return;
         }
@@ -81,66 +69,95 @@ export default function HomeScreen() {
           return;
         }
 
+        console.log(`Found ${recollections.length} recollections for category`);
+
+        // Get unique recall IDs
+        const recallIds = recollections.map(r => r.recall_id);
+        
+        // Fetch the actual recalls
+        const { data: recalls, error: recallsError } = await supabase
+          .from('recalls')
+          .select('*')
+          .in('id', recallIds);
+
+        if (recallsError) {
+          console.error('Error fetching recalls:', recallsError);
+          setFilteredNotes([]);
+          return;
+        }
+
+        if (!recalls || recalls.length === 0) {
+          console.log('No recalls found for the recollection IDs');
+          setFilteredNotes([]);
+          return;
+        }
+
+        console.log(`Found ${recalls.length} recalls`);
+
+        // Create a map of recall_id to match_score
+        const matchScoreMap = new Map(
+          recollections.map(r => [r.recall_id, r.match_score])
+        );
+
         // Process the recalls and load their images
         const notesWithImages = await Promise.all(
-          recollections
-            .filter(rec => rec.recalls) // Filter out any null recalls
-            .map(async (rec) => {
-              const recall = rec.recalls as any;
-              
-              try {
-                // Load images for this recall
-                const { data: imagesData, error: imagesError } = await supabase
-                  .from('recall_images')
-                  .select('id')
-                  .eq('recall_id', recall.id)
-                  .order('created_at', { ascending: true });
+          recalls.map(async (recall) => {
+            try {
+              // Load images for this recall
+              const { data: imagesData, error: imagesError } = await supabase
+                .from('recall_images')
+                .select('id')
+                .eq('recall_id', recall.id)
+                .order('created_at', { ascending: true });
 
-                if (imagesError) {
-                  console.error('Error loading images for recall:', recall.id, imagesError);
-                  return { 
-                    ...recall, 
-                    images: [], 
-                    imageIds: [],
-                    match_score: rec.match_score 
-                  };
-                }
-
-                const imageResults = await Promise.all(
-                  (imagesData || []).map(async (img) => {
-                    try {
-                      const dataUrl = await getImageDataUrl(img.id);
-                      if (!dataUrl) {
-                        return { url: '', id: img.id };
-                      }
-                      return { url: dataUrl, id: img.id };
-                    } catch (error) {
-                      console.error(`Exception processing image ${img.id}:`, error);
-                      return { url: '', id: img.id };
-                    }
-                  })
-                );
-
-                const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
-                const imageIds = imageResults.map(result => result.id);
-                
-                return { 
-                  ...recall, 
-                  images: validImageUrls, 
-                  imageIds: imageIds,
-                  match_score: rec.match_score
-                };
-              } catch (error) {
-                console.error(`Exception processing recall ${recall.id}:`, error);
+              if (imagesError) {
+                console.error('Error loading images for recall:', recall.id, imagesError);
                 return { 
                   ...recall, 
                   images: [], 
                   imageIds: [],
-                  match_score: rec.match_score
+                  match_score: matchScoreMap.get(recall.id) || 0
                 };
               }
-            })
+
+              const imageResults = await Promise.all(
+                (imagesData || []).map(async (img) => {
+                  try {
+                    const dataUrl = await getImageDataUrl(img.id);
+                    if (!dataUrl) {
+                      return { url: '', id: img.id };
+                    }
+                    return { url: dataUrl, id: img.id };
+                  } catch (error) {
+                    console.error(`Exception processing image ${img.id}:`, error);
+                    return { url: '', id: img.id };
+                  }
+                })
+              );
+
+              const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
+              const imageIds = imageResults.map(result => result.id);
+              
+              return { 
+                ...recall, 
+                images: validImageUrls, 
+                imageIds: imageIds,
+                match_score: matchScoreMap.get(recall.id) || 0
+              };
+            } catch (error) {
+              console.error(`Exception processing recall ${recall.id}:`, error);
+              return { 
+                ...recall, 
+                images: [], 
+                imageIds: [],
+                match_score: matchScoreMap.get(recall.id) || 0
+              };
+            }
+          })
         );
+
+        // Sort by match_score (highest first)
+        notesWithImages.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
 
         console.log(`Filtered ${notesWithImages.length} notes for category (sorted by match_score)`);
         setFilteredNotes(notesWithImages);
@@ -193,8 +210,9 @@ export default function HomeScreen() {
     setRefreshing(true);
     if (selectedCategoryId) {
       // Trigger re-fetch of filtered notes
+      const currentCategory = selectedCategoryId;
       setSelectedCategoryId(null);
-      setTimeout(() => setSelectedCategoryId(selectedCategoryId), 100);
+      setTimeout(() => setSelectedCategoryId(currentCategory), 100);
     } else {
       await refreshNotes();
     }
@@ -218,6 +236,7 @@ export default function HomeScreen() {
   };
 
   const handleCategorySelect = (categoryId: string | null) => {
+    console.log('Category selected:', categoryId);
     setSelectedCategoryId(categoryId);
     // Scroll to top when category changes
     if (scrollViewRef.current) {
