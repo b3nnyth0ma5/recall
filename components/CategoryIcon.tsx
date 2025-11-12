@@ -12,6 +12,7 @@ interface CategoryIconProps {
 
 /**
  * Component to display a category icon from Cloudflare CDN
+ * Optimized for the Airbnb-style category carousel
  * 
  * @param iconUrl - The CDN URL of the icon
  * @param size - The size of the icon (default: 48)
@@ -27,8 +28,8 @@ export function CategoryIcon({ iconUrl, size = 48, style }: CategoryIconProps) {
       <View style={[styles.placeholder, { width: size, height: size }, style]}>
         <IconSymbol 
           name="folder.fill" 
-          size={size * 0.6} 
-          color={colors.primary} 
+          size={size * 0.55} 
+          color={colors.textSecondary} 
         />
       </View>
     );
@@ -50,7 +51,7 @@ export function CategoryIcon({ iconUrl, size = 48, style }: CategoryIconProps) {
           setLoading(false);
           setError(true);
         }}
-        resizeMode="contain"
+        resizeMode="cover"
       />
     </View>
   );
@@ -58,18 +59,18 @@ export function CategoryIcon({ iconUrl, size = 48, style }: CategoryIconProps) {
 
 const styles = StyleSheet.create({
   icon: {
-    borderRadius: 8,
+    borderRadius: 100,
   },
   loadingContainer: {
     position: 'absolute',
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.card,
-    borderRadius: 8,
+    borderRadius: 100,
   },
   placeholder: {
     backgroundColor: colors.card,
-    borderRadius: 8,
+    borderRadius: 100,
     justifyContent: 'center',
     alignItems: 'center',
   },

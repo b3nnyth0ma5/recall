@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
@@ -10,7 +10,6 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { CategoryIcon } from '@/components/CategoryIcon';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { LinearGradient } from 'expo-linear-gradient';
 
 interface Category {
   id: string;
@@ -32,8 +31,8 @@ interface RecollectionWithCategory {
   match_score?: number;
 }
 
-const CATEGORY_SIZE = 80;
-const CATEGORY_SPACING = 12;
+const CATEGORY_ICON_SIZE = 56;
+const CATEGORY_SPACING = 20;
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote } = useNotes();
@@ -88,7 +87,7 @@ export default function HomeScreen() {
         .from('recollections')
         .select('category_id')
         .eq('user_id', user.id)
-        .not('category_id', 'is', null); // Filter out null category_ids
+        .not('category_id', 'is', null);
 
       if (recollectionsError) {
         console.error('Error loading recollections:', recollectionsError);
@@ -400,50 +399,51 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Category Row - Story Reels Style */}
+        {/* Category Carousel - Airbnb Style */}
         {loadingCategories ? (
           <View style={styles.categoryLoadingContainer}>
             <ActivityIndicator size="small" color={colors.primary} />
           </View>
         ) : categories.length > 0 ? (
-          <Animated.View entering={FadeIn.duration(400)} style={styles.categoryReelsSection}>
+          <Animated.View entering={FadeIn.duration(400)} style={styles.categoryCarouselSection}>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.categoryScrollContent}
+              decelerationRate="fast"
+              snapToInterval={CATEGORY_ICON_SIZE + CATEGORY_SPACING}
+              snapToAlignment="start"
             >
               {/* "All" button to clear filter */}
               <Pressable
                 onPress={handleClearFilter}
-                style={[
-                  styles.categoryReelItem,
-                  styles.categoryReelItemFirst,
+                style={({ pressed }) => [
+                  styles.categoryItem,
+                  styles.categoryItemFirst,
+                  pressed && styles.categoryItemPressed,
                 ]}
               >
-                <LinearGradient
-                  colors={
-                    selectedCategoryId === null
-                      ? ['#FF6B35', '#F7931E', '#FDC830']
-                      : ['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.1)']
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.categoryGradientBorder}
-                >
-                  <View style={styles.categoryIconContainer}>
+                <View style={[
+                  styles.categoryIconWrapper,
+                  selectedCategoryId === null && styles.categoryIconWrapperActive,
+                ]}>
+                  <View style={styles.categoryIconCircle}>
                     <IconSymbol 
                       name="square.grid.2x2" 
-                      size={32} 
+                      size={28} 
                       color={selectedCategoryId === null ? colors.primary : colors.text} 
                     />
                   </View>
-                </LinearGradient>
+                </View>
                 <Text style={[
-                  styles.categoryReelName,
-                  selectedCategoryId === null && styles.categoryReelNameActive,
+                  styles.categoryLabel,
+                  selectedCategoryId === null && styles.categoryLabelActive,
                 ]}>
                   All
                 </Text>
+                {selectedCategoryId === null && (
+                  <View style={styles.activeIndicator} />
+                )}
               </Pressable>
 
               {/* Category items */}
@@ -451,34 +451,34 @@ export default function HomeScreen() {
                 <Pressable
                   key={category.id}
                   onPress={() => handleCategoryPress(category.id)}
-                  style={styles.categoryReelItem}
+                  style={({ pressed }) => [
+                    styles.categoryItem,
+                    pressed && styles.categoryItemPressed,
+                  ]}
                 >
-                  <LinearGradient
-                    colors={
-                      selectedCategoryId === category.id
-                        ? ['#FF6B35', '#F7931E', '#FDC830']
-                        : ['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.1)']
-                    }
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.categoryGradientBorder}
-                  >
-                    <View style={styles.categoryIconContainer}>
+                  <View style={[
+                    styles.categoryIconWrapper,
+                    selectedCategoryId === category.id && styles.categoryIconWrapperActive,
+                  ]}>
+                    <View style={styles.categoryIconCircle}>
                       <CategoryIcon
                         iconUrl={category.icon_cdn_url}
-                        size={CATEGORY_SIZE - 6}
+                        size={CATEGORY_ICON_SIZE - 8}
                       />
                     </View>
-                  </LinearGradient>
+                  </View>
                   <Text 
                     style={[
-                      styles.categoryReelName,
-                      selectedCategoryId === category.id && styles.categoryReelNameActive,
+                      styles.categoryLabel,
+                      selectedCategoryId === category.id && styles.categoryLabelActive,
                     ]}
                     numberOfLines={2}
                   >
                     {category.category_name}
                   </Text>
+                  {selectedCategoryId === category.id && (
+                    <View style={styles.activeIndicator} />
+                  )}
                 </Pressable>
               ))}
             </ScrollView>
@@ -577,54 +577,76 @@ const styles = StyleSheet.create({
   notesContainer: {
     width: '100%',
   },
-  // Category Reels Section - Story Reels Style
-  categoryReelsSection: {
-    marginBottom: 20,
-    paddingVertical: 8,
+  // Category Carousel Section - Airbnb Style
+  categoryCarouselSection: {
+    paddingVertical: 16,
+    paddingBottom: 20,
     backgroundColor: colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   categoryLoadingContainer: {
-    paddingVertical: 20,
+    paddingVertical: 24,
     alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   categoryScrollContent: {
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
   },
-  categoryReelItem: {
+  categoryItem: {
     alignItems: 'center',
     marginRight: CATEGORY_SPACING,
+    width: CATEGORY_ICON_SIZE + 16,
   },
-  categoryReelItemFirst: {
-    marginLeft: 8,
+  categoryItemFirst: {
+    marginLeft: 0,
   },
-  categoryGradientBorder: {
-    width: CATEGORY_SIZE + 6,
-    height: CATEGORY_SIZE + 6,
-    borderRadius: (CATEGORY_SIZE + 6) / 2,
+  categoryItemPressed: {
+    opacity: 0.7,
+  },
+  categoryIconWrapper: {
+    width: CATEGORY_ICON_SIZE,
+    height: CATEGORY_ICON_SIZE,
+    marginBottom: 8,
+    borderRadius: CATEGORY_ICON_SIZE / 2,
+    borderWidth: 2,
+    borderColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 4,
+    backgroundColor: colors.card,
   },
-  categoryIconContainer: {
-    width: CATEGORY_SIZE,
-    height: CATEGORY_SIZE,
-    borderRadius: CATEGORY_SIZE / 2,
-    backgroundColor: colors.background,
-    padding: 3,
+  categoryIconWrapperActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.cardHover,
+  },
+  categoryIconCircle: {
+    width: CATEGORY_ICON_SIZE - 4,
+    height: CATEGORY_ICON_SIZE - 4,
+    borderRadius: (CATEGORY_ICON_SIZE - 4) / 2,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
-  categoryReelName: {
-    fontSize: 11,
+  categoryLabel: {
+    fontSize: 12,
     color: colors.textSecondary,
-    marginTop: 2,
-    maxWidth: CATEGORY_SIZE + 6,
     textAlign: 'center',
+    maxWidth: CATEGORY_ICON_SIZE + 16,
+    lineHeight: 16,
+    fontWeight: '500',
   },
-  categoryReelNameActive: {
-    color: colors.primary,
+  categoryLabelActive: {
+    color: colors.text,
     fontWeight: '600',
+  },
+  activeIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
+    marginTop: 4,
   },
   allNotesSection: {
     paddingHorizontal: 16,
