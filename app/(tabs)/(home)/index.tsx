@@ -239,17 +239,14 @@ export default function HomeScreen() {
     if (selectedCategoryId === categoryId) {
       // If clicking the same category, deselect it (return to default view)
       setSelectedCategoryId(null);
-      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
     } else {
       // Select the new category
       setSelectedCategoryId(categoryId);
-      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
     }
   };
 
   const handleClearFilter = () => {
     setSelectedCategoryId(null);
-    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
   };
 
   useFocusEffect(
@@ -384,6 +381,93 @@ export default function HomeScreen() {
         }}
       />
 
+      {/* Category Carousel - Fixed at Top */}
+      {loadingCategories ? (
+        <View style={styles.categoryLoadingContainer}>
+          <ActivityIndicator size="small" color={colors.primary} />
+        </View>
+      ) : categories.length > 0 ? (
+        <Animated.View entering={FadeIn.duration(400)} style={styles.categoryCarouselSection}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryScrollContent}
+            decelerationRate="fast"
+            snapToInterval={CATEGORY_ICON_SIZE + CATEGORY_SPACING}
+            snapToAlignment="start"
+          >
+            {/* "All" button to clear filter */}
+            <Pressable
+              onPress={handleClearFilter}
+              style={({ pressed }) => [
+                styles.categoryItem,
+                styles.categoryItemFirst,
+                pressed && styles.categoryItemPressed,
+              ]}
+            >
+              <View style={[
+                styles.categoryIconWrapper,
+                selectedCategoryId === null && styles.categoryIconWrapperActive,
+              ]}>
+                <View style={styles.categoryIconCircle}>
+                  <IconSymbol 
+                    name="square.grid.2x2" 
+                    size={28} 
+                    color={selectedCategoryId === null ? colors.primary : colors.text} 
+                  />
+                </View>
+              </View>
+              <Text style={[
+                styles.categoryLabel,
+                selectedCategoryId === null && styles.categoryLabelActive,
+              ]}>
+                All
+              </Text>
+              {selectedCategoryId === null && (
+                <View style={styles.activeIndicator} />
+              )}
+            </Pressable>
+
+            {/* Category items */}
+            {categories.map((category) => (
+              <Pressable
+                key={category.id}
+                onPress={() => handleCategoryPress(category.id)}
+                style={({ pressed }) => [
+                  styles.categoryItem,
+                  pressed && styles.categoryItemPressed,
+                ]}
+              >
+                <View style={[
+                  styles.categoryIconWrapper,
+                  selectedCategoryId === category.id && styles.categoryIconWrapperActive,
+                ]}>
+                  <View style={styles.categoryIconCircle}>
+                    <CategoryIcon
+                      iconUrl={category.icon_cdn_url}
+                      size={CATEGORY_ICON_SIZE - 8}
+                    />
+                  </View>
+                </View>
+                <Text 
+                  style={[
+                    styles.categoryLabel,
+                    selectedCategoryId === category.id && styles.categoryLabelActive,
+                  ]}
+                  numberOfLines={2}
+                >
+                  {category.category_name}
+                </Text>
+                {selectedCategoryId === category.id && (
+                  <View style={styles.activeIndicator} />
+                )}
+              </Pressable>
+            ))}
+          </ScrollView>
+        </Animated.View>
+      ) : null}
+
+      {/* Main Content ScrollView */}
       <ScrollView
         ref={scrollViewRef}
         style={styles.scrollView}
@@ -399,92 +483,6 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Category Carousel - Airbnb Style */}
-        {loadingCategories ? (
-          <View style={styles.categoryLoadingContainer}>
-            <ActivityIndicator size="small" color={colors.primary} />
-          </View>
-        ) : categories.length > 0 ? (
-          <Animated.View entering={FadeIn.duration(400)} style={styles.categoryCarouselSection}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoryScrollContent}
-              decelerationRate="fast"
-              snapToInterval={CATEGORY_ICON_SIZE + CATEGORY_SPACING}
-              snapToAlignment="start"
-            >
-              {/* "All" button to clear filter */}
-              <Pressable
-                onPress={handleClearFilter}
-                style={({ pressed }) => [
-                  styles.categoryItem,
-                  styles.categoryItemFirst,
-                  pressed && styles.categoryItemPressed,
-                ]}
-              >
-                <View style={[
-                  styles.categoryIconWrapper,
-                  selectedCategoryId === null && styles.categoryIconWrapperActive,
-                ]}>
-                  <View style={styles.categoryIconCircle}>
-                    <IconSymbol 
-                      name="square.grid.2x2" 
-                      size={28} 
-                      color={selectedCategoryId === null ? colors.primary : colors.text} 
-                    />
-                  </View>
-                </View>
-                <Text style={[
-                  styles.categoryLabel,
-                  selectedCategoryId === null && styles.categoryLabelActive,
-                ]}>
-                  All
-                </Text>
-                {selectedCategoryId === null && (
-                  <View style={styles.activeIndicator} />
-                )}
-              </Pressable>
-
-              {/* Category items */}
-              {categories.map((category) => (
-                <Pressable
-                  key={category.id}
-                  onPress={() => handleCategoryPress(category.id)}
-                  style={({ pressed }) => [
-                    styles.categoryItem,
-                    pressed && styles.categoryItemPressed,
-                  ]}
-                >
-                  <View style={[
-                    styles.categoryIconWrapper,
-                    selectedCategoryId === category.id && styles.categoryIconWrapperActive,
-                  ]}>
-                    <View style={styles.categoryIconCircle}>
-                      <CategoryIcon
-                        iconUrl={category.icon_cdn_url}
-                        size={CATEGORY_ICON_SIZE - 8}
-                      />
-                    </View>
-                  </View>
-                  <Text 
-                    style={[
-                      styles.categoryLabel,
-                      selectedCategoryId === category.id && styles.categoryLabelActive,
-                    ]}
-                    numberOfLines={2}
-                  >
-                    {category.category_name}
-                  </Text>
-                  {selectedCategoryId === category.id && (
-                    <View style={styles.activeIndicator} />
-                  )}
-                </Pressable>
-              ))}
-            </ScrollView>
-          </Animated.View>
-        ) : null}
-
         {isDisplayLoading && !refreshing ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -577,7 +575,7 @@ const styles = StyleSheet.create({
   notesContainer: {
     width: '100%',
   },
-  // Category Carousel Section - Airbnb Style
+  // Category Carousel Section - Fixed at Top
   categoryCarouselSection: {
     paddingVertical: 16,
     paddingBottom: 20,
@@ -590,6 +588,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.background,
   },
   categoryScrollContent: {
     paddingHorizontal: 16,
