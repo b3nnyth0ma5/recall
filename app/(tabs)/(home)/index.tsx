@@ -9,7 +9,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
-import { supabase } from '@/utils/supabase';
+import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { Note } from '@/types/Note';
 
 export default function HomeScreen() {
@@ -38,16 +38,35 @@ export default function HomeScreen() {
         return;
       }
 
+      if (!user?.id) {
+        console.error('No user logged in');
+        setFilteredNotes([]);
+        return;
+      }
+
       try {
         setLoadingFiltered(true);
         console.log('Filtering notes by category:', selectedCategoryId);
 
-        // Fetch recollections for the selected category
+        // Fetch recalls directly from database with JOIN to get match_score
         const { data: recollections, error } = await supabase
           .from('recollections')
-          .select('recall_id, match_score')
+          .select(`
+            recall_id,
+            match_score,
+            recalls:recall_id (
+              id,
+              text,
+              location,
+              latitude,
+              longitude,
+              created_at,
+              updated_at,
+              user_id
+            )
+          `)
           .eq('category_id', selectedCategoryId)
-          .eq('user_id', user?.id)
+          .eq('user_id', user.id)
           .order('match_score', { ascending: false });
 
         if (error) {
@@ -62,21 +81,69 @@ export default function HomeScreen() {
           return;
         }
 
-        // Get the recall IDs
-        const recallIds = recollections.map(r => r.recall_id);
+        // Process the recalls and load their images
+        const notesWithImages = await Promise.all(
+          recollections
+            .filter(rec => rec.recalls) // Filter out any null recalls
+            .map(async (rec) => {
+              const recall = rec.recalls as any;
+              
+              try {
+                // Load images for this recall
+                const { data: imagesData, error: imagesError } = await supabase
+                  .from('recall_images')
+                  .select('id')
+                  .eq('recall_id', recall.id)
+                  .order('created_at', { ascending: true });
 
-        // Filter notes that match these recall IDs
-        const filtered = notes.filter(note => recallIds.includes(note.id));
-        
-        // Sort by match_score (highest first)
-        const sortedFiltered = filtered.sort((a, b) => {
-          const aScore = recollections.find(r => r.recall_id === a.id)?.match_score || 0;
-          const bScore = recollections.find(r => r.recall_id === b.id)?.match_score || 0;
-          return bScore - aScore;
-        });
+                if (imagesError) {
+                  console.error('Error loading images for recall:', recall.id, imagesError);
+                  return { 
+                    ...recall, 
+                    images: [], 
+                    imageIds: [],
+                    match_score: rec.match_score 
+                  };
+                }
 
-        console.log(`Filtered ${sortedFiltered.length} notes for category`);
-        setFilteredNotes(sortedFiltered);
+                const imageResults = await Promise.all(
+                  (imagesData || []).map(async (img) => {
+                    try {
+                      const dataUrl = await getImageDataUrl(img.id);
+                      if (!dataUrl) {
+                        return { url: '', id: img.id };
+                      }
+                      return { url: dataUrl, id: img.id };
+                    } catch (error) {
+                      console.error(`Exception processing image ${img.id}:`, error);
+                      return { url: '', id: img.id };
+                    }
+                  })
+                );
+
+                const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
+                const imageIds = imageResults.map(result => result.id);
+                
+                return { 
+                  ...recall, 
+                  images: validImageUrls, 
+                  imageIds: imageIds,
+                  match_score: rec.match_score
+                };
+              } catch (error) {
+                console.error(`Exception processing recall ${recall.id}:`, error);
+                return { 
+                  ...recall, 
+                  images: [], 
+                  imageIds: [],
+                  match_score: rec.match_score
+                };
+              }
+            })
+        );
+
+        console.log(`Filtered ${notesWithImages.length} notes for category (sorted by match_score)`);
+        setFilteredNotes(notesWithImages);
       } catch (error) {
         console.error('Error filtering notes:', error);
         setFilteredNotes([]);
@@ -86,7 +153,7 @@ export default function HomeScreen() {
     };
 
     filterNotesByCategory();
-  }, [selectedCategoryId, notes, user?.id]);
+  }, [selectedCategoryId, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -124,7 +191,13 @@ export default function HomeScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await refreshNotes();
+    if (selectedCategoryId) {
+      // Trigger re-fetch of filtered notes
+      setSelectedCategoryId(null);
+      setTimeout(() => setSelectedCategoryId(selectedCategoryId), 100);
+    } else {
+      await refreshNotes();
+    }
     setRefreshing(false);
   };
 
@@ -247,9 +320,9 @@ export default function HomeScreen() {
           <View style={styles.notesContainer}>
             {/* Notes section */}
             <View style={styles.allNotesSection}>
-              {displayNotes.map((note) => (
+              {displayNotes.map((note, index) => (
                 <NoteCard
-                  key={note.id}
+                  key={`${note.id}-${index}`}
                   note={note}
                   onPress={() => handleNotePress(note.id)}
                 />
