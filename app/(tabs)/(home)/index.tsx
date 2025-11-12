@@ -1,13 +1,13 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { CategoryIcon } from '@/components/CategoryIcon';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -31,8 +31,8 @@ interface RecollectionWithCategory {
   match_score?: number;
 }
 
-const CATEGORY_ICON_SIZE = 56;
-const CATEGORY_SPACING = 20;
+const CATEGORY_SIZE = 80;
+const CATEGORY_SPACING = 12;
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote } = useNotes();
@@ -381,88 +381,94 @@ export default function HomeScreen() {
         }}
       />
 
-      {/* Category Carousel - Fixed at Top */}
+      {/* Category Reels - Fixed at Top */}
       {loadingCategories ? (
         <View style={styles.categoryLoadingContainer}>
           <ActivityIndicator size="small" color={colors.primary} />
         </View>
       ) : categories.length > 0 ? (
-        <Animated.View entering={FadeIn.duration(400)} style={styles.categoryCarouselSection}>
+        <Animated.View entering={FadeIn.duration(400)} style={styles.categoryReelsSection}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.categoryScrollContent}
-            decelerationRate="fast"
-            snapToInterval={CATEGORY_ICON_SIZE + CATEGORY_SPACING}
-            snapToAlignment="start"
           >
             {/* "All" button to clear filter */}
             <Pressable
               onPress={handleClearFilter}
-              style={({ pressed }) => [
-                styles.categoryItem,
-                styles.categoryItemFirst,
-                pressed && styles.categoryItemPressed,
+              style={[
+                styles.categoryReelItem,
+                styles.categoryReelItemFirst,
               ]}
             >
-              <View style={[
-                styles.categoryIconWrapper,
-                selectedCategoryId === null && styles.categoryIconWrapperActive,
-              ]}>
-                <View style={styles.categoryIconCircle}>
-                  <IconSymbol 
-                    name="square.grid.2x2" 
-                    size={28} 
-                    color={selectedCategoryId === null ? colors.primary : colors.text} 
-                  />
-                </View>
-              </View>
-              <Text style={[
-                styles.categoryLabel,
-                selectedCategoryId === null && styles.categoryLabelActive,
-              ]}>
-                All
-              </Text>
-              {selectedCategoryId === null && (
-                <View style={styles.activeIndicator} />
-              )}
-            </Pressable>
-
-            {/* Category items */}
-            {categories.map((category) => (
-              <Pressable
-                key={category.id}
-                onPress={() => handleCategoryPress(category.id)}
-                style={({ pressed }) => [
-                  styles.categoryItem,
-                  pressed && styles.categoryItemPressed,
-                ]}
+              <LinearGradient
+                colors={selectedCategoryId === null 
+                  ? ['#FF6B35', '#F7931E', '#FDC830']
+                  : ['rgba(255, 107, 53, 0.3)', 'rgba(247, 147, 30, 0.3)', 'rgba(253, 200, 48, 0.3)']
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.categoryGradientBorder}
               >
-                <View style={[
-                  styles.categoryIconWrapper,
-                  selectedCategoryId === category.id && styles.categoryIconWrapperActive,
-                ]}>
-                  <View style={styles.categoryIconCircle}>
-                    <CategoryIcon
-                      iconUrl={category.icon_cdn_url}
-                      size={CATEGORY_ICON_SIZE - 8}
+                <View style={styles.categoryImageContainer}>
+                  <View style={styles.categoryAllIcon}>
+                    <IconSymbol 
+                      name="square.grid.2x2" 
+                      size={32} 
+                      color={colors.text} 
                     />
                   </View>
                 </View>
-                <Text 
+              </LinearGradient>
+              <Text style={styles.categoryLabel} numberOfLines={1}>
+                All
+              </Text>
+            </Pressable>
+
+            {/* Category items */}
+            {categories.map((category, index) => {
+              const isSelected = selectedCategoryId === category.id;
+              return (
+                <Pressable
+                  key={category.id}
+                  onPress={() => handleCategoryPress(category.id)}
                   style={[
-                    styles.categoryLabel,
-                    selectedCategoryId === category.id && styles.categoryLabelActive,
+                    styles.categoryReelItem,
                   ]}
-                  numberOfLines={2}
                 >
-                  {category.category_name}
-                </Text>
-                {selectedCategoryId === category.id && (
-                  <View style={styles.activeIndicator} />
-                )}
-              </Pressable>
-            ))}
+                  <LinearGradient
+                    colors={isSelected 
+                      ? ['#FF6B35', '#F7931E', '#FDC830']
+                      : ['rgba(255, 107, 53, 0.3)', 'rgba(247, 147, 30, 0.3)', 'rgba(253, 200, 48, 0.3)']
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.categoryGradientBorder}
+                  >
+                    <View style={styles.categoryImageContainer}>
+                      {category.icon_cdn_url ? (
+                        <Image
+                          source={{ uri: category.icon_cdn_url }}
+                          style={styles.categoryImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={styles.categoryPlaceholder}>
+                          <IconSymbol 
+                            name="folder.fill" 
+                            size={32} 
+                            color={colors.textSecondary} 
+                          />
+                        </View>
+                      )}
+                    </View>
+                  </LinearGradient>
+                  <Text style={styles.categoryLabel} numberOfLines={1}>
+                    {category.category_name}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </ScrollView>
         </Animated.View>
       ) : null}
@@ -575,13 +581,13 @@ const styles = StyleSheet.create({
   notesContainer: {
     width: '100%',
   },
-  // Category Carousel Section - Fixed at Top
-  categoryCarouselSection: {
-    paddingVertical: 16,
-    paddingBottom: 20,
+  // Category Reels Section - Styled like Story Reels
+  categoryReelsSection: {
+    paddingVertical: 12,
     backgroundColor: colors.background,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    height: 120,
   },
   categoryLoadingContainer: {
     paddingVertical: 24,
@@ -589,63 +595,67 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.background,
+    height: 120,
+    justifyContent: 'center',
   },
   categoryScrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
     alignItems: 'center',
   },
-  categoryItem: {
+  categoryReelItem: {
     alignItems: 'center',
     marginRight: CATEGORY_SPACING,
-    width: CATEGORY_ICON_SIZE + 16,
+    width: CATEGORY_SIZE + 6,
   },
-  categoryItemFirst: {
-    marginLeft: 0,
+  categoryReelItemFirst: {
+    marginLeft: 8,
   },
-  categoryItemPressed: {
-    opacity: 0.7,
-  },
-  categoryIconWrapper: {
-    width: CATEGORY_ICON_SIZE,
-    height: CATEGORY_ICON_SIZE,
-    marginBottom: 8,
-    borderRadius: CATEGORY_ICON_SIZE / 2,
-    borderWidth: 2,
-    borderColor: 'transparent',
+  categoryGradientBorder: {
+    width: CATEGORY_SIZE + 6,
+    height: CATEGORY_SIZE + 6,
+    borderRadius: (CATEGORY_SIZE + 6) / 2,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.card,
+    marginBottom: 4,
   },
-  categoryIconWrapperActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.cardHover,
-  },
-  categoryIconCircle: {
-    width: CATEGORY_ICON_SIZE - 4,
-    height: CATEGORY_ICON_SIZE - 4,
-    borderRadius: (CATEGORY_ICON_SIZE - 4) / 2,
+  categoryImageContainer: {
+    width: CATEGORY_SIZE,
+    height: CATEGORY_SIZE,
+    borderRadius: CATEGORY_SIZE / 2,
+    backgroundColor: colors.background,
+    padding: 3,
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
   },
+  categoryImage: {
+    width: CATEGORY_SIZE - 6,
+    height: CATEGORY_SIZE - 6,
+    borderRadius: (CATEGORY_SIZE - 6) / 2,
+  },
+  categoryAllIcon: {
+    width: CATEGORY_SIZE - 6,
+    height: CATEGORY_SIZE - 6,
+    borderRadius: (CATEGORY_SIZE - 6) / 2,
+    backgroundColor: colors.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  categoryPlaceholder: {
+    width: CATEGORY_SIZE - 6,
+    height: CATEGORY_SIZE - 6,
+    borderRadius: (CATEGORY_SIZE - 6) / 2,
+    backgroundColor: colors.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   categoryLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textSecondary,
+    marginTop: 2,
+    maxWidth: CATEGORY_SIZE + 6,
     textAlign: 'center',
-    maxWidth: CATEGORY_ICON_SIZE + 16,
-    lineHeight: 16,
-    fontWeight: '500',
-  },
-  categoryLabelActive: {
-    color: colors.text,
-    fontWeight: '600',
-  },
-  activeIndicator: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.primary,
-    marginTop: 4,
   },
   allNotesSection: {
     paddingHorizontal: 16,
