@@ -8,6 +8,9 @@ import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
+import { CategoryCarousel } from '@/components/CategoryCarousel';
+import { supabase } from '@/utils/supabase';
+import { Note } from '@/types/Note';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote } = useNotes();
@@ -18,11 +21,72 @@ export default function HomeScreen() {
   const previousNotesCountRef = useRef(notes.length);
   const isFirstFocusRef = useRef(true);
   const { user } = useAuth();
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
+  const [loadingFiltered, setLoadingFiltered] = useState(false);
 
   // Update the previous notes count whenever notes change
   useEffect(() => {
     previousNotesCountRef.current = notes.length;
   }, [notes.length]);
+
+  // Filter notes when category is selected
+  useEffect(() => {
+    const filterNotesByCategory = async () => {
+      if (!selectedCategoryId) {
+        setFilteredNotes([]);
+        return;
+      }
+
+      try {
+        setLoadingFiltered(true);
+        console.log('Filtering notes by category:', selectedCategoryId);
+
+        // Fetch recollections for the selected category
+        const { data: recollections, error } = await supabase
+          .from('recollections')
+          .select('recall_id, match_score')
+          .eq('category_id', selectedCategoryId)
+          .eq('user_id', user?.id)
+          .order('match_score', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching recollections:', error);
+          setFilteredNotes([]);
+          return;
+        }
+
+        if (!recollections || recollections.length === 0) {
+          console.log('No recollections found for this category');
+          setFilteredNotes([]);
+          return;
+        }
+
+        // Get the recall IDs
+        const recallIds = recollections.map(r => r.recall_id);
+
+        // Filter notes that match these recall IDs
+        const filtered = notes.filter(note => recallIds.includes(note.id));
+        
+        // Sort by match_score (highest first)
+        const sortedFiltered = filtered.sort((a, b) => {
+          const aScore = recollections.find(r => r.recall_id === a.id)?.match_score || 0;
+          const bScore = recollections.find(r => r.recall_id === b.id)?.match_score || 0;
+          return bScore - aScore;
+        });
+
+        console.log(`Filtered ${sortedFiltered.length} notes for category`);
+        setFilteredNotes(sortedFiltered);
+      } catch (error) {
+        console.error('Error filtering notes:', error);
+        setFilteredNotes([]);
+      } finally {
+        setLoadingFiltered(false);
+      }
+    };
+
+    filterNotesByCategory();
+  }, [selectedCategoryId, notes, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -80,12 +144,25 @@ export default function HomeScreen() {
     router.push('/(tabs)/profile');
   };
 
+  const handleCategorySelect = (categoryId: string | null) => {
+    setSelectedCategoryId(categoryId);
+    // Scroll to top when category changes
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: true });
+    }
+  };
+
   const handleScroll = useCallback((event: any) => {
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
     
     // Save scroll position to ref (doesn't trigger re-render)
     scrollPositionRef.current = contentOffset.y;
     
+    // Only load more if not filtering by category
+    if (selectedCategoryId) {
+      return;
+    }
+
     // Load more notes when near bottom
     const paddingToBottom = 20;
     const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
@@ -94,17 +171,26 @@ export default function HomeScreen() {
       console.log('[handleScroll] Loading more notes...');
       loadMoreNotes();
     }
-  }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
+  }, [hasMore, isLoadingMore, loading, loadMoreNotes, selectedCategoryId]);
 
   const renderEmptyState = () => (
     <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
       <IconSymbol name="note.text" size={80} color={colors.textTertiary} />
-      <Text style={styles.emptyTitle}>No Recalls Yet</Text>
+      <Text style={styles.emptyTitle}>
+        {selectedCategoryId ? 'No Recalls in This Category' : 'No Recalls Yet'}
+      </Text>
       <Text style={styles.emptyText}>
-        Tap the + button to create your first recall
+        {selectedCategoryId 
+          ? 'Try selecting a different category or create a new recall'
+          : 'Tap the + button to create your first recall'
+        }
       </Text>
     </Animated.View>
   );
+
+  // Determine which notes to display
+  const displayNotes = selectedCategoryId ? filteredNotes : notes;
+  const isLoading = selectedCategoryId ? loadingFiltered : loading;
 
   return (
     <View style={styles.container}>
@@ -145,17 +231,23 @@ export default function HomeScreen() {
           />
         }
       >
-        {loading && !refreshing ? (
+        {/* Category Carousel */}
+        <CategoryCarousel 
+          onCategorySelect={handleCategorySelect}
+          selectedCategoryId={selectedCategoryId}
+        />
+
+        {isLoading && !refreshing ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ) : notes.length === 0 ? (
+        ) : displayNotes.length === 0 ? (
           renderEmptyState()
         ) : (
           <View style={styles.notesContainer}>
             {/* Notes section */}
             <View style={styles.allNotesSection}>
-              {notes.map((note) => (
+              {displayNotes.map((note) => (
                 <NoteCard
                   key={note.id}
                   note={note}
@@ -164,13 +256,13 @@ export default function HomeScreen() {
               ))}
             </View>
 
-            {isLoadingMore && (
+            {!selectedCategoryId && isLoadingMore && (
               <View style={styles.loadingMoreContainer}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={styles.loadingMoreText}>Loading more...</Text>
               </View>
             )}
-            {!hasMore && notes.length > 0 && (
+            {!selectedCategoryId && !hasMore && displayNotes.length > 0 && (
               <View style={styles.endContainer}>
                 <Text style={styles.endText}>You&apos;ve reached the end</Text>
               </View>
