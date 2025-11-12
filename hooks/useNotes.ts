@@ -11,6 +11,7 @@ export function useNotes() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [locationInfo, setLocationInfo] = useState<any>(null);
   const { user } = useAuth();
 
   const ITEMS_PER_PAGE = 10;
@@ -346,7 +347,7 @@ export function useNotes() {
         return;
       }
 
-      const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls', {
+      const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls-with-location', {
         body: {
           query: query.trim(),
           limit: 10,
@@ -377,6 +378,14 @@ export function useNotes() {
 
       const scoredRecalls = searchResults.results || [];
       const notesWithImages = await loadImagesForRecalls(scoredRecalls);
+      
+      // Store location info if available
+      if (searchResults.locationInfo) {
+        setLocationInfo(searchResults.locationInfo);
+        console.log('Location filtering applied:', searchResults.locationInfo);
+      } else {
+        setLocationInfo(null);
+      }
       
       setNotes(notesWithImages);
       console.log('AI-powered search results:', notesWithImages.length);
@@ -460,6 +469,7 @@ export function useNotes() {
     searchQuery,
     isLoadingMore,
     hasMore,
+    locationInfo,
     addNote,
     updateNote,
     deleteNote,

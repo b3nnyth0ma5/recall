@@ -20,7 +20,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 
 export default function SearchScreen() {
   const router = useRouter();
-  const { notes, loading, searchNotes, getSearchHistory } = useNotes();
+  const { notes, loading, searchNotes, getSearchHistory, locationInfo } = useNotes();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
   const [showHistory, setShowHistory] = useState(true);
@@ -154,9 +154,19 @@ export default function SearchScreen() {
           </Pressable>
         </View>
         {isAiSearch && hasSearched && (
-          <View style={styles.aiIndicator}>
-            <IconSymbol name="sparkles" size={14} color={colors.primary} />
-            <Text style={styles.aiIndicatorText}>AI-powered search with NER</Text>
+          <View style={styles.indicatorsContainer}>
+            <View style={styles.aiIndicator}>
+              <IconSymbol name="sparkles" size={14} color={colors.primary} />
+              <Text style={styles.aiIndicatorText}>AI-powered search with NER</Text>
+            </View>
+            {locationInfo && (
+              <View style={styles.locationIndicator}>
+                <IconSymbol name="location.fill" size={14} color={colors.primary} />
+                <Text style={styles.locationIndicatorText}>
+                  Near {locationInfo.resolvedPlace} ({locationInfo.proximity}km)
+                </Text>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -196,11 +206,15 @@ export default function SearchScreen() {
               </View>
               <View style={styles.featureItem}>
                 <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                <Text style={styles.featureText}>Location-aware matching</Text>
+                <Text style={styles.featureText}>Location & proximity filtering</Text>
               </View>
               <View style={styles.featureItem}>
                 <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                <Text style={styles.featureText}>Entity recognition</Text>
+                <Text style={styles.featureText}>Named entity recognition</Text>
+              </View>
+              <View style={styles.featureItem}>
+                <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+                <Text style={styles.featureText}>Google Places integration</Text>
               </View>
             </View>
           </Animated.View>
@@ -291,17 +305,35 @@ const styles = StyleSheet.create({
   searchIconDisabled: {
     opacity: 0.4,
   },
+  indicatorsContainer: {
+    marginTop: 8,
+    gap: 6,
+  },
   aiIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 8,
     paddingHorizontal: 4,
   },
   aiIndicatorText: {
     fontSize: 12,
     color: colors.textSecondary,
     fontStyle: 'italic',
+  },
+  locationIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.card,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  locationIndicatorText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
   scrollView: {
     flex: 1,
