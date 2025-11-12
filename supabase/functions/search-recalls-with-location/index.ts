@@ -27,7 +27,7 @@ interface SearchResult {
 interface LocationEntity {
   location: string;
   proximity?: number; // in kilometers
-  type: 'exact' | 'near' | 'within';
+  type: 'in' | 'near' | 'within' | 'close to' | 'around'| 'from';
 }
 
 interface OpenAIMessage {
