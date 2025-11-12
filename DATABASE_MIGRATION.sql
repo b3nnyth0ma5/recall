@@ -1,6 +1,21 @@
 
 -- ============================================================================
--- OCR Image Processing - Complete Database Setup
+-- DEPRECATED: This migration file is outdated
+-- ============================================================================
+-- The recall_images table now uses cdn_url instead of image_data.
+-- All images are stored in Cloudflare CDN, not in the database.
+-- 
+-- Current schema:
+-- - cdn_url (TEXT): Cloudflare CDN URL for the image
+-- - image_data field has been removed
+-- 
+-- For the current schema, see the Supabase dashboard or run:
+-- SELECT column_name, data_type FROM information_schema.columns 
+-- WHERE table_name = 'recall_images';
+-- ============================================================================
+
+-- ============================================================================
+-- OCR Image Processing - Complete Database Setup (LEGACY)
 -- ============================================================================
 -- This migration ensures the recall_images table has all necessary columns
 -- for OCR text extraction and AI-powered image explanations.
@@ -65,10 +80,11 @@ BEGIN
 END $$;
 
 -- Step 2: Create or update the recall_images table
+-- NOTE: Modern schema uses cdn_url instead of image_data
 CREATE TABLE IF NOT EXISTS recall_images (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   recall_id UUID NOT NULL REFERENCES recalls(id) ON DELETE CASCADE,
-  image_data TEXT NOT NULL,
+  cdn_url TEXT, -- Cloudflare CDN URL (replaces image_data)
   content_type TEXT DEFAULT 'image/jpeg',
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -80,6 +96,15 @@ CREATE TABLE IF NOT EXISTS recall_images (
 -- Add OCR columns if they don't exist (for existing tables)
 DO $$ 
 BEGIN
+  -- Add cdn_url column if it doesn't exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'recall_images' AND column_name = 'cdn_url'
+  ) THEN
+    ALTER TABLE recall_images ADD COLUMN cdn_url TEXT;
+    COMMENT ON COLUMN recall_images.cdn_url IS 'Cloudflare CDN URL for the image';
+  END IF;
+
   -- Add ocr_text column
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns 
@@ -156,7 +181,7 @@ CREATE POLICY "Users can delete their own images"
 COMMENT ON TABLE recall_images IS 'Stores images associated with recalls/notes with OCR and AI analysis';
 COMMENT ON COLUMN recall_images.id IS 'Unique identifier for the image record';
 COMMENT ON COLUMN recall_images.recall_id IS 'Foreign key to the parent recall/note';
-COMMENT ON COLUMN recall_images.image_data IS 'Base64-encoded image data stored as text';
+COMMENT ON COLUMN recall_images.cdn_url IS 'Cloudflare CDN URL for the image';
 COMMENT ON COLUMN recall_images.content_type IS 'MIME type of the image (e.g., image/jpeg, image/png)';
 COMMENT ON COLUMN recall_images.user_id IS 'Foreign key to the user who owns this image';
 COMMENT ON COLUMN recall_images.created_at IS 'Timestamp when the image was uploaded';
@@ -168,6 +193,7 @@ SELECT
   ri.recall_id,
   ri.user_id,
   ri.content_type,
+  ri.cdn_url,
   ri.created_at,
   ri.processed_at,
   ri.ocr_text,
@@ -278,9 +304,10 @@ FROM recall_images;
 -- ============================================================================
 -- Success!
 -- ============================================================================
--- Your database is now ready for OCR image processing.
+-- Your database is now ready for OCR image processing with Cloudflare CDN.
 -- Next steps:
 -- 1. Deploy the edge function: supabase functions deploy ocr-image
 -- 2. Set the OPENAI_API_KEY secret in your Supabase dashboard
--- 3. Test by uploading an image through your app
+-- 3. Set the Cloudflare credentials in your Supabase dashboard
+-- 4. Test by uploading an image through your app
 -- ============================================================================

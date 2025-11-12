@@ -154,11 +154,7 @@ export default function SearchScreen() {
           </Pressable>
         </View>
         {isAiSearch && hasSearched && (
-          <View style={styles.indicatorsContainer}>
-            <View style={styles.aiIndicator}>
-              <IconSymbol name="sparkles" size={14} color={colors.primary} />
-              <Text style={styles.aiIndicatorText}>AI-powered search with NER</Text>
-            </View>
+          <View style={styles.indicatorsContainer}> 
             {locationInfo && (
               <View style={styles.locationIndicator}>
                 <IconSymbol name="location.fill" size={14} color={colors.primary} />

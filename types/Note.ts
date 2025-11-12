@@ -2,7 +2,7 @@
 export interface Note {
   id: string;
   text: string;
-  images: string[]; // Array of data URLs for display (base64)
+  images: string[]; // Array of CDN URLs for display
   imageIds?: string[]; // Array of image record IDs
   created_at: string;
   updated_at: string;
@@ -31,7 +31,7 @@ export interface SearchHistory {
 export interface ImageRecord {
   id: string;
   recall_id: string;
-  image_data: string; // Base64 encoded image data
+  cdn_url: string; // Cloudflare CDN URL
   content_type: string;
   created_at: string;
   user_id: string;

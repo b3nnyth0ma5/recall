@@ -1,5 +1,4 @@
 
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 const corsHeaders = {
@@ -10,7 +9,6 @@ const corsHeaders = {
 interface ImageRecord {
   id: string;
   recall_id: string;
-  image_data: string;
   content_type: string;
   user_id: string;
   cdn_url?: string;
@@ -42,7 +40,7 @@ interface OpenAIErrorResponse {
  * 
  * This function:
  * 1. Receives an image record ID from a database webhook or manual trigger
- * 2. Fetches the image data from the recall_images table
+ * 2. Fetches the image CDN URL from the recall_images table
  * 3. Sends the image to OpenAI's Vision API (gpt-4o-mini) for OCR and explanation
  * 4. Parses the response to extract OCR text and explanation separately
  * 5. Updates the database with the results
@@ -132,11 +130,11 @@ Deno.serve(async (req) => {
       },
     });
 
-    // Fetch the image data from the database
-    console.log('Fetching image data from database...');
+    // Fetch the image CDN URL from the database
+    console.log('Fetching image CDN URL from database...');
     const { data: imageData, error: fetchError } = await supabase
       .from('recall_images')
-      .select('image_data, content_type, user_id, cdn_url')
+      .select('cdn_url, content_type, user_id')
       .eq('id', record.id)
       .single();
 
@@ -170,53 +168,20 @@ Deno.serve(async (req) => {
     console.log('Has CDN URL:', !!imageData.cdn_url);
     console.log('User ID:', imageData.user_id);
 
-    let imageDataUrl: string;
-
-    // Check if we have a CDN URL (Cloudflare)
-    if (imageData.cdn_url) {
-      console.log('Using CDN URL for OCR processing');
-      imageDataUrl = imageData.cdn_url;
-    } else {
-      // Fallback to base64 data
-      if (!imageData.image_data) {
-        console.error('No image data or CDN URL found for ID:', record.id);
-        return new Response(
-          JSON.stringify({ error: 'Image data not found in database' }),
-          { 
-            status: 404, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-
-      console.log('Using base64 data for OCR processing');
-      console.log('Base64 data length:', imageData.image_data.length);
-
-      // Validate image data
-      const base64Image = imageData.image_data.trim();
-      if (base64Image.length === 0) {
-        console.error('Empty image data');
-        return new Response(
-          JSON.stringify({ error: 'Image data is empty' }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-
-      // Prepare content type with fallback
-      const contentType = imageData.content_type || 'image/jpeg';
-      
-      // Validate content type
-      const validContentTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-      if (!validContentTypes.includes(contentType.toLowerCase())) {
-        console.warn('Unusual content type:', contentType, '- proceeding with caution');
-      }
-
-      // Construct the data URL for OpenAI
-      imageDataUrl = `data:${contentType};base64,${base64Image}`;
+    // Check if we have a CDN URL
+    if (!imageData.cdn_url) {
+      console.error('No CDN URL found for ID:', record.id);
+      return new Response(
+        JSON.stringify({ error: 'Image CDN URL not found in database' }),
+        { 
+          status: 404, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
+
+    console.log('Using CDN URL for OCR processing:', imageData.cdn_url);
+    const imageDataUrl = imageData.cdn_url;
 
     // Call OpenAI Vision API with enhanced prompt
     console.log('Calling OpenAI Vision API...');
@@ -463,4 +428,3 @@ EXPLANATION:
     );
   }
 });
-
