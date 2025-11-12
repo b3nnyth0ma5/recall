@@ -74,7 +74,10 @@ export default function HomeScreen() {
   }, [selectedCategoryId]);
 
   const loadCategories = async () => {
-    if (!user) return;
+    if (!user) {
+      console.log('No user found, skipping category load');
+      return;
+    }
 
     try {
       setLoadingCategories(true);
@@ -84,12 +87,15 @@ export default function HomeScreen() {
       const { data: recollectionsData, error: recollectionsError } = await supabase
         .from('recollections')
         .select('category_id')
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .not('category_id', 'is', null); // Filter out null category_ids
 
       if (recollectionsError) {
         console.error('Error loading recollections:', recollectionsError);
         return;
       }
+
+      console.log('Recollections data:', recollectionsData);
 
       if (!recollectionsData || recollectionsData.length === 0) {
         console.log('No recollections found for user');
@@ -97,9 +103,15 @@ export default function HomeScreen() {
         return;
       }
 
-      // Get unique category IDs
-      const uniqueCategoryIds = [...new Set(recollectionsData.map(r => r.category_id))];
+      // Get unique category IDs and filter out any nulls/undefined
+      const uniqueCategoryIds = [...new Set(recollectionsData.map(r => r.category_id))].filter(id => id != null);
       console.log('Found unique category IDs:', uniqueCategoryIds);
+
+      if (uniqueCategoryIds.length === 0) {
+        console.log('No valid category IDs found');
+        setCategories([]);
+        return;
+      }
 
       // Fetch category details
       const { data: categoriesData, error: categoriesError } = await supabase
@@ -347,6 +359,9 @@ export default function HomeScreen() {
   const displayNotes = selectedCategoryId ? filteredNotes : notes;
   const isDisplayLoading = selectedCategoryId ? loadingFilteredNotes : loading;
 
+  console.log('Render - Categories count:', categories.length);
+  console.log('Render - Categories:', categories);
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -386,7 +401,11 @@ export default function HomeScreen() {
         }
       >
         {/* Category Row - Story Reels Style */}
-        {categories.length > 0 && (
+        {loadingCategories ? (
+          <View style={styles.categoryLoadingContainer}>
+            <ActivityIndicator size="small" color={colors.primary} />
+          </View>
+        ) : categories.length > 0 ? (
           <Animated.View entering={FadeIn.duration(400)} style={styles.categoryReelsSection}>
             <ScrollView
               horizontal
@@ -464,7 +483,7 @@ export default function HomeScreen() {
               ))}
             </ScrollView>
           </Animated.View>
-        )}
+        ) : null}
 
         {isDisplayLoading && !refreshing ? (
           <View style={styles.loadingContainer}>
@@ -562,6 +581,11 @@ const styles = StyleSheet.create({
   categoryReelsSection: {
     marginBottom: 20,
     paddingVertical: 8,
+    backgroundColor: colors.background,
+  },
+  categoryLoadingContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
   categoryScrollContent: {
     paddingHorizontal: 8,
