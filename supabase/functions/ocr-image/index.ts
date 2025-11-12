@@ -200,7 +200,7 @@ Deno.serve(async (req) => {
 
 1. OCR TEXT: Extract ALL visible text from the image. If there is no text, write "No text detected."
 
-2. EXPLANATION: Describe what the image shows in under 120 words. Be concise and informative.
+2. EXPLANATION: Describe what the image shows in under 70 words. Be concise and informative.
 
 Format your response EXACTLY like this:
 
@@ -390,6 +390,30 @@ EXPLANATION:
     const processingTime = Date.now() - startTime;
     console.log('=== OCR processing completed successfully ===');
     console.log('Total processing time:', processingTime, 'ms');
+
+    // Trigger category matching for this recall
+    console.log('Triggering category matching for recall:', record.recall_id);
+    try {
+      const categoryMatchResponse = await fetch(`${supabaseUrl}/functions/v1/match-recollection-category`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ recallId: record.recall_id }),
+      });
+
+      if (categoryMatchResponse.ok) {
+        const categoryMatchData = await categoryMatchResponse.json();
+        console.log('Category matching triggered successfully:', categoryMatchData);
+      } else {
+        const errorText = await categoryMatchResponse.text();
+        console.error('Failed to trigger category matching:', errorText);
+      }
+    } catch (categoryError) {
+      console.error('Exception while triggering category matching:', categoryError);
+      // Don't fail the OCR process if category matching fails
+    }
 
     return new Response(
       JSON.stringify({ 
