@@ -7,12 +7,10 @@ import { supabase } from '@/utils/supabase';
 import { IconSymbol } from '@/components/IconSymbol';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
-import { generateCategoryIcons, getCategoriesWithIcons } from '@/utils/generateCategoryIcons';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
-  const [isGeneratingIcons, setIsGeneratingIcons] = useState(false);
 
   const handleSignOut = async () => {
     Alert.alert(
@@ -29,51 +27,6 @@ export default function ProfileScreen() {
           onPress: async () => {
             await signOut();
             router.replace('/login');
-          },
-        },
-      ]
-    );
-  };
-
-  const handleGenerateIcons = async () => {
-    Alert.alert(
-      'Generate Category Icons',
-      'This will create and upload SVG icons for all categories to Cloudflare CDN. Continue?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Generate',
-          onPress: async () => {
-            setIsGeneratingIcons(true);
-            try {
-              const result = await generateCategoryIcons();
-              
-              if (result.success && result.summary) {
-                Alert.alert(
-                  'Success',
-                  `Icons generated successfully!\n\nTotal: ${result.summary.total}\nSuccess: ${result.summary.success}\nSkipped: ${result.summary.skipped}\nErrors: ${result.summary.errors}`,
-                  [{ text: 'OK' }]
-                );
-              } else {
-                Alert.alert(
-                  'Error',
-                  result.error || 'Failed to generate icons',
-                  [{ text: 'OK' }]
-                );
-              }
-            } catch (error) {
-              console.error('Error generating icons:', error);
-              Alert.alert(
-                'Error',
-                'An unexpected error occurred',
-                [{ text: 'OK' }]
-              );
-            } finally {
-              setIsGeneratingIcons(false);
-            }
           },
         },
       ]
@@ -114,24 +67,8 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* Admin Section */}
-          <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
-            <Text style={styles.sectionTitle}>Admin Tools</Text>
-            <Pressable
-              style={[styles.button, isGeneratingIcons && styles.buttonDisabled]}
-              onPress={handleGenerateIcons}
-              disabled={isGeneratingIcons}
-            >
-              {isGeneratingIcons ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.buttonText}>Generate Category Icons</Text>
-              )}
-            </Pressable>
-          </Animated.View>
-
           {/* Actions Section */}
-          <Animated.View entering={FadeInDown.delay(200)} style={styles.section}>
+          <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
             <Text style={styles.sectionTitle}>Actions</Text>
             <Pressable
               style={[styles.button, styles.dangerButton]}
@@ -194,9 +131,6 @@ const styles = StyleSheet.create({
   },
   dangerButton: {
     backgroundColor: colors.error,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
   headerButton: {
     padding: 8,
