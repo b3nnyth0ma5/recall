@@ -30,7 +30,7 @@ export default function HomeScreen() {
     previousNotesCountRef.current = notes.length;
   }, [notes.length]);
 
-  // Filter notes when category is selected
+  // Filter notes when category is selected - USING recollections.recall_id
   useEffect(() => {
     const filterNotesByCategory = async () => {
       if (!selectedCategoryId) {
@@ -49,10 +49,10 @@ export default function HomeScreen() {
         console.log('Filtering notes by category:', selectedCategoryId);
         console.log('User ID:', user.id);
 
-        // First, get the recollections for this category and user
+        // Fetch recollections using recall_id
         const { data: recollections, error: recollectionsError } = await supabase
           .from('recollections')
-          .select('recall_id, match_score')
+          .select('recall_id, match_score, category_id')
           .eq('category_id', selectedCategoryId)
           .eq('user_id', user.id)
           .order('match_score', { ascending: false });
@@ -70,11 +70,13 @@ export default function HomeScreen() {
         }
 
         console.log(`Found ${recollections.length} recollections for category`);
+        console.log('Recollections data:', recollections);
 
-        // Get unique recall IDs
+        // Extract recall_ids from recollections
         const recallIds = recollections.map(r => r.recall_id);
+        console.log('Recall IDs to fetch:', recallIds);
         
-        // Fetch the actual recalls
+        // Fetch the actual recalls using recall_id
         const { data: recalls, error: recallsError } = await supabase
           .from('recalls')
           .select('*')
@@ -87,7 +89,7 @@ export default function HomeScreen() {
         }
 
         if (!recalls || recalls.length === 0) {
-          console.log('No recalls found for the recollection IDs');
+          console.log('No recalls found for the recollection recall_ids');
           setFilteredNotes([]);
           return;
         }
@@ -103,7 +105,7 @@ export default function HomeScreen() {
         const notesWithImages = await Promise.all(
           recalls.map(async (recall) => {
             try {
-              // Load images for this recall
+              // Load images for this recall using recall_id
               const { data: imagesData, error: imagesError } = await supabase
                 .from('recall_images')
                 .select('id')
