@@ -95,6 +95,7 @@ const MAPPING = {
 
   // Shapes & Symbols
   "square": "crop-square",
+  "square.grid.2x2": "grid-view",
   "square.grid.3x3": "apps",
   "circle": "circle",
   "triangle.fill": "change-history",
@@ -102,6 +103,7 @@ const MAPPING = {
   "star": "star-border",
   "bookmark.fill": "bookmark",
   "bookmark": "bookmark-border",
+  "tray": "inbox",
 
   // Technology & Code
   "chevron.left.forwardslash.chevron.right": "code",

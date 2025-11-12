@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
+import { IconSymbol } from './IconSymbol';
 
 interface CategoryIconProps {
   iconUrl: string | null;
@@ -13,27 +14,22 @@ interface CategoryIconProps {
  * Component to display a category icon from Cloudflare CDN
  * 
  * @param iconUrl - The CDN URL of the icon
- * @param size - The size of the icon (default: 40)
+ * @param size - The size of the icon (default: 48)
  * @param style - Additional styles to apply
  */
-export function CategoryIcon({ iconUrl, size = 40, style }: CategoryIconProps) {
+export function CategoryIcon({ iconUrl, size = 48, style }: CategoryIconProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  if (!iconUrl) {
-    // Return a placeholder if no icon URL is provided
+  if (!iconUrl || error) {
+    // Return a placeholder if no icon URL is provided or if loading failed
     return (
       <View style={[styles.placeholder, { width: size, height: size }, style]}>
-        <View style={styles.placeholderInner} />
-      </View>
-    );
-  }
-
-  if (error) {
-    // Return a placeholder if the icon failed to load
-    return (
-      <View style={[styles.placeholder, { width: size, height: size }, style]}>
-        <View style={styles.placeholderInner} />
+        <IconSymbol 
+          name="folder.fill" 
+          size={size * 0.6} 
+          color={colors.primary} 
+        />
       </View>
     );
   }
@@ -50,6 +46,7 @@ export function CategoryIcon({ iconUrl, size = 40, style }: CategoryIconProps) {
         style={[styles.icon, { width: size, height: size }]}
         onLoad={() => setLoading(false)}
         onError={() => {
+          console.log('Failed to load category icon:', iconUrl);
           setLoading(false);
           setError(true);
         }}
@@ -75,12 +72,5 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  placeholderInner: {
-    width: '50%',
-    height: '50%',
-    backgroundColor: colors.primary,
-    opacity: 0.3,
-    borderRadius: 4,
   },
 });
