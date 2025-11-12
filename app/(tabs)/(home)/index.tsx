@@ -4,13 +4,13 @@ import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Refre
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
-import { StoryReels } from '@/components/StoryReels';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { CategoryIcon } from '@/components/CategoryIcon';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface Category {
   id: string;
@@ -32,11 +32,13 @@ interface RecollectionWithCategory {
   match_score?: number;
 }
 
+const CATEGORY_SIZE = 80;
+const CATEGORY_SPACING = 12;
+
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote } = useNotes();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const [reelsRefreshTrigger, setReelsRefreshTrigger] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollPositionRef = useRef(0);
   const previousNotesCountRef = useRef(notes.length);
@@ -256,8 +258,6 @@ export default function HomeScreen() {
       if (currentCount > previousCount) {
         console.log('New note detected, auto-refreshing...');
         refreshNotes();
-        // Trigger story reels refresh
-        setReelsRefreshTrigger(prev => prev + 1);
         // Reload categories in case new categories were added
         loadCategories();
       }
@@ -281,8 +281,6 @@ export default function HomeScreen() {
     setRefreshing(true);
     await refreshNotes();
     await loadCategories();
-    // Trigger story reels refresh
-    setReelsRefreshTrigger(prev => prev + 1);
     // Reload filtered notes if a category is selected
     if (selectedCategoryId) {
       await loadRecollectionsByCategory(selectedCategoryId);
@@ -387,9 +385,9 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Category Filter Row */}
+        {/* Category Row - Story Reels Style */}
         {categories.length > 0 && (
-          <View style={styles.categorySection}>
+          <Animated.View entering={FadeIn.duration(400)} style={styles.categoryReelsSection}>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -399,23 +397,31 @@ export default function HomeScreen() {
               <Pressable
                 onPress={handleClearFilter}
                 style={[
-                  styles.categoryItem,
-                  selectedCategoryId === null && styles.categoryItemActive,
+                  styles.categoryReelItem,
+                  styles.categoryReelItemFirst,
                 ]}
               >
-                <View style={[
-                  styles.categoryIconContainer,
-                  selectedCategoryId === null && styles.categoryIconContainerActive,
-                ]}>
-                  <IconSymbol 
-                    name="square.grid.2x2" 
-                    size={32} 
-                    color={selectedCategoryId === null ? colors.primary : colors.text} 
-                  />
-                </View>
+                <LinearGradient
+                  colors={
+                    selectedCategoryId === null
+                      ? ['#FF6B35', '#F7931E', '#FDC830']
+                      : ['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.1)']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.categoryGradientBorder}
+                >
+                  <View style={styles.categoryIconContainer}>
+                    <IconSymbol 
+                      name="square.grid.2x2" 
+                      size={32} 
+                      color={selectedCategoryId === null ? colors.primary : colors.text} 
+                    />
+                  </View>
+                </LinearGradient>
                 <Text style={[
-                  styles.categoryName,
-                  selectedCategoryId === null && styles.categoryNameActive,
+                  styles.categoryReelName,
+                  selectedCategoryId === null && styles.categoryReelNameActive,
                 ]}>
                   All
                 </Text>
@@ -426,24 +432,29 @@ export default function HomeScreen() {
                 <Pressable
                   key={category.id}
                   onPress={() => handleCategoryPress(category.id)}
-                  style={[
-                    styles.categoryItem,
-                    selectedCategoryId === category.id && styles.categoryItemActive,
-                  ]}
+                  style={styles.categoryReelItem}
                 >
-                  <View style={[
-                    styles.categoryIconContainer,
-                    selectedCategoryId === category.id && styles.categoryIconContainerActive,
-                  ]}>
-                    <CategoryIcon
-                      iconUrl={category.icon_cdn_url}
-                      size={48}
-                    />
-                  </View>
+                  <LinearGradient
+                    colors={
+                      selectedCategoryId === category.id
+                        ? ['#FF6B35', '#F7931E', '#FDC830']
+                        : ['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.1)']
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.categoryGradientBorder}
+                  >
+                    <View style={styles.categoryIconContainer}>
+                      <CategoryIcon
+                        iconUrl={category.icon_cdn_url}
+                        size={CATEGORY_SIZE - 6}
+                      />
+                    </View>
+                  </LinearGradient>
                   <Text 
                     style={[
-                      styles.categoryName,
-                      selectedCategoryId === category.id && styles.categoryNameActive,
+                      styles.categoryReelName,
+                      selectedCategoryId === category.id && styles.categoryReelNameActive,
                     ]}
                     numberOfLines={2}
                   >
@@ -452,7 +463,7 @@ export default function HomeScreen() {
                 </Pressable>
               ))}
             </ScrollView>
-          </View>
+          </Animated.View>
         )}
 
         {isDisplayLoading && !refreshing ? (
@@ -463,16 +474,6 @@ export default function HomeScreen() {
           selectedCategoryId ? renderCategoryFilteredEmptyState() : renderEmptyState()
         ) : (
           <View style={styles.notesContainer}>
-            {/* Story Reels - only show when not filtering */}
-            {!selectedCategoryId && (
-              <View style={styles.storyReelsSection}>
-                <StoryReels 
-                  onNotePress={handleNotePress}
-                  refreshTrigger={reelsRefreshTrigger}
-                />
-              </View>
-            )}
-
             {/* Notes section */}
             <View style={styles.allNotesSection}>
               {displayNotes.map((note) => (
@@ -557,58 +558,49 @@ const styles = StyleSheet.create({
   notesContainer: {
     width: '100%',
   },
-  categorySection: {
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.background,
+  // Category Reels Section - Story Reels Style
+  categoryReelsSection: {
+    marginBottom: 20,
+    paddingVertical: 8,
   },
   categoryScrollContent: {
-    paddingHorizontal: 16,
-    gap: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
   },
-  categoryItem: {
+  categoryReelItem: {
     alignItems: 'center',
-    width: 80,
+    marginRight: CATEGORY_SPACING,
   },
-  categoryItemActive: {
-    // Active state styling handled by child components
+  categoryReelItemFirst: {
+    marginLeft: 8,
   },
-  categoryIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.card,
+  categoryGradientBorder: {
+    width: CATEGORY_SIZE + 6,
+    height: CATEGORY_SIZE + 6,
+    borderRadius: (CATEGORY_SIZE + 6) / 2,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    marginBottom: 4,
   },
-  categoryIconContainerActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryLight || colors.card,
+  categoryIconContainer: {
+    width: CATEGORY_SIZE,
+    height: CATEGORY_SIZE,
+    borderRadius: CATEGORY_SIZE / 2,
+    backgroundColor: colors.background,
+    padding: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  categoryName: {
-    fontSize: 12,
+  categoryReelName: {
+    fontSize: 11,
     color: colors.textSecondary,
+    marginTop: 2,
+    maxWidth: CATEGORY_SIZE + 6,
     textAlign: 'center',
-    fontWeight: '500',
   },
-  categoryNameActive: {
+  categoryReelNameActive: {
     color: colors.primary,
-    fontWeight: '700',
-  },
-  storyReelsSection: {
-    marginBottom: 24,
-    paddingTop: 8,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 12,
-    paddingHorizontal: 16,
+    fontWeight: '600',
   },
   allNotesSection: {
     paddingHorizontal: 16,
