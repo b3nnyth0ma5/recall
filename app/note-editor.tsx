@@ -25,7 +25,7 @@ import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -350,20 +350,6 @@ export default function NoteEditorScreen() {
             if (image.id) {
               try {
                 await deleteImageRecord(image.id);
-                
-                // Trigger category matching after image deletion
-                if (params.id) {
-                  console.log('Triggering category matching after image deletion');
-                  triggerCategoryMatching(params.id as string).then(result => {
-                    if (result.success) {
-                      console.log('Category matching triggered successfully after image deletion');
-                    } else {
-                      console.error('Failed to trigger category matching:', result.error);
-                    }
-                  }).catch(error => {
-                    console.error('Error triggering category matching:', error);
-                  });
-                }
               } catch (error) {
                 console.error('Error deleting image:', error);
               }
@@ -567,18 +553,6 @@ export default function NoteEditorScreen() {
           [{ text: 'OK' }]
         );
       }
-
-      // Trigger category matching for the saved recall
-      console.log('Triggering category matching for saved recall:', recallId);
-      triggerCategoryMatching(recallId).then(result => {
-        if (result.success) {
-          console.log('Category matching triggered successfully after save');
-        } else {
-          console.error('Failed to trigger category matching:', result.error);
-        }
-      }).catch(error => {
-        console.error('Error triggering category matching:', error);
-      });
 
       // Navigate back first
       router.back();
