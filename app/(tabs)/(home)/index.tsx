@@ -51,6 +51,9 @@ export default function HomeScreen() {
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingFilteredNotes, setLoadingFilteredNotes] = useState(false);
 
+  // DEBUG: Single category for testing
+  const [debugCategory, setDebugCategory] = useState<Category | null>(null);
+
   // Update the previous notes count whenever notes change
   useEffect(() => {
     previousNotesCountRef.current = notes.length;
@@ -99,6 +102,7 @@ export default function HomeScreen() {
       if (!recollectionsData || recollectionsData.length === 0) {
         console.log('No recollections found for user');
         setCategories([]);
+        setDebugCategory(null);
         return;
       }
 
@@ -109,6 +113,7 @@ export default function HomeScreen() {
       if (uniqueCategoryIds.length === 0) {
         console.log('No valid category IDs found');
         setCategories([]);
+        setDebugCategory(null);
         return;
       }
 
@@ -125,6 +130,13 @@ export default function HomeScreen() {
 
       console.log('Loaded categories:', categoriesData);
       setCategories(categoriesData || []);
+      
+      // DEBUG: Set only the first category for testing
+      if (categoriesData && categoriesData.length > 0) {
+        const firstCategory = categoriesData[0];
+        console.log('DEBUG: Setting first category for testing:', firstCategory);
+        setDebugCategory(firstCategory);
+      }
     } catch (error) {
       console.error('Error loading categories:', error);
     } finally {
@@ -357,6 +369,7 @@ export default function HomeScreen() {
 
   console.log('Render - Categories count:', categories.length);
   console.log('Render - Categories:', categories);
+  console.log('Render - Debug category:', debugCategory);
 
   return (
     <View style={styles.container}>
@@ -381,28 +394,29 @@ export default function HomeScreen() {
         }}
       />
 
-      {/* Category Reels - Fixed at Top */}
+      {/* DEBUG: Single Category Display */}
       {loadingCategories ? (
         <View style={styles.categoryLoadingContainer}>
           <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.debugText}>Loading categories...</Text>
         </View>
-      ) : categories.length > 0 ? (
-        <Animated.View entering={FadeIn.duration(400)} style={styles.categoryReelsSection}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryScrollContent}
-          >
-            {/* "All" button to clear filter */}
+      ) : debugCategory ? (
+        <Animated.View entering={FadeIn.duration(400)} style={styles.categoryDebugSection}>
+          <Text style={styles.debugTitle}>DEBUG: Single Category Test</Text>
+          <View style={styles.debugInfo}>
+            <Text style={styles.debugText}>Category ID: {debugCategory.id}</Text>
+            <Text style={styles.debugText}>Name: {debugCategory.category_name}</Text>
+            <Text style={styles.debugText}>Icon URL: {debugCategory.icon_cdn_url || 'null'}</Text>
+            <Text style={styles.debugText}>Total Categories: {categories.length}</Text>
+          </View>
+          
+          <View style={styles.categoryDebugDisplay}>
             <Pressable
-              onPress={handleClearFilter}
-              style={[
-                styles.categoryReelItem,
-                styles.categoryReelItemFirst,
-              ]}
+              onPress={() => handleCategoryPress(debugCategory.id)}
+              style={styles.categoryReelItem}
             >
               <LinearGradient
-                colors={selectedCategoryId === null 
+                colors={selectedCategoryId === debugCategory.id 
                   ? ['#FF6B35', '#F7931E', '#FDC830']
                   : ['rgba(255, 107, 53, 0.3)', 'rgba(247, 147, 30, 0.3)', 'rgba(253, 200, 48, 0.3)']
                 }
@@ -411,67 +425,42 @@ export default function HomeScreen() {
                 style={styles.categoryGradientBorder}
               >
                 <View style={styles.categoryImageContainer}>
-                  <View style={styles.categoryAllIcon}>
-                    <IconSymbol 
-                      name="square.grid.2x2" 
-                      size={32} 
-                      color={colors.text} 
+                  {debugCategory.icon_cdn_url ? (
+                    <Image
+                      source={{ uri: debugCategory.icon_cdn_url }}
+                      style={styles.categoryImage}
+                      resizeMode="cover"
+                      onError={(e) => console.log('Image load error:', e.nativeEvent.error)}
+                      onLoad={() => console.log('Image loaded successfully')}
                     />
-                  </View>
+                  ) : (
+                    <View style={styles.categoryPlaceholder}>
+                      <IconSymbol 
+                        name="folder.fill" 
+                        size={32} 
+                        color={colors.textSecondary} 
+                      />
+                    </View>
+                  )}
                 </View>
               </LinearGradient>
               <Text style={styles.categoryLabel} numberOfLines={1}>
-                All
+                {debugCategory.category_name}
               </Text>
             </Pressable>
+          </View>
 
-            {/* Category items */}
-            {categories.map((category, index) => {
-              const isSelected = selectedCategoryId === category.id;
-              return (
-                <Pressable
-                  key={category.id}
-                  onPress={() => handleCategoryPress(category.id)}
-                  style={[
-                    styles.categoryReelItem,
-                  ]}
-                >
-                  <LinearGradient
-                    colors={isSelected 
-                      ? ['#FF6B35', '#F7931E', '#FDC830']
-                      : ['rgba(255, 107, 53, 0.3)', 'rgba(247, 147, 30, 0.3)', 'rgba(253, 200, 48, 0.3)']
-                    }
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.categoryGradientBorder}
-                  >
-                    <View style={styles.categoryImageContainer}>
-                      {category.icon_cdn_url ? (
-                        <Image
-                          source={{ uri: category.icon_cdn_url }}
-                          style={styles.categoryImage}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <View style={styles.categoryPlaceholder}>
-                          <IconSymbol 
-                            name="folder.fill" 
-                            size={32} 
-                            color={colors.textSecondary} 
-                          />
-                        </View>
-                      )}
-                    </View>
-                  </LinearGradient>
-                  <Text style={styles.categoryLabel} numberOfLines={1}>
-                    {category.category_name}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          {selectedCategoryId && (
+            <Pressable onPress={handleClearFilter} style={styles.clearFilterButton}>
+              <Text style={styles.clearFilterText}>Clear Filter</Text>
+            </Pressable>
+          )}
         </Animated.View>
-      ) : null}
+      ) : (
+        <View style={styles.categoryLoadingContainer}>
+          <Text style={styles.debugText}>No categories found</Text>
+        </View>
+      )}
 
       {/* Main Content ScrollView */}
       <ScrollView
@@ -581,35 +570,62 @@ const styles = StyleSheet.create({
   notesContainer: {
     width: '100%',
   },
-  // Category Reels Section - Styled like Story Reels
-  categoryReelsSection: {
-    paddingVertical: 12,
+  // DEBUG: Category Debug Section
+  categoryDebugSection: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: colors.card,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
+  },
+  debugTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginBottom: 8,
+  },
+  debugInfo: {
     backgroundColor: colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    height: 120,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  debugText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 4,
+    fontFamily: 'monospace',
+  },
+  categoryDebugDisplay: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  clearFilterButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignSelf: 'center',
+    marginTop: 8,
+  },
+  clearFilterText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   categoryLoadingContainer: {
     paddingVertical: 24,
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    backgroundColor: colors.background,
-    height: 120,
-    justifyContent: 'center',
-  },
-  categoryScrollContent: {
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    alignItems: 'center',
+    backgroundColor: colors.card,
   },
   categoryReelItem: {
     alignItems: 'center',
-    marginRight: CATEGORY_SPACING,
+    marginHorizontal: CATEGORY_SPACING,
     width: CATEGORY_SIZE + 6,
-  },
-  categoryReelItemFirst: {
-    marginLeft: 8,
   },
   categoryGradientBorder: {
     width: CATEGORY_SIZE + 6,
@@ -633,14 +649,6 @@ const styles = StyleSheet.create({
     width: CATEGORY_SIZE - 6,
     height: CATEGORY_SIZE - 6,
     borderRadius: (CATEGORY_SIZE - 6) / 2,
-  },
-  categoryAllIcon: {
-    width: CATEGORY_SIZE - 6,
-    height: CATEGORY_SIZE - 6,
-    borderRadius: (CATEGORY_SIZE - 6) / 2,
-    backgroundColor: colors.card,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   categoryPlaceholder: {
     width: CATEGORY_SIZE - 6,
