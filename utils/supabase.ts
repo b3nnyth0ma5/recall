@@ -642,7 +642,7 @@ export async function batchUploadImagesToCloudflare(batchSize: number = 100): Pr
   processed: number;
   updated: number;
   failed: number;
-  errors: Array<{ imageId: string; error: string }>;
+  errors: { imageId: string; error: string }[];
 }> {
   try {
     console.log('=== Starting batch upload to Cloudflare ===');

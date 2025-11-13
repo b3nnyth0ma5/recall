@@ -167,8 +167,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
     borderWidth: 2,
-    //borderColor: 'transparent',
-		    borderColor: colors.primary,
+    borderColor: colors.primary,
   },
   categoryImageContainerSelected: {
     borderColor: colors.primary,

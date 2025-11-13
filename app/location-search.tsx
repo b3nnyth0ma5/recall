@@ -33,6 +33,65 @@ export default function LocationSearchScreen() {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const searchInputRef = React.useRef<TextInput>(null);
 
+  const checkApiConfiguration = useCallback(() => {
+    const configured = isGooglePlacesConfigured();
+    setApiConfigured(configured);
+    
+    if (!configured) {
+      Alert.alert(
+        'Google Places API Not Configured',
+        'Please add your Google Places API key in utils/googlePlaces.ts to use location search.\n\n' +
+        'Steps:\n' +
+        '1. Go to Google Cloud Console\n' +
+        '2. Enable Places API (New) and Geocoding API\n' +
+        '3. Create an API key\n' +
+        '4. Add the key to utils/googlePlaces.ts',
+        [{ text: 'OK' }]
+      );
+    }
+  }, []);
+
+  const loadNearbyPlaces = useCallback(async (location: { latitude: number; longitude: number }) => {
+    if (!apiConfigured) {
+      return;
+    }
+
+    try {
+      setLoadingNearby(true);
+      console.log('Loading nearby places for location:', location);
+
+      const places = await searchNearbyPlaces(location);
+      
+      console.log('Nearby places loaded:', places.length);
+      setResults(places);
+    } catch (error) {
+      console.error('Error loading nearby places:', error);
+      setResults([]);
+    } finally {
+      setLoadingNearby(false);
+    }
+  }, [apiConfigured]);
+
+  const getUserLocation = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const currentLocation = await Location.getCurrentPositionAsync({});
+        const location = {
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude,
+        };
+        setUserLocation(location);
+        console.log('User location obtained for proximity sorting');
+        
+        // Automatically load nearby places when location is obtained
+        loadNearbyPlaces(location);
+      }
+    } catch (error) {
+      console.error('Error getting user location:', error);
+    }
+  }, [loadNearbyPlaces]);
+
   useEffect(() => {
     getUserLocation();
     checkApiConfiguration();
@@ -49,25 +108,7 @@ export default function LocationSearchScreen() {
       keyboardDidHideListener.remove();
       keyboardDidShowListener.remove();
     };
-  }, []);
-
-  const checkApiConfiguration = () => {
-    const configured = isGooglePlacesConfigured();
-    setApiConfigured(configured);
-    
-    if (!configured) {
-      Alert.alert(
-        'Google Places API Not Configured',
-        'Please add your Google Places API key in utils/googlePlaces.ts to use location search.\n\n' +
-        'Steps:\n' +
-        '1. Go to Google Cloud Console\n' +
-        '2. Enable Places API (New) and Geocoding API\n' +
-        '3. Create an API key\n' +
-        '4. Add the key to utils/googlePlaces.ts',
-        [{ text: 'OK' }]
-      );
-    }
-  };
+  }, [getUserLocation, checkApiConfiguration]);
 
   const performSearch = useCallback(async (searchText: string) => {
     if (!searchText.trim()) {
@@ -103,28 +144,7 @@ export default function LocationSearchScreen() {
     } finally {
       setLoading(false);
     }
-  }, [userLocation, apiConfigured]);
-
-  const loadNearbyPlaces = useCallback(async (location: { latitude: number; longitude: number }) => {
-    if (!apiConfigured) {
-      return;
-    }
-
-    try {
-      setLoadingNearby(true);
-      console.log('Loading nearby places for location:', location);
-
-      const places = await searchNearbyPlaces(location);
-      
-      console.log('Nearby places loaded:', places.length);
-      setResults(places);
-    } catch (error) {
-      console.error('Error loading nearby places:', error);
-      setResults([]);
-    } finally {
-      setLoadingNearby(false);
-    }
-  }, [apiConfigured]);
+  }, [userLocation, apiConfigured, loadNearbyPlaces]);
 
   useEffect(() => {
     if (params.query && typeof params.query === 'string') {
@@ -149,26 +169,6 @@ export default function LocationSearchScreen() {
       }
     }
   }, [searchQuery, performSearch, loadNearbyPlaces, userLocation]);
-
-  const getUserLocation = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const currentLocation = await Location.getCurrentPositionAsync({});
-        const location = {
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
-        };
-        setUserLocation(location);
-        console.log('User location obtained for proximity sorting');
-        
-        // Automatically load nearby places when location is obtained
-        loadNearbyPlaces(location);
-      }
-    } catch (error) {
-      console.error('Error getting user location:', error);
-    }
-  };
 
   const handleSelectLocation = async (location: PlaceResult) => {
     try {
