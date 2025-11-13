@@ -9,42 +9,80 @@ interface Category {
   id: string;
   category_name: string;
   icon_cdn_url: string | null;
+  recollection_count?: number;
 }
 
 interface CategoryCarouselProps {
   onCategorySelect?: (categoryId: string | null) => void;
   selectedCategoryId?: string | null;
+  userId?: string;
 }
 
 const CATEGORY_SIZE = 80;
 const CATEGORY_SPACING = 20;
 
-export function CategoryCarousel({ onCategorySelect, selectedCategoryId }: CategoryCarouselProps) {
+export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId }: CategoryCarouselProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadCategories();
-  }, []);
+    if (userId) {
+      loadCategoriesWithRecollections();
+    } else {
+      setCategories([]);
+      setLoading(false);
+    }
+  }, [userId]);
 
-  const loadCategories = async () => {
+  const loadCategoriesWithRecollections = async () => {
+    if (!userId) {
+      console.log('No user ID provided, skipping category load');
+      setCategories([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      console.log('Loading categories from Supabase...');
+      console.log('Loading categories with recollections for user:', userId);
       
-      const { data, error } = await supabase
-        .from('recollection_categories')
-        .select('id, category_name, icon_cdn_url')
-        .order('id', { ascending: true });
+      // First, get all categories that have recollections for this user
+      const { data: recollectionsData, error: recollectionsError } = await supabase
+        .from('recollections')
+        .select('category_id')
+        .eq('user_id', userId);
 
-      if (error) {
-        console.error('Error loading categories:', error);
+      if (recollectionsError) {
+        console.error('Error loading recollections:', recollectionsError);
         setCategories([]);
         return;
       }
 
-      console.log(`Loaded ${data?.length || 0} categories`);
-      setCategories(data || []);
+      if (!recollectionsData || recollectionsData.length === 0) {
+        console.log('No recollections found for user');
+        setCategories([]);
+        return;
+      }
+
+      // Get unique category IDs
+      const categoryIds = [...new Set(recollectionsData.map(r => r.category_id))];
+      console.log(`Found ${categoryIds.length} unique categories with recollections`);
+
+      // Fetch category details for these IDs
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from('recollection_categories')
+        .select('id, category_name, icon_cdn_url')
+        .in('id', categoryIds)
+        .order('category_name', { ascending: true });
+
+      if (categoriesError) {
+        console.error('Error loading categories:', categoriesError);
+        setCategories([]);
+        return;
+      }
+
+      console.log(`Loaded ${categoriesData?.length || 0} categories with recollections`);
+      setCategories(categoriesData || []);
     } catch (error) {
       console.error('Error loading categories:', error);
       setCategories([]);
@@ -76,8 +114,15 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId }: Categ
     );
   }
 
+  // Show zero state if no categories with recollections
   if (categories.length === 0) {
-    return null;
+    return (
+      <Animated.View entering={FadeIn.duration(400)} style={styles.zeroStateContainer}>
+        <Text style={styles.zeroStateText}>
+          Create your first recall to see categories here
+        </Text>
+      </Animated.View>
+    );
   }
 
   return (
@@ -141,6 +186,18 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  zeroStateContainer: {
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zeroStateText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   container: {
     marginBottom: 16,

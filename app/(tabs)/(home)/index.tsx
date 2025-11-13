@@ -325,10 +325,11 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Category Carousel */}
+        {/* Category Carousel - Only show categories with recollections */}
         <CategoryCarousel 
           onCategorySelect={handleCategorySelect}
           selectedCategoryId={selectedCategoryId}
+          userId={user?.id}
         />
 
         {isLoading && !refreshing ? (

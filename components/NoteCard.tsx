@@ -150,13 +150,13 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             <ScrollView
               ref={imageScrollRef}
               horizontal
-              pagingEnabled
+              pagingEnabled={false}
               showsHorizontalScrollIndicator={false}
               onScroll={handleImageScroll}
               scrollEventThrottle={16}
-              decelerationRate="fast"
+              decelerationRate={0.9}
               snapToInterval={IMAGE_WIDTH}
-              snapToAlignment="center"
+              snapToAlignment="start"
               contentContainerStyle={styles.imageScrollContent}
             >
               {allImages.map((imageUri, index) => {

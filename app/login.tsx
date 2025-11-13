@@ -11,90 +11,80 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
+import { supabase } from '@/utils/supabase';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+
+  const logLogin = async (userId: string) => {
+    try {
+      const { error } = await supabase
+        .from('login_history')
+        .insert([
+          {
+            user_id: userId,
+            login_at: new Date().toISOString(),
+          },
+        ]);
+
+      if (error) {
+        console.error('Error logging login:', error);
+      } else {
+        console.log('Login logged successfully');
+      }
+    } catch (error) {
+      console.error('Error logging login:', error);
+    }
+  };
 
   const handleAuth = async () => {
-    if (!email.trim() || !password.trim()) {
+    if (!email || !password) {
       Alert.alert('Error', 'Please enter both email and password');
       return;
     }
 
-    if (isSignUp && password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
-      return;
-    }
-
-    if (isSignUp && password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
-      return;
-    }
-
-    setLoading(true);
-
     try {
+      setLoading(true);
+
       if (isSignUp) {
-        // Sign up
         const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
+          email,
           password,
           options: {
-            emailRedirectTo: 'https://natively.dev/email-confirmed',
-          },
+            emailRedirectTo: 'https://natively.dev/email-confirmed'
+          }
         });
 
         if (error) {
           Alert.alert('Sign Up Error', error.message);
         } else if (data.user) {
-          // Create user profile
-          const { error: profileError } = await supabase
-            .from('users')
-            .insert([
-              {
-                id: data.user.id,
-                email: email.trim(),
-              },
-            ]);
-
-          if (profileError) {
-            console.error('Error creating user profile:', profileError);
-          }
-
-          // Log the signup
-          await logLogin(data.user.id);
-
           Alert.alert(
             'Success',
-            'Account created successfully! Please check your email to verify your account before logging in.',
-            [{ text: 'OK', onPress: () => setIsSignUp(false) }]
+            'Account created! Please check your email to verify your account before signing in.',
+            [{ text: 'OK' }]
           );
+          setIsSignUp(false);
         }
       } else {
-        // Sign in
         const { data, error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
+          email,
           password,
         });
 
         if (error) {
-          Alert.alert('Login Error', error.message);
+          Alert.alert('Sign In Error', error.message);
         } else if (data.user) {
-          // Log the login
           await logLogin(data.user.id);
-
-          // Navigate to home
           router.replace('/(tabs)/(home)');
         }
       }
@@ -103,19 +93,6 @@ export default function LoginScreen() {
       Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const logLogin = async (userId: string) => {
-    try {
-      await supabase.from('login_history').insert([
-        {
-          user_id: userId,
-          login_at: new Date().toISOString(),
-        },
-      ]);
-    } catch (error) {
-      console.error('Error logging login:', error);
     }
   };
 
@@ -129,24 +106,29 @@ export default function LoginScreen() {
           headerShown: false,
         }}
       />
-
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
         <Animated.View entering={FadeIn.duration(800)} style={styles.content}>
-          {/* Logo/Title */}
-          <View style={styles.header}>
-            <IconSymbol name="brain" size={80} color={colors.primary} />
-            <Text style={styles.title}>Recall</Text>
-            <Text style={styles.subtitle}>
-              {isSignUp ? 'Create your account' : 'Welcome back'}
-            </Text>
+          {/* App Icon */}
+          <View style={styles.iconContainer}>
+            <Image
+              source={require('@/assets/images/final_quest_240x240.png')}
+              style={styles.appIcon}
+              resizeMode="contain"
+            />
           </View>
 
-          {/* Form */}
-          <Animated.View entering={FadeInDown.duration(600).delay(200)} style={styles.form}>
-            <View style={styles.inputContainer}>
+          {/* Title */}
+          <Text style={styles.title}>Recall</Text>
+          <Text style={styles.subtitle}>
+            {isSignUp ? 'Create your account' : 'Welcome back'}
+          </Text>
+
+          {/* Input Fields */}
+          <Animated.View entering={FadeInDown.duration(600).delay(200)} style={styles.inputContainer}>
+            <View style={styles.inputWrapper}>
               <IconSymbol name="envelope.fill" size={20} color={colors.textSecondary} />
               <TextInput
                 style={styles.input}
@@ -160,7 +142,7 @@ export default function LoginScreen() {
               />
             </View>
 
-            <View style={styles.inputContainer}>
+            <View style={styles.inputWrapper}>
               <IconSymbol name="lock.fill" size={20} color={colors.textSecondary} />
               <TextInput
                 style={styles.input}
@@ -169,58 +151,36 @@ export default function LoginScreen() {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
-                autoCapitalize="none"
                 autoComplete="password"
               />
             </View>
+          </Animated.View>
 
-            {isSignUp && (
-              <Animated.View entering={FadeInDown.duration(400)}>
-                <View style={styles.inputContainer}>
-                  <IconSymbol name="lock.fill" size={20} color={colors.textSecondary} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Confirm Password"
-                    placeholderTextColor={colors.textTertiary}
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                    secureTextEntry
-                    autoCapitalize="none"
-                  />
-                </View>
-              </Animated.View>
-            )}
-
-            {/* Auth Button */}
+          {/* Auth Button */}
+          <Animated.View entering={FadeInDown.duration(600).delay(400)} style={styles.buttonContainer}>
             <Pressable
               onPress={handleAuth}
               disabled={loading}
-              style={[styles.authButton, loading && styles.authButtonDisabled]}
+              style={[styles.button, loading && styles.buttonDisabled]}
             >
               {loading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={styles.authButtonText}>
-                  {isSignUp ? 'Sign Up' : 'Login'}
+                <Text style={styles.buttonText}>
+                  {isSignUp ? 'Sign Up' : 'Sign In'}
                 </Text>
               )}
             </Pressable>
 
-            {/* Toggle Sign Up/Login */}
             <Pressable
-              onPress={() => {
-                setIsSignUp(!isSignUp);
-                setConfirmPassword('');
-              }}
-              style={styles.toggleButton}
+              onPress={() => setIsSignUp(!isSignUp)}
+              disabled={loading}
+              style={styles.switchButton}
             >
-              <Text style={styles.toggleText}>
+              <Text style={styles.switchButtonText}>
                 {isSignUp
-                  ? 'Already have an account? '
-                  : "Don't have an account? "}
-                <Text style={styles.toggleTextBold}>
-                  {isSignUp ? 'Login' : 'Sign Up'}
-                </Text>
+                  ? 'Already have an account? Sign In'
+                  : "Don't have an account? Sign Up"}
               </Text>
             </Pressable>
           </Animated.View>
@@ -238,71 +198,85 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 40,
   },
   content: {
+    alignItems: 'center',
     width: '100%',
     maxWidth: 400,
     alignSelf: 'center',
   },
-  header: {
+  iconContainer: {
+    marginBottom: 24,
     alignItems: 'center',
-    marginBottom: 48,
+    justifyContent: 'center',
+  },
+  appIcon: {
+    width: 120,
+    height: 120,
+    borderRadius: 24,
   },
   title: {
-    fontSize: 48,
+    fontSize: 36,
     fontWeight: 'bold',
     color: colors.text,
-    marginTop: 16,
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 18,
     color: colors.textSecondary,
-    marginTop: 8,
-  },
-  form: {
-    width: '100%',
+    marginBottom: 40,
   },
   inputContainer: {
+    width: '100%',
+    gap: 16,
+    marginBottom: 24,
+  },
+  inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.card,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    marginBottom: 16,
     gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   input: {
     flex: 1,
     fontSize: 16,
     color: colors.text,
   },
-  authButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
+  buttonContainer: {
+    width: '100%',
+    gap: 16,
   },
-  authButtonDisabled: {
+  button: {
+    backgroundColor: colors.primary,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
+  },
+  buttonDisabled: {
     opacity: 0.6,
   },
-  authButtonText: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  buttonText: {
+    fontSize: 16,
+    fontWeight: '600',
     color: '#FFFFFF',
   },
-  toggleButton: {
-    marginTop: 24,
+  switchButton: {
+    paddingVertical: 12,
     alignItems: 'center',
   },
-  toggleText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-  toggleTextBold: {
-    fontWeight: 'bold',
+  switchButtonText: {
+    fontSize: 14,
     color: colors.primary,
+    fontWeight: '500',
   },
 });

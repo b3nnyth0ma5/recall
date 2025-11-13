@@ -404,49 +404,26 @@ export default function NoteEditorScreen() {
     }
 
     const { latitude, longitude } = location;
-    // Updated locationQuery to include formatted name with GPS coordinates
-    // Format: "Eiffel+Tower&center=48.85837,2.29448"
-    const formattedNameEncoded = encodeURIComponent(locationName).replace(/%20/g, '+');
-    const locationQuery = `${formattedNameEncoded}&center=${latitude},${longitude}`;
-		
+    
     try {
-      // Try Google Maps first
-      const googleMapsUrl = Platform.select({
-        ios: `comgooglemaps://?q=${locationQuery}`,
-        android: `geo:${latitude},${longitude}?q=${locationQuery}`,
-        default: `https://www.google.com/maps/search/?api=1&query=${locationQuery}`,
-      });
-
-      console.log('Attempting to open Google Maps with query:', locationQuery);
-      console.log('Google Maps URL:', googleMapsUrl);
-      const canOpenGoogleMaps = await Linking.canOpenURL(googleMapsUrl!);
-
-      if (canOpenGoogleMaps) {
-        await Linking.openURL(googleMapsUrl!);
-        console.log('Opened Google Maps');
-        return;
+      // Use universal URL format that works on all platforms
+      const universalUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+      
+      console.log('Opening maps with URL:', universalUrl);
+      
+      // Check if we can open the URL
+      const canOpen = await Linking.canOpenURL(universalUrl);
+      
+      if (canOpen) {
+        await Linking.openURL(universalUrl);
+        console.log('Successfully opened maps');
+      } else {
+        console.error('Cannot open maps URL');
+        Alert.alert('Error', 'Unable to open maps on this device');
       }
-			
-      // Fallback to Apple Maps on iOS
-      /*if (Platform.OS === 'ios') {
-        const appleMapsUrl = `http://maps.apple.com/?q=${locationQuery}`;
-        console.log('Attempting to open Apple Maps:', appleMapsUrl);
-        const canOpenAppleMaps = await Linking.canOpenURL(appleMapsUrl);
-
-        if (canOpenAppleMaps) {
-          await Linking.openURL(appleMapsUrl);
-          console.log('Opened Apple Maps');
-          return;
-        }
-      }*/
-
-      // Final fallback to web
-      const webUrl = `https://www.google.com/maps/search/?api=1&query=${locationQuery}`;
-      console.log('Opening web maps:', webUrl);
-      await Linking.openURL(webUrl);
     } catch (error) {
       console.error('Error opening maps:', error);
-      Alert.alert('Error', 'Could not open maps application');
+      Alert.alert('Error', 'Could not open maps application. Please ensure you have a maps app installed.');
     }
   };
 
@@ -552,17 +529,21 @@ export default function NoteEditorScreen() {
         console.log(`OCR processing triggered for ${uploadedImageIds.length} images`);
       }
 
-      // Trigger category matching after note save
+      // Trigger category matching AFTER note save and recall_id is available
       console.log('Triggering category matching after note save for recall:', recallId);
-      triggerCategoryMatching(recallId).then(result => {
-        if (result.success) {
-          console.log('Category matching triggered successfully after note save');
-        } else {
-          console.error('Failed to trigger category matching:', result.error);
-        }
-      }).catch(error => {
-        console.error('Error triggering category matching:', error);
-      });
+      
+      // Use setTimeout to ensure this happens after the save completes
+      setTimeout(() => {
+        triggerCategoryMatching(recallId).then(result => {
+          if (result.success) {
+            console.log('Category matching triggered successfully after note save');
+          } else {
+            console.error('Failed to trigger category matching:', result.error);
+          }
+        }).catch(error => {
+          console.error('Error triggering category matching:', error);
+        });
+      }, 500);
 
       if (failedCount > 0) {
         Alert.alert(
@@ -576,6 +557,7 @@ export default function NoteEditorScreen() {
       router.back();
       
       // Refresh the specific note that was updated or the entire list for new notes
+      // Also simulate pull-down refresh on landing page
       if (isEditing && params.id) {
         setTimeout(() => {
           refreshSingleNote(params.id as string);
@@ -803,13 +785,14 @@ export default function NoteEditorScreen() {
           <ScrollView
             ref={imageScrollRef}
             horizontal
-            pagingEnabled
+            pagingEnabled={false}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.imagesScrollContent}
             onScroll={handleImageScroll}
             scrollEventThrottle={16}
-            decelerationRate="fast"
+            decelerationRate={0.9}
             snapToInterval={IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING}
+            snapToAlignment="start"
           >
             {images.map((image, index) => (
               <Pressable 
