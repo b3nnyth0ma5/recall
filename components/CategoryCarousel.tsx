@@ -17,7 +17,7 @@ interface CategoryCarouselProps {
 }
 
 const CATEGORY_SIZE = 80;
-const CATEGORY_SPACING = 16;
+const CATEGORY_SPACING = 20;
 
 export function CategoryCarousel({ onCategorySelect, selectedCategoryId }: CategoryCarouselProps) {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -167,15 +167,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
     borderWidth: 2,
-    borderColor: 'transparent',
+    //borderColor: 'transparent',
+		    borderColor: colors.primary,
   },
   categoryImageContainerSelected: {
     borderColor: colors.primary,
     backgroundColor: colors.primaryLight || colors.cardBackground,
   },
   categoryImage: {
-    width: CATEGORY_SIZE - 16,
-    height: CATEGORY_SIZE - 16,
+    width: CATEGORY_SIZE - 30,
+    height: CATEGORY_SIZE - 30,
   },
   categoryPlaceholder: {
     width: CATEGORY_SIZE - 16,
@@ -191,7 +192,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   categoryName: {
-    fontSize: 12,
+    fontSize: 14,
     color: colors.textSecondary,
     textAlign: 'center',
     maxWidth: CATEGORY_SIZE,

@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Keyboard,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -29,10 +30,25 @@ export default function LocationSearchScreen() {
   const [loadingNearby, setLoadingNearby] = useState(false);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [apiConfigured, setApiConfigured] = useState(true);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const searchInputRef = React.useRef<TextInput>(null);
 
   useEffect(() => {
     getUserLocation();
     checkApiConfiguration();
+
+    // Listen to keyboard events
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+    });
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+    });
+
+    return () => {
+      keyboardDidHideListener.remove();
+      keyboardDidShowListener.remove();
+    };
   }, []);
 
   const checkApiConfiguration = () => {
@@ -211,6 +227,14 @@ export default function LocationSearchScreen() {
     performSearch(searchQuery);
   };
 
+  const toggleKeyboard = () => {
+    if (keyboardVisible) {
+      Keyboard.dismiss();
+    } else {
+      searchInputRef.current?.focus();
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -238,22 +262,30 @@ export default function LocationSearchScreen() {
           <View style={styles.searchContainer}>
             <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
             <TextInput
+              ref={searchInputRef}
               style={styles.searchInput}
               placeholder="Search location..."
               placeholderTextColor={colors.textTertiary}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              autoFocus
               returnKeyType="search"
               onSubmitEditing={handleSubmitEditing}
               editable={apiConfigured}
               selectTextOnFocus={true}
+              autoFocus={false}
             />
             {searchQuery.length > 0 && (
               <Pressable onPress={() => setSearchQuery('')}>
                 <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
               </Pressable>
             )}
+            <Pressable onPress={toggleKeyboard} style={styles.keyboardToggle}>
+              <IconSymbol 
+                name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+                size={20} 
+                color={colors.primary} 
+              />
+            </Pressable>
           </View>
           {(loading || loadingNearby) && (
             <View style={styles.searchingIndicator}>
@@ -403,6 +435,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     outlineStyle: 'none',
+  },
+  keyboardToggle: {
+    padding: 4,
   },
   searchingIndicator: {
     flexDirection: 'row',

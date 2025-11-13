@@ -74,6 +74,7 @@ export default function NoteEditorScreen() {
   const isEditing = !!params.id;
   const canSave = text.trim().length > 0 || images.length > 0;
   const hasImages = images.length > 0;
+  const textHasUrl = hasUrl(text);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
@@ -379,7 +380,8 @@ export default function NoteEditorScreen() {
           <Text
             key={index}
             style={styles.linkText}
-            onPress={() => {
+            onPress={(e) => {
+              e.stopPropagation();
               console.log('Opening URL:', part);
               Linking.openURL(part).catch(err => {
                 console.error('Failed to open URL:', err);
@@ -655,6 +657,11 @@ export default function NoteEditorScreen() {
     }
   };
 
+  const handleRichTextPress = () => {
+    console.log('Rich text pressed, focusing input');
+    textInputRef.current?.focus();
+  };
+
   // Show loading state while fetching note data
   if (loadingNote) {
     return (
@@ -724,20 +731,22 @@ export default function NoteEditorScreen() {
       >
         {/* Text Input Section with fixed height and scrolling */}
         <Animated.View entering={FadeIn.duration(600)} style={styles.textInputContainer}>
-          {hasUrl(text) ? (
+          {textHasUrl ? (
             <View style={styles.richTextContainer}>
               <ScrollView 
                 style={styles.textInputScrollView}
                 nestedScrollEnabled={true}
                 showsVerticalScrollIndicator={true}
               >
-                <Text style={styles.richText}>
-                  {renderTextWithLinks(text)}
-                </Text>
+                <Pressable onPress={handleRichTextPress}>
+                  <Text style={styles.richText}>
+                    {renderTextWithLinks(text)}
+                  </Text>
+                </Pressable>
               </ScrollView>
               <TextInput
                 ref={textInputRef}
-                style={[styles.textInput, styles.hiddenInput]}
+                style={[styles.textInput, styles.overlayInput]}
                 placeholder="What's on your mind?"
                 placeholderTextColor={colors.textTertiary}
                 value={text}
@@ -745,6 +754,7 @@ export default function NoteEditorScreen() {
                 multiline
                 autoFocus={!isEditing}
                 scrollEnabled={false}
+                caretHidden={false}
               />
             </View>
           ) : (
@@ -1099,12 +1109,14 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     color: colors.text,
   },
-  hiddenInput: {
+  overlayInput: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    opacity: 0,
+    bottom: 0,
+    color: 'transparent',
+    backgroundColor: 'transparent',
   },
   normalText: {
     color: colors.text,
