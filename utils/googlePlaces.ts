@@ -22,6 +22,99 @@ export interface PlaceResult {
 }
 
 /**
+ * Search for nearby places using Google Places API (Nearby Search)
+ * @param userLocation - User's current location
+ * @param maxResults - Maximum number of results to return (default: 10)
+ * @returns Array of nearby place results
+ */
+export async function searchNearbyPlaces(
+  userLocation: { latitude: number; longitude: number },
+  maxResults: number = 10
+): Promise<PlaceResult[]> {
+  try {
+    console.log('Searching for nearby places at:', userLocation);
+    
+    // Build the request URL for Places API (New) - Nearby Search
+    const baseUrl = 'https://places.googleapis.com/v1/places:searchNearby';
+    
+    const requestBody = {
+      locationRestriction: {
+        circle: {
+          center: {
+            latitude: userLocation.latitude,
+            longitude: userLocation.longitude,
+          },
+          radius: 5000.0, // 5km radius for nearby search
+        },
+      },
+      maxResultCount: maxResults,
+      languageCode: 'en',
+      regionCode: 'AU', // Restrict to Australia
+      rankPreference: 'DISTANCE', // Sort by distance
+    };
+
+    const response = await fetch(baseUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Google Places API error:', response.status, errorText);
+      throw new Error(`Google Places API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('Google Places API nearby response:', data);
+
+    if (!data.places || data.places.length === 0) {
+      console.log('No nearby places found');
+      return [];
+    }
+
+    // Transform the results
+    const results: PlaceResult[] = data.places.map((place: any) => {
+      const latitude = place.location?.latitude || 0;
+      const longitude = place.location?.longitude || 0;
+      
+      const distance = calculateDistance(
+        userLocation.latitude,
+        userLocation.longitude,
+        latitude,
+        longitude
+      );
+
+      return {
+        placeId: place.id,
+        displayName: place.displayName?.text || 'Unknown Place',
+        formattedAddress: place.formattedAddress || '',
+        latitude,
+        longitude,
+        distance,
+      };
+    });
+
+    // Already sorted by distance from API, but ensure it
+    results.sort((a, b) => {
+      const distA = a.distance || Infinity;
+      const distB = b.distance || Infinity;
+      return distA - distB;
+    });
+
+    console.log(`Found ${results.length} nearby places`);
+    return results;
+  } catch (error) {
+    console.error('Error searching nearby places:', error);
+    throw error;
+  }
+}
+
+/**
  * Search for places using Google Places API (Text Search)
  * @param query - The search query
  * @param userLocation - Optional user location for proximity bias

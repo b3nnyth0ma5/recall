@@ -18,7 +18,7 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/utils/supabase';
-import { searchPlaces, PlaceResult, extractShortLocationName, isGooglePlacesConfigured } from '@/utils/googlePlaces';
+import { searchPlaces, searchNearbyPlaces, PlaceResult, extractShortLocationName, isGooglePlacesConfigured } from '@/utils/googlePlaces';
 
 export default function LocationSearchScreen() {
   const router = useRouter();
@@ -26,6 +26,7 @@ export default function LocationSearchScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<PlaceResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingNearby, setLoadingNearby] = useState(false);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [apiConfigured, setApiConfigured] = useState(true);
 
@@ -54,7 +55,12 @@ export default function LocationSearchScreen() {
 
   const performSearch = useCallback(async (searchText: string) => {
     if (!searchText.trim()) {
-      setResults([]);
+      // If search is cleared, reload nearby places
+      if (userLocation) {
+        loadNearbyPlaces(userLocation);
+      } else {
+        setResults([]);
+      }
       return;
     }
 
@@ -83,6 +89,27 @@ export default function LocationSearchScreen() {
     }
   }, [userLocation, apiConfigured]);
 
+  const loadNearbyPlaces = useCallback(async (location: { latitude: number; longitude: number }) => {
+    if (!apiConfigured) {
+      return;
+    }
+
+    try {
+      setLoadingNearby(true);
+      console.log('Loading nearby places for location:', location);
+
+      const places = await searchNearbyPlaces(location);
+      
+      console.log('Nearby places loaded:', places.length);
+      setResults(places);
+    } catch (error) {
+      console.error('Error loading nearby places:', error);
+      setResults([]);
+    } finally {
+      setLoadingNearby(false);
+    }
+  }, [apiConfigured]);
+
   useEffect(() => {
     if (params.query && typeof params.query === 'string') {
       setSearchQuery(params.query);
@@ -98,20 +125,29 @@ export default function LocationSearchScreen() {
 
       return () => clearTimeout(timeoutId);
     } else if (searchQuery.trim().length === 0) {
-      setResults([]);
+      // When search is cleared, reload nearby places
+      if (userLocation) {
+        loadNearbyPlaces(userLocation);
+      } else {
+        setResults([]);
+      }
     }
-  }, [searchQuery, performSearch]);
+  }, [searchQuery, performSearch, loadNearbyPlaces, userLocation]);
 
   const getUserLocation = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
         const currentLocation = await Location.getCurrentPositionAsync({});
-        setUserLocation({
+        const location = {
           latitude: currentLocation.coords.latitude,
           longitude: currentLocation.coords.longitude,
-        });
+        };
+        setUserLocation(location);
         console.log('User location obtained for proximity sorting');
+        
+        // Automatically load nearby places when location is obtained
+        loadNearbyPlaces(location);
       }
     } catch (error) {
       console.error('Error getting user location:', error);
@@ -219,10 +255,12 @@ export default function LocationSearchScreen() {
               </Pressable>
             )}
           </View>
-          {loading && (
+          {(loading || loadingNearby) && (
             <View style={styles.searchingIndicator}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.searchingText}>Searching...</Text>
+              <Text style={styles.searchingText}>
+                {loading ? 'Searching...' : 'Loading nearby places...'}
+              </Text>
             </View>
           )}
         </Animated.View>
@@ -250,14 +288,18 @@ export default function LocationSearchScreen() {
                 </Text>
               </View>
             </Animated.View>
-          ) : loading ? (
+          ) : (loading || loadingNearby) ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>Searching with Google Places...</Text>
+              <Text style={styles.loadingText}>
+                {loading ? 'Searching with Google Places...' : 'Finding nearby places...'}
+              </Text>
             </View>
           ) : results.length > 0 ? (
             <Animated.View entering={FadeInDown.duration(600)}>
-              <Text style={styles.resultsTitle}>Top {results.length} Results</Text>
+              <Text style={styles.resultsTitle}>
+                {searchQuery.trim() ? `Top ${results.length} Results` : `${results.length} Nearby Places`}
+              </Text>
               {results.map((result) => {
                 const shortName = extractShortLocationName(result.formattedAddress, result.displayName);
                 return (
@@ -298,6 +340,14 @@ export default function LocationSearchScreen() {
               <Text style={styles.emptyTitle}>No Results Found</Text>
               <Text style={styles.emptyText}>
                 Try searching with a different location name
+              </Text>
+            </Animated.View>
+          ) : !userLocation ? (
+            <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+              <IconSymbol name="location.fill" size={60} color={colors.textTertiary} />
+              <Text style={styles.emptyTitle}>Getting Your Location</Text>
+              <Text style={styles.emptyText}>
+                Please allow location access to see nearby places
               </Text>
             </Animated.View>
           ) : (
