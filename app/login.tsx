@@ -111,10 +111,10 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Animated.View entering={FadeIn.duration(800)} style={styles.content}>
-          {/* App Icon */}
+          {/* App Icon - Updated to use new brain icon */}
           <View style={styles.iconContainer}>
             <Image
-              source={require('@/assets/images/final_quest_240x240.png')}
+              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
               style={styles.appIcon}
               resizeMode="contain"
             />

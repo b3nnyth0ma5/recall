@@ -5,17 +5,18 @@
     "slug": "Recall",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/final_quest_240x240.png",
+    "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/final_quest_240x240.png",
+      "image": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.Natively",
+      "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "LSApplicationQueriesSchemes": ["comgooglemaps", "maps"]
@@ -24,15 +25,16 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/final_quest_240x240.png",
+        "foregroundImage": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
         "backgroundColor": "#000000"
       },
+      "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "edgeToEdgeEnabled": true,
       "package": "com.anonymous.Natively",
       "versionCode": 1
     },
     "web": {
-      "favicon": "./assets/images/final_quest_240x240.png",
+      "favicon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "bundler": "metro"
     },
     "plugins": [
