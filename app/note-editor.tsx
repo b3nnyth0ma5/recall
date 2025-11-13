@@ -40,6 +40,12 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const IMAGE_CAROUSEL_WIDTH = SCREEN_WIDTH - 32;
 const IMAGE_CAROUSEL_SPACING = 12;
 
+// Helper function to check if text contains URLs - defined outside component
+const hasUrl = (text: string): boolean => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  return urlRegex.test(text);
+};
+
 export default function NoteEditorScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -363,11 +369,6 @@ export default function NoteEditorScreen() {
         },
       ]
     );
-  };
-
-  const hasUrl = (text: string): boolean => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    return urlRegex.test(text);
   };
 
   const renderTextWithLinks = (text: string) => {
