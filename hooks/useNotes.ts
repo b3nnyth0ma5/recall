@@ -12,6 +12,7 @@ export function useNotes() {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [locationInfo, setLocationInfo] = useState<any>(null);
+  const [isDeletingNote, setIsDeletingNote] = useState(false);
   const { user } = useAuth();
 
   const ITEMS_PER_PAGE = 10;
@@ -292,6 +293,7 @@ export function useNotes() {
 
     try {
       console.log('Deleting recall from Supabase:', noteId);
+      setIsDeletingNote(true);
       
       const { data: imagesData } = await supabase
         .from('recall_images')
@@ -320,6 +322,8 @@ export function useNotes() {
     } catch (error) {
       console.error('Error deleting recall:', error);
       throw error;
+    } finally {
+      setIsDeletingNote(false);
     }
   }, [refreshNotes, user]);
 
@@ -470,6 +474,7 @@ export function useNotes() {
     isLoadingMore,
     hasMore,
     locationInfo,
+    isDeletingNote,
     addNote,
     updateNote,
     deleteNote,

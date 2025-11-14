@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
@@ -13,7 +13,7 @@ import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { Note } from '@/types/Note';
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote } = useNotes();
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -317,6 +317,13 @@ export default function HomeScreen() {
             fontSize: 32,
             fontWeight: 'bold',
           },
+          headerLeft: () => (
+            <Image
+              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+              style={styles.headerIcon}
+              resizeMode="contain"
+            />
+          ),
           headerRight: () => (
             <Pressable onPress={handleProfile} style={styles.headerButton}>
               <IconSymbol name="person.circle.fill" size={28} color={colors.text} />
@@ -398,6 +405,20 @@ export default function HomeScreen() {
           <IconSymbol name="plus" size={28} color="#FFFFFF" />
         </Pressable>
       </View>
+
+      {/* Deletion Indicator Modal */}
+      <Modal
+        visible={isDeletingNote}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.deletionModalContainer}>
+          <View style={styles.deletionModalContent}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.deletionModalText}>Deleting note...</Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -464,6 +485,11 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     fontStyle: 'italic',
   },
+  headerIcon: {
+    width: 36,
+    height: 36,
+    marginLeft: 8,
+  },
   headerButton: {
     padding: 8,
     marginRight: 8,
@@ -498,5 +524,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     boxShadow: '0px 4px 16px rgba(255, 107, 53, 0.4)',
     elevation: 8,
+  },
+  deletionModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deletionModalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    gap: 16,
+    minWidth: 200,
+  },
+  deletionModalText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
   },
 });

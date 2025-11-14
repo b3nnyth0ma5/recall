@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
+import ImageOCRDisplay from './ImageOCRDisplay';
 
 interface NoteCardProps {
   note: Note;
@@ -34,6 +35,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [imageLoadingStates, setImageLoadingStates] = useState<{ [key: number]: boolean }>({});
   const [imageErrorStates, setImageErrorStates] = useState<{ [key: number]: boolean }>({});
   const [imageLoadedStates, setImageLoadedStates] = useState<{ [key: number]: boolean }>({});
+  const [showOCRModal, setShowOCRModal] = useState(false);
   const imageScrollRef = useRef<ScrollView>(null);
   const fullScreenScrollRef = useRef<ScrollView>(null);
 
@@ -118,9 +120,8 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   };
 
   const handleTextPress = () => {
-    if (shouldShowToggle()) {
-      setIsExpanded(!isExpanded);
-    }
+    // Open note editor when text is clicked
+    onPress();
   };
 
   const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -175,15 +176,21 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     }
   };
 
+  const handleOCRButtonPress = () => {
+    setShowOCRModal(true);
+  };
+
+  const getCurrentImageId = () => {
+    if (note.imageIds && note.imageIds.length > fullScreenImageIndex) {
+      return note.imageIds[fullScreenImageIndex];
+    }
+    return undefined;
+  };
+
   return (
     <Animated.View entering={FadeIn.duration(600)} style={styles.card}>
       <Pressable onPress={onPress} style={styles.cardContent}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.date}>{formatDateTime(note.created_at)}</Text>
-        </View>
-
-        {/* Text Content */}
+        {/* Text Content - Now clickable to open editor */}
         {note.text && (
           <Pressable onPress={handleTextPress}>
             <Text style={styles.text}>
@@ -255,6 +262,11 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
           </Animated.View>
         )}
 
+        {/* Date/Time - Moved below images, right-aligned */}
+        <View style={styles.dateContainer}>
+          <Text style={styles.date}>{formatDateTime(note.created_at)}</Text>
+        </View>
+
         {/* Location - Now Clickable */}
         {note.location && (
           <Pressable 
@@ -308,6 +320,18 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             ))}
           </ScrollView>
 
+          {/* OCR Button - Bottom Right */}
+          <Pressable
+            style={styles.ocrButton}
+            onPress={handleOCRButtonPress}
+          >
+            <Image
+              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+              style={styles.ocrButtonIcon}
+              resizeMode="contain"
+            />
+          </Pressable>
+
           {note.images && note.images.length > 1 && (
             <>
               <View style={styles.fullScreenPaginationContainer}>
@@ -330,6 +354,40 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
           )}
         </View>
       </Modal>
+
+      {/* OCR Modal */}
+      <Modal
+        visible={showOCRModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowOCRModal(false)}
+      >
+        <View style={styles.ocrModalContainer}>
+          <View style={styles.ocrModalContent}>
+            <View style={styles.ocrModalHeader}>
+              <Text style={styles.ocrModalTitle}>Image Analysis</Text>
+              <Pressable
+                onPress={() => setShowOCRModal(false)}
+                style={styles.ocrModalCloseButton}
+              >
+                <IconSymbol name="xmark" size={24} color={colors.text} />
+              </Pressable>
+            </View>
+            
+            {getCurrentImageId() ? (
+              <ImageOCRDisplay
+                imageId={getCurrentImageId()!}
+                autoLoad={true}
+                compact={false}
+              />
+            ) : (
+              <View style={styles.ocrModalError}>
+                <Text style={styles.ocrModalErrorText}>No image selected</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </Animated.View>
   );
 }
@@ -345,17 +403,6 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     padding: CARD_PADDING,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  date: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    fontWeight: '500',
   },
   text: {
     fontSize: 16,
@@ -375,6 +422,7 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
     marginTop: 4,
+    textAlign: 'right',
   },
   imagesContainer: {
     marginTop: 12,
@@ -435,14 +483,25 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
   },
-  locationContainer: {
+  dateContainer: {
     flexDirection: 'row',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    gap: 6,
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  date: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
   },
   location: {
     fontSize: 14,
@@ -484,9 +543,27 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH,
     height: '100%',
   },
-  fullScreenPaginationContainer: {
+  ocrButton: {
     position: 'absolute',
     bottom: 100,
+    right: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.backgroundSecondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.4)',
+    elevation: 8,
+    zIndex: 10,
+  },
+  ocrButtonIcon: {
+    width: 32,
+    height: 32,
+  },
+  fullScreenPaginationContainer: {
+    position: 'absolute',
+    bottom: 40,
     left: 0,
     right: 0,
     flexDirection: 'row',
@@ -518,5 +595,41 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
+  },
+  ocrModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'flex-end',
+  },
+  ocrModalContent: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    maxHeight: '80%',
+  },
+  ocrModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  ocrModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  ocrModalCloseButton: {
+    padding: 4,
+  },
+  ocrModalError: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  ocrModalErrorText: {
+    fontSize: 16,
+    color: colors.textSecondary,
   },
 });

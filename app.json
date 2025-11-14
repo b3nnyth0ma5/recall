@@ -1,4 +1,3 @@
-
 {
   "expo": {
     "name": "Recall",
@@ -19,7 +18,10 @@
       "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "LSApplicationQueriesSchemes": ["comgooglemaps", "maps"]
+        "LSApplicationQueriesSchemes": [
+          "comgooglemaps",
+          "maps"
+        ]
       },
       "buildNumber": "1.0.0"
     },
