@@ -33,6 +33,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
   const [imageLoadingStates, setImageLoadingStates] = useState<{ [key: number]: boolean }>({});
   const [imageErrorStates, setImageErrorStates] = useState<{ [key: number]: boolean }>({});
+  const [imageLoadedStates, setImageLoadedStates] = useState<{ [key: number]: boolean }>({});
   const imageScrollRef = useRef<ScrollView>(null);
   const fullScreenScrollRef = useRef<ScrollView>(null);
 
@@ -91,16 +92,22 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     console.error('Error loading image at index:', index);
     setImageErrorStates(prev => ({ ...prev, [index]: true }));
     setImageLoadingStates(prev => ({ ...prev, [index]: false }));
+    setImageLoadedStates(prev => ({ ...prev, [index]: false }));
   };
 
   const handleImageLoadStart = (index: number) => {
-    console.log('Image load started at index:', index);
-    setImageLoadingStates(prev => ({ ...prev, [index]: true }));
+    // Only set loading state if the image hasn't been loaded before
+    if (!imageLoadedStates[index]) {
+      console.log('Image load started at index:', index);
+      setImageLoadingStates(prev => ({ ...prev, [index]: true }));
+    }
   };
 
   const handleImageLoad = (index: number) => {
     console.log('Image loaded successfully at index:', index);
+    // Mark as loaded and stop showing loading indicator
     setImageLoadingStates(prev => ({ ...prev, [index]: false }));
+    setImageLoadedStates(prev => ({ ...prev, [index]: true }));
   };
 
   const handleImagePress = () => {
@@ -215,7 +222,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
                   onPress={handleImagePress}
                   style={styles.imageWrapper}
                 >
-                  {imageLoadingStates[index] && !imageErrorStates[index] && (
+                  {imageLoadingStates[index] && !imageErrorStates[index] && !imageLoadedStates[index] && (
                     <View style={styles.imageLoadingContainer}>
                       <ActivityIndicator size="large" color={colors.primary} />
                     </View>
@@ -228,7 +235,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
                   ) : (
                     <Image
                       source={{ uri: imageUrl }}
-                      style={styles.image}
+                      style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
                       resizeMode="cover"
                       onLoadStart={() => handleImageLoadStart(index)}
                       onLoad={() => handleImageLoad(index)}
@@ -382,6 +389,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: colors.cardDark,
+    width: IMAGE_WIDTH,
+    height: IMAGE_HEIGHT,
   },
   image: {
     width: IMAGE_WIDTH,
@@ -393,6 +402,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    width: IMAGE_WIDTH,
+    height: IMAGE_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.cardDark,
