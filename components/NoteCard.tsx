@@ -17,7 +17,7 @@ interface NoteCardProps {
   onImagePress?: () => void;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_PADDING = 16;
 const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 4);
 const IMAGE_HEIGHT = IMAGE_WIDTH * 0.75;
@@ -142,7 +142,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
 
   const handleModalScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
+    const index = Math.round(contentOffsetX / SCREEN_WIDTH);
     if (index !== fullScreenImageIndex && index >= 0 && index < (note.images?.length || 0)) {
       setFullScreenImageIndex(index);
     }
@@ -313,18 +313,17 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           </Pressable>
 
-          {/* Full Screen Image Carousel - Now matches note card carousel */}
+          {/* Full Screen Image Carousel - Now truly full screen */}
           <ScrollView
             ref={fullScreenScrollRef}
             horizontal
-            pagingEnabled={false}
+            pagingEnabled
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.fullScreenScrollContent}
             onScroll={handleModalScroll}
             scrollEventThrottle={16}
-            decelerationRate={0.9}
-            snapToInterval={IMAGE_WIDTH + IMAGE_SPACING}
-            snapToAlignment="start"
+            snapToInterval={SCREEN_WIDTH}
+            decelerationRate="fast"
+            style={styles.fullScreenScrollView}
           >
             {note.images?.map((imageUrl, index) => (
               <View key={`fullscreen-${note.id}-${index}`} style={styles.fullScreenImageWrapper}>
@@ -535,7 +534,7 @@ const styles = StyleSheet.create({
   },
   fullScreenContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    backgroundColor: 'rgba(0, 0, 0, 0.98)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -553,19 +552,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  fullScreenScrollContent: {
-    paddingHorizontal: CARD_PADDING,
+  fullScreenScrollView: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
   },
   fullScreenImageWrapper: {
-    width: IMAGE_WIDTH,
-    height: IMAGE_HEIGHT,
-    marginRight: IMAGE_SPACING,
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
   },
   fullScreenImage: {
-    width: IMAGE_WIDTH,
-    height: IMAGE_HEIGHT,
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
   },
   ocrButton: {
     position: 'absolute',

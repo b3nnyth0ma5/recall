@@ -1219,7 +1219,7 @@ const styles = StyleSheet.create({
   },
   fullScreenContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    backgroundColor: 'rgba(0, 0, 0, 0.98)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1239,17 +1239,17 @@ const styles = StyleSheet.create({
   },
   fullScreenScrollView: {
     width: SCREEN_WIDTH,
-    height: '100%',
+    height: SCREEN_HEIGHT,
   },
   fullScreenImageWrapper: {
     width: SCREEN_WIDTH,
-    height: '100%',
+    height: SCREEN_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
   },
   fullScreenImage: {
     width: SCREEN_WIDTH,
-    height: '100%',
+    height: SCREEN_HEIGHT,
   },
   fullScreenPaginationContainer: {
     position: 'absolute',
