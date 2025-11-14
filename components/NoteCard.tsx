@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, Modal, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import Animated, { 
   FadeIn, 
   FadeInDown, 
@@ -9,7 +9,7 @@ import { format } from 'date-fns';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
-import ImageOCRDisplay from './ImageOCRDisplay';
+import { FullScreenImage } from './FullScreenImage';
 
 interface NoteCardProps {
   note: Note;
@@ -17,7 +17,7 @@ interface NoteCardProps {
   onImagePress?: () => void;
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 16;
 const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 4);
 const IMAGE_HEIGHT = IMAGE_WIDTH * 0.75;
@@ -36,9 +36,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [imageLoadingStates, setImageLoadingStates] = useState<{ [key: number]: boolean }>({});
   const [imageErrorStates, setImageErrorStates] = useState<{ [key: number]: boolean }>({});
   const [imageLoadedStates, setImageLoadedStates] = useState<{ [key: number]: boolean }>({});
-  const [showOCRModal, setShowOCRModal] = useState(false);
   const imageScrollRef = useRef<ScrollView>(null);
-  const fullScreenScrollRef = useRef<ScrollView>(null);
 
   const formatDateTime = (dateString: string) => {
     try {
@@ -113,7 +111,8 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     setImageLoadedStates(prev => ({ ...prev, [index]: true }));
   };
 
-  const handleImagePress = () => {
+  const handleImagePress = (index: number) => {
+    setFullScreenImageIndex(index);
     setShowFullScreenImage(true);
     if (onImagePress) {
       onImagePress();
@@ -137,14 +136,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
     if (index >= 0 && index < (note.images?.length || 0)) {
       // Update current image index if needed
-    }
-  };
-
-  const handleModalScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / SCREEN_WIDTH);
-    if (index !== fullScreenImageIndex && index >= 0 && index < (note.images?.length || 0)) {
-      setFullScreenImageIndex(index);
     }
   };
 
@@ -182,18 +173,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     } catch (error) {
       console.error('Error opening maps:', error);
     }
-  };
-
-  const handleOCRButtonPress = () => {
-    console.log('OCR button pressed');
-    setShowOCRModal(true);
-  };
-
-  const getCurrentImageId = () => {
-    if (note.imageIds && note.imageIds.length > fullScreenImageIndex) {
-      return note.imageIds[fullScreenImageIndex];
-    }
-    return undefined;
   };
 
   return (
@@ -241,7 +220,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
               {note.images.map((imageUrl, index) => (
                 <Pressable 
                   key={`${note.id}-image-${index}`}
-                  onPress={handleImagePress}
+                  onPress={() => handleImagePress(index)}
                   style={styles.imageWrapper}
                 >
                   {imageLoadingStates[index] && !imageErrorStates[index] && !imageLoadedStates[index] && (
@@ -295,117 +274,16 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
         )}
       </Pressable>
 
-      {/* Full Screen Image Modal */}
-      <Modal
-        visible={showFullScreenImage}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowFullScreenImage(false)}
-      >
-        <View style={styles.fullScreenContainer}>
-          <Pressable 
-            style={styles.fullScreenCloseButton}
-            onPress={() => setShowFullScreenImage(false)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <View style={styles.closeButtonCircle}>
-              <IconSymbol name="xmark" size={24} color="#FFFFFF" />
-            </View>
-          </Pressable>
-
-          {/* Full Screen Image Carousel - Now truly full screen */}
-          <ScrollView
-            ref={fullScreenScrollRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onScroll={handleModalScroll}
-            scrollEventThrottle={16}
-            snapToInterval={SCREEN_WIDTH}
-            decelerationRate="fast"
-            style={styles.fullScreenScrollView}
-          >
-            {note.images?.map((imageUrl, index) => (
-              <View key={`fullscreen-${note.id}-${index}`} style={styles.fullScreenImageWrapper}>
-                <Image
-                  source={{ uri: imageUrl }}
-                  style={styles.fullScreenImage}
-                  resizeMode="contain"
-                />
-              </View>
-            ))}
-          </ScrollView>
-
-          {/* OCR Button - Bottom Right with primary accent border */}
-          <Pressable
-            style={styles.ocrButton}
-            onPress={handleOCRButtonPress}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          >
-            <Image
-              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-              style={styles.ocrButtonIcon}
-              resizeMode="contain"
-            />
-          </Pressable>
-
-          {note.images && note.images.length > 1 && (
-            <>
-              <View style={styles.fullScreenPaginationContainer}>
-                {note.images.map((_, index) => (
-                  <View
-                    key={index}
-                    style={[
-                      styles.fullScreenPaginationDot,
-                      fullScreenImageIndex === index && styles.fullScreenPaginationDotActive,
-                    ]}
-                  />
-                ))}
-              </View>
-              <View style={styles.fullScreenCounterBadge}>
-                <Text style={styles.fullScreenCounterText}>
-                  {fullScreenImageIndex + 1} / {note.images.length}
-                </Text>
-              </View>
-            </>
-          )}
-        </View>
-      </Modal>
-
-      {/* OCR Modal */}
-      <Modal
-        visible={showOCRModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowOCRModal(false)}
-      >
-        <View style={styles.ocrModalContainer}>
-          <View style={styles.ocrModalContent}>
-            <View style={styles.ocrModalHeader}>
-              <Text style={styles.ocrModalTitle}>Image Analysis</Text>
-              <Pressable
-                onPress={() => setShowOCRModal(false)}
-                style={styles.ocrModalCloseButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <IconSymbol name="xmark" size={24} color={colors.text} />
-              </Pressable>
-            </View>
-            
-            {getCurrentImageId() ? (
-              <ImageOCRDisplay
-                imageId={getCurrentImageId()!}
-                autoLoad={true}
-                compact={false}
-              />
-            ) : (
-              <View style={styles.ocrModalError}>
-                <Text style={styles.ocrModalErrorText}>No image selected</Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
+      {/* Full Screen Image Component */}
+      {note.images && note.images.length > 0 && (
+        <FullScreenImage
+          visible={showFullScreenImage}
+          images={note.images}
+          imageIds={note.imageIds}
+          initialIndex={fullScreenImageIndex}
+          onClose={() => setShowFullScreenImage(false)}
+        />
+      )}
     </Animated.View>
   );
 }
@@ -531,130 +409,5 @@ const styles = StyleSheet.create({
     color: colors.primary,
     flex: 1,
     fontWeight: '500',
-  },
-  fullScreenContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.98)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullScreenCloseButton: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    zIndex: 10,
-  },
-  closeButtonCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullScreenScrollView: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-  },
-  fullScreenImageWrapper: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullScreenImage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-  },
-  ocrButton: {
-    position: 'absolute',
-    bottom: 120,
-    right: 24,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.backgroundSecondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.6)',
-    elevation: 12,
-    borderWidth: 3,
-    borderColor: colors.primary,
-    zIndex: 100,
-  },
-  ocrButtonIcon: {
-    width: 36,
-    height: 36,
-  },
-  fullScreenPaginationContainer: {
-    position: 'absolute',
-    bottom: 40,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  fullScreenPaginationDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-  },
-  fullScreenPaginationDotActive: {
-    width: 28,
-    backgroundColor: '#FFFFFF',
-  },
-  fullScreenCounterBadge: {
-    position: 'absolute',
-    top: 50,
-    left: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 24,
-    zIndex: 10,
-  },
-  fullScreenCounterText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  ocrModalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'flex-end',
-  },
-  ocrModalContent: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    maxHeight: '80%',
-  },
-  ocrModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  ocrModalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  ocrModalCloseButton: {
-    padding: 4,
-  },
-  ocrModalError: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  ocrModalErrorText: {
-    fontSize: 16,
-    color: colors.textSecondary,
   },
 });

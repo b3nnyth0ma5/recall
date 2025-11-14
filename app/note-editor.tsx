@@ -25,6 +25,7 @@ import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
+import { FullScreenImage } from '@/components/FullScreenImage';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,7 +37,7 @@ interface ImageData {
   contentType: string;
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const IMAGE_CAROUSEL_WIDTH = SCREEN_WIDTH - 32;
 const IMAGE_CAROUSEL_SPACING = 12;
 
@@ -75,7 +76,6 @@ export default function NoteEditorScreen() {
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
-  const fullScreenScrollRef = useRef<ScrollView>(null);
 
   const isEditing = !!params.id;
   const canSave = text.trim().length > 0 || images.length > 0;
@@ -640,14 +640,6 @@ export default function NoteEditorScreen() {
     setShowFullScreenImage(true);
   };
 
-  const handleFullScreenScroll = (event: any) => {
-    const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / SCREEN_WIDTH);
-    if (index !== fullScreenImageIndex && index >= 0 && index < images.length) {
-      setFullScreenImageIndex(index);
-    }
-  };
-
   const handleRichTextPress = () => {
     console.log('Rich text pressed, focusing input');
     textInputRef.current?.focus();
@@ -894,71 +886,16 @@ export default function NoteEditorScreen() {
         )}
       </View>
 
-      {/* Full Screen Image Modal */}
-      <Modal
-        visible={showFullScreenImage}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowFullScreenImage(false)}
-      >
-        <View style={styles.fullScreenContainer}>
-          <Pressable 
-            style={styles.fullScreenCloseButton}
-            onPress={() => setShowFullScreenImage(false)}
-          >
-            <View style={styles.closeButtonCircle}>
-              <IconSymbol name="xmark" size={24} color="#FFFFFF" />
-            </View>
-          </Pressable>
-
-          <ScrollView
-            ref={fullScreenScrollRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onScroll={handleFullScreenScroll}
-            scrollEventThrottle={16}
-            snapToInterval={SCREEN_WIDTH}
-            decelerationRate="fast"
-            style={styles.fullScreenScrollView}
-            contentOffset={{ x: fullScreenImageIndex * SCREEN_WIDTH, y: 0 }}
-          >
-            {images.map((image, index) => (
-              <View key={`fullscreen-${image.id || 'new'}-${index}`} style={styles.fullScreenImageWrapper}>
-                <Image
-                  source={{ uri: image.uri }}
-                  style={styles.fullScreenImage}
-                  resizeMode="contain"
-                />
-              </View>
-            ))}
-          </ScrollView>
-
-          {/* Pagination dots */}
-          {images.length > 1 && (
-            <View style={styles.fullScreenPaginationContainer}>
-              {images.map((_, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.fullScreenPaginationDot,
-                    fullScreenImageIndex === index && styles.fullScreenPaginationDotActive,
-                  ]}
-                />
-              ))}
-            </View>
-          )}
-
-          {/* Counter badge */}
-          {images.length > 1 && (
-            <View style={styles.fullScreenCounterBadge}>
-              <Text style={styles.fullScreenCounterText}>
-                {fullScreenImageIndex + 1} / {images.length}
-              </Text>
-            </View>
-          )}
-        </View>
-      </Modal>
+      {/* Full Screen Image Component */}
+      {hasImages && (
+        <FullScreenImage
+          visible={showFullScreenImage}
+          images={images.map(img => img.uri)}
+          imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
+          initialIndex={fullScreenImageIndex}
+          onClose={() => setShowFullScreenImage(false)}
+        />
+      )}
 
       {/* Location Modal */}
       <Modal
@@ -1216,75 +1153,6 @@ const styles = StyleSheet.create({
   },
   toolbarButton: {
     padding: 8,
-  },
-  fullScreenContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.98)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullScreenCloseButton: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    zIndex: 10,
-  },
-  closeButtonCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullScreenScrollView: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-  },
-  fullScreenImageWrapper: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullScreenImage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-  },
-  fullScreenPaginationContainer: {
-    position: 'absolute',
-    bottom: 100,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  fullScreenPaginationDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-  },
-  fullScreenPaginationDotActive: {
-    width: 28,
-    backgroundColor: '#FFFFFF',
-  },
-  fullScreenCounterBadge: {
-    position: 'absolute',
-    top: 50,
-    left: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 24,
-    zIndex: 10,
-  },
-  fullScreenCounterText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
