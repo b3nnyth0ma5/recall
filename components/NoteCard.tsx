@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Alert } from 'react-native';
 import Animated, { 
   FadeIn, 
   FadeInDown, 
@@ -10,6 +10,7 @@ import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
 import { FullScreenImage } from './FullScreenImage';
 import { TimeAgo } from './TimeAgo';
+import { shareRecall } from '@/utils/shareRecall';
 
 interface NoteCardProps {
   note: Note;
@@ -36,6 +37,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [imageLoadingStates, setImageLoadingStates] = useState<{ [key: number]: boolean }>({});
   const [imageErrorStates, setImageErrorStates] = useState<{ [key: number]: boolean }>({});
   const [imageLoadedStates, setImageLoadedStates] = useState<{ [key: number]: boolean }>({});
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const imageScrollRef = useRef<ScrollView>(null);
 
   const renderTextWithLinks = (text: string) => {
@@ -125,7 +127,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
     if (index >= 0 && index < (note.images?.length || 0)) {
-      // Update current image index if needed
+      setCurrentImageIndex(index);
     }
   };
 
@@ -162,6 +164,17 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
       }
     } catch (error) {
       console.error('Error opening maps:', error);
+    }
+  };
+
+  const handleSharePress = async () => {
+    try {
+      console.log('Share button pressed for note:', note.id);
+      console.log('Current image index:', currentImageIndex);
+      await shareRecall(note, currentImageIndex);
+    } catch (error) {
+      console.error('Error sharing recall:', error);
+      Alert.alert('Error', 'Failed to share recall. Please try again.');
     }
   };
 
@@ -245,6 +258,22 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             )}
           </Animated.View>
         )}
+
+        {/* Share Icon - Right-aligned, above location and time */}
+        <View style={styles.shareContainer}>
+          <Pressable 
+            onPress={handleSharePress}
+            style={styles.shareButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <IconSymbol 
+              ios_icon_name="square.and.arrow.up" 
+              android_material_icon_name="share" 
+              size={20} 
+              color={colors.primary} 
+            />
+          </Pressable>
+        </View>
 
         {/* Location and Time on the same line */}
         <View style={styles.locationTimeContainer}>
@@ -382,11 +411,23 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
   },
+  shareContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  shareButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: colors.cardDark,
+  },
   locationTimeContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 8,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
@@ -396,7 +437,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    flex: 0.75,
+    flex: 0.70,
     minWidth: 0,
   },
   location: {
@@ -406,7 +447,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   timeAgoWrapper: {
-    flex: 0.25,
+    flex: 0.30,
     alignItems: 'flex-end',
     justifyContent: 'center',
   },

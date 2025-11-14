@@ -80,6 +80,7 @@ export default function NoteEditorScreen() {
   const imageScrollRef = useRef<ScrollView>(null);
 
   const isEditing = !!params.id;
+  const isSharedRecall = params.isSharedRecall === 'true';
   const canSave = text.trim().length > 0 || images.length > 0;
   const hasImages = images.length > 0;
   const textHasUrl = hasUrl(text);
@@ -99,6 +100,49 @@ export default function NoteEditorScreen() {
       keyboardDidShowListener.remove();
     };
   }, []);
+
+  // Handle shared recall data
+  useEffect(() => {
+    if (isSharedRecall && params.sharedText) {
+      console.log('Loading shared recall data');
+      
+      // Set text
+      setText(params.sharedText as string);
+      
+      // Set location data
+      if (params.selectedLatitude && params.selectedLongitude) {
+        const latitude = parseFloat(params.selectedLatitude as string);
+        const longitude = parseFloat(params.selectedLongitude as string);
+        setLocation({ latitude, longitude });
+      }
+      
+      if (params.selectedLocationName) {
+        setLocationName(params.selectedLocationName as string);
+      }
+      
+      if (params.selectedPrimaryType) {
+        setLocationPrimaryType(params.selectedPrimaryType as string);
+      }
+      
+      // Load shared images
+      if (params.sharedImages) {
+        try {
+          const imageUrls = JSON.parse(params.sharedImages as string) as string[];
+          console.log('Loading shared images:', imageUrls);
+          
+          const sharedImages: ImageData[] = imageUrls.map((url, index) => ({
+            uri: url,
+            contentType: 'image/jpeg',
+          }));
+          
+          setImages(sharedImages);
+          console.log(`Loaded ${sharedImages.length} shared images`);
+        } catch (error) {
+          console.error('Error parsing shared images:', error);
+        }
+      }
+    }
+  }, [isSharedRecall, params.sharedText, params.sharedImages, params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType]);
 
   // Load note data directly from Supabase when editing
   useEffect(() => {
@@ -679,7 +723,7 @@ export default function NoteEditorScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: isEditing ? 'Edit Recall' : 'New Recall',
+          headerTitle: isSharedRecall ? 'Shared Recall' : (isEditing ? 'Edit Recall' : 'New Recall'),
           headerStyle: {
             backgroundColor: colors.background,
           },

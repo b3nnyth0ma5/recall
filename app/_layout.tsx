@@ -6,8 +6,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Linking from 'expo-linking';
 import { colors } from '@/styles/commonStyles';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { isSharedRecallUrl } from '@/utils/shareRecall';
 import 'react-native-reanimated';
 
 // Import CSS for web using dynamic import
@@ -49,6 +51,40 @@ function RootLayoutNav() {
     }
   }, [session, loading, segments, router]);
 
+  // Handle deep links for shared recalls
+  useEffect(() => {
+    const handleDeepLink = (event: { url: string }) => {
+      console.log('Deep link received:', event.url);
+      
+      if (isSharedRecallUrl(event.url)) {
+        console.log('Shared recall deep link detected');
+        const parsed = Linking.parse(event.url);
+        
+        if (parsed.queryParams?.data) {
+          router.push({
+            pathname: '/shared-recall',
+            params: { data: parsed.queryParams.data as string },
+          });
+        }
+      }
+    };
+
+    // Handle initial URL (app opened from link)
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        console.log('Initial URL:', url);
+        handleDeepLink({ url });
+      }
+    });
+
+    // Handle URL changes (app already open)
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [router]);
+
   return (
     <Stack
       screenOptions={{
@@ -74,6 +110,13 @@ function RootLayoutNav() {
       />
       <Stack.Screen
         name="location-search"
+        options={{
+          presentation: 'card',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="shared-recall"
         options={{
           presentation: 'card',
           headerShown: false,

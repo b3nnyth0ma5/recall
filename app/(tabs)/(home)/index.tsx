@@ -316,6 +316,7 @@ export default function HomeScreen() {
           headerTitleStyle: {
             fontSize: 32,
             fontWeight: 'bold',
+						fontColor: colors.primary,
           },
           headerLeft: () => (
             <Image
