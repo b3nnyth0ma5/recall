@@ -124,6 +124,13 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     onPress();
   };
 
+  const handleToggleExpand = (e: any) => {
+    // Stop propagation to prevent opening the note editor
+    e.stopPropagation();
+    console.log('Toggle expand clicked, current state:', isExpanded);
+    setIsExpanded(!isExpanded);
+  };
+
   const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / (IMAGE_WIDTH + 12));
@@ -177,6 +184,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   };
 
   const handleOCRButtonPress = () => {
+    console.log('OCR button pressed');
     setShowOCRModal(true);
   };
 
@@ -201,9 +209,15 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
               )}
             </Text>
             {shouldShowToggle() && (
-              <Text style={styles.toggleText}>
-                {isExpanded ? 'Show less' : 'Show more'}
-              </Text>
+              <Pressable 
+                onPress={handleToggleExpand}
+                style={styles.toggleContainer}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Text style={styles.toggleText}>
+                  {isExpanded ? 'Show less' : 'Show more'}
+                </Text>
+              </Pressable>
             )}
           </Pressable>
         )}
@@ -291,6 +305,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
           <Pressable 
             style={styles.fullScreenCloseButton}
             onPress={() => setShowFullScreenImage(false)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <View style={styles.closeButtonCircle}>
               <IconSymbol name="xmark" size={24} color="#FFFFFF" />
@@ -320,17 +335,20 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             ))}
           </ScrollView>
 
-          {/* OCR Button - Bottom Right */}
-          <Pressable
-            style={styles.ocrButton}
-            onPress={handleOCRButtonPress}
-          >
-            <Image
-              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-              style={styles.ocrButtonIcon}
-              resizeMode="contain"
-            />
-          </Pressable>
+          {/* OCR Button - Bottom Right with better positioning and touch area */}
+          <View style={styles.ocrButtonContainer} pointerEvents="box-none">
+            <Pressable
+              style={styles.ocrButton}
+              onPress={handleOCRButtonPress}
+              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+            >
+              <Image
+                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+                style={styles.ocrButtonIcon}
+                resizeMode="contain"
+              />
+            </Pressable>
+          </View>
 
           {note.images && note.images.length > 1 && (
             <>
@@ -369,6 +387,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
               <Pressable
                 onPress={() => setShowOCRModal(false)}
                 style={styles.ocrModalCloseButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <IconSymbol name="xmark" size={24} color={colors.text} />
               </Pressable>
@@ -417,12 +436,17 @@ const styles = StyleSheet.create({
     color: colors.primary,
     textDecorationLine: 'underline',
   },
+  toggleContainer: {
+    alignSelf: 'flex-end',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    marginTop: 4,
+    zIndex: 10,
+  },
   toggleText: {
     fontSize: 14,
     color: colors.primary,
     fontWeight: '600',
-    marginTop: 4,
-    textAlign: 'right',
   },
   imagesContainer: {
     marginTop: 12,
@@ -543,23 +567,27 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH,
     height: '100%',
   },
-  ocrButton: {
+  ocrButtonContainer: {
     position: 'absolute',
-    bottom: 100,
+    bottom: 120,
     right: 24,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    zIndex: 100,
+  },
+  ocrButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: colors.backgroundSecondary,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.4)',
-    elevation: 8,
-    zIndex: 10,
+    boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.6)',
+    elevation: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   ocrButtonIcon: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
   },
   fullScreenPaginationContainer: {
     position: 'absolute',

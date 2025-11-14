@@ -312,7 +312,7 @@ export default function HomeScreen() {
             backgroundColor: colors.background,
           },
           headerTintColor: colors.text,
-          headerTitleAlign: 'left',
+          headerTitleAlign: 'center',
           headerTitleStyle: {
             fontSize: 32,
             fontWeight: 'bold',
@@ -326,7 +326,7 @@ export default function HomeScreen() {
           ),
           headerRight: () => (
             <Pressable onPress={handleProfile} style={styles.headerButton}>
-              <IconSymbol name="person.circle.fill" size={28} color={colors.text} />
+              <IconSymbol name="person.circle.fill" size={32} color={colors.text} />
             </Pressable>
           ),
         }}
