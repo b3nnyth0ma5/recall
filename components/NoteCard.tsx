@@ -93,7 +93,13 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     setImageLoadingStates(prev => ({ ...prev, [index]: false }));
   };
 
+  const handleImageLoadStart = (index: number) => {
+    console.log('Image load started at index:', index);
+    setImageLoadingStates(prev => ({ ...prev, [index]: true }));
+  };
+
   const handleImageLoad = (index: number) => {
+    console.log('Image loaded successfully at index:', index);
     setImageLoadingStates(prev => ({ ...prev, [index]: false }));
   };
 
@@ -142,7 +148,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
       // If we have a location name, include it in the query for better context
       if (locationName) {
         const encodedLocationName = encodeURIComponent(locationName);
-        universalUrl = `https://www.google.com/maps/search/?api=1&query=${encodedLocationName}&query_place_id=${latitude},${longitude}`;
+        universalUrl = `https://www.google.com/maps/search/?api=1&query=${encodedLocationName}+${latitude},${longitude}`;
       }
       
       console.log('Opening maps with URL:', universalUrl);
@@ -209,7 +215,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
                   onPress={handleImagePress}
                   style={styles.imageWrapper}
                 >
-                  {imageLoadingStates[index] && (
+                  {imageLoadingStates[index] && !imageErrorStates[index] && (
                     <View style={styles.imageLoadingContainer}>
                       <ActivityIndicator size="large" color={colors.primary} />
                     </View>
@@ -224,7 +230,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
                       source={{ uri: imageUrl }}
                       style={styles.image}
                       resizeMode="cover"
-                      onLoadStart={() => setImageLoadingStates(prev => ({ ...prev, [index]: true }))}
+                      onLoadStart={() => handleImageLoadStart(index)}
                       onLoad={() => handleImageLoad(index)}
                       onError={() => handleImageError(index)}
                     />
@@ -390,6 +396,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.cardDark,
+    zIndex: 1,
   },
   imageErrorContainer: {
     width: IMAGE_WIDTH,

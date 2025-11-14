@@ -238,13 +238,15 @@ export async function reverseGeocodeGoogle(
 
     if (!response.ok) {
       console.error('Google Geocoding API error:', response.status);
-      throw new Error(`Google Geocoding API error: ${response.status}`);
+      const errorText = await response.text();
+      console.error('Error details:', errorText);
+      return 'Unknown Location';
     }
 
     const data = await response.json();
 
     if (data.status !== 'OK' || !data.results || data.results.length === 0) {
-      console.log('No results from reverse geocoding');
+      console.log('No results from reverse geocoding, status:', data.status);
       return 'Unknown Location';
     }
 
@@ -327,6 +329,10 @@ export async function reverseGeocodeGoogle(
     return 'Unknown Location';
   } catch (error) {
     console.error('Error in reverse geocoding:', error);
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+    }
     return 'Unknown Location';
   }
 }

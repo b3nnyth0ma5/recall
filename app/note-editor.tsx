@@ -404,19 +404,27 @@ export default function NoteEditorScreen() {
     }
 
     const { latitude, longitude } = location;
+    const formattedLocationName = locationName || '';
     
     try {
-      // Use universal URL format that works on all platforms
-      const universalUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+      // Use universal URL format with location name for better context
+      let universalUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+      
+      // If we have a location name, include it in the query for better context
+      if (formattedLocationName) {
+        const encodedLocationName = encodeURIComponent(formattedLocationName);
+        universalUrl = `https://www.google.com/maps/search/?api=1&query=${encodedLocationName}+${latitude},${longitude}`;
+      }
       
       console.log('Opening maps with URL:', universalUrl);
+      console.log('Location name:', formattedLocationName);
+      console.log('Coordinates:', { latitude, longitude });
       
-      // Check if we can open the URL
       const canOpen = await Linking.canOpenURL(universalUrl);
       
       if (canOpen) {
         await Linking.openURL(universalUrl);
-        console.log('Successfully opened maps');
+        console.log('Successfully opened maps with location:', formattedLocationName);
       } else {
         console.error('Cannot open maps URL');
         Alert.alert('Error', 'Unable to open maps on this device');
