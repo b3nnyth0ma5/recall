@@ -1,14 +1,14 @@
 
 import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, Modal, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
-import { colors } from '@/styles/commonStyles';
-import { IconSymbol } from './IconSymbol';
-import { Note } from '@/types/Note';
-import { format } from 'date-fns';
 import Animated, { 
   FadeIn, 
   FadeInDown, 
 } from 'react-native-reanimated';
+import { format } from 'date-fns';
+import { colors } from '@/styles/commonStyles';
+import { Note } from '@/types/Note';
+import { IconSymbol } from './IconSymbol';
 
 interface NoteCardProps {
   note: Note;
@@ -17,33 +17,33 @@ interface NoteCardProps {
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_PADDING = 4;
-const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 2);
-const IMAGE_HEIGHT = 400;
+const CARD_PADDING = 16;
+const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 4);
+const IMAGE_HEIGHT = IMAGE_WIDTH * 0.75;
+
+// Helper function to check if text contains URLs
+const hasUrl = (text: string): boolean => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  return urlRegex.test(text);
+};
 
 export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [showFullText, setShowFullText] = useState(false);
-  const [imageErrors, setImageErrors] = useState<{ [key: number]: boolean }>({});
-  const [showImageModal, setShowImageModal] = useState(false);
-  const [modalImageIndex, setModalImageIndex] = useState(0);
-  const [loadedImages, setLoadedImages] = useState<{ [key: number]: boolean }>({});
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showFullScreenImage, setShowFullScreenImage] = useState(false);
+  const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
+  const [imageLoadingStates, setImageLoadingStates] = useState<{ [key: number]: boolean }>({});
+  const [imageErrorStates, setImageErrorStates] = useState<{ [key: number]: boolean }>({});
   const imageScrollRef = useRef<ScrollView>(null);
-  const modalScrollRef = useRef<ScrollView>(null);
+  const fullScreenScrollRef = useRef<ScrollView>(null);
 
   const formatDateTime = (dateString: string) => {
     try {
       const date = new Date(dateString);
-      return format(date, 'MMM d, yyyy \'at\' HH:mm');
+      return format(date, 'MMM d, yyyy • h:mm a');
     } catch (error) {
       console.error('Error formatting date:', error);
-      return '';
+      return dateString;
     }
-  };
-
-  const hasUrl = (text: string): boolean => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    return urlRegex.test(text);
   };
 
   const renderTextWithLinks = (text: string) => {
@@ -56,7 +56,8 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
           <Text
             key={index}
             style={styles.linkText}
-            onPress={() => {
+            onPress={(e) => {
+              e.stopPropagation();
               console.log('Opening URL:', part);
               Linking.openURL(part).catch(err => {
                 console.error('Failed to open URL:', err);
@@ -67,194 +68,204 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
           </Text>
         );
       }
-      return <Text key={index}>{part}</Text>;
+      return <Text key={index} style={styles.normalText}>{part}</Text>;
     });
   };
 
   const getPreviewText = () => {
-    if (!note.text) return '';
-    const lines = note.text.split('\n');
-    const maxLines = hasUrl(note.text) ? 4 : 3;
-    const maxChars = hasUrl(note.text) ? 200 : 125;
-    
-    if (lines.length <= maxLines && note.text.length <= maxChars) {
+    if (!note.text) {
+      return '';
+    }
+    const maxLength = 150;
+    if (note.text.length <= maxLength) {
       return note.text;
     }
-    
-    if (showFullText) {
-      return note.text;
-    }
-    
-    const preview = lines.slice(0, maxLines).join('\n');
-    return preview.length > maxChars ? preview.substring(0, maxChars) + '...' : preview;
+    return note.text.substring(0, maxLength) + '...';
   };
 
   const shouldShowToggle = () => {
-    if (!note.text) return false;
-    const lines = note.text.split('\n');
-    const maxLines = hasUrl(note.text) ? 4 : 3;
-    const maxChars = hasUrl(note.text) ? 200 : 125;
-    return lines.length > maxLines || note.text.length > maxChars;
+    return note.text && note.text.length > 150;
   };
 
   const handleImageError = (index: number) => {
-    console.error(`Error loading image at index ${index} for note ${note.id}`);
-    console.error('Image URL:', note.images?.[index]);
-    setImageErrors(prev => ({ ...prev, [index]: true }));
+    console.error('Error loading image at index:', index);
+    setImageErrorStates(prev => ({ ...prev, [index]: true }));
+    setImageLoadingStates(prev => ({ ...prev, [index]: false }));
   };
 
   const handleImageLoad = (index: number) => {
-    console.log(`Image ${index} loaded successfully for note ${note.id}`);
-    setLoadedImages(prev => ({ ...prev, [index]: true }));
+    setImageLoadingStates(prev => ({ ...prev, [index]: false }));
   };
 
   const handleImagePress = () => {
-    setModalImageIndex(currentImageIndex);
-    setShowImageModal(true);
+    setShowFullScreenImage(true);
     if (onImagePress) {
       onImagePress();
     }
   };
 
   const handleTextPress = () => {
-    onPress();
+    if (shouldShowToggle()) {
+      setIsExpanded(!isExpanded);
+    }
   };
 
   const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / IMAGE_WIDTH);
-    if (index !== currentImageIndex && index >= 0 && index < allImages.length) {
-      setCurrentImageIndex(index);
-      console.log('Image carousel changed to index:', index);
+    const index = Math.round(contentOffsetX / (IMAGE_WIDTH + 12));
+    if (index >= 0 && index < (note.images?.length || 0)) {
+      // Update current image index if needed
     }
   };
 
   const handleModalScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / SCREEN_WIDTH);
-    if (index !== modalImageIndex && index >= 0 && index < allImages.length) {
-      setModalImageIndex(index);
-      console.log('Modal carousel changed to index:', index);
+    if (index !== fullScreenImageIndex && index >= 0 && index < (note.images?.length || 0)) {
+      setFullScreenImageIndex(index);
     }
   };
 
-  const allImages = note.images || [];
-  const validImages = allImages.filter((_, index) => !imageErrors[index]);
-  const hasValidImages = validImages.length > 0;
+  const handleLocationPress = async () => {
+    if (!note.latitude || !note.longitude) {
+      console.log('No location coordinates available');
+      return;
+    }
+
+    const { latitude, longitude } = note;
+    const locationName = note.location || '';
+    
+    try {
+      // Use universal URL format with location name for better context
+      let universalUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+      
+      // If we have a location name, include it in the query for better context
+      if (locationName) {
+        const encodedLocationName = encodeURIComponent(locationName);
+        universalUrl = `https://www.google.com/maps/search/?api=1&query=${encodedLocationName}&query_place_id=${latitude},${longitude}`;
+      }
+      
+      console.log('Opening maps with URL:', universalUrl);
+      console.log('Location name:', locationName);
+      console.log('Coordinates:', { latitude, longitude });
+      
+      const canOpen = await Linking.canOpenURL(universalUrl);
+      
+      if (canOpen) {
+        await Linking.openURL(universalUrl);
+        console.log('Successfully opened maps with location:', locationName);
+      } else {
+        console.error('Cannot open maps URL');
+      }
+    } catch (error) {
+      console.error('Error opening maps:', error);
+    }
+  };
 
   return (
-    <>
-      <Animated.View entering={FadeInDown.duration(400)} style={styles.container}>
-        {hasValidImages && (
-          <Pressable onPress={handleImagePress} style={styles.imageContainer}>
+    <Animated.View entering={FadeIn.duration(600)} style={styles.card}>
+      <Pressable onPress={onPress} style={styles.cardContent}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.date}>{formatDateTime(note.created_at)}</Text>
+        </View>
+
+        {/* Text Content */}
+        {note.text && (
+          <Pressable onPress={handleTextPress}>
+            <Text style={styles.text}>
+              {hasUrl(note.text) ? (
+                renderTextWithLinks(isExpanded ? note.text : getPreviewText())
+              ) : (
+                isExpanded ? note.text : getPreviewText()
+              )}
+            </Text>
+            {shouldShowToggle() && (
+              <Text style={styles.toggleText}>
+                {isExpanded ? 'Show less' : 'Show more'}
+              </Text>
+            )}
+          </Pressable>
+        )}
+
+        {/* Images */}
+        {note.images && note.images.length > 0 && (
+          <Animated.View entering={FadeInDown.duration(600).delay(200)} style={styles.imagesContainer}>
             <ScrollView
               ref={imageScrollRef}
               horizontal
               pagingEnabled={false}
               showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.imagesScrollContent}
               onScroll={handleImageScroll}
               scrollEventThrottle={16}
               decelerationRate={0.9}
-              snapToInterval={IMAGE_WIDTH}
+              snapToInterval={IMAGE_WIDTH + 12}
               snapToAlignment="start"
-              contentContainerStyle={styles.imageScrollContent}
             >
-              {allImages.map((imageUri, index) => {
-                if (imageErrors[index]) {
-                  return null;
-                }
-
-                return (
-                  <View key={`image-${index}`} style={styles.imageWrapper}>
-                    {!loadedImages[index] && (
-                      <View style={styles.imagePlaceholder}>
-                        <ActivityIndicator size="large" color={colors.primary} />
-                      </View>
-                    )}
+              {note.images.map((imageUrl, index) => (
+                <Pressable 
+                  key={`${note.id}-image-${index}`}
+                  onPress={handleImagePress}
+                  style={styles.imageWrapper}
+                >
+                  {imageLoadingStates[index] && (
+                    <View style={styles.imageLoadingContainer}>
+                      <ActivityIndicator size="large" color={colors.primary} />
+                    </View>
+                  )}
+                  {imageErrorStates[index] ? (
+                    <View style={styles.imageErrorContainer}>
+                      <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
+                      <Text style={styles.imageErrorText}>Failed to load image</Text>
+                    </View>
+                  ) : (
                     <Image
-                      source={{ uri: imageUri }}
+                      source={{ uri: imageUrl }}
                       style={styles.image}
                       resizeMode="cover"
-                      onError={() => handleImageError(index)}
+                      onLoadStart={() => setImageLoadingStates(prev => ({ ...prev, [index]: true }))}
                       onLoad={() => handleImageLoad(index)}
+                      onError={() => handleImageError(index)}
                     />
-                  </View>
-                );
-              })}
+                  )}
+                </Pressable>
+              ))}
             </ScrollView>
-
-            {/* Pagination dots */}
-            {validImages.length > 1 && (
-              <View style={styles.paginationContainer}>
-                {validImages.map((_, index) => (
-                  <View
-                    key={`dot-${index}`}
-                    style={[
-                      styles.paginationDot,
-                      currentImageIndex === index && styles.paginationDotActive,
-                    ]}
-                  />
-                ))}
-              </View>
-            )}
-
-            {/* Image counter badge */}
-            {validImages.length > 1 && (
-              <View style={styles.counterBadge}>
-                <Text style={styles.counterText}>
-                  {currentImageIndex + 1} / {validImages.length}
+            {note.images.length > 1 && (
+              <View style={styles.imageCounter}>
+                <Text style={styles.imageCounterText}>
+                  {note.images.length} {note.images.length === 1 ? 'image' : 'images'}
                 </Text>
               </View>
             )}
-          </Pressable>
+          </Animated.View>
         )}
 
-        <Pressable onPress={handleTextPress} style={styles.pressable}>
-          {note.text && (
-            <View style={styles.textContainer}>
-              <Text style={styles.noteText}>
-                {renderTextWithLinks(getPreviewText())}
-              </Text>
-              {shouldShowToggle() && (
-                <View style={styles.showMoreContainer}>
-                  <Pressable onPress={(e) => {
-                    e.stopPropagation();
-                    setShowFullText(!showFullText);
-                  }}>
-                    <Text style={styles.showMoreText}>
-                      {showFullText ? 'Show Less' : 'Show More'}
-                    </Text>
-                  </Pressable>
-                </View>
-              )}
-            </View>
-          )}
+        {/* Location - Now Clickable */}
+        {note.location && (
+          <Pressable 
+            onPress={handleLocationPress}
+            style={styles.locationContainer}
+          >
+            <IconSymbol name="location.fill" size={14} color={colors.primary} />
+            <Text style={styles.location}>{note.location}</Text>
+            <IconSymbol name="chevron.right" size={12} color={colors.primary} />
+          </Pressable>
+        )}
+      </Pressable>
 
-          <View style={styles.metadataContainer}>
-            <View style={styles.locationContainer}>
-              {note.location && (
-                <>
-                  <IconSymbol name="location.fill" size={14} color={colors.textSecondary} />
-                  <Text style={styles.locationText}>{note.location}</Text>
-                </>
-              )}
-            </View>
-            <Text style={styles.dateText}>{formatDateTime(note.created_at)}</Text>
-          </View>
-        </Pressable>
-      </Animated.View>
-
-      {/* Full-screen image preview modal */}
+      {/* Full Screen Image Modal */}
       <Modal
-        visible={showImageModal}
+        visible={showFullScreenImage}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowImageModal(false)}
+        onRequestClose={() => setShowFullScreenImage(false)}
       >
-        <View style={styles.modalContainer}>
+        <View style={styles.fullScreenContainer}>
           <Pressable 
-            style={styles.modalCloseButton}
-            onPress={() => setShowImageModal(false)}
+            style={styles.fullScreenCloseButton}
+            onPress={() => setShowFullScreenImage(false)}
           >
             <View style={styles.closeButtonCircle}>
               <IconSymbol name="xmark" size={24} color="#FFFFFF" />
@@ -262,190 +273,172 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
           </Pressable>
 
           <ScrollView
-            ref={modalScrollRef}
+            ref={fullScreenScrollRef}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             onScroll={handleModalScroll}
             scrollEventThrottle={16}
-            decelerationRate="fast"
             snapToInterval={SCREEN_WIDTH}
-            snapToAlignment="center"
-            contentOffset={{ x: modalImageIndex * SCREEN_WIDTH, y: 0 }}
+            decelerationRate="fast"
+            style={styles.fullScreenScrollView}
+            contentOffset={{ x: fullScreenImageIndex * SCREEN_WIDTH, y: 0 }}
           >
-            {allImages.map((imageUri, index) => {
-              if (imageErrors[index]) {
-                return null;
-              }
-
-              return (
-                <View key={`modal-image-${index}`} style={styles.modalImageWrapper}>
-                  <Image
-                    source={{ uri: imageUri }}
-                    style={styles.modalImage}
-                    resizeMode="contain"
-                  />
-                </View>
-              );
-            })}
+            {note.images?.map((imageUrl, index) => (
+              <View key={`fullscreen-${note.id}-${index}`} style={styles.fullScreenImageWrapper}>
+                <Image
+                  source={{ uri: imageUrl }}
+                  style={styles.fullScreenImage}
+                  resizeMode="contain"
+                />
+              </View>
+            ))}
           </ScrollView>
 
-          {/* Modal pagination dots */}
-          {validImages.length > 1 && (
-            <View style={styles.modalPaginationContainer}>
-              {validImages.map((_, index) => (
-                <View
-                  key={`modal-dot-${index}`}
-                  style={[
-                    styles.modalPaginationDot,
-                    modalImageIndex === index && styles.modalPaginationDotActive,
-                  ]}
-                />
-              ))}
-            </View>
-          )}
-
-          {/* Modal counter badge */}
-          {validImages.length > 1 && (
-            <View style={styles.modalCounterBadge}>
-              <Text style={styles.modalCounterText}>
-                {modalImageIndex + 1} / {validImages.length}
-              </Text>
-            </View>
+          {note.images && note.images.length > 1 && (
+            <>
+              <View style={styles.fullScreenPaginationContainer}>
+                {note.images.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.fullScreenPaginationDot,
+                      fullScreenImageIndex === index && styles.fullScreenPaginationDotActive,
+                    ]}
+                  />
+                ))}
+              </View>
+              <View style={styles.fullScreenCounterBadge}>
+                <Text style={styles.fullScreenCounterText}>
+                  {fullScreenImageIndex + 1} / {note.images.length}
+                </Text>
+              </View>
+            </>
           )}
         </View>
       </Modal>
-    </>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginBottom: 16,
-    borderRadius: 16,
+  card: {
     backgroundColor: colors.card,
+    borderRadius: 16,
+    marginBottom: 16,
     overflow: 'hidden',
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.5)',
-    elevation: 4,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
+    elevation: 2,
   },
-  pressable: {
-    width: '100%',
+  cardContent: {
+    padding: CARD_PADDING,
   },
-  imageContainer: {
-    width: '100%',
-    height: IMAGE_HEIGHT,
-    position: 'relative',
-    backgroundColor: colors.cardDark,
-  },
-  imageScrollContent: {
-    alignItems: 'center',
-  },
-  imageWrapper: {
-    width: IMAGE_WIDTH,
-    height: IMAGE_HEIGHT,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  imagePlaceholder: {
-    position: 'absolute',
-    width: IMAGE_WIDTH,
-    height: IMAGE_HEIGHT,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.cardDark,
-    zIndex: 1,
-  },
-  image: {
-    width: IMAGE_WIDTH,
-    height: IMAGE_HEIGHT,
-  },
-  paginationContainer: {
-    position: 'absolute',
-    bottom: 16,
-    left: 0,
-    right: 0,
+  header: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 6,
+    marginBottom: 12,
   },
-  paginationDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-  },
-  paginationDotActive: {
-    width: 24,
-    backgroundColor: '#FFFFFF',
-  },
-  counterBadge: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    zIndex: 10,
-  },
-  counterText: {
-    color: '#FFFFFF',
+  date: {
     fontSize: 13,
-    fontWeight: '600',
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
-  textContainer: {
-    padding: 16,
-  },
-  noteText: {
-    fontSize: 15,
-    lineHeight: 22,
+  text: {
+    fontSize: 16,
+    lineHeight: 24,
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: 4,
+  },
+  normalText: {
+    color: colors.text,
   },
   linkText: {
     color: colors.primary,
     textDecorationLine: 'underline',
   },
-  showMoreContainer: {
-    alignItems: 'flex-end',
-  },
-  showMoreText: {
+  toggleText: {
     fontSize: 14,
     color: colors.primary,
     fontWeight: '600',
     marginTop: 4,
   },
-  metadataContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  imagesContainer: {
+    marginTop: 12,
+    marginHorizontal: -CARD_PADDING,
+    position: 'relative',
+  },
+  imagesScrollContent: {
+    paddingHorizontal: CARD_PADDING,
+  },
+  imageWrapper: {
+    marginRight: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: colors.cardDark,
+  },
+  image: {
+    width: IMAGE_WIDTH,
+    height: IMAGE_HEIGHT,
+  },
+  imageLoadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    backgroundColor: colors.cardDark,
+  },
+  imageErrorContainer: {
+    width: IMAGE_WIDTH,
+    height: IMAGE_HEIGHT,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.cardDark,
+  },
+  imageErrorText: {
+    fontSize: 14,
+    color: colors.error,
+    marginTop: 8,
+  },
+  imageCounter: {
+    position: 'absolute',
+    bottom: 12,
+    right: CARD_PADDING + 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  imageCounterText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  location: {
+    fontSize: 14,
+    color: colors.primary,
     flex: 1,
+    fontWeight: '500',
   },
-  locationText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  dateText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  // Modal styles
-  modalContainer: {
+  fullScreenContainer: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.95)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalCloseButton: {
+  fullScreenCloseButton: {
     position: 'absolute',
     top: 50,
     right: 20,
@@ -459,17 +452,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalImageWrapper: {
+  fullScreenScrollView: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+  },
+  fullScreenImageWrapper: {
     width: SCREEN_WIDTH,
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalImage: {
+  fullScreenImage: {
     width: SCREEN_WIDTH,
     height: '100%',
   },
-  modalPaginationContainer: {
+  fullScreenPaginationContainer: {
     position: 'absolute',
     bottom: 100,
     left: 0,
@@ -479,17 +476,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  modalPaginationDot: {
+  fullScreenPaginationDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
     backgroundColor: 'rgba(255, 255, 255, 0.5)',
   },
-  modalPaginationDotActive: {
+  fullScreenPaginationDotActive: {
     width: 28,
     backgroundColor: '#FFFFFF',
   },
-  modalCounterBadge: {
+  fullScreenCounterBadge: {
     position: 'absolute',
     top: 50,
     left: 20,
@@ -499,7 +496,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     zIndex: 10,
   },
-  modalCounterText: {
+  fullScreenCounterText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',

@@ -24,6 +24,7 @@ export default function HomeScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
   const [loadingFiltered, setLoadingFiltered] = useState(false);
+  const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
 
   // Update the previous notes count whenever notes change
   useEffect(() => {
@@ -210,15 +211,30 @@ export default function HomeScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    if (selectedCategoryId) {
-      // Trigger re-fetch of filtered notes
-      const currentCategory = selectedCategoryId;
-      setSelectedCategoryId(null);
-      setTimeout(() => setSelectedCategoryId(currentCategory), 100);
-    } else {
-      await refreshNotes();
+    console.log('[handleRefresh] Refreshing landing page data from Supabase...');
+    
+    try {
+      // Refresh categories by triggering a re-render in CategoryCarousel
+      console.log('[handleRefresh] Triggering category refresh...');
+      setCategoryRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notes/recalls
+      if (selectedCategoryId) {
+        console.log('[handleRefresh] Refreshing filtered notes for category:', selectedCategoryId);
+        // Trigger re-fetch of filtered notes by temporarily clearing and resetting category
+        const currentCategory = selectedCategoryId;
+        setSelectedCategoryId(null);
+        setTimeout(() => setSelectedCategoryId(currentCategory), 100);
+      } else {
+        console.log('[handleRefresh] Refreshing all notes...');
+        await refreshNotes();
+      }
+    } catch (error) {
+      console.error('[handleRefresh] Error refreshing data:', error);
+    } finally {
+      setRefreshing(false);
+      console.log('[handleRefresh] Refresh complete');
     }
-    setRefreshing(false);
   };
 
   const handleCreateNote = () => {
@@ -330,6 +346,7 @@ export default function HomeScreen() {
           onCategorySelect={handleCategorySelect}
           selectedCategoryId={selectedCategoryId}
           userId={user?.id}
+          refreshTrigger={categoryRefreshTrigger}
         />
 
         {isLoading && !refreshing ? (

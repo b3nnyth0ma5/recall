@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "resizeMode": "contain",
-      "backgroundColor": "#000000"
+      "backgroundColor": "#242424"
     },
     "ios": {
       "supportsTablet": true,
@@ -26,10 +26,10 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#242424"
       },
       "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
-      "edgeToEdgeEnabled": true,
+      "edgeToEdgeEnabled": false,
       "package": "com.anonymous.Natively",
       "versionCode": 1
     },
@@ -49,7 +49,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "bc7a42ca-60f4-4c04-9384-26857e2e6ccf"
       }
     }
   },

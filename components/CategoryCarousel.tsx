@@ -16,12 +16,13 @@ interface CategoryCarouselProps {
   onCategorySelect?: (categoryId: string | null) => void;
   selectedCategoryId?: string | null;
   userId?: string;
+  refreshTrigger?: number;
 }
 
 const CATEGORY_SIZE = 80;
 const CATEGORY_SPACING = 20;
 
-export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId }: CategoryCarouselProps) {
+export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId, refreshTrigger }: CategoryCarouselProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -32,7 +33,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId 
       setCategories([]);
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, refreshTrigger]);
 
   const loadCategoriesWithRecollections = async () => {
     if (!userId) {
@@ -44,7 +45,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId 
 
     try {
       setLoading(true);
-      console.log('Loading categories with recollections for user:', userId);
+      console.log('[CategoryCarousel] Loading categories with recollections from Supabase for user:', userId);
       
       // First, get all categories that have recollections for this user
       const { data: recollectionsData, error: recollectionsError } = await supabase
@@ -53,20 +54,20 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId 
         .eq('user_id', userId);
 
       if (recollectionsError) {
-        console.error('Error loading recollections:', recollectionsError);
+        console.error('[CategoryCarousel] Error loading recollections:', recollectionsError);
         setCategories([]);
         return;
       }
 
       if (!recollectionsData || recollectionsData.length === 0) {
-        console.log('No recollections found for user');
+        console.log('[CategoryCarousel] No recollections found for user');
         setCategories([]);
         return;
       }
 
       // Get unique category IDs
       const categoryIds = [...new Set(recollectionsData.map(r => r.category_id))];
-      console.log(`Found ${categoryIds.length} unique categories with recollections`);
+      console.log(`[CategoryCarousel] Found ${categoryIds.length} unique categories with recollections`);
 
       // Fetch category details for these IDs
       const { data: categoriesData, error: categoriesError } = await supabase
@@ -76,15 +77,15 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId 
         .order('category_name', { ascending: true });
 
       if (categoriesError) {
-        console.error('Error loading categories:', categoriesError);
+        console.error('[CategoryCarousel] Error loading categories:', categoriesError);
         setCategories([]);
         return;
       }
 
-      console.log(`Loaded ${categoriesData?.length || 0} categories with recollections`);
+      console.log(`[CategoryCarousel] Loaded ${categoriesData?.length || 0} categories with recollections from Supabase`);
       setCategories(categoriesData || []);
     } catch (error) {
-      console.error('Error loading categories:', error);
+      console.error('[CategoryCarousel] Error loading categories:', error);
       setCategories([]);
     } finally {
       setLoading(false);
