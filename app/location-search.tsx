@@ -181,19 +181,21 @@ export default function LocationSearchScreen() {
         displayName: location.displayName,
         formattedLocationName,
         fullAddress: location.formattedAddress,
+        primaryTypeDisplayName: location.primaryTypeDisplayName,
       });
 
       if (params.id) {
         const noteId = params.id as string;
         console.log('Updating location for note:', noteId);
 
-        // Only update location-related fields, no other data is changed
+        // Update location-related fields including primary type
         const { error } = await supabase
           .from('recalls')
           .update({
             latitude: location.latitude,
             longitude: location.longitude,
             location: formattedLocationName,
+            location_primary_type: location.primaryTypeDisplayName || null,
             updated_at: new Date().toISOString(),
           })
           .eq('id', noteId);
@@ -203,6 +205,7 @@ export default function LocationSearchScreen() {
           Alert.alert('Error', 'Failed to update location');
         } else {
           console.log('Location updated successfully in database with formatted name:', formattedLocationName);
+          console.log('Primary type:', location.primaryTypeDisplayName || 'Not available');
         }
       }
 
@@ -215,6 +218,7 @@ export default function LocationSearchScreen() {
           selectedLocationName: formattedLocationName,
           selectedDisplayName: location.displayName,
           selectedFullAddress: location.formattedAddress,
+          selectedPrimaryType: location.primaryTypeDisplayName || '',
         });
       }, 100);
     } catch (error) {
@@ -347,6 +351,11 @@ export default function LocationSearchScreen() {
                       <Text style={styles.resultTextBold} numberOfLines={1}>
                         {result.displayName}
                       </Text>
+                      {result.primaryTypeDisplayName && (
+                        <Text style={styles.resultTypeBadge} numberOfLines={1}>
+                          {result.primaryTypeDisplayName}
+                        </Text>
+                      )}
                       <Text style={styles.resultTextFormatted} numberOfLines={1}>
                         Will be saved as: {shortName}
                       </Text>
@@ -498,6 +507,18 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 22,
     marginBottom: 4,
+  },
+  resultTypeBadge: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.primary,
+    backgroundColor: colors.background,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 4,
+    overflow: 'hidden',
   },
   resultTextFormatted: {
     fontSize: 13,

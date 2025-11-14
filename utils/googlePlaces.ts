@@ -19,6 +19,45 @@ export interface PlaceResult {
   latitude: number;
   longitude: number;
   distance?: number;
+  primaryTypeDisplayName?: string;
+}
+
+/**
+ * Get place details including primaryTypeDisplayName
+ * @param placeId - The Google Place ID
+ * @returns Place details including primary type
+ */
+export async function getPlaceDetails(placeId: string): Promise<{ primaryTypeDisplayName?: string } | null> {
+  try {
+    console.log('Fetching place details for:', placeId);
+    
+    const baseUrl = `https://places.googleapis.com/v1/places/${placeId}`;
+    
+    const response = await fetch(baseUrl, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
+        'X-Goog-FieldMask': 'primaryTypeDisplayName',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Google Places API error:', response.status, errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    console.log('Place details response:', data);
+
+    return {
+      primaryTypeDisplayName: data.primaryTypeDisplayName?.text,
+    };
+  } catch (error) {
+    console.error('Error fetching place details:', error);
+    return null;
+  }
 }
 
 /**
@@ -58,7 +97,7 @@ export async function searchNearbyPlaces(
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location',
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName',
       },
       body: JSON.stringify(requestBody),
     });
@@ -96,6 +135,7 @@ export async function searchNearbyPlaces(
         latitude,
         longitude,
         distance,
+        primaryTypeDisplayName: place.primaryTypeDisplayName?.text,
       };
     });
 
@@ -157,7 +197,7 @@ export async function searchPlaces(
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location',
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName',
       },
       body: JSON.stringify(requestBody),
     });
@@ -198,6 +238,7 @@ export async function searchPlaces(
         latitude,
         longitude,
         distance,
+        primaryTypeDisplayName: place.primaryTypeDisplayName?.text,
       };
     });
 

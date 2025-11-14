@@ -60,6 +60,7 @@ export default function NoteEditorScreen() {
   const [loadingNote, setLoadingNote] = useState(false);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationName, setLocationName] = useState<string>('');
+  const [locationPrimaryType, setLocationPrimaryType] = useState<string>('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isLocationModalVisible, setIsLocationModalVisible] = useState(false);
@@ -69,6 +70,7 @@ export default function NoteEditorScreen() {
     displayName: string;
     formattedName: string;
     fullAddress: string;
+    primaryType?: string;
   } | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
@@ -129,6 +131,7 @@ export default function NoteEditorScreen() {
         // Set text and location data
         setText(recallData.text || '');
         setLocationName(recallData.location || '');
+        setLocationPrimaryType(recallData.location_primary_type || '');
         
         if (recallData.latitude && recallData.longitude) {
           setLocation({
@@ -197,12 +200,14 @@ export default function NoteEditorScreen() {
       const formattedName = params.selectedLocationName as string;
       const displayName = params.selectedDisplayName as string || formattedName;
       const fullAddress = params.selectedFullAddress as string || formattedName;
+      const primaryType = params.selectedPrimaryType as string || '';
 
-      console.log('Location updated from search:', { latitude, longitude, formattedName, displayName, fullAddress });
+      console.log('Location updated from search:', { latitude, longitude, formattedName, displayName, fullAddress, primaryType });
       
       setLocation({ latitude, longitude });
       setLocationName(formattedName);
-      setSelectedLocationData({ latitude, longitude, displayName, formattedName, fullAddress });
+      setLocationPrimaryType(primaryType);
+      setSelectedLocationData({ latitude, longitude, displayName, formattedName, fullAddress, primaryType });
       setIsLocationModalVisible(true);
 
       router.setParams({
@@ -211,9 +216,10 @@ export default function NoteEditorScreen() {
         selectedLocationName: undefined,
         selectedDisplayName: undefined,
         selectedFullAddress: undefined,
+        selectedPrimaryType: undefined,
       });
     }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedDisplayName, params.selectedFullAddress, router]);
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedDisplayName, params.selectedFullAddress, params.selectedPrimaryType, router]);
 
   const requestLocationPermission = async () => {
     try {
@@ -449,6 +455,7 @@ export default function NoteEditorScreen() {
         latitude: location?.latitude,
         longitude: location?.longitude,
         location: locationName,
+        location_primary_type: locationPrimaryType || null,
       };
 
       console.log('Saving note with location data:', noteData);
@@ -823,7 +830,12 @@ export default function NoteEditorScreen() {
             style={styles.locationInfo}
           >
             <IconSymbol name="location.fill" size={16} color={colors.primary} />
-            <Text style={styles.locationText}>{locationName}</Text>
+            <View style={styles.locationTextContainer}>
+              <Text style={styles.locationText}>{locationName}</Text>
+              {locationPrimaryType && (
+                <Text style={styles.locationTypeText}>{locationPrimaryType}</Text>
+              )}
+            </View>
             <IconSymbol name="chevron.right" size={14} color={colors.primary} />
           </Pressable>
         </Animated.View>
@@ -929,6 +941,13 @@ export default function NoteEditorScreen() {
                     <Text style={styles.modalLabel}>Place Name:</Text>
                     <Text style={styles.modalValue}>{selectedLocationData.displayName}</Text>
                   </View>
+
+                  {selectedLocationData.primaryType && (
+                    <View style={styles.modalRow}>
+                      <Text style={styles.modalLabel}>Place Type:</Text>
+                      <Text style={styles.modalValue}>{selectedLocationData.primaryType}</Text>
+                    </View>
+                  )}
 
                   <View style={styles.modalRow}>
                     <Text style={styles.modalLabel}>Full Address:</Text>
@@ -1070,11 +1089,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primary,
   },
+  locationTextContainer: {
+    flex: 1,
+  },
   locationText: {
     fontSize: 14,
     color: colors.primary,
-    flex: 1,
     fontWeight: '500',
+  },
+  locationTypeText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   imagesContainer: {
     paddingVertical: 16,

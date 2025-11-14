@@ -9,6 +9,7 @@ export interface Note {
   latitude?: number;
   longitude?: number;
   location?: string;
+  location_primary_type?: string; // Primary type display name from Google Places API
   user_id?: string;
   relevance_score?: number; // AI-powered relevance score (0-100)
   relevance_reason?: string; // Explanation of why this recall matches
