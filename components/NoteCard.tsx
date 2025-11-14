@@ -246,25 +246,30 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
           </Animated.View>
         )}
 
-        {/* Date/Time - Moved below images, right-aligned */}
-        <View style={styles.dateContainer}>
-          <TimeAgo 
-            date={note.created_at} 
-            style={styles.date}
-          />
+        {/* Location and Time on the same line */}
+        <View style={styles.locationTimeContainer}>
+          {/* Location - Left-aligned, occupies 75% of space */}
+          {note.location && (
+            <Pressable 
+              onPress={handleLocationPress}
+              style={styles.locationWrapper}
+            >
+              <IconSymbol name="location.fill" size={14} color={colors.primary} />
+              <Text style={styles.location} numberOfLines={1} ellipsizeMode="tail">
+                {note.location}
+              </Text>
+              <IconSymbol name="chevron.right" size={12} color={colors.primary} />
+            </Pressable>
+          )}
+          
+          {/* Time Ago - Right-aligned, occupies remaining space */}
+          <View style={styles.timeAgoWrapper}>
+            <TimeAgo 
+              date={note.created_at} 
+              style={styles.date}
+            />
+          </View>
         </View>
-
-        {/* Location - Now Clickable */}
-        {note.location && (
-          <Pressable 
-            onPress={handleLocationPress}
-            style={styles.locationContainer}
-          >
-            <IconSymbol name="location.fill" size={14} color={colors.primary} />
-            <Text style={styles.location}>{note.location}</Text>
-            <IconSymbol name="chevron.right" size={12} color={colors.primary} />
-          </Pressable>
-        )}
       </Pressable>
 
       {/* Full Screen Image Component */}
@@ -377,30 +382,38 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
   },
-  dateContainer: {
+  locationTimeContainer: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    gap: 8,
+  },
+  locationWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 0.75,
+    minWidth: 0,
+  },
+  location: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '500',
+    flex: 1,
+  },
+  timeAgoWrapper: {
+    flex: 0.25,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   date: {
     fontSize: 13,
     color: colors.textSecondary,
     fontWeight: '500',
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-  },
-  location: {
-    fontSize: 14,
-    color: colors.primary,
-    flex: 1,
-    fontWeight: '500',
+    textAlign: 'right',
   },
 });
