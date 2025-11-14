@@ -5,11 +5,11 @@ import Animated, {
   FadeIn, 
   FadeInDown, 
 } from 'react-native-reanimated';
-import TimeAgo from 'react-timeago';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
 import { FullScreenImage } from './FullScreenImage';
+import { TimeAgo } from './TimeAgo';
 
 interface NoteCardProps {
   note: Note;
