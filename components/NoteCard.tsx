@@ -5,7 +5,7 @@ import Animated, {
   FadeIn, 
   FadeInDown, 
 } from 'react-native-reanimated';
-import { format } from 'date-fns';
+import TimeAgo from 'react-timeago';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
@@ -37,16 +37,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [imageErrorStates, setImageErrorStates] = useState<{ [key: number]: boolean }>({});
   const [imageLoadedStates, setImageLoadedStates] = useState<{ [key: number]: boolean }>({});
   const imageScrollRef = useRef<ScrollView>(null);
-
-  const formatDateTime = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      return format(date, 'MMM d, yyyy • h:mm a');
-    } catch (error) {
-      console.error('Error formatting date:', error);
-      return dateString;
-    }
-  };
 
   const renderTextWithLinks = (text: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -258,7 +248,10 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
 
         {/* Date/Time - Moved below images, right-aligned */}
         <View style={styles.dateContainer}>
-          <Text style={styles.date}>{formatDateTime(note.created_at)}</Text>
+          <TimeAgo 
+            date={note.created_at} 
+            style={styles.date}
+          />
         </View>
 
         {/* Location - Now Clickable */}
