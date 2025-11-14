@@ -21,6 +21,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 16;
 const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 4);
 const IMAGE_HEIGHT = IMAGE_WIDTH * 0.75;
+const IMAGE_SPACING = 12;
 
 // Helper function to check if text contains URLs
 const hasUrl = (text: string): boolean => {
@@ -133,7 +134,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
 
   const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / (IMAGE_WIDTH + 12));
+    const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
     if (index >= 0 && index < (note.images?.length || 0)) {
       // Update current image index if needed
     }
@@ -141,7 +142,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
 
   const handleModalScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / SCREEN_WIDTH);
+    const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
     if (index !== fullScreenImageIndex && index >= 0 && index < (note.images?.length || 0)) {
       setFullScreenImageIndex(index);
     }
@@ -234,7 +235,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
               onScroll={handleImageScroll}
               scrollEventThrottle={16}
               decelerationRate={0.9}
-              snapToInterval={IMAGE_WIDTH + 12}
+              snapToInterval={IMAGE_WIDTH + IMAGE_SPACING}
               snapToAlignment="start"
             >
               {note.images.map((imageUrl, index) => (
@@ -312,17 +313,18 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             </View>
           </Pressable>
 
+          {/* Full Screen Image Carousel - Now matches note card carousel */}
           <ScrollView
             ref={fullScreenScrollRef}
             horizontal
-            pagingEnabled
+            pagingEnabled={false}
             showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.fullScreenScrollContent}
             onScroll={handleModalScroll}
             scrollEventThrottle={16}
-            snapToInterval={SCREEN_WIDTH}
-            decelerationRate="fast"
-            style={styles.fullScreenScrollView}
-            contentOffset={{ x: fullScreenImageIndex * SCREEN_WIDTH, y: 0 }}
+            decelerationRate={0.9}
+            snapToInterval={IMAGE_WIDTH + IMAGE_SPACING}
+            snapToAlignment="start"
           >
             {note.images?.map((imageUrl, index) => (
               <View key={`fullscreen-${note.id}-${index}`} style={styles.fullScreenImageWrapper}>
@@ -335,20 +337,18 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             ))}
           </ScrollView>
 
-          {/* OCR Button - Bottom Right with better positioning and touch area */}
-          <View style={styles.ocrButtonContainer} pointerEvents="box-none">
-            <Pressable
-              style={styles.ocrButton}
-              onPress={handleOCRButtonPress}
-              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-            >
-              <Image
-                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-                style={styles.ocrButtonIcon}
-                resizeMode="contain"
-              />
-            </Pressable>
-          </View>
+          {/* OCR Button - Bottom Right with primary accent border */}
+          <Pressable
+            style={styles.ocrButton}
+            onPress={handleOCRButtonPress}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          >
+            <Image
+              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+              style={styles.ocrButtonIcon}
+              resizeMode="contain"
+            />
+          </Pressable>
 
           {note.images && note.images.length > 1 && (
             <>
@@ -457,7 +457,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: CARD_PADDING,
   },
   imageWrapper: {
-    marginRight: 12,
+    marginRight: IMAGE_SPACING,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: colors.cardDark,
@@ -496,7 +496,7 @@ const styles = StyleSheet.create({
   imageCounter: {
     position: 'absolute',
     bottom: 12,
-    right: CARD_PADDING + 12,
+    right: CARD_PADDING + IMAGE_SPACING,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -553,27 +553,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  fullScreenScrollView: {
-    width: SCREEN_WIDTH,
-    height: '100%',
+  fullScreenScrollContent: {
+    paddingHorizontal: CARD_PADDING,
   },
   fullScreenImageWrapper: {
-    width: SCREEN_WIDTH,
-    height: '100%',
+    width: IMAGE_WIDTH,
+    height: IMAGE_HEIGHT,
+    marginRight: IMAGE_SPACING,
     justifyContent: 'center',
     alignItems: 'center',
   },
   fullScreenImage: {
-    width: SCREEN_WIDTH,
-    height: '100%',
+    width: IMAGE_WIDTH,
+    height: IMAGE_HEIGHT,
   },
-  ocrButtonContainer: {
+  ocrButton: {
     position: 'absolute',
     bottom: 120,
     right: 24,
-    zIndex: 100,
-  },
-  ocrButton: {
     width: 64,
     height: 64,
     borderRadius: 32,
@@ -582,8 +579,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.6)',
     elevation: 12,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 3,
+    borderColor: colors.primary,
+    zIndex: 100,
   },
   ocrButtonIcon: {
     width: 36,
