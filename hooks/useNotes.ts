@@ -222,7 +222,7 @@ export function useNotes() {
     }
 
     try {
-      console.log('Adding recall to Supabase...');
+      console.log('Adding recall to Supabase with location_primary_type:', note.location_primary_type);
       
       const { data: recallData, error: recallError } = await supabase
         .from('recalls')
@@ -231,6 +231,7 @@ export function useNotes() {
           latitude: note.latitude,
           longitude: note.longitude,
           location: note.location,
+          location_primary_type: note.location_primary_type,
           user_id: user.id,
         }])
         .select()
@@ -241,7 +242,7 @@ export function useNotes() {
         throw recallError;
       }
 
-      console.log('Recall added successfully:', recallData.id);
+      console.log('Recall added successfully with location_primary_type:', recallData.location_primary_type);
       await refreshNotes();
       return recallData.id;
     } catch (error) {
@@ -257,7 +258,7 @@ export function useNotes() {
     }
 
     try {
-      console.log('Updating recall in Supabase:', noteId);
+      console.log('Updating recall in Supabase with location_primary_type:', updates.location_primary_type);
       
       const { error: recallError } = await supabase
         .from('recalls')
@@ -266,6 +267,7 @@ export function useNotes() {
           latitude: updates.latitude,
           longitude: updates.longitude,
           location: updates.location,
+          location_primary_type: updates.location_primary_type,
           updated_at: new Date().toISOString(),
         })
         .eq('id', noteId)
@@ -276,7 +278,7 @@ export function useNotes() {
         throw recallError;
       }
 
-      console.log('Recall updated successfully');
+      console.log('Recall updated successfully with location_primary_type');
       // Refresh only the single note that was updated
       await refreshSingleNote(noteId);
     } catch (error) {
