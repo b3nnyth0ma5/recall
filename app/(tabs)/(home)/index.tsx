@@ -22,6 +22,7 @@ export default function HomeScreen() {
   const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
   const [hasCheckedShareIntent, setHasCheckedShareIntent] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Filter notes by selected category
   useEffect(() => {
@@ -82,16 +83,17 @@ export default function HomeScreen() {
     const fetchCategoryNotes = async () => {
       try {
         const { data, error } = await supabase
-          .from('recollection_categories')
-          .select('recollection_id')
-          .eq('category_id', selectedCategoryId);
+          .from('recollections')
+          .select('id')
+          .eq('category_id', selectedCategoryId)
+          .eq('user_id', user.id);
 
         if (error) {
           console.error('Error fetching category notes:', error);
           return;
         }
 
-        const categoryNoteIds = new Set(data.map((item) => item.recollection_id));
+        const categoryNoteIds = new Set(data.map((item) => item.id));
         const filtered = notes.filter((note) => categoryNoteIds.has(note.id));
         setFilteredNotes(filtered);
       } catch (error) {
@@ -105,6 +107,8 @@ export default function HomeScreen() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await refreshNotes();
+    // Increment refresh trigger to refresh the category carousel
+    setRefreshTrigger(prev => prev + 1);
     setRefreshing(false);
   }, [refreshNotes]);
 
@@ -150,6 +154,8 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       refreshNotes();
+      // Increment refresh trigger to refresh the category carousel when screen is focused
+      setRefreshTrigger(prev => prev + 1);
     }, [refreshNotes])
   );
 
@@ -184,8 +190,13 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Category Carousel */}
-      <CategoryCarousel onCategorySelect={handleCategorySelect} />
+      {/* Category Carousel - NOW WITH userId AND refreshTrigger */}
+      <CategoryCarousel 
+        onCategorySelect={handleCategorySelect}
+        selectedCategoryId={selectedCategoryId}
+        userId={user?.id}
+        refreshTrigger={refreshTrigger}
+      />
 
       {/* Notes List */}
       <ScrollView
