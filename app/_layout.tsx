@@ -10,6 +10,8 @@ import * as Linking from 'expo-linking';
 import { colors } from '@/styles/commonStyles';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { isSharedRecallUrl } from '@/utils/shareRecall';
+import Toast from 'react-native-toast-message';
+import { toastConfig } from '@/components/CustomToast';
 import 'react-native-reanimated';
 
 // Import CSS for web using dynamic import
@@ -86,43 +88,53 @@ function RootLayoutNav() {
   }, [router]);
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: colors.background },
-      }}
-    >
-      <Stack.Screen name="login" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="note-editor"
-        options={{
-          presentation: 'card',
+    <>
+      <Stack
+        screenOptions={{
           headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
         }}
-      />
-      <Stack.Screen
-        name="search"
-        options={{
-          presentation: 'card',
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="location-search"
-        options={{
-          presentation: 'card',
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="shared-recall"
-        options={{
-          presentation: 'card',
-          headerShown: false,
-        }}
-      />
-    </Stack>
+      >
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="note-editor"
+          options={{
+            presentation: 'card',
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="search"
+          options={{
+            presentation: 'card',
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="location-search"
+          options={{
+            presentation: 'card',
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="shared-recall"
+          options={{
+            presentation: 'card',
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="share-intent"
+          options={{
+            presentation: 'card',
+            headerShown: false,
+          }}
+        />
+      </Stack>
+      <Toast config={toastConfig} />
+    </>
   );
 }
 
