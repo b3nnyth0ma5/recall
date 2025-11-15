@@ -28,7 +28,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
 
   const loadCategoriesWithRecollections = useCallback(async () => {
     if (!userId) {
-      console.log('[CategoryCarousel] No user ID provided, skipping category load');
+      console.log('No user ID provided, skipping category load');
       setCategories([]);
       setLoading(false);
       return;
@@ -38,7 +38,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       setLoading(true);
       console.log('[CategoryCarousel] Loading categories with recollections from Supabase for user:', userId);
       
-      // Query the recollections junction table to get categories that have recalls for this user
+      // First, get all categories that have recollections for this user
       const { data: recollectionsData, error: recollectionsError } = await supabase
         .from('recollections')
         .select('category_id')
@@ -47,27 +47,18 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       if (recollectionsError) {
         console.error('[CategoryCarousel] Error loading recollections:', recollectionsError);
         setCategories([]);
-        setLoading(false);
         return;
       }
 
       if (!recollectionsData || recollectionsData.length === 0) {
         console.log('[CategoryCarousel] No recollections found for user');
         setCategories([]);
-        setLoading(false);
         return;
       }
 
       // Get unique category IDs
-      const categoryIds = [...new Set(recollectionsData.map(r => r.category_id).filter(Boolean))];
+      const categoryIds = [...new Set(recollectionsData.map(r => r.category_id))];
       console.log(`[CategoryCarousel] Found ${categoryIds.length} unique categories with recollections`);
-
-      if (categoryIds.length === 0) {
-        console.log('[CategoryCarousel] No valid category IDs found');
-        setCategories([]);
-        setLoading(false);
-        return;
-      }
 
       // Fetch category details for these IDs
       const { data: categoriesData, error: categoriesError } = await supabase
@@ -79,7 +70,6 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       if (categoriesError) {
         console.error('[CategoryCarousel] Error loading categories:', categoriesError);
         setCategories([]);
-        setLoading(false);
         return;
       }
 
@@ -95,10 +85,8 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
 
   useEffect(() => {
     if (userId) {
-      console.log('[CategoryCarousel] useEffect triggered - loading categories for user:', userId);
       loadCategoriesWithRecollections();
     } else {
-      console.log('[CategoryCarousel] useEffect triggered - no userId, clearing categories');
       setCategories([]);
       setLoading(false);
     }
@@ -111,16 +99,15 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
 
     // If already selected, deselect it
     if (selectedCategoryId === category.id) {
-      console.log('[CategoryCarousel] Deselecting category:', category.id);
+      console.log('Deselecting category:', category.id);
       onCategorySelect(null);
     } else {
-      console.log('[CategoryCarousel] Selecting category:', category.id);
+      console.log('Selecting category:', category.id);
       onCategorySelect(category.id);
     }
   };
 
   if (loading) {
-    console.log('[CategoryCarousel] Rendering loading state');
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="small" color={colors.primary} />
@@ -130,7 +117,6 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
 
   // Show zero state if no categories with recollections
   if (categories.length === 0) {
-    console.log('[CategoryCarousel] Rendering zero state - no categories');
     return (
       <Animated.View entering={FadeIn.duration(400)} style={styles.zeroStateContainer}>
         <Text style={styles.zeroStateText}>
@@ -139,8 +125,6 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       </Animated.View>
     );
   }
-
-  console.log('[CategoryCarousel] Rendering', categories.length, 'categories');
 
   return (
     <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
