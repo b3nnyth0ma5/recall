@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,11 +17,33 @@ export default function SharedRecallScreen() {
   const params = useLocalSearchParams();
   const [loadingMessage, setLoadingMessage] = useState('Opening shared recall...');
 
-  useEffect(() => {
-    handleSharedRecall();
-  }, [params]);
+  const viewSharedRecall = useCallback((sharedData: SharedRecallData) => {
+    console.log('Opening note editor with shared data');
 
-  const handleSharedRecall = async () => {
+    // Reorder images to put the primary image first
+    const reorderedImages = [...sharedData.images];
+    if (sharedData.primaryImageIndex > 0 && sharedData.primaryImageIndex < reorderedImages.length) {
+      const primaryImage = reorderedImages.splice(sharedData.primaryImageIndex, 1)[0];
+      reorderedImages.unshift(primaryImage);
+    }
+
+    // Navigate to note editor with pre-filled data
+    // Using replace to dismiss this transition screen
+    router.replace({
+      pathname: '/note-editor',
+      params: {
+        sharedText: sharedData.text || '',
+        sharedImages: JSON.stringify(reorderedImages),
+        selectedLatitude: sharedData.latitude?.toString() || '',
+        selectedLongitude: sharedData.longitude?.toString() || '',
+        selectedLocationName: sharedData.location || '',
+        selectedPrimaryType: sharedData.location_primary_type || '',
+        isSharedRecall: 'true',
+      },
+    });
+  }, [router]);
+
+  const handleSharedRecall = useCallback(async () => {
     try {
       console.log('SharedRecallScreen params:', params);
 
@@ -57,33 +79,11 @@ export default function SharedRecallScreen() {
       Alert.alert('Error', 'Failed to open shared recall');
       router.replace('/(tabs)/(home)');
     }
-  };
+  }, [params, router, viewSharedRecall]);
 
-  const viewSharedRecall = (sharedData: SharedRecallData) => {
-    console.log('Opening note editor with shared data');
-
-    // Reorder images to put the primary image first
-    const reorderedImages = [...sharedData.images];
-    if (sharedData.primaryImageIndex > 0 && sharedData.primaryImageIndex < reorderedImages.length) {
-      const primaryImage = reorderedImages.splice(sharedData.primaryImageIndex, 1)[0];
-      reorderedImages.unshift(primaryImage);
-    }
-
-    // Navigate to note editor with pre-filled data
-    // Using replace to dismiss this transition screen
-    router.replace({
-      pathname: '/note-editor',
-      params: {
-        sharedText: sharedData.text || '',
-        sharedImages: JSON.stringify(reorderedImages),
-        selectedLatitude: sharedData.latitude?.toString() || '',
-        selectedLongitude: sharedData.longitude?.toString() || '',
-        selectedLocationName: sharedData.location || '',
-        selectedPrimaryType: sharedData.location_primary_type || '',
-        isSharedRecall: 'true',
-      },
-    });
-  };
+  useEffect(() => {
+    handleSharedRecall();
+  }, [handleSharedRecall]);
 
   return (
     <>

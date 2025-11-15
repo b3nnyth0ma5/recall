@@ -1,7 +1,7 @@
 
 import { Share, Platform } from 'react-native';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Linking from 'expo-linking';
 import { Note } from '@/types/Note';
 

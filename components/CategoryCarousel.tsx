@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, ScrollView, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -26,16 +26,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (userId) {
-      loadCategoriesWithRecollections();
-    } else {
-      setCategories([]);
-      setLoading(false);
-    }
-  }, [userId, refreshTrigger]);
-
-  const loadCategoriesWithRecollections = async () => {
+  const loadCategoriesWithRecollections = useCallback(async () => {
     if (!userId) {
       console.log('No user ID provided, skipping category load');
       setCategories([]);
@@ -90,7 +81,16 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
+
+  useEffect(() => {
+    if (userId) {
+      loadCategoriesWithRecollections();
+    } else {
+      setCategories([]);
+      setLoading(false);
+    }
+  }, [userId, refreshTrigger, loadCategoriesWithRecollections]);
 
   const handleCategoryPress = (category: Category) => {
     if (!onCategorySelect) {
