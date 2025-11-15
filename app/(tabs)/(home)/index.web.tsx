@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { Note } from '@/types/Note';
+import Toast from 'react-native-toast-message';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
@@ -243,6 +244,21 @@ export default function HomeScreen() {
     }
   };
 
+  const handleRecallIconPress = async () => {
+    console.log('[handleRecallIconPress] Recall icon pressed - clearing categories and reloading');
+    
+    // Clear selected category
+    setSelectedCategoryId(null);
+    
+    // Scroll to top
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: true });
+    }
+    
+    // Reload landing page data
+    await handleRefresh();
+  };
+
   // Web-specific pull-to-refresh handlers
   const handleTouchStart = (e: any) => {
     const touch = e.touches?.[0] || e.nativeEvent?.touches?.[0];
@@ -363,11 +379,13 @@ export default function HomeScreen() {
             fontWeight: 'bold',
           },
           headerLeft: () => (
-            <Image
-              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-              style={styles.headerIcon}
-              resizeMode="contain"
-            />
+            <Pressable onPress={handleRecallIconPress} style={styles.headerButton}>
+              <Image
+                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+                style={styles.headerIcon}
+                resizeMode="contain"
+              />
+            </Pressable>
           ),
           headerRight: () => (
             <Pressable onPress={handleProfile} style={styles.headerButton}>
@@ -558,11 +576,10 @@ const styles = StyleSheet.create({
   headerIcon: {
     width: 36,
     height: 36,
-    marginLeft: 8,
   },
   headerButton: {
     padding: 8,
-    marginRight: 8,
+    marginHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
