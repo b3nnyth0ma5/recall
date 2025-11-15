@@ -252,7 +252,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             {note.images.length > 1 && (
               <View style={styles.imageCounter}>
                 <Text style={styles.imageCounterText}>
-                  {note.images.length} {note.images.length === 1 ? 'image' : 'images'}
+                  {currentImageIndex + 1} / {note.images.length}
                 </Text>
               </View>
             )}
@@ -267,8 +267,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <IconSymbol 
-              ios_icon_name="square.and.arrow.up" 
-              android_material_icon_name="share" 
+              name="square.and.arrow.up" 
               size={20} 
               color={colors.primary} 
             />
@@ -421,7 +420,9 @@ const styles = StyleSheet.create({
   shareButton: {
     padding: 8,
     borderRadius: 8,
-    backgroundColor: colors.cardDark,
+    backgroundColor: 'rgba(255, 107, 122, 0.15)',
+    borderWidth: 1,
+    borderColor: colors.primary,
   },
   locationTimeContainer: {
     flexDirection: 'row',

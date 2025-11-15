@@ -47,7 +47,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     console.log('Created deep link:', deepLink);
 
     // Prepare share message
-    let shareMessage = 'Check out this recall!\n\n';
+    let shareMessage = 'Check out this Recall!\n\n';
     
     if (sharedData.text) {
       const previewText = sharedData.text.length > 100 
@@ -72,8 +72,8 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
       url: Platform.OS === 'ios' ? deepLink : undefined,
       title: 'Share Recall',
     }, {
-      dialogTitle: 'Share this recall',
-      subject: 'Check out this recall!',
+      dialogTitle: 'Share this Recall',
+      subject: 'Check out this Recall!',
     });
 
     if (result.action === Share.sharedAction) {
