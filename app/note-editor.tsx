@@ -109,22 +109,25 @@ export default function NoteEditorScreen() {
       // Set text
       setText(params.sharedText as string);
       
-      // Set location data
+      // Set location data from shared recall (don't fetch current location)
       if (params.selectedLatitude && params.selectedLongitude) {
         const latitude = parseFloat(params.selectedLatitude as string);
         const longitude = parseFloat(params.selectedLongitude as string);
         setLocation({ latitude, longitude });
+        console.log('Using shared location:', { latitude, longitude });
       }
       
       if (params.selectedLocationName) {
         setLocationName(params.selectedLocationName as string);
+        console.log('Using shared location name:', params.selectedLocationName);
       }
       
       if (params.selectedPrimaryType) {
         setLocationPrimaryType(params.selectedPrimaryType as string);
+        console.log('Using shared location type:', params.selectedPrimaryType);
       }
       
-      // Load shared images
+      // Load shared images and display them
       if (params.sharedImages) {
         try {
           const imageUrls = JSON.parse(params.sharedImages as string) as string[];
@@ -136,11 +139,14 @@ export default function NoteEditorScreen() {
           }));
           
           setImages(sharedImages);
-          console.log(`Loaded ${sharedImages.length} shared images`);
+          console.log(`Loaded ${sharedImages.length} shared images for preview`);
         } catch (error) {
           console.error('Error parsing shared images:', error);
         }
       }
+      
+      // Don't show location modal for shared recalls
+      console.log('Skipping location modal for shared recall');
     }
   }, [isSharedRecall, params.sharedText, params.sharedImages, params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType]);
 
@@ -231,13 +237,24 @@ export default function NoteEditorScreen() {
     loadNoteFromDatabase();
   }, [params.id, isEditing, user, router]);
 
+  // Request location permission only for new notes (not editing, not shared recalls)
   useEffect(() => {
-    if (!isEditing) {
+    if (!isEditing && !isSharedRecall) {
+      console.log('Requesting location for new note');
       requestLocationPermission();
+    } else if (isSharedRecall) {
+      console.log('Skipping location request for shared recall');
     }
-  }, [isEditing]);
+  }, [isEditing, isSharedRecall]);
 
+  // Handle location updates from search (but not for shared recalls)
   useEffect(() => {
+    // Skip location modal for shared recalls
+    if (isSharedRecall) {
+      console.log('Skipping location update modal for shared recall');
+      return;
+    }
+
     if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
       const latitude = parseFloat(params.selectedLatitude as string);
       const longitude = parseFloat(params.selectedLongitude as string);
@@ -263,7 +280,7 @@ export default function NoteEditorScreen() {
         selectedPrimaryType: undefined,
       });
     }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedDisplayName, params.selectedFullAddress, params.selectedPrimaryType, router]);
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedDisplayName, params.selectedFullAddress, params.selectedPrimaryType, router, isSharedRecall]);
 
   const requestLocationPermission = async () => {
     try {
@@ -542,6 +559,7 @@ export default function NoteEditorScreen() {
       }
 
       // Only upload NEW images (those without an id)
+      // For shared recalls, all images are new (they're CDN URLs that need to be downloaded and uploaded)
       let uploadedCount = 0;
       let failedCount = 0;
       const uploadedImageIds: string[] = [];
@@ -553,11 +571,12 @@ export default function NoteEditorScreen() {
           continue;
         }
 
-        // Only upload new images (those with localUri but no id)
-        if (image.localUri) {
-          console.log('Uploading new image to database:', image.localUri);
+        // Upload new images (those with localUri or CDN URLs from shared recalls)
+        if (image.localUri || image.uri) {
+          const imageUri = image.localUri || image.uri;
+          console.log('Uploading new image to database:', imageUri);
           
-          const imageId = await uploadImageToDatabase(image.localUri, recallId, image.contentType);
+          const imageId = await uploadImageToDatabase(imageUri, recallId, image.contentType);
           
           if (imageId) {
             uploadedCount++;
@@ -786,7 +805,7 @@ export default function NoteEditorScreen() {
                 value={text}
                 onChangeText={setText}
                 multiline
-                autoFocus={!isEditing}
+                autoFocus={!isEditing && !isSharedRecall}
                 scrollEnabled={false}
                 caretHidden={false}
               />
@@ -805,7 +824,7 @@ export default function NoteEditorScreen() {
                 value={text}
                 onChangeText={setText}
                 multiline
-                autoFocus={!isEditing}
+                autoFocus={!isEditing && !isSharedRecall}
                 scrollEnabled={false}
               />
             </ScrollView>
@@ -953,7 +972,7 @@ export default function NoteEditorScreen() {
         />
       )}
 
-      {/* Location Modal */}
+      {/* Location Modal - Only shown for location search updates, not for shared recalls */}
       <Modal
         visible={isLocationModalVisible}
         transparent={true}

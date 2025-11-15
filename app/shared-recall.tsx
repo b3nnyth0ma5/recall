@@ -9,13 +9,13 @@ import {
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
-import { parseSharedRecallUrl, SharedRecallData } from '@/utils/shareRecall';
-import * as Linking from 'expo-linking';
+import { SharedRecallData } from '@/utils/shareRecall';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 export default function SharedRecallScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const [loading, setLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState('Opening shared recall...');
 
   useEffect(() => {
     handleSharedRecall();
@@ -25,6 +25,9 @@ export default function SharedRecallScreen() {
     try {
       console.log('SharedRecallScreen params:', params);
 
+      // Show loading message briefly
+      setLoadingMessage('Opening shared recall...');
+      
       // Get the data parameter
       const dataParam = params.data;
       
@@ -41,14 +44,18 @@ export default function SharedRecallScreen() {
 
       console.log('Parsed shared recall data:', sharedData);
 
+      // Update loading message
+      setLoadingMessage('Loading recall data...');
+      
+      // Wait a brief moment to show the transition (800ms total)
+      await new Promise(resolve => setTimeout(resolve, 800));
+
       // Navigate to note editor with pre-filled data
       viewSharedRecall(sharedData);
     } catch (error) {
       console.error('Error handling shared recall:', error);
       Alert.alert('Error', 'Failed to open shared recall');
       router.replace('/(tabs)/(home)');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -63,6 +70,7 @@ export default function SharedRecallScreen() {
     }
 
     // Navigate to note editor with pre-filled data
+    // Using replace to dismiss this transition screen
     router.replace({
       pathname: '/note-editor',
       params: {
@@ -84,10 +92,17 @@ export default function SharedRecallScreen() {
           headerShown: false,
         }}
       />
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Opening shared recall...</Text>
-      </View>
+      <Animated.View 
+        entering={FadeIn.duration(300)}
+        exiting={FadeOut.duration(300)}
+        style={styles.container}
+      >
+        <View style={styles.content}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>{loadingMessage}</Text>
+          <Text style={styles.subText}>Please wait...</Text>
+        </View>
+      </Animated.View>
     </>
   );
 }
@@ -100,9 +115,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  content: {
+    alignItems: 'center',
+    gap: 16,
+  },
   loadingText: {
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: '600',
     color: colors.text,
     marginTop: 16,
+  },
+  subText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 4,
   },
 });

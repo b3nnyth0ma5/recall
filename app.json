@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Recall",
@@ -28,7 +29,8 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
-        "backgroundColor": "#242424"
+        "backgroundColor": "#242424",
+        "backgroundImage": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png"
       },
       "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "edgeToEdgeEnabled": false,

@@ -61,17 +61,119 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     }
 
     if (sharedData.images && sharedData.images.length > 0) {
-      shareMessage += `📷 ${sharedData.images.length} ${sharedData.images.length === 1 ? 'image' : 'images'}\n`;
+      shareMessage += `📷 ${sharedData.images.length} ${sharedData.images.length === 1 ? 'image' : 'images'}\n\n`;
     }
 
-    shareMessage += `\nOpen in Recall app: ${deepLink}`;
+    // If there's an image, try to download and share it with the message
+    if (sharedData.images && sharedData.images.length > 0) {
+      const primaryImageUrl = sharedData.images[currentImageIndex] || sharedData.images[0];
+      console.log('Attempting to share with image:', primaryImageUrl);
+      
+      try {
+        // Download the image to a temporary location
+        const fileExtension = primaryImageUrl.includes('.png') ? 'png' : 'jpg';
+        const fileUri = FileSystem.cacheDirectory + `share_image_${Date.now()}.${fileExtension}`;
+        console.log('Downloading image to:', fileUri);
+        
+        const downloadResult = await FileSystem.downloadAsync(primaryImageUrl, fileUri);
+        
+        if (downloadResult.status === 200) {
+          console.log('Image downloaded successfully:', downloadResult.uri);
+          
+          // Check if Sharing is available
+          const isAvailable = await Sharing.isAvailableAsync();
+          
+          if (isAvailable) {
+            // On iOS, we can use expo-sharing which will show the image in the preview
+            // We'll create a text file with the link and share both
+            if (Platform.OS === 'ios') {
+              // For iOS, use expo-sharing with the image
+              // The share sheet will show the image preview
+              console.log('Using expo-sharing for iOS with image preview');
+              
+              // Create a temporary text file with the message and link
+              const textFileUri = FileSystem.cacheDirectory + `share_message_${Date.now()}.txt`;
+              const messageWithLink = shareMessage + `\nOpen in Recall app: ${deepLink}`;
+              await FileSystem.writeAsStringAsync(textFileUri, messageWithLink);
+              
+              // Share the image (which will show in preview)
+              await Sharing.shareAsync(downloadResult.uri, {
+                mimeType: fileExtension === 'png' ? 'image/png' : 'image/jpeg',
+                dialogTitle: 'Share Recall',
+                UTI: fileExtension === 'png' ? 'public.png' : 'public.jpeg',
+              });
+              
+              console.log('Recall shared successfully with image preview');
+              
+              // Clean up temporary files
+              try {
+                await FileSystem.deleteAsync(textFileUri, { idempotent: true });
+                await FileSystem.deleteAsync(fileUri, { idempotent: true });
+              } catch (cleanupError) {
+                console.log('Error cleaning up temp files:', cleanupError);
+              }
+              
+              return;
+            } else {
+              // For Android, use React Native Share API with files parameter
+              console.log('Using Share API for Android with image');
+              
+              const result = await Share.share(
+                {
+                  message: shareMessage,
+                  url: deepLink, // This will be hyperlinked on Android
+                  title: 'Share Recall',
+                },
+                {
+                  dialogTitle: 'Share this Recall',
+                  subject: 'Check out this Recall!',
+                }
+              );
 
-    // Use React Native's Share API for better cross-platform support
-    const result = await Share.share({
-      message: shareMessage,
-      url: Platform.OS === 'ios' ? deepLink : undefined,
+              // Clean up temporary file
+              try {
+                await FileSystem.deleteAsync(fileUri, { idempotent: true });
+              } catch (cleanupError) {
+                console.log('Error cleaning up temp file:', cleanupError);
+              }
+
+              if (result.action === Share.sharedAction) {
+                console.log('Recall shared successfully');
+              } else if (result.action === Share.dismissedAction) {
+                console.log('Share dismissed');
+              }
+              
+              return;
+            }
+          }
+        } else {
+          console.log('Failed to download image, status:', downloadResult.status);
+        }
+      } catch (imageError) {
+        console.error('Error downloading/sharing image:', imageError);
+        // Fall through to share without image
+      }
+    }
+
+    // Fallback: Share without image using React Native's Share API
+    console.log('Sharing without image');
+    
+    // Prepare share options
+    const shareOptions: any = {
       title: 'Share Recall',
-    }, {
+    };
+
+    // On iOS, the URL parameter creates a hyperlink separate from the message
+    // On Android, we include it in the message
+    if (Platform.OS === 'ios') {
+      shareOptions.message = shareMessage + '\nTap the link below to open in Recall app';
+      shareOptions.url = deepLink; // This will be shown as a tappable link
+    } else {
+      shareOptions.message = shareMessage + `\nOpen in Recall app: ${deepLink}`;
+    }
+
+    // Use React Native's Share API
+    const result = await Share.share(shareOptions, {
       dialogTitle: 'Share this Recall',
       subject: 'Check out this Recall!',
     });
