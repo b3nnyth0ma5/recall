@@ -7,8 +7,6 @@ import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Linking from 'expo-linking';
-import Toast from 'react-native-toast-message';
-import { toastConfig } from '@/components/CustomToast';
 import { colors } from '@/styles/commonStyles';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { isSharedRecallUrl } from '@/utils/shareRecall';
@@ -87,83 +85,44 @@ function RootLayoutNav() {
     };
   }, [router]);
 
-  // Handle share intents (Android/iOS)
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      return;
-    }
-
-    const handleShareIntent = async () => {
-      try {
-        // For Android, we need to check if the app was opened with a share intent
-        // This is handled through the intent filters in app.json
-        // The shared content will be available through Linking
-        
-        const initialUrl = await Linking.getInitialURL();
-        console.log('Initial URL for share intent:', initialUrl);
-
-        // Check if this is a share intent
-        if (initialUrl && initialUrl.includes('share-intent')) {
-          console.log('Share intent detected');
-          // The share-intent route will handle the shared content
-        }
-      } catch (error) {
-        console.error('Error handling share intent:', error);
-      }
-    };
-
-    handleShareIntent();
-  }, []);
-
   return (
-    <>
-      <Stack
-        screenOptions={{
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.background },
+      }}
+    >
+      <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="note-editor"
+        options={{
+          presentation: 'card',
           headerShown: false,
-          contentStyle: { backgroundColor: colors.background },
         }}
-      >
-        <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="note-editor"
-          options={{
-            presentation: 'card',
-            headerShown: false,
-          }}
-        />
-        <Stack.Screen
-          name="search"
-          options={{
-            presentation: 'card',
-            headerShown: false,
-          }}
-        />
-        <Stack.Screen
-          name="location-search"
-          options={{
-            presentation: 'card',
-            headerShown: false,
-          }}
-        />
-        <Stack.Screen
-          name="shared-recall"
-          options={{
-            presentation: 'card',
-            headerShown: false,
-          }}
-        />
-        <Stack.Screen
-          name="share-intent"
-          options={{
-            presentation: 'transparentModal',
-            headerShown: false,
-            animation: 'fade',
-          }}
-        />
-      </Stack>
-      <Toast config={toastConfig} />
-    </>
+      />
+      <Stack.Screen
+        name="search"
+        options={{
+          presentation: 'card',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="location-search"
+        options={{
+          presentation: 'card',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="shared-recall"
+        options={{
+          presentation: 'card',
+          headerShown: false,
+        }}
+      />
+    </Stack>
   );
 }
 

@@ -6,7 +6,6 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
-    "scheme": "natively",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -23,28 +22,7 @@
         "LSApplicationQueriesSchemes": [
           "comgooglemaps",
           "maps"
-        ],
-        "CFBundleDocumentTypes": [
-          {
-            "CFBundleTypeName": "Text",
-            "LSHandlerRank": "Alternate",
-            "LSItemContentTypes": [
-              "public.plain-text",
-              "public.text"
-            ]
-          },
-          {
-            "CFBundleTypeName": "Images",
-            "LSHandlerRank": "Alternate",
-            "LSItemContentTypes": [
-              "public.image",
-              "public.jpeg",
-              "public.png"
-            ]
-          }
-        ],
-        "NSPhotoLibraryUsageDescription": "This app needs access to your photos to save shared images.",
-        "NSCameraUsageDescription": "This app needs access to your camera to take photos."
+        ]
       },
       "buildNumber": "1.0.0"
     },
@@ -57,42 +35,7 @@
       "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "edgeToEdgeEnabled": false,
       "package": "com.anonymous.Natively",
-      "versionCode": 1,
-      "intentFilters": [
-        {
-          "action": "android.intent.action.SEND",
-          "category": [
-            "android.intent.category.DEFAULT"
-          ],
-          "data": [
-            {
-              "mimeType": "text/plain"
-            }
-          ]
-        },
-        {
-          "action": "android.intent.action.SEND",
-          "category": [
-            "android.intent.category.DEFAULT"
-          ],
-          "data": [
-            {
-              "mimeType": "image/*"
-            }
-          ]
-        },
-        {
-          "action": "android.intent.action.SEND_MULTIPLE",
-          "category": [
-            "android.intent.category.DEFAULT"
-          ],
-          "data": [
-            {
-              "mimeType": "image/*"
-            }
-          ]
-        }
-      ]
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
@@ -103,6 +46,7 @@
       "expo-router",
       "expo-web-browser"
     ],
+    "scheme": "natively",
     "experiments": {
       "typedRoutes": true
     },
@@ -112,5 +56,6 @@
         "projectId": "bc7a42ca-60f4-4c04-9384-26857e2e6ccf"
       }
     }
-  }
+  },
+  "scheme": "Recall"
 }

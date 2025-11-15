@@ -1,209 +1,345 @@
 
-import { NoteCard } from '@/components/NoteCard';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal } from 'react-native';
-import { useNotes } from '@/hooks/useNotes';
-import { Note } from '@/types/Note';
-import Animated, { FadeIn } from 'react-native-reanimated';
-import { Stack, useRouter, useFocusEffect } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { useAuth } from '@/contexts/AuthContext';
-import { colors } from '@/styles/commonStyles';
-import { supabase, getImageDataUrl } from '@/utils/supabase';
-import { CategoryCarousel } from '@/components/CategoryCarousel';
-import { getShareIntentData } from '@/utils/shareIntentHandler';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal } from 'react-native';
+import { Stack, useRouter, useFocusEffect } from 'expo-router';
+import { colors } from '@/styles/commonStyles';
+import { NoteCard } from '@/components/NoteCard';
+import { useNotes } from '@/hooks/useNotes';
+import { IconSymbol } from '@/components/IconSymbol';
+import Animated, { FadeIn } from 'react-native-reanimated';
+import { useAuth } from '@/contexts/AuthContext';
+import { CategoryCarousel } from '@/components/CategoryCarousel';
+import { supabase, getImageDataUrl } from '@/utils/supabase';
+import { Note } from '@/types/Note';
 
 export default function HomeScreen() {
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
   const router = useRouter();
-  const { notes, loading, refreshNotes } = useNotes();
-  const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollPositionRef = useRef(0);
+  const previousNotesCountRef = useRef(notes.length);
+  const isFirstFocusRef = useRef(true);
+  const { user } = useAuth();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const [hasCheckedShareIntent, setHasCheckedShareIntent] = useState(false);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [loadingFiltered, setLoadingFiltered] = useState(false);
+  const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
 
-  // Filter notes by selected category
+  // Update the previous notes count whenever notes change
   useEffect(() => {
-    if (selectedCategoryId) {
-      const filtered = notes.filter((note) => {
-        // Check if note has this category
-        // This would require fetching category associations from the database
-        // For now, we'll just show all notes
-        return true;
-      });
-      setFilteredNotes(filtered);
-    } else {
-      setFilteredNotes(notes);
-    }
-  }, [notes, selectedCategoryId]);
+    previousNotesCountRef.current = notes.length;
+  }, [notes.length]);
 
-  // Check for share intent on mount
+  // Filter notes when category is selected - USING recollections.recall_id
   useEffect(() => {
-    if (hasCheckedShareIntent) {
-      return;
-    }
-
-    const checkShareIntent = async () => {
-      try {
-        const shareData = await getShareIntentData();
-        console.log('Share intent data:', shareData);
-
-        if (shareData && (shareData.text || (shareData.images && shareData.images.length > 0))) {
-          console.log('Navigating to share-intent screen');
-          setHasCheckedShareIntent(true);
-          
-          // Navigate to share intent screen
-          router.push({
-            pathname: '/share-intent',
-            params: {
-              text: shareData.text || '',
-              images: shareData.images ? JSON.stringify(shareData.images) : '[]',
-            },
-          });
-        } else {
-          setHasCheckedShareIntent(true);
-        }
-      } catch (error) {
-        console.error('Error checking share intent:', error);
-        setHasCheckedShareIntent(true);
+    const filterNotesByCategory = async () => {
+      if (!selectedCategoryId) {
+        setFilteredNotes([]);
+        return;
       }
-    };
 
-    checkShareIntent();
-  }, [hasCheckedShareIntent, router]);
+      if (!user?.id) {
+        console.error('No user logged in');
+        setFilteredNotes([]);
+        return;
+      }
 
-  // Fetch category associations when user or selected category changes
-  useEffect(() => {
-    if (!user?.id || !selectedCategoryId) {
-      return;
-    }
-
-    const fetchCategoryNotes = async () => {
       try {
-        const { data, error } = await supabase
-          .from('recollections')
-          .select('id')
-          .eq('category_id', selectedCategoryId)
-          .eq('user_id', user.id);
+        setLoadingFiltered(true);
+        console.log('Filtering notes by category:', selectedCategoryId);
+        console.log('User ID:', user.id);
 
-        if (error) {
-          console.error('Error fetching category notes:', error);
+        // Fetch recollections using recall_id
+        const { data: recollections, error: recollectionsError } = await supabase
+          .from('recollections')
+          .select('recall_id, match_score, category_id')
+          .eq('category_id', selectedCategoryId)
+          .eq('user_id', user.id)
+          .order('match_score', { ascending: false });
+
+        if (recollectionsError) {
+          console.error('Error fetching recollections:', recollectionsError);
+          setFilteredNotes([]);
           return;
         }
 
-        const categoryNoteIds = new Set(data.map((item) => item.id));
-        const filtered = notes.filter((note) => categoryNoteIds.has(note.id));
-        setFilteredNotes(filtered);
+        if (!recollections || recollections.length === 0) {
+          console.log('No recollections found for this category');
+          setFilteredNotes([]);
+          return;
+        }
+
+        console.log(`Found ${recollections.length} recollections for category`);
+        console.log('Recollections data:', recollections);
+
+        // Extract recall_ids from recollections
+        const recallIds = recollections.map(r => r.recall_id);
+        console.log('Recall IDs to fetch:', recallIds);
+        
+        // Fetch the actual recalls using recall_id
+        const { data: recalls, error: recallsError } = await supabase
+          .from('recalls')
+          .select('*')
+          .in('id', recallIds);
+
+        if (recallsError) {
+          console.error('Error fetching recalls:', recallsError);
+          setFilteredNotes([]);
+          return;
+        }
+
+        if (!recalls || recalls.length === 0) {
+          console.log('No recalls found for the recollection recall_ids');
+          setFilteredNotes([]);
+          return;
+        }
+
+        console.log(`Found ${recalls.length} recalls`);
+
+        // Create a map of recall_id to match_score
+        const matchScoreMap = new Map(
+          recollections.map(r => [r.recall_id, r.match_score])
+        );
+
+        // Process the recalls and load their images
+        const notesWithImages = await Promise.all(
+          recalls.map(async (recall) => {
+            try {
+              // Load images for this recall using recall_id
+              const { data: imagesData, error: imagesError } = await supabase
+                .from('recall_images')
+                .select('id')
+                .eq('recall_id', recall.id)
+                .order('created_at', { ascending: true });
+
+              if (imagesError) {
+                console.error('Error loading images for recall:', recall.id, imagesError);
+                return { 
+                  ...recall, 
+                  images: [], 
+                  imageIds: [],
+                  match_score: matchScoreMap.get(recall.id) || 0
+                };
+              }
+
+              const imageResults = await Promise.all(
+                (imagesData || []).map(async (img) => {
+                  try {
+                    const dataUrl = await getImageDataUrl(img.id);
+                    if (!dataUrl) {
+                      return { url: '', id: img.id };
+                    }
+                    return { url: dataUrl, id: img.id };
+                  } catch (error) {
+                    console.error(`Exception processing image ${img.id}:`, error);
+                    return { url: '', id: img.id };
+                  }
+                })
+              );
+
+              const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
+              const imageIds = imageResults.map(result => result.id);
+              
+              return { 
+                ...recall, 
+                images: validImageUrls, 
+                imageIds: imageIds,
+                match_score: matchScoreMap.get(recall.id) || 0
+              };
+            } catch (error) {
+              console.error(`Exception processing recall ${recall.id}:`, error);
+              return { 
+                ...recall, 
+                images: [], 
+                imageIds: [],
+                match_score: matchScoreMap.get(recall.id) || 0
+              };
+            }
+          })
+        );
+
+        // Sort by match_score (highest first)
+        notesWithImages.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+
+        console.log(`Filtered ${notesWithImages.length} notes for category (sorted by match_score)`);
+        setFilteredNotes(notesWithImages);
       } catch (error) {
-        console.error('Error fetching category notes:', error);
+        console.error('Error filtering notes:', error);
+        setFilteredNotes([]);
+      } finally {
+        setLoadingFiltered(false);
       }
     };
 
-    fetchCategoryNotes();
-  }, [selectedCategoryId, user?.id, notes]);
+    filterNotesByCategory();
+  }, [selectedCategoryId, user?.id]);
 
-  const handleRefresh = useCallback(async () => {
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[useFocusEffect] Home screen focused');
+      
+      // Skip auto-refresh on first focus (initial load)
+      if (isFirstFocusRef.current) {
+        isFirstFocusRef.current = false;
+        return;
+      }
+      
+      // Check if a new note was created (notes count increased)
+      const currentCount = notes.length;
+      const previousCount = previousNotesCountRef.current;
+      
+      if (currentCount > previousCount) {
+        console.log('[useFocusEffect] New note detected, auto-refreshing...');
+        refreshNotes();
+      }
+      
+      // Restore scroll position after a short delay
+      const savedScrollPosition = scrollPositionRef.current;
+      if (savedScrollPosition > 0 && scrollViewRef.current) {
+        setTimeout(() => {
+          scrollViewRef.current?.scrollTo({ y: savedScrollPosition, animated: false });
+        }, 100);
+      }
+      
+      // Cleanup function
+      return () => {
+        console.log('[useFocusEffect] Home screen unfocused');
+      };
+    }, [notes.length, refreshNotes])
+  );
+
+  const handleRefresh = async () => {
     setRefreshing(true);
-    await refreshNotes();
-    // Increment refresh trigger to refresh the category carousel
-    setRefreshTrigger(prev => prev + 1);
-    setRefreshing(false);
-  }, [refreshNotes]);
+    console.log('[handleRefresh] Refreshing landing page data from Supabase...');
+    
+    try {
+      // Refresh categories by triggering a re-render in CategoryCarousel
+      console.log('[handleRefresh] Triggering category refresh...');
+      setCategoryRefreshTrigger(prev => prev + 1);
+      
+      // Refresh notes/recalls
+      if (selectedCategoryId) {
+        console.log('[handleRefresh] Refreshing filtered notes for category:', selectedCategoryId);
+        // Trigger re-fetch of filtered notes by temporarily clearing and resetting category
+        const currentCategory = selectedCategoryId;
+        setSelectedCategoryId(null);
+        setTimeout(() => setSelectedCategoryId(currentCategory), 100);
+      } else {
+        console.log('[handleRefresh] Refreshing all notes...');
+        await refreshNotes();
+      }
+    } catch (error) {
+      console.error('[handleRefresh] Error refreshing data:', error);
+    } finally {
+      setRefreshing(false);
+      console.log('[handleRefresh] Refresh complete');
+    }
+  };
 
-  const handleCreateNote = useCallback(() => {
+  const handleCreateNote = () => {
     router.push('/note-editor');
-  }, [router]);
+  };
 
-  const handleNotePress = useCallback((noteId: string) => {
-    router.push({
-      pathname: '/note-editor',
-      params: { id: noteId },
-    });
-  }, [router]);
+  const handleNotePress = (noteId: string) => {
+    router.push(`/note-editor?id=${noteId}`);
+  };
 
-  const handleSearch = useCallback(() => {
+  const handleSearch = () => {
     router.push('/search');
-  }, [router]);
+  };
 
-  const handleProfile = useCallback(() => {
+  const handleProfile = () => {
     router.push('/(tabs)/profile');
-  }, [router]);
+  };
 
-  const handleCategorySelect = useCallback((categoryId: string | null) => {
-    console.log('Selected category:', categoryId);
+  const handleCategorySelect = (categoryId: string | null) => {
+    console.log('Category selected:', categoryId);
     setSelectedCategoryId(categoryId);
-  }, []);
+    // Scroll to top when category changes
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: true });
+    }
+  };
+
+  const handleScroll = useCallback((event: any) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    
+    // Save scroll position to ref (doesn't trigger re-render)
+    scrollPositionRef.current = contentOffset.y;
+    
+    // Only load more if not filtering by category
+    if (selectedCategoryId) {
+      return;
+    }
+
+    // Load more notes when near bottom
+    const paddingToBottom = 20;
+    const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+
+    if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
+      console.log('[handleScroll] Loading more notes...');
+      loadMoreNotes();
+    }
+  }, [hasMore, isLoadingMore, loading, loadMoreNotes, selectedCategoryId]);
 
   const renderEmptyState = () => (
-    <Animated.View entering={FadeIn} style={styles.emptyState}>
-      <IconSymbol
-        ios_icon_name="note.text"
-        android_material_icon_name="note"
-        size={64}
-        color={colors.textTertiary}
-      />
-      <Text style={styles.emptyStateTitle}>No Recalls Yet</Text>
-      <Text style={styles.emptyStateText}>
-        Tap the + button to create your first recall
+    <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+      <IconSymbol name="note.text" size={80} color={colors.textTertiary} />
+      <Text style={styles.emptyTitle}>
+        {selectedCategoryId ? 'No Recalls in This Category' : 'No Recalls Yet'}
+      </Text>
+      <Text style={styles.emptyText}>
+        {selectedCategoryId 
+          ? 'Try selecting a different category or create a new recall'
+          : 'Tap the + button to create your first recall'
+        }
       </Text>
     </Animated.View>
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      refreshNotes();
-      // Increment refresh trigger to refresh the category carousel when screen is focused
-      setRefreshTrigger(prev => prev + 1);
-    }, [refreshNotes])
-  );
+  // Determine which notes to display
+  const displayNotes = selectedCategoryId ? filteredNotes : notes;
+  const isLoading = selectedCategoryId ? loadingFiltered : loading;
 
   return (
     <View style={styles.container}>
       <Stack.Screen
         options={{
-          headerShown: false,
+          headerShown: true,
+          headerTitle: 'Recall',
+          headerStyle: {
+            backgroundColor: colors.background,
+          },
+          headerTintColor: colors.text,
+          headerTitleAlign: 'center',
+          headerTitleStyle: {
+            fontSize: 32,
+            fontWeight: 'bold',
+						fontColor: colors.primary,
+          },
+          headerLeft: () => (
+            <Image
+              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+              style={styles.headerIcon}
+              resizeMode="contain"
+            />
+          ),
+          headerRight: () => (
+            <Pressable onPress={handleProfile} style={styles.headerButton}>
+              <IconSymbol name="person.circle.fill" size={32} color={colors.text} />
+            </Pressable>
+          ),
         }}
       />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Recalls</Text>
-        <View style={styles.headerButtons}>
-          <Pressable onPress={handleSearch} style={styles.headerButton}>
-            <IconSymbol
-              ios_icon_name="magnifyingglass"
-              android_material_icon_name="search"
-              size={24}
-              color={colors.text}
-            />
-          </Pressable>
-          <Pressable onPress={handleProfile} style={styles.headerButton}>
-            <IconSymbol
-              ios_icon_name="person.circle"
-              android_material_icon_name="account_circle"
-              size={24}
-              color={colors.text}
-            />
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Category Carousel - NOW WITH userId AND refreshTrigger */}
-      <CategoryCarousel 
-        onCategorySelect={handleCategorySelect}
-        selectedCategoryId={selectedCategoryId}
-        userId={user?.id}
-        refreshTrigger={refreshTrigger}
-      />
-
-      {/* Notes List */}
+      {/* Main Content ScrollView */}
       <ScrollView
         ref={scrollViewRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={400}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -213,32 +349,77 @@ export default function HomeScreen() {
           />
         }
       >
-        {loading && filteredNotes.length === 0 ? (
+        {/* Category Carousel - Only show categories with recollections */}
+        <CategoryCarousel 
+          onCategorySelect={handleCategorySelect}
+          selectedCategoryId={selectedCategoryId}
+          userId={user?.id}
+          refreshTrigger={categoryRefreshTrigger}
+        />
+
+        {isLoading && !refreshing ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ) : filteredNotes.length === 0 ? (
+        ) : displayNotes.length === 0 ? (
           renderEmptyState()
         ) : (
-          filteredNotes.map((note) => (
-            <NoteCard
-              key={note.id}
-              note={note}
-              onPress={() => handleNotePress(note.id)}
-            />
-          ))
+          <View style={styles.notesContainer}>
+            {/* Notes section */}
+            <View style={styles.allNotesSection}>
+              {displayNotes.map((note, index) => (
+                <NoteCard
+                  key={`${note.id}-${index}`}
+                  note={note}
+                  onPress={() => handleNotePress(note.id)}
+                />
+              ))}
+            </View>
+
+            {!selectedCategoryId && isLoadingMore && (
+              <View style={styles.loadingMoreContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.loadingMoreText}>Loading more...</Text>
+              </View>
+            )}
+            {!selectedCategoryId && !hasMore && displayNotes.length > 0 && (
+              <View style={styles.endContainer}>
+                <Text style={styles.endText}>You&apos;ve reached the end</Text>
+              </View>
+            )}
+          </View>
         )}
       </ScrollView>
 
-      {/* Floating Action Button */}
-      <Pressable style={styles.fab} onPress={handleCreateNote}>
-        <IconSymbol
-          ios_icon_name="plus"
-          android_material_icon_name="add"
-          size={28}
-          color={colors.text}
-        />
-      </Pressable>
+      <View style={styles.bottomActions}>
+        <Pressable
+          onPress={handleSearch}
+          style={styles.searchFab}
+        >
+          <IconSymbol name="magnifyingglass" size={28} color="#FFFFFF" />
+        </Pressable>
+
+        <Pressable
+          onPress={handleCreateNote}
+          style={styles.fab}
+        >
+          <IconSymbol name="plus" size={28} color="#FFFFFF" />
+        </Pressable>
+      </View>
+
+      {/* Deletion Indicator Modal */}
+      <Modal
+        visible={isDeletingNote}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.deletionModalContainer}>
+          <View style={styles.deletionModalContent}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.deletionModalText}>Deleting note...</Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -248,32 +429,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 16,
-    backgroundColor: colors.background,
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  headerButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  headerButton: {
-    padding: 8,
-  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 16,
     paddingBottom: 100,
   },
   loadingContainer: {
@@ -282,43 +441,108 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 100,
   },
-  emptyState: {
+  emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingTop: 100,
-    paddingHorizontal: 40,
   },
-  emptyStateTitle: {
+  emptyTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
     marginTop: 16,
     marginBottom: 8,
   },
-  emptyStateText: {
+  emptyText: {
     fontSize: 16,
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 24,
+    paddingHorizontal: 32,
+  },
+  notesContainer: {
+    width: '100%',
+  },
+  allNotesSection: {
+    paddingHorizontal: 16,
+  },
+  loadingMoreContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 20,
+    gap: 12,
+  },
+  loadingMoreText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  endContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  endText: {
+    fontSize: 14,
+    color: colors.textTertiary,
+    fontStyle: 'italic',
+  },
+  headerIcon: {
+    width: 36,
+    height: 36,
+    marginLeft: 8,
+  },
+  headerButton: {
+    padding: 8,
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomActions: {
+    position: 'absolute',
+    bottom: 24,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+  },
+  searchFab: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.searchAccent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 16px rgba(74, 144, 226, 0.4)',
+    elevation: 8,
   },
   fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 90,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    boxShadow: '0px 4px 16px rgba(255, 107, 53, 0.4)',
     elevation: 8,
+  },
+  deletionModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deletionModalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    gap: 16,
+    minWidth: 200,
+  },
+  deletionModalText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
   },
 });

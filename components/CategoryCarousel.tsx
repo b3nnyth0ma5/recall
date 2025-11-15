@@ -27,10 +27,8 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
   const [loading, setLoading] = useState(true);
 
   const loadCategoriesWithRecollections = useCallback(async () => {
-    console.log('[CategoryCarousel] loadCategoriesWithRecollections called with userId:', userId);
-    
     if (!userId) {
-      console.log('[CategoryCarousel] No user ID provided, skipping category load');
+      console.log('No user ID provided, skipping category load');
       setCategories([]);
       setLoading(false);
       return;
@@ -40,35 +38,27 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       setLoading(true);
       console.log('[CategoryCarousel] Loading categories with recollections from Supabase for user:', userId);
       
-      // Use RPC or direct query to get categories with recollections
-      // First get all category IDs that have recollections for this user
+      // First, get all categories that have recollections for this user
       const { data: recollectionsData, error: recollectionsError } = await supabase
         .from('recollections')
         .select('category_id')
         .eq('user_id', userId);
 
-      console.log('[CategoryCarousel] Recollections query result:', { 
-        count: recollectionsData?.length, 
-        error: recollectionsError 
-      });
-
       if (recollectionsError) {
         console.error('[CategoryCarousel] Error loading recollections:', recollectionsError);
         setCategories([]);
-        setLoading(false);
         return;
       }
 
       if (!recollectionsData || recollectionsData.length === 0) {
         console.log('[CategoryCarousel] No recollections found for user');
         setCategories([]);
-        setLoading(false);
         return;
       }
 
       // Get unique category IDs
       const categoryIds = [...new Set(recollectionsData.map(r => r.category_id))];
-      console.log(`[CategoryCarousel] Found ${categoryIds.length} unique category IDs`);
+      console.log(`[CategoryCarousel] Found ${categoryIds.length} unique categories with recollections`);
 
       // Fetch category details for these IDs
       const { data: categoriesData, error: categoriesError } = await supabase
@@ -77,23 +67,16 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
         .in('id', categoryIds)
         .order('category_name', { ascending: true });
 
-      console.log('[CategoryCarousel] Categories query result:', { 
-        count: categoriesData?.length, 
-        error: categoriesError,
-        categories: categoriesData?.map(c => c.category_name)
-      });
-
       if (categoriesError) {
         console.error('[CategoryCarousel] Error loading categories:', categoriesError);
         setCategories([]);
-        setLoading(false);
         return;
       }
 
-      console.log(`[CategoryCarousel] Successfully loaded ${categoriesData?.length || 0} categories`);
+      console.log(`[CategoryCarousel] Loaded ${categoriesData?.length || 0} categories with recollections from Supabase`);
       setCategories(categoriesData || []);
     } catch (error) {
-      console.error('[CategoryCarousel] Exception loading categories:', error);
+      console.error('[CategoryCarousel] Error loading categories:', error);
       setCategories([]);
     } finally {
       setLoading(false);
@@ -101,11 +84,9 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
   }, [userId]);
 
   useEffect(() => {
-    console.log('[CategoryCarousel] useEffect triggered - userId:', userId, 'refreshTrigger:', refreshTrigger);
     if (userId) {
       loadCategoriesWithRecollections();
     } else {
-      console.log('[CategoryCarousel] No userId, setting empty categories');
       setCategories([]);
       setLoading(false);
     }
@@ -118,29 +99,24 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
 
     // If already selected, deselect it
     if (selectedCategoryId === category.id) {
-      console.log('[CategoryCarousel] Deselecting category:', category.id);
+      console.log('Deselecting category:', category.id);
       onCategorySelect(null);
     } else {
-      console.log('[CategoryCarousel] Selecting category:', category.id);
+      console.log('Selecting category:', category.id);
       onCategorySelect(category.id);
     }
   };
 
-  console.log('[CategoryCarousel] Render - loading:', loading, 'categories.length:', categories.length);
-
   if (loading) {
-    console.log('[CategoryCarousel] Rendering loading state');
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={styles.loadingText}>Loading categories...</Text>
       </View>
     );
   }
 
   // Show zero state if no categories with recollections
   if (categories.length === 0) {
-    console.log('[CategoryCarousel] Rendering zero state');
     return (
       <Animated.View entering={FadeIn.duration(400)} style={styles.zeroStateContainer}>
         <Text style={styles.zeroStateText}>
@@ -149,8 +125,6 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       </Animated.View>
     );
   }
-
-  console.log('[CategoryCarousel] Rendering categories carousel with', categories.length, 'categories');
 
   return (
     <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
@@ -214,20 +188,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  loadingText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 8,
-  },
   zeroStateContainer: {
     paddingVertical: 20,
     paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.cardBackground,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 12,
   },
   zeroStateText: {
     fontSize: 14,
@@ -260,7 +225,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
     borderWidth: 2,
-    borderColor: colors.border || colors.textTertiary,
+    borderColor: colors.primary,
   },
   categoryImageContainerSelected: {
     borderColor: colors.primary,
