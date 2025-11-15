@@ -216,7 +216,7 @@ export default function HomeScreen() {
     }, [notes.length, refreshNotes])
   );
 
-  const handleRefresh = async () => {
+  const handleRefresh = async (clearCategory: boolean = false) => {
     setRefreshing(true);
     console.log('[handleRefresh] Refreshing landing page data from Supabase...');
     
@@ -226,7 +226,7 @@ export default function HomeScreen() {
       setCategoryRefreshTrigger(prev => prev + 1);
       
       // Refresh notes/recalls
-      if (selectedCategoryId) {
+      if (selectedCategoryId && !clearCategory) {
         console.log('[handleRefresh] Refreshing filtered notes for category:', selectedCategoryId);
         // Trigger re-fetch of filtered notes by temporarily clearing and resetting category
         const currentCategory = selectedCategoryId;
@@ -255,8 +255,8 @@ export default function HomeScreen() {
       scrollViewRef.current.scrollTo({ y: 0, animated: true });
     }
     
-    // Reload landing page data
-    await handleRefresh();
+    // Reload landing page data with clearCategory flag set to true
+    await handleRefresh(true);
   };
 
   // Web-specific pull-to-refresh handlers
@@ -280,7 +280,7 @@ export default function HomeScreen() {
 
   const handleTouchEnd = async () => {
     if (isPulling && pullDistance >= PULL_THRESHOLD) {
-      await handleRefresh();
+      await handleRefresh(false);
     }
     setIsPulling(false);
     setPullDistance(0);
