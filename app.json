@@ -6,6 +6,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
+    "scheme": "natively",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -100,15 +101,8 @@
     "plugins": [
       "expo-font",
       "expo-router",
-      "expo-web-browser",
-      [
-        "expo-sharing",
-        {
-          "photosPermission": "Allow Recall to access your photos to save shared images."
-        }
-      ]
+      "expo-web-browser"
     ],
-    "scheme": "natively",
     "experiments": {
       "typedRoutes": true
     },
@@ -118,6 +112,5 @@
         "projectId": "bc7a42ca-60f4-4c04-9384-26857e2e6ccf"
       }
     }
-  },
-  "scheme": "Recall"
+  }
 }
