@@ -22,6 +22,7 @@ export default function HomeScreen() {
   const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
   const [hasCheckedShareIntent, setHasCheckedShareIntent] = useState(false);
+  const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
 
   // Filter notes by selected category
   useEffect(() => {
@@ -81,21 +82,29 @@ export default function HomeScreen() {
 
     const fetchCategoryNotes = async () => {
       try {
+        console.log('[HomeScreen] Fetching recalls for category:', selectedCategoryId);
+        
+        // Query the recollections junction table to get recall IDs for this category
         const { data, error } = await supabase
-          .from('recollection_categories')
-          .select('recollection_id')
-          .eq('category_id', selectedCategoryId);
+          .from('recollections')
+          .select('recall_id')
+          .eq('category_id', selectedCategoryId)
+          .eq('user_id', user.id);
 
         if (error) {
-          console.error('Error fetching category notes:', error);
+          console.error('[HomeScreen] Error fetching category recalls:', error);
           return;
         }
 
-        const categoryNoteIds = new Set(data.map((item) => item.recollection_id));
+        console.log('[HomeScreen] Found', data?.length || 0, 'recalls for category');
+
+        const categoryNoteIds = new Set(data?.map((item) => item.recall_id) || []);
         const filtered = notes.filter((note) => categoryNoteIds.has(note.id));
+        
+        console.log('[HomeScreen] Filtered to', filtered.length, 'notes');
         setFilteredNotes(filtered);
       } catch (error) {
-        console.error('Error fetching category notes:', error);
+        console.error('[HomeScreen] Error fetching category recalls:', error);
       }
     };
 
@@ -105,6 +114,8 @@ export default function HomeScreen() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await refreshNotes();
+    // Trigger category carousel refresh
+    setCategoryRefreshTrigger(prev => prev + 1);
     setRefreshing(false);
   }, [refreshNotes]);
 
@@ -128,7 +139,7 @@ export default function HomeScreen() {
   }, [router]);
 
   const handleCategorySelect = useCallback((categoryId: string | null) => {
-    console.log('Selected category:', categoryId);
+    console.log('[HomeScreen] Selected category:', categoryId);
     setSelectedCategoryId(categoryId);
   }, []);
 
@@ -149,7 +160,10 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      console.log('[HomeScreen] Screen focused - refreshing notes and categories');
       refreshNotes();
+      // Trigger category carousel refresh when screen comes into focus
+      setCategoryRefreshTrigger(prev => prev + 1);
     }, [refreshNotes])
   );
 
@@ -185,7 +199,12 @@ export default function HomeScreen() {
       </View>
 
       {/* Category Carousel */}
-      <CategoryCarousel onCategorySelect={handleCategorySelect} />
+      <CategoryCarousel 
+        onCategorySelect={handleCategorySelect} 
+        selectedCategoryId={selectedCategoryId}
+        userId={user?.id}
+        refreshTrigger={categoryRefreshTrigger}
+      />
 
       {/* Notes List */}
       <ScrollView
