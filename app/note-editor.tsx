@@ -14,7 +14,6 @@ import {
   Platform,
   Keyboard,
   Linking,
-  Modal,
   Dimensions,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -63,15 +62,6 @@ export default function NoteEditorScreen() {
   const [locationPrimaryType, setLocationPrimaryType] = useState<string>('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [isLocationModalVisible, setIsLocationModalVisible] = useState(false);
-  const [selectedLocationData, setSelectedLocationData] = useState<{
-    latitude: number;
-    longitude: number;
-    displayName: string;
-    formattedName: string;
-    fullAddress: string;
-    primaryType?: string;
-  } | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -144,9 +134,6 @@ export default function NoteEditorScreen() {
           console.error('Error parsing shared images:', error);
         }
       }
-      
-      // Don't show location modal for shared recalls
-      console.log('Skipping location modal for shared recall');
     }
   }, [isSharedRecall, params.sharedText, params.sharedImages, params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType]);
 
@@ -249,9 +236,9 @@ export default function NoteEditorScreen() {
 
   // Handle location updates from search (but not for shared recalls)
   useEffect(() => {
-    // Skip location modal for shared recalls
+    // Skip location updates for shared recalls
     if (isSharedRecall) {
-      console.log('Skipping location update modal for shared recall');
+      console.log('Skipping location update for shared recall');
       return;
     }
 
@@ -259,17 +246,13 @@ export default function NoteEditorScreen() {
       const latitude = parseFloat(params.selectedLatitude as string);
       const longitude = parseFloat(params.selectedLongitude as string);
       const formattedName = params.selectedLocationName as string;
-      const displayName = params.selectedDisplayName as string || formattedName;
-      const fullAddress = params.selectedFullAddress as string || formattedName;
       const primaryType = params.selectedPrimaryType as string || '';
 
-      console.log('Location updated from search:', { latitude, longitude, formattedName, displayName, fullAddress, primaryType });
+      console.log('Location updated from search:', { latitude, longitude, formattedName, primaryType });
       
       setLocation({ latitude, longitude });
       setLocationName(formattedName);
       setLocationPrimaryType(primaryType);
-      setSelectedLocationData({ latitude, longitude, displayName, formattedName, fullAddress, primaryType });
-      setIsLocationModalVisible(true);
 
       router.setParams({
         selectedLatitude: undefined,
@@ -280,7 +263,7 @@ export default function NoteEditorScreen() {
         selectedPrimaryType: undefined,
       });
     }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedDisplayName, params.selectedFullAddress, params.selectedPrimaryType, router, isSharedRecall]);
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router, isSharedRecall]);
 
   const requestLocationPermission = async () => {
     try {
@@ -692,11 +675,6 @@ export default function NoteEditorScreen() {
     router.push('/location-search');
   };
 
-  const handleCloseLocationModal = () => {
-    setIsLocationModalVisible(false);
-    setSelectedLocationData(null);
-  };
-
   const handleImageScroll = (event: any) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / (IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING));
@@ -971,71 +949,6 @@ export default function NoteEditorScreen() {
           onClose={() => setShowFullScreenImage(false)}
         />
       )}
-
-      {/* Location Modal - Only shown for location search updates, not for shared recalls */}
-      <Modal
-        visible={isLocationModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={handleCloseLocationModal}
-      >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={handleCloseLocationModal}
-        >
-          <Animated.View 
-            entering={FadeIn.duration(300)}
-            style={styles.modalContent}
-          >
-            <Pressable onPress={(e) => e.stopPropagation()}>
-              <View style={styles.modalHeader}>
-                <IconSymbol name="mappin.circle.fill" size={32} color={colors.primary} />
-                <Text style={styles.modalTitle}>Location Updated</Text>
-              </View>
-
-              {selectedLocationData && (
-                <View style={styles.modalBody}>
-                  <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Saved Location:</Text>
-                    <Text style={styles.modalValue}>{selectedLocationData.formattedName}</Text>
-                  </View>
-
-                  <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Place Name:</Text>
-                    <Text style={styles.modalValue}>{selectedLocationData.displayName}</Text>
-                  </View>
-
-                  {selectedLocationData.primaryType && (
-                    <View style={styles.modalRow}>
-                      <Text style={styles.modalLabel}>Place Type:</Text>
-                      <Text style={styles.modalValue}>{selectedLocationData.primaryType}</Text>
-                    </View>
-                  )}
-
-                  <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Full Address:</Text>
-                    <Text style={styles.modalValue}>{selectedLocationData.fullAddress}</Text>
-                  </View>
-
-                  <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Coordinates:</Text>
-                    <Text style={styles.modalValue}>
-                      {selectedLocationData.latitude.toFixed(6)}, {selectedLocationData.longitude.toFixed(6)}
-                    </Text>
-                  </View>
-                </View>
-              )}
-
-              <Pressable
-                onPress={handleCloseLocationModal}
-                style={styles.modalButton}
-              >
-                <Text style={styles.modalButtonText}>Close</Text>
-              </Pressable>
-            </Pressable>
-          </Animated.View>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
@@ -1242,60 +1155,5 @@ const styles = StyleSheet.create({
   },
   toolbarButton: {
     padding: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    padding: 24,
-    width: '100%',
-    maxWidth: 400,
-    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.6)',
-    elevation: 10,
-  },
-  modalHeader: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginTop: 12,
-  },
-  modalBody: {
-    marginBottom: 24,
-  },
-  modalRow: {
-    marginBottom: 16,
-  },
-  modalLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  modalValue: {
-    fontSize: 16,
-    color: colors.text,
-    lineHeight: 22,
-  },
-  modalButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  modalButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 });

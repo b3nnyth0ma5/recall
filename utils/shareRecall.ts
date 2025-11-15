@@ -46,7 +46,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
 
     console.log('Created deep link:', deepLink);
 
-    // Prepare share message
+    // Prepare share message WITHOUT the URL
     let shareMessage = 'Check out this Recall!\n\n';
     
     if (sharedData.text) {
@@ -61,7 +61,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     }
 
     if (sharedData.images && sharedData.images.length > 0) {
-      shareMessage += `📷 ${sharedData.images.length} ${sharedData.images.length === 1 ? 'image' : 'images'}\n\n`;
+      shareMessage += `📷 ${sharedData.images.length} ${sharedData.images.length === 1 ? 'image' : 'images'}\n`;
     }
 
     // If there's an image, try to download and share it with the message
@@ -85,43 +85,35 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
           
           if (isAvailable) {
             // On iOS, we can use expo-sharing which will show the image in the preview
-            // We'll create a text file with the link and share both
             if (Platform.OS === 'ios') {
               // For iOS, use expo-sharing with the image
               // The share sheet will show the image preview
               console.log('Using expo-sharing for iOS with image preview');
               
-              // Create a temporary text file with the message and link
-              const textFileUri = FileSystem.cacheDirectory + `share_message_${Date.now()}.txt`;
-              const messageWithLink = shareMessage + `\nOpen in Recall app: ${deepLink}`;
-              await FileSystem.writeAsStringAsync(textFileUri, messageWithLink);
-              
-              // Share the image (which will show in preview)
+              // Share the image with the message as the dialog title
               await Sharing.shareAsync(downloadResult.uri, {
                 mimeType: fileExtension === 'png' ? 'image/png' : 'image/jpeg',
-                dialogTitle: 'Share Recall',
+                dialogTitle: shareMessage.trim(),
                 UTI: fileExtension === 'png' ? 'public.png' : 'public.jpeg',
               });
               
               console.log('Recall shared successfully with image preview');
               
-              // Clean up temporary files
+              // Clean up temporary file
               try {
-                await FileSystem.deleteAsync(textFileUri, { idempotent: true });
                 await FileSystem.deleteAsync(fileUri, { idempotent: true });
               } catch (cleanupError) {
-                console.log('Error cleaning up temp files:', cleanupError);
+                console.log('Error cleaning up temp file:', cleanupError);
               }
               
               return;
             } else {
-              // For Android, use React Native Share API with files parameter
+              // For Android, use React Native Share API
               console.log('Using Share API for Android with image');
               
               const result = await Share.share(
                 {
-                  message: shareMessage,
-                  url: deepLink, // This will be hyperlinked on Android
+                  message: shareMessage.trim(),
                   title: 'Share Recall',
                 },
                 {
@@ -158,25 +150,17 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     // Fallback: Share without image using React Native's Share API
     console.log('Sharing without image');
     
-    // Prepare share options
-    const shareOptions: any = {
-      title: 'Share Recall',
-    };
-
-    // On iOS, the URL parameter creates a hyperlink separate from the message
-    // On Android, we include it in the message
-    if (Platform.OS === 'ios') {
-      shareOptions.message = shareMessage + '\nTap the link below to open in Recall app';
-      shareOptions.url = deepLink; // This will be shown as a tappable link
-    } else {
-      shareOptions.message = shareMessage + `\nOpen in Recall app: ${deepLink}`;
-    }
-
-    // Use React Native's Share API
-    const result = await Share.share(shareOptions, {
-      dialogTitle: 'Share this Recall',
-      subject: 'Check out this Recall!',
-    });
+    // Use React Native's Share API with just the message (no URL)
+    const result = await Share.share(
+      {
+        message: shareMessage.trim(),
+        title: 'Share Recall',
+      },
+      {
+        dialogTitle: 'Share this Recall',
+        subject: 'Check out this Recall!',
+      }
+    );
 
     if (result.action === Share.sharedAction) {
       console.log('Recall shared successfully');

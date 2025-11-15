@@ -1,21 +1,13 @@
 
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
+import React, { useEffect, useCallback } from 'react';
+import { View, StyleSheet, Alert } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { SharedRecallData } from '@/utils/shareRecall';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 export default function SharedRecallScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const [loadingMessage, setLoadingMessage] = useState('Opening shared recall...');
 
   const viewSharedRecall = useCallback((sharedData: SharedRecallData) => {
     console.log('Opening note editor with shared data');
@@ -46,9 +38,6 @@ export default function SharedRecallScreen() {
   const handleSharedRecall = useCallback(async () => {
     try {
       console.log('SharedRecallScreen params:', params);
-
-      // Show loading message briefly
-      setLoadingMessage('Opening shared recall...');
       
       // Get the data parameter
       const dataParam = params.data;
@@ -66,13 +55,7 @@ export default function SharedRecallScreen() {
 
       console.log('Parsed shared recall data:', sharedData);
 
-      // Update loading message
-      setLoadingMessage('Loading recall data...');
-      
-      // Wait a brief moment to show the transition (800ms total)
-      await new Promise(resolve => setTimeout(resolve, 800));
-
-      // Navigate to note editor with pre-filled data
+      // Navigate to note editor with pre-filled data immediately
       viewSharedRecall(sharedData);
     } catch (error) {
       console.error('Error handling shared recall:', error);
@@ -92,17 +75,7 @@ export default function SharedRecallScreen() {
           headerShown: false,
         }}
       />
-      <Animated.View 
-        entering={FadeIn.duration(300)}
-        exiting={FadeOut.duration(300)}
-        style={styles.container}
-      >
-        <View style={styles.content}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>{loadingMessage}</Text>
-          <Text style={styles.subText}>Please wait...</Text>
-        </View>
-      </Animated.View>
+      <View style={styles.container} />
     </>
   );
 }
@@ -111,23 +84,5 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  content: {
-    alignItems: 'center',
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginTop: 16,
-  },
-  subText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 4,
   },
 });
