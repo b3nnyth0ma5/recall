@@ -20,13 +20,14 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 
 export default function SearchScreen() {
   const router = useRouter();
-  const { notes, loading, searchNotes, getSearchHistory, locationInfo } = useNotes();
+  const { notes, loading, searchNotes, getSearchHistory, locationInfo, searchAnswer, searchConfidence } = useNotes();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
   const [showHistory, setShowHistory] = useState(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [isAiSearch, setIsAiSearch] = useState(false);
+  const [isAnswerExpanded, setIsAnswerExpanded] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
 
   const loadSearchHistory = useCallback(async () => {
@@ -55,6 +56,7 @@ export default function SearchScreen() {
       setShowHistory(false);
       setHasSearched(true);
       setIsAiSearch(true);
+      setIsAnswerExpanded(false);
       searchNotes(searchQuery);
       setTimeout(() => {
         loadSearchHistory();
@@ -67,6 +69,7 @@ export default function SearchScreen() {
     setShowHistory(false);
     setHasSearched(true);
     setIsAiSearch(true);
+    setIsAnswerExpanded(false);
     searchNotes(searchText);
   };
 
@@ -79,6 +82,7 @@ export default function SearchScreen() {
     setShowHistory(true);
     setHasSearched(false);
     setIsAiSearch(false);
+    setIsAnswerExpanded(false);
     searchNotes('');
   };
 
@@ -88,6 +92,19 @@ export default function SearchScreen() {
     } else {
       searchInputRef.current?.focus();
     }
+  };
+
+  const getAnswerPreview = (answer: string) => {
+    const lines = answer.split('\n');
+    if (lines.length <= 3) {
+      return answer;
+    }
+    return lines.slice(0, 3).join('\n') + '...';
+  };
+
+  const shouldShowAnswerToggle = (answer: string) => {
+    const lines = answer.split('\n');
+    return lines.length > 3;
   };
 
   return (
@@ -212,9 +229,13 @@ export default function SearchScreen() {
                 <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
                 <Text style={styles.featureText}>Google Places integration</Text>
               </View>
+              <View style={styles.featureItem}>
+                <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+                <Text style={styles.featureText}>Question answering</Text>
+              </View>
             </View>
           </Animated.View>
-        ) : notes.length === 0 ? (
+        ) : notes.length === 0 && !searchAnswer ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
             <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
             <Text style={styles.emptyTitle}>No Results Found</Text>
@@ -224,30 +245,65 @@ export default function SearchScreen() {
           </Animated.View>
         ) : (
           <View style={styles.notesContainer}>
-            <Text style={styles.resultsText}>
-              {notes.length} {notes.length === 1 ? 'result' : 'results'} found
-            </Text>
-            {notes.map((note) => (
-              <View key={note.id} style={styles.noteWrapper}>
-                <NoteCard
-                  note={note}
-                  onPress={() => handleNotePress(note.id)}
-                />
-                {note.relevance_score !== undefined && (
-                  <View style={styles.relevanceInfo}>
-                    <View style={styles.relevanceScore}>
-                      <IconSymbol name="star.fill" size={14} color={colors.primary} />
-                      <Text style={styles.relevanceScoreText}>
-                        {note.relevance_score}% match
-                      </Text>
-                    </View>
-                    {note.relevance_reason && (
-                      <Text style={styles.relevanceReason}>{note.relevance_reason}</Text>
+            {/* Answer Section */}
+            {searchAnswer && searchConfidence !== undefined && (
+              <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
+                <View style={styles.answerHeader}>
+                  <View style={styles.answerHeaderLeft}>
+                    <IconSymbol name="lightbulb.fill" size={20} color={colors.primary} />
+                    <Text style={styles.answerTitle}>Answer</Text>
+                  </View>
+                  <View style={styles.confidenceBadge}>
+                    <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                    <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
+                  </View>
+                </View>
+                <Text style={styles.answerText}>
+                  {isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
+                </Text>
+                {shouldShowAnswerToggle(searchAnswer) && (
+                  <Pressable 
+                    onPress={() => setIsAnswerExpanded(!isAnswerExpanded)}
+                    style={styles.answerToggleContainer}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Text style={styles.answerToggleText}>
+                      {isAnswerExpanded ? 'Show less' : 'Show more'}
+                    </Text>
+                  </Pressable>
+                )}
+              </Animated.View>
+            )}
+
+            {/* Results Section */}
+            {notes.length > 0 && (
+              <React.Fragment>
+                <Text style={styles.resultsText}>
+                  {notes.length} {notes.length === 1 ? 'result' : 'results'} found
+                </Text>
+                {notes.map((note) => (
+                  <View key={note.id} style={styles.noteWrapper}>
+                    <NoteCard
+                      note={note}
+                      onPress={() => handleNotePress(note.id)}
+                    />
+                    {note.relevance_score !== undefined && (
+                      <View style={styles.relevanceInfo}>
+                        <View style={styles.relevanceScore}>
+                          <IconSymbol name="star.fill" size={14} color={colors.primary} />
+                          <Text style={styles.relevanceScoreText}>
+                            {note.relevance_score}% match
+                          </Text>
+                        </View>
+                        {note.relevance_reason && (
+                          <Text style={styles.relevanceReason}>{note.relevance_reason}</Text>
+                        )}
+                      </View>
                     )}
                   </View>
-                )}
-              </View>
-            ))}
+                ))}
+              </React.Fragment>
+            )}
           </View>
         )}
       </ScrollView>
@@ -407,6 +463,62 @@ const styles = StyleSheet.create({
   },
   notesContainer: {
     width: '100%',
+  },
+  answerContainer: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.15)',
+    elevation: 3,
+  },
+  answerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  answerHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  answerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  confidenceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 107, 122, 0.15)',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+  },
+  confidenceText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  answerText: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.text,
+  },
+  answerToggleContainer: {
+    alignSelf: 'flex-end',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    marginTop: 8,
+  },
+  answerToggleText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
   },
   resultsText: {
     fontSize: 14,

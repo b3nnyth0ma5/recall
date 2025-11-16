@@ -1,35 +1,6 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
-interface RecallRecord {
-  id: string;
-  text: string;
-  location?: string;
-  latitude?: number;
-  longitude?: number;
-  created_at: string;
-  updated_at: string;
-  user_id: string;
-}
-
-interface SearchResult {
-  id: string;
-  text: string;
-  location?: string;
-  latitude?: number;
-  longitude?: number;
-  relevance_score: number;
-  relevance_reason: string;
-  created_at: string;
-  updated_at: string;
-}
-
-interface ScoredResult {
-  id: string;
-  relevance_score: number;
-  relevance_reason: string;
-}
-
 Deno.serve(async (req) => {
   try {
     // Get the authorization header
@@ -51,17 +22,17 @@ Deno.serve(async (req) => {
 
     // Verify the user's JWT token
     const token = authHeader.replace('Bearer ', '');
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(token);
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
       console.error('Authentication error:', authError);
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     console.log('Authenticated user:', user.id);
@@ -103,7 +74,13 @@ Deno.serve(async (req) => {
     if (!recalls || recalls.length === 0) {
       console.log('No recalls found for user');
       return new Response(
-        JSON.stringify({ results: [], total: 0, query }),
+        JSON.stringify({
+          answer: null,
+          confidence: 0,
+          results: [],
+          total: 0,
+          query,
+        }),
         {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -162,31 +139,43 @@ Deno.serve(async (req) => {
       };
     });
 
-    // Construct the OpenAI prompt
-    // IMPORTANT: When using response_format: { type: 'json_object' }, OpenAI MUST return an object, not an array
-    const systemPrompt = `You are an intelligent search assistant that analyzes user notes/recalls and ranks them by relevance to a search query.
+    // Construct the OpenAI prompt with question-answering capabilities
+    const systemPrompt = `You are an intelligent search assistant and question-answering expert that analyzes user recalls.
 
-Your task:
-1. Analyze the search query to extract key entities (people, places, products, dates, etc.)
-2. Compare the query against each recall's text, location, coordinates, OCR text from images, and AI-generated image explanations
-3. Score each recall from 0-100 based on relevance
-4. Provide a brief reason (max 30 words) for each match
+Your dual task:
+1. QUESTION ANSWERING: If the user's query is a question, attempt to answer it based on the recall data. Provide a concise answer (under 100 words) ONLY if you have high certainty (>70%). Include a confidence score (0-100).
+2. SEARCH RANKING: Analyze and rank recalls by relevance to the search query.
+
+For Question Answering:
+- Analyze if the query is asking a question (who, what, when, where, why, how, or implied questions)
+- Search through all recall text, locations, OCR text, and image explanations for relevant information
+- Synthesize a clear, concise answer if you find sufficient information
+- Assign a confidence score based on how certain you are about the answer
+- If confidence is below 70%, set answer to null
+- Keep answers under 100 words
+
+For Search Ranking:
+- Extract key entities (people, places, products, dates, etc.) from the query
+- Compare the query against each recall's text, location, location type, OCR text, and image explanations
+- Score each recall from 0-100 based on relevance
+- Provide a brief reason (max 30 words) for each match
 
 Scoring criteria:
 - Exact text matches: 90-100
-- Location matches: 70-89
-- OCR text matches: 70-89
-- Image explanation matches: 70-89
-- Geographic proximity: 70-90
+- Location, proximity, OCR text and image explanation matches: 70-89
 - Semantic similarity: 60-69
 - Related concepts: 40-59
 - Weak connection: 20-39
-- No connection: 0-19
+- No connection: 0
 
 Consider location primary type, OCR text and image explanations as important sources of information, especially when the main text is sparse.
 
 Return ONLY a valid JSON object with this exact structure (no markdown, no extra text):
-{"results":[{"id":"recall-id","relevance_score":95,"relevance_reason":"Brief explanation"}]}
+{
+  "answer": "Your concise answer here or null if confidence < 70%",
+  "confidence": 85,
+  "results": [{"id":"recall-id","relevance_score":95,"relevance_reason":"Brief explanation"}]
+}
 
 Include only the top ${limit} most relevant results in the results array, sorted by score (highest first).`;
 
@@ -195,7 +184,10 @@ Include only the top ${limit} most relevant results in the results array, sorted
 Recalls to analyze:
 ${JSON.stringify(recallsWithOCR, null, 2)}
 
-Return the top ${limit} most relevant recalls as a JSON object with a "results" array.`;
+Return a JSON object with:
+1. An "answer" field (string or null) - answer the question if confidence > 70%
+2. A "confidence" field (number 0-100) - your confidence in the answer
+3. A "results" array with the top ${limit} most relevant recalls`;
 
     console.log('Calling OpenAI API...');
     console.log('Prompt size (chars):', systemPrompt.length + userPrompt.length);
@@ -213,32 +205,23 @@ Return the top ${limit} most relevant recalls as a JSON object with a "results" 
       );
     }
 
-    const openaiResponse = await fetch(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${openaiApiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt,
-            },
-            {
-              role: 'user',
-              content: userPrompt,
-            },
-          ],
-          temperature: 0.2,
-          max_tokens: 2000, // Increased from 1500 to handle larger responses
-          response_format: { type: 'json_object' }, // This forces OpenAI to return a JSON object, not an array
-        }),
-      }
-    );
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openaiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 2000,
+        response_format: { type: 'json_object' },
+      }),
+    });
 
     console.log('OpenAI response status:', openaiResponse.status);
 
@@ -247,7 +230,6 @@ Return the top ${limit} most relevant recalls as a JSON object with a "results" 
       console.error('OpenAI API error response:', errorText);
       console.error('OpenAI API status:', openaiResponse.status);
       
-      // Try to parse error details
       let errorDetails = errorText;
       try {
         const errorJson = JSON.parse(errorText);
@@ -295,8 +277,7 @@ Return the top ${limit} most relevant recalls as a JSON object with a "results" 
       return new Response(
         JSON.stringify({
           error: 'Invalid OpenAI response - no content',
-          details:
-            'OpenAI returned an empty response. This may be due to content filtering or API issues.',
+          details: 'OpenAI returned an empty response. This may be due to content filtering or API issues.',
         }),
         {
           status: 500,
@@ -328,30 +309,24 @@ Return the top ${limit} most relevant recalls as a JSON object with a "results" 
 
     // Remove any trailing incomplete JSON
     jsonContent = jsonContent.trim();
-    
+
     // If the JSON doesn't end properly, try to fix it
     if (!jsonContent.endsWith('}') && !jsonContent.endsWith(']')) {
       console.warn('JSON appears truncated, attempting to fix...');
       
-      // Find the last complete object in the results array
       const lastCompleteObjectIndex = jsonContent.lastIndexOf('}');
       if (lastCompleteObjectIndex !== -1) {
         jsonContent = jsonContent.substring(0, lastCompleteObjectIndex + 1);
         
-        // If we're in a results array, close it and the parent object
         if (jsonContent.includes('"results":[')) {
-          // Count opening brackets to determine what needs closing
           const openBrackets = (jsonContent.match(/\[/g) || []).length;
           const closeBrackets = (jsonContent.match(/\]/g) || []).length;
           const openBraces = (jsonContent.match(/\{/g) || []).length;
           const closeBraces = (jsonContent.match(/\}/g) || []).length;
-          
-          // Close arrays
+
           for (let i = 0; i < openBrackets - closeBrackets; i++) {
             jsonContent += ']';
           }
-          
-          // Close objects
           for (let i = 0; i < openBraces - closeBraces; i++) {
             jsonContent += '}';
           }
@@ -362,11 +337,25 @@ Return the top ${limit} most relevant recalls as a JSON object with a "results" 
     console.log('Cleaned JSON content preview (first 500 chars):', jsonContent.substring(0, 500));
     console.log('Cleaned JSON content preview (last 300 chars):', jsonContent.substring(Math.max(0, jsonContent.length - 300)));
 
-    let scoredResults: ScoredResult[];
+    let scoredResults;
+    let answerText = null;
+    let answerConfidence = 0;
+
     try {
       const parsed = JSON.parse(jsonContent);
       console.log('Parsed response structure:', Object.keys(parsed));
+
+      // Extract answer and confidence
+      if (parsed.answer !== undefined) {
+        answerText = parsed.answer;
+        console.log('Answer extracted:', answerText ? `"${answerText.substring(0, 100)}..."` : 'null');
+      }
       
+      if (parsed.confidence !== undefined) {
+        answerConfidence = parsed.confidence;
+        console.log('Confidence extracted:', answerConfidence);
+      }
+
       // Handle the response - it should be an object with a "results" property
       if (parsed.results && Array.isArray(parsed.results)) {
         scoredResults = parsed.results;
@@ -379,16 +368,15 @@ Return the top ${limit} most relevant recalls as a JSON object with a "results" 
         console.error('Unexpected response format. Expected object with "results" array.');
         console.error('Parsed structure:', JSON.stringify(parsed, null, 2).substring(0, 500));
         
-        // Try to find any array in the response
-        const possibleArrays = Object.values(parsed).filter(val => Array.isArray(val));
+        const possibleArrays = Object.values(parsed).filter((val) => Array.isArray(val));
         if (possibleArrays.length > 0) {
-          scoredResults = possibleArrays[0] as ScoredResult[];
+          scoredResults = possibleArrays[0];
           console.log(`Found array in response with ${scoredResults.length} items`);
         } else {
           throw new Error('Response does not contain a results array or any valid array');
         }
       }
-      
+
       // Validate the structure of scored results
       if (scoredResults.length > 0) {
         const firstResult = scoredResults[0];
@@ -396,7 +384,6 @@ Return the top ${limit} most relevant recalls as a JSON object with a "results" 
           console.warn('Warning: Results may have unexpected structure:', firstResult);
         }
       }
-      
     } catch (parseError) {
       console.error('Failed to parse OpenAI response as JSON:', parseError);
       console.error('Parse error message:', parseError instanceof Error ? parseError.message : 'Unknown');
@@ -420,10 +407,7 @@ Return the top ${limit} most relevant recalls as a JSON object with a "results" 
     console.log(`Total scored results before filtering: ${scoredResults.length}`);
 
     // Filter results to only include those with relevance_score >= 75
-    const filteredScoredResults = scoredResults.filter(
-      (scored) => scored.relevance_score >= 75
-    );
-
+    const filteredScoredResults = scoredResults.filter((scored) => scored.relevance_score >= 75);
     console.log(`Scored results after filtering (relevance >= 75): ${filteredScoredResults.length}`);
 
     // Merge the scores with the original recall data
@@ -434,7 +418,6 @@ Return the top ${limit} most relevant recalls as a JSON object with a "results" 
           console.warn(`Warning: Could not find recall with id ${scored.id}`);
           return null;
         }
-
         return {
           id: recall.id,
           text: recall.text,
@@ -447,13 +430,19 @@ Return the top ${limit} most relevant recalls as a JSON object with a "results" 
           updated_at: recall.updated_at,
         };
       })
-      .filter((r): r is SearchResult => r !== null)
+      .filter((r) => r !== null)
       .slice(0, limit);
 
     console.log(`Returning ${results.length} results (all with relevance >= 75)`);
+    
+    // Only include answer if confidence is > 70%
+    const finalAnswer = answerConfidence > 70 ? answerText : null;
+    console.log(`Final answer (confidence ${answerConfidence}%):`, finalAnswer ? 'Included' : 'Not included (low confidence)');
 
     return new Response(
       JSON.stringify({
+        answer: finalAnswer,
+        confidence: answerConfidence,
         results,
         total: results.length,
         query,
@@ -465,10 +454,8 @@ Return the top ${limit} most relevant recalls as a JSON object with a "results" 
     );
   } catch (error) {
     console.error('Error in search-recalls function:', error);
-    console.error(
-      'Error stack:',
-      error instanceof Error ? error.stack : 'No stack trace'
-    );
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    
     return new Response(
       JSON.stringify({
         error: 'Internal server error',
