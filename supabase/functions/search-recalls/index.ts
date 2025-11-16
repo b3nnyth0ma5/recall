@@ -158,6 +158,7 @@ Deno.serve(async (req) => {
         id: recall.id,
         text: recall.text || '',
         location: recall.location || '',
+				location_primary_type: recall.location_primary_type || '',
         latitude: recall.latitude,
         longitude: recall.longitude,
         ocr_text: ocrTexts || '',
@@ -176,16 +177,16 @@ Your task:
 
 Scoring criteria:
 - Exact text matches: 90-100
-- Semantic similarity: 70-89
-- Location matches: 60-79
+- Location matches: 70-89
 - OCR text matches: 70-89
-- Image explanation matches: 60-79
-- Geographic proximity: 50-69
+- Image explanation matches: 70-89
+- Geographic proximity: 70-90
+- Semantic similarity: 60-69
 - Related concepts: 40-59
 - Weak connection: 20-39
 - No connection: 0-19
 
-Consider OCR text and image explanations as important sources of information, especially when the main text is sparse.
+Consider location primary type, OCR text and image explanations as important sources of information, especially when the main text is sparse.
 
 Return ONLY a valid JSON array with this structure:
 [
@@ -225,13 +226,13 @@ Return the top ${limit} most relevant recalls as a JSON array.`;
         'Authorization': `Bearer ${openaiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-nano',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        temperature: 0.3,
-        max_tokens: 2000,
+        temperature: 0.2,
+        max_tokens: 1000,
         response_format: { type: 'json_object' },
       }),
     });
