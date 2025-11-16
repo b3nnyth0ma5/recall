@@ -14,6 +14,8 @@ export function useNotes() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [locationInfo, setLocationInfo] = useState<any>(null);
   const [isDeletingNote, setIsDeletingNote] = useState(false);
+  const [searchAnswer, setSearchAnswer] = useState<string | null>(null);
+  const [searchConfidence, setSearchConfidence] = useState<number | undefined>(undefined);
   const { user } = useAuth();
 
   const ITEMS_PER_PAGE = 10;
@@ -370,23 +372,35 @@ export function useNotes() {
     }
 
     setSearchQuery(query);
+    
+    // Clear search results when query is empty
     if (!query.trim()) {
+      console.log('Empty search query - clearing results');
+      setSearchAnswer(null);
+      setSearchConfidence(undefined);
+      setLocationInfo(null);
       await refreshNotes();
       return;
     }
     
     try {
-      console.log('Searching recalls with OpenAI NER:', query);
+      console.log('=== STARTING SEARCH ===');
+      console.log('Search query:', query);
       setLoading(true);
       
+      // Save search history
       await saveSearchHistory(user.id, query);
       
+      // Get current session
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         console.error('No active session');
         return;
       }
 
+      console.log('Calling search-recalls-with-location edge function...');
+      const startTime = Date.now();
+      
       const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls-with-location', {
         body: {
           query: query.trim(),
@@ -394,8 +408,16 @@ export function useNotes() {
         },
       });
 
+      const endTime = Date.now();
+      console.log(`Edge function call completed in ${endTime - startTime}ms`);
+
       if (searchError) {
-        console.error('Error calling search-recalls function:', searchError);
+        console.error('=== EDGE FUNCTION ERROR ===');
+        console.error('Error calling search-recalls-with-location function:', searchError);
+        console.error('Error details:', JSON.stringify(searchError, null, 2));
+        
+        // Fallback to basic search
+        console.log('Falling back to basic text search...');
         const { data: recallsData, error: recallsError } = await supabase
           .from('recalls')
           .select('*')
@@ -404,34 +426,61 @@ export function useNotes() {
           .order('created_at', { ascending: false });
 
         if (recallsError) {
-          console.error('Error searching recalls:', recallsError);
+          console.error('Error in fallback search:', recallsError);
           return;
         }
 
         const notesWithImages = await loadImagesForRecalls(recallsData || []);
         setNotes(notesWithImages);
+        setSearchAnswer(null);
+        setSearchConfidence(undefined);
+        setLocationInfo(null);
         console.log('Fallback search results:', notesWithImages.length);
         return;
       }
 
-      console.log('OpenAI search results:', searchResults);
+      console.log('=== EDGE FUNCTION SUCCESS ===');
+      console.log('Search results received:', JSON.stringify(searchResults, null, 2));
 
-      const scoredRecalls = searchResults.results || [];
+      // Extract results, answer, and confidence from response
+      const scoredRecalls = searchResults?.results || [];
+      const answer = searchResults?.answer || null;
+      const confidence = searchResults?.confidence;
+      
+      console.log(`Found ${scoredRecalls.length} results`);
+      console.log('Answer:', answer);
+      console.log('Confidence:', confidence);
+      
+      // Load images for the results
       const notesWithImages = await loadImagesForRecalls(scoredRecalls);
       
       // Store location info if available
-      if (searchResults.locationInfo) {
+      if (searchResults?.locationInfo) {
         setLocationInfo(searchResults.locationInfo);
         console.log('Location filtering applied:', searchResults.locationInfo);
       } else {
         setLocationInfo(null);
       }
       
+      // Store answer and confidence
+      setSearchAnswer(answer);
+      setSearchConfidence(confidence);
+      
       setNotes(notesWithImages);
+      console.log('=== SEARCH COMPLETE ===');
       console.log('AI-powered search results:', notesWithImages.length);
+      console.log('Answer set:', answer ? 'Yes' : 'No');
+      console.log('Confidence:', confidence);
     } catch (error) {
+      console.error('=== SEARCH EXCEPTION ===');
       console.error('Error searching recalls:', error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
+      
+      // Fallback to refresh
       await refreshNotes();
+      setSearchAnswer(null);
+      setSearchConfidence(undefined);
+      setLocationInfo(null);
     } finally {
       setLoading(false);
     }
@@ -511,6 +560,8 @@ export function useNotes() {
     hasMore,
     locationInfo,
     isDeletingNote,
+    searchAnswer,
+    searchConfidence,
     addNote,
     updateNote,
     deleteNote,

@@ -270,6 +270,18 @@ function filterByLocation(
 }
 
 Deno.serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+      },
+    });
+  }
+
   try {
     console.log('=== search-recalls-with-location function invoked ===');
 
@@ -278,7 +290,13 @@ Deno.serve(async (req) => {
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Missing authorization header' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
+        { 
+          status: 401, 
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          } 
+        }
       );
     }
 
@@ -295,7 +313,13 @@ Deno.serve(async (req) => {
       console.error('Authentication error:', authError);
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
+        { 
+          status: 401, 
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          } 
+        }
       );
     }
 
@@ -307,7 +331,13 @@ Deno.serve(async (req) => {
     if (!query || typeof query !== 'string' || query.trim().length === 0) {
       return new Response(
         JSON.stringify({ error: 'Query parameter is required' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { 
+          status: 400, 
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          } 
+        }
       );
     }
 
@@ -321,7 +351,13 @@ Deno.serve(async (req) => {
       console.error('OPENAI_API_KEY not set');
       return new Response(
         JSON.stringify({ error: 'OpenAI API key not configured' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        { 
+          status: 500, 
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          } 
+        }
       );
     }
 
@@ -329,7 +365,13 @@ Deno.serve(async (req) => {
       console.error('GOOGLE_PLACES_API_KEY not set');
       return new Response(
         JSON.stringify({ error: 'Google Places API key not configured' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        { 
+          status: 500, 
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          } 
+        }
       );
     }
 
@@ -345,23 +387,37 @@ Deno.serve(async (req) => {
     if (searchRecallsResponse.error) {
       console.error('Error calling search-recalls:', searchRecallsResponse.error);
       return new Response(
-        JSON.stringify({ error: 'Failed to search recalls' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Failed to search recalls', details: searchRecallsResponse.error }),
+        { 
+          status: 500, 
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          } 
+        }
       );
     }
 
-    const searchResults = searchRecallsResponse.data?.results || [];
+    const searchRecallsData = searchRecallsResponse.data || {};
+    const searchResults = searchRecallsData.results || [];
+    const answer = searchRecallsData.answer || null;
+    const confidence = searchRecallsData.confidence || 0;
+    
     console.log(`search-recalls returned ${searchResults.length} results`);
+    console.log('Answer from search-recalls:', answer);
+    console.log('Confidence from search-recalls:', confidence);
 
     // Step 2: Apply NLP NER to detect location intent
     console.log('Step 2: Applying NLP NER for location detection...');
     const locationEntity = await extractLocationEntities(query, openaiApiKey);
 
-    // If no location intent detected, return original results
+    // If no location intent detected, return original results with answer and confidence
     if (!locationEntity) {
       console.log('No location intent detected - returning original results');
       return new Response(
         JSON.stringify({
+          answer,
+          confidence,
           results: searchResults,
           total: searchResults.length,
           query,
@@ -369,7 +425,10 @@ Deno.serve(async (req) => {
         }),
         {
           status: 200,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
         }
       );
     }
@@ -384,6 +443,8 @@ Deno.serve(async (req) => {
       console.log('Could not resolve location - returning original results');
       return new Response(
         JSON.stringify({
+          answer,
+          confidence,
           results: searchResults,
           total: searchResults.length,
           query,
@@ -392,7 +453,10 @@ Deno.serve(async (req) => {
         }),
         {
           status: 200,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
         }
       );
     }
@@ -411,6 +475,8 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({
+        answer,
+        confidence,
         results: filteredResults,
         total: filteredResults.length,
         query,
@@ -427,7 +493,10 @@ Deno.serve(async (req) => {
       }),
       {
         status: 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
       }
     );
   } catch (error) {
@@ -439,7 +508,10 @@ Deno.serve(async (req) => {
       }),
       {
         status: 500,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
       }
     );
   }
