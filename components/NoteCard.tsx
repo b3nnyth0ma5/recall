@@ -283,10 +283,12 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
               style={styles.locationWrapper}
             >
               <IconSymbol name="location.fill" size={14} color={colors.primary} />
-              <Text style={styles.location} numberOfLines={1} ellipsizeMode="tail">
-                {note.location}
-              </Text>
-              <IconSymbol name="chevron.right" size={12} color={colors.primary} />
+              <View style={styles.locationTextChevronWrapper}>
+                <Text style={styles.location} numberOfLines={1} ellipsizeMode="tail">
+                  {note.location}
+                </Text>
+                <IconSymbol name="chevron.right" size={12} color={colors.primary} />
+              </View>
             </Pressable>
           )}
           
@@ -441,11 +443,18 @@ const styles = StyleSheet.create({
     flex: 0.70,
     minWidth: 0,
   },
+  locationTextChevronWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    flex: 1,
+    minWidth: 0,
+  },
   location: {
     fontSize: 14,
     color: colors.primary,
     fontWeight: '500',
-    flex: 1,
+    flexShrink: 1,
   },
   timeAgoWrapper: {
     flex: 0.30,
