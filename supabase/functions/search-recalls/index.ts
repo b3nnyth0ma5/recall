@@ -417,8 +417,17 @@ Return the top ${limit} most relevant recalls as a JSON object with a "results" 
       );
     }
 
+    console.log(`Total scored results before filtering: ${scoredResults.length}`);
+
+    // Filter results to only include those with relevance_score >= 75
+    const filteredScoredResults = scoredResults.filter(
+      (scored) => scored.relevance_score >= 75
+    );
+
+    console.log(`Scored results after filtering (relevance >= 75): ${filteredScoredResults.length}`);
+
     // Merge the scores with the original recall data
-    const results = scoredResults
+    const results = filteredScoredResults
       .map((scored) => {
         const recall = recalls.find((r) => r.id === scored.id);
         if (!recall) {
@@ -441,7 +450,7 @@ Return the top ${limit} most relevant recalls as a JSON object with a "results" 
       .filter((r): r is SearchResult => r !== null)
       .slice(0, limit);
 
-    console.log(`Returning ${results.length} results`);
+    console.log(`Returning ${results.length} results (all with relevance >= 75)`);
 
     return new Response(
       JSON.stringify({
