@@ -163,6 +163,7 @@ Deno.serve(async (req) => {
     });
 
     // Construct the OpenAI prompt
+    // IMPORTANT: When using response_format: { type: 'json_object' }, OpenAI MUST return an object, not an array
     const systemPrompt = `You are an intelligent search assistant that analyzes user notes/recalls and ranks them by relevance to a search query.
 
 Your task:
@@ -184,17 +185,17 @@ Scoring criteria:
 
 Consider location primary type, OCR text and image explanations as important sources of information, especially when the main text is sparse.
 
-Return ONLY a valid JSON array with this exact structure (no markdown, no extra text):
-[{"id":"recall-id","relevance_score":95,"relevance_reason":"Brief explanation"}]
+Return ONLY a valid JSON object with this exact structure (no markdown, no extra text):
+{"results":[{"id":"recall-id","relevance_score":95,"relevance_reason":"Brief explanation"}]}
 
-Return only the top ${limit} most relevant results, sorted by score (highest first).`;
+Include only the top ${limit} most relevant results in the results array, sorted by score (highest first).`;
 
     const userPrompt = `Search query: "${query}"
 
 Recalls to analyze:
 ${JSON.stringify(recallsWithOCR, null, 2)}
 
-Return the top ${limit} most relevant recalls as a JSON array.`;
+Return the top ${limit} most relevant recalls as a JSON object with a "results" array.`;
 
     console.log('Calling OpenAI API...');
     console.log('Prompt size (chars):', systemPrompt.length + userPrompt.length);
@@ -221,7 +222,7 @@ Return the top ${limit} most relevant recalls as a JSON array.`;
           Authorization: `Bearer ${openaiApiKey}`,
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini', // Valid model - gpt-5-nano does not exist
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'system',
@@ -233,8 +234,8 @@ Return the top ${limit} most relevant recalls as a JSON array.`;
             },
           ],
           temperature: 0.2,
-          max_tokens: 1500, // Increased from 500 to prevent truncation
-          response_format: { type: 'json_object' },
+          max_tokens: 2000, // Increased from 1500 to handle larger responses
+          response_format: { type: 'json_object' }, // This forces OpenAI to return a JSON object, not an array
         }),
       }
     );
@@ -305,7 +306,7 @@ Return the top ${limit} most relevant recalls as a JSON array.`;
     }
 
     console.log('Response content length:', responseContent.length);
-    console.log('Response content preview (first 300 chars):', responseContent.substring(0, 300));
+    console.log('Response content preview (first 500 chars):', responseContent.substring(0, 500));
     console.log('Response content preview (last 300 chars):', responseContent.substring(Math.max(0, responseContent.length - 300)));
 
     // Check if response was truncated
@@ -328,40 +329,74 @@ Return the top ${limit} most relevant recalls as a JSON array.`;
     // Remove any trailing incomplete JSON
     jsonContent = jsonContent.trim();
     
-    // If the JSON doesn't end with ] or }, try to find the last complete object
-    if (!jsonContent.endsWith(']') && !jsonContent.endsWith('}')) {
+    // If the JSON doesn't end properly, try to fix it
+    if (!jsonContent.endsWith('}') && !jsonContent.endsWith(']')) {
       console.warn('JSON appears truncated, attempting to fix...');
       
-      // Find the last complete object in an array
+      // Find the last complete object in the results array
       const lastCompleteObjectIndex = jsonContent.lastIndexOf('}');
       if (lastCompleteObjectIndex !== -1) {
         jsonContent = jsonContent.substring(0, lastCompleteObjectIndex + 1);
         
-        // If we're in an array, close it
-        if (jsonContent.trim().startsWith('[')) {
-          jsonContent += ']';
+        // If we're in a results array, close it and the parent object
+        if (jsonContent.includes('"results":[')) {
+          // Count opening brackets to determine what needs closing
+          const openBrackets = (jsonContent.match(/\[/g) || []).length;
+          const closeBrackets = (jsonContent.match(/\]/g) || []).length;
+          const openBraces = (jsonContent.match(/\{/g) || []).length;
+          const closeBraces = (jsonContent.match(/\}/g) || []).length;
+          
+          // Close arrays
+          for (let i = 0; i < openBrackets - closeBrackets; i++) {
+            jsonContent += ']';
+          }
+          
+          // Close objects
+          for (let i = 0; i < openBraces - closeBraces; i++) {
+            jsonContent += '}';
+          }
         }
       }
     }
 
-    console.log('Cleaned JSON content preview (first 300 chars):', jsonContent.substring(0, 300));
+    console.log('Cleaned JSON content preview (first 500 chars):', jsonContent.substring(0, 500));
     console.log('Cleaned JSON content preview (last 300 chars):', jsonContent.substring(Math.max(0, jsonContent.length - 300)));
 
     let scoredResults: ScoredResult[];
     try {
       const parsed = JSON.parse(jsonContent);
+      console.log('Parsed response structure:', Object.keys(parsed));
       
-      // Handle both array and object responses
-      if (Array.isArray(parsed)) {
-        scoredResults = parsed;
-      } else if (parsed.results && Array.isArray(parsed.results)) {
+      // Handle the response - it should be an object with a "results" property
+      if (parsed.results && Array.isArray(parsed.results)) {
         scoredResults = parsed.results;
+        console.log(`Successfully parsed ${scoredResults.length} scored results from results array`);
+      } else if (Array.isArray(parsed)) {
+        // Fallback: if somehow we got an array directly (shouldn't happen with json_object mode)
+        scoredResults = parsed;
+        console.log(`Parsed ${scoredResults.length} scored results from direct array`);
       } else {
-        console.error('Unexpected response format:', parsed);
-        throw new Error('Response is not an array or does not contain a results array');
+        console.error('Unexpected response format. Expected object with "results" array.');
+        console.error('Parsed structure:', JSON.stringify(parsed, null, 2).substring(0, 500));
+        
+        // Try to find any array in the response
+        const possibleArrays = Object.values(parsed).filter(val => Array.isArray(val));
+        if (possibleArrays.length > 0) {
+          scoredResults = possibleArrays[0] as ScoredResult[];
+          console.log(`Found array in response with ${scoredResults.length} items`);
+        } else {
+          throw new Error('Response does not contain a results array or any valid array');
+        }
       }
       
-      console.log(`Parsed ${scoredResults.length} scored results`);
+      // Validate the structure of scored results
+      if (scoredResults.length > 0) {
+        const firstResult = scoredResults[0];
+        if (!firstResult.id || typeof firstResult.relevance_score !== 'number') {
+          console.warn('Warning: Results may have unexpected structure:', firstResult);
+        }
+      }
+      
     } catch (parseError) {
       console.error('Failed to parse OpenAI response as JSON:', parseError);
       console.error('Parse error message:', parseError instanceof Error ? parseError.message : 'Unknown');
@@ -371,8 +406,9 @@ Return the top ${limit} most relevant recalls as a JSON array.`;
         JSON.stringify({
           error: 'Failed to parse OpenAI response',
           details: parseError instanceof Error ? parseError.message : 'Unknown parse error',
-          contentPreview: jsonContent.substring(0, 500),
+          contentPreview: jsonContent.substring(0, 1000),
           finishReason: finishReason,
+          hint: 'The OpenAI response was not in the expected format. This may be due to response truncation or an unexpected response structure.',
         }),
         {
           status: 500,
@@ -385,7 +421,10 @@ Return the top ${limit} most relevant recalls as a JSON array.`;
     const results = scoredResults
       .map((scored) => {
         const recall = recalls.find((r) => r.id === scored.id);
-        if (!recall) return null;
+        if (!recall) {
+          console.warn(`Warning: Could not find recall with id ${scored.id}`);
+          return null;
+        }
 
         return {
           id: recall.id,
