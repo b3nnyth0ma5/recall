@@ -1,5 +1,4 @@
 
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 interface RecallRecord {
@@ -43,6 +42,11 @@ interface OpenAIResponse {
       content: string;
     };
   }[];
+  error?: {
+    message: string;
+    type: string;
+    code?: string;
+  };
 }
 
 Deno.serve(async (req) => {
@@ -202,6 +206,7 @@ ${JSON.stringify(recallsWithOCR, null, 2)}
 Return the top ${limit} most relevant recalls as a JSON array.`;
 
     console.log('Calling OpenAI API...');
+    console.log('Prompt size (chars):', systemPrompt.length + userPrompt.length);
 
     // Call OpenAI API
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
@@ -227,30 +232,59 @@ Return the top ${limit} most relevant recalls as a JSON array.`;
         ],
         temperature: 0.3,
         max_tokens: 2000,
+        response_format: { type: 'json_object' },
       }),
     });
 
+    console.log('OpenAI response status:', openaiResponse.status);
+
     if (!openaiResponse.ok) {
       const errorText = await openaiResponse.text();
-      console.error('OpenAI API error:', errorText);
+      console.error('OpenAI API error response:', errorText);
+      console.error('OpenAI API status:', openaiResponse.status);
       return new Response(
-        JSON.stringify({ error: 'OpenAI API request failed' }),
+        JSON.stringify({ 
+          error: 'OpenAI API request failed',
+          details: errorText,
+          status: openaiResponse.status
+        }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
     const openaiData: OpenAIResponse = await openaiResponse.json();
     console.log('OpenAI response received');
+    console.log('OpenAI response structure:', JSON.stringify(openaiData, null, 2));
 
-    // Parse the OpenAI response
-    const responseContent = openaiData.choices[0]?.message?.content;
-    if (!responseContent) {
-      console.error('No content in OpenAI response');
+    // Check for OpenAI error in response
+    if (openaiData.error) {
+      console.error('OpenAI API returned error:', openaiData.error);
       return new Response(
-        JSON.stringify({ error: 'Invalid OpenAI response' }),
+        JSON.stringify({ 
+          error: 'OpenAI API error',
+          details: openaiData.error.message
+        }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
+
+    // Parse the OpenAI response
+    const responseContent = openaiData.choices?.[0]?.message?.content;
+    
+    if (!responseContent) {
+      console.error('No content in OpenAI response');
+      console.error('Full OpenAI response:', JSON.stringify(openaiData, null, 2));
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid OpenAI response - no content',
+          details: 'OpenAI returned an empty response. This may be due to content filtering or API issues.'
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Response content length:', responseContent.length);
+    console.log('Response content preview:', responseContent.substring(0, 200));
 
     // Extract JSON from the response (handle markdown code blocks)
     let jsonContent = responseContent.trim();
@@ -260,8 +294,21 @@ Return the top ${limit} most relevant recalls as a JSON array.`;
       jsonContent = jsonContent.replace(/^```\n/, '').replace(/\n```$/, '');
     }
 
-    const scoredResults = JSON.parse(jsonContent);
-    console.log(`Parsed ${scoredResults.length} scored results`);
+    let scoredResults;
+    try {
+      scoredResults = JSON.parse(jsonContent);
+      console.log(`Parsed ${scoredResults.length} scored results`);
+    } catch (parseError) {
+      console.error('Failed to parse OpenAI response as JSON:', parseError);
+      console.error('Content that failed to parse:', jsonContent);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to parse OpenAI response',
+          details: parseError instanceof Error ? parseError.message : 'Unknown parse error'
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Merge the scores with the original recall data
     const results: SearchResult[] = scoredResults
@@ -299,10 +346,12 @@ Return the top ${limit} most relevant recalls as a JSON array.`;
     );
   } catch (error) {
     console.error('Error in search-recalls function:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return new Response(
       JSON.stringify({
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
       }),
       {
         status: 500,
@@ -311,4 +360,3 @@ Return the top ${limit} most relevant recalls as a JSON array.`;
     );
   }
 });
-
