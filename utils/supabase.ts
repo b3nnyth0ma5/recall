@@ -24,6 +24,7 @@ export async function uploadImageToDatabase(
     console.log('=== Starting image upload to Cloudflare CDN ===');
     console.log('URI:', uri);
     console.log('Recall ID:', recallId);
+    console.log('Content Type:', contentType);
     
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -42,15 +43,16 @@ export async function uploadImageToDatabase(
     const { uploadImageToCloudflare } = await import('./cloudflareCDN');
     const fileName = `image-${Date.now()}-${Math.random().toString(36).substring(7)}.${contentType.split('/')[1]}`;
     
-    console.log('Uploading to Cloudflare CDN...');
+    console.log('Uploading to Cloudflare CDN with filename:', fileName);
     const cdnUrl = await uploadImageToCloudflare(base64, fileName, contentType);
     
     if (!cdnUrl) {
-      console.error('Failed to upload to Cloudflare CDN');
+      console.error('Failed to upload to Cloudflare CDN - no URL returned');
       return null;
     }
 
-    console.log('CDN upload successful, storing metadata in database...');
+    console.log('CDN upload successful, URL:', cdnUrl);
+    console.log('Storing metadata in database...');
     
     // Store the CDN URL in the database
     const { data, error } = await supabase
@@ -67,11 +69,14 @@ export async function uploadImageToDatabase(
     if (error) {
       console.error('=== Database insert error ===');
       console.error('Error message:', error.message);
+      console.error('Error code:', error.code);
       console.error('Error details:', JSON.stringify(error, null, 2));
       
       // Try to clean up the CDN upload
+      console.log('Attempting to clean up CDN upload...');
       const { deleteImageFromCloudflare } = await import('./cloudflareCDN');
-      await deleteImageFromCloudflare(cdnUrl);
+      const cleanupSuccess = await deleteImageFromCloudflare(cdnUrl);
+      console.log('CDN cleanup', cleanupSuccess ? 'successful' : 'failed');
       
       return null;
     }
@@ -79,16 +84,19 @@ export async function uploadImageToDatabase(
     console.log('=== Upload successful ===');
     console.log('Image ID:', data.id);
     console.log('CDN URL:', cdnUrl);
+    console.log('Recall ID:', recallId);
     
     // NOTE: OCR processing is automatically triggered by the database trigger
     // No need to manually call triggerOCRProcessing here
     console.log('OCR processing will be automatically triggered by database trigger');
+    console.log('Database trigger: trigger-ocr-on-image-insert');
     
     return data.id;
   } catch (error) {
     console.error('=== Exception in uploadImageToDatabase ===');
     console.error('Error:', error);
     if (error instanceof Error) {
+      console.error('Error name:', error.name);
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
     }
@@ -159,6 +167,8 @@ export async function deleteImageRecord(imageId: string): Promise<boolean> {
       const cdnDeleted = await deleteImageFromCloudflare(imageData.cdn_url);
       if (!cdnDeleted) {
         console.warn('Failed to delete from CDN, but continuing with database deletion');
+      } else {
+        console.log('Successfully deleted from CDN');
       }
     }
     
