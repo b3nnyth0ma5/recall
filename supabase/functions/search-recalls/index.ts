@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 /**
  * Calculate distance between two coordinates using Haversine formula
@@ -92,7 +91,6 @@ Deno.serve(async (req)=>{
       headers: corsHeaders
     });
   }
-
   try {
     // Get the authorization header
     const authHeader = req.headers.get('Authorization');
@@ -241,12 +239,6 @@ Detect location-based intent in the query:
 - Proximity-based searches (e.g., "near me", "within 5km", "nearby", "close to")
 - Location context (e.g., "at the beach", "in the city", "downtown")
 
-Location detection examples:
-- "coffee shops near Sydney Opera House" → hasLocationIntent: true, location: "Sydney Opera House", proximity: 5, type: "near", cleanedQuery: "coffee shops"
-- "restaurants within 10km of Melbourne CBD" → hasLocationIntent: true, location: "Melbourne CBD", proximity: 10, type: "within", cleanedQuery: "restaurants"
-- "photos at the beach" → hasLocationIntent: true, location: "beach", proximity: null, type: "exact", cleanedQuery: "photos"
-- "my birthday party" → hasLocationIntent: false, location: null, proximity: null, type: null, cleanedQuery: "my birthday party"
-
 TASK 2 - QUESTION ANSWERING:
 If the query is a question, attempt to answer it based on the recall data:
 - Analyze if the query is asking a question (who, what, when, where, why, how, or implied questions)
@@ -270,6 +262,12 @@ Scoring criteria:
 - Weak or no connection: 0-39
 
 Consider location primary type, OCR text and image explanations as important sources of information, especially when the main text is sparse.
+
+Location detection examples:
+- "coffee shops near Sydney Opera House" → hasLocationIntent: true, location: "Sydney Opera House", proximity: 5, type: "near", cleanedQuery: "coffee shops"
+- "restaurants within 10km of Melbourne CBD" → hasLocationIntent: true, location: "Melbourne CBD", proximity: 10, type: "within", cleanedQuery: "restaurants"
+- "photos at the beach" → hasLocationIntent: true, location: "beach", proximity: null, type: "exact", cleanedQuery: "photos"
+- "my birthday party" → hasLocationIntent: false, location: null, proximity: null, type: null, cleanedQuery: "my birthday party"
 
 Return ONLY a valid JSON object with this exact structure (no markdown, no extra text):
 {
@@ -513,7 +511,6 @@ Return a JSON object with:
     // Only include answer if confidence is > 70%
     const finalAnswer = answerConfidence > 70 ? answerText : null;
     console.log(`Final answer (confidence ${answerConfidence}%):`, finalAnswer ? 'Included' : 'Not included (low confidence)');
-
     return new Response(JSON.stringify({
       hasLocationIntent,
       location,

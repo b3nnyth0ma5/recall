@@ -37,16 +37,18 @@ interface OpenAIErrorResponse {
  * 
  * This function:
  * 1. Receives a recall_image_id and optionally ocr_text and image_explanation
- * 2. If not provided, fetches ocr_text and image_explanation from the database
- * 3. Concatenates ocr_text and image_explanation as input
- * 4. Calls OpenAI's text-embedding-3-small model with base64 encoding
- * 5. Stores the resulting embedding in recall_images.recall_image_embedding
+ * 2. Checks if an embedding already exists to prevent duplicate processing
+ * 3. If not provided, fetches ocr_text and image_explanation from the database
+ * 4. Concatenates ocr_text and image_explanation as input
+ * 5. Calls OpenAI's text-embedding-3-small model with base64 encoding
+ * 6. Stores the resulting embedding in recall_images.recall_image_embedding
  * 
  * Features:
  * - Uses text-embedding-3-small model for cost efficiency
  * - Base64 encoding format for compact storage
  * - Automatic retry logic for transient failures
  * - Comprehensive error handling and logging
+ * - Duplicate processing prevention
  */
 
 Deno.serve(async (req) => {
@@ -125,47 +127,64 @@ Deno.serve(async (req) => {
       },
     });
 
-    // If ocr_text or image_explanation not provided, fetch from database
-    let finalOcrText = ocr_text || '';
-    let finalImageExplanation = image_explanation || '';
+    // Check if embedding already exists to prevent duplicate processing
+    console.log('Checking if embedding already exists...');
+    const { data: existingData, error: checkError } = await supabase
+      .from('recall_images')
+      .select('recall_image_embedding, ocr_text, image_explanation')
+      .eq('id', recall_image_id)
+      .single();
 
-    if (!ocr_text || !image_explanation) {
-      console.log('Fetching ocr_text and image_explanation from database...');
-      const { data: imageData, error: fetchError } = await supabase
-        .from('recall_images')
-        .select('ocr_text, image_explanation')
-        .eq('id', recall_image_id)
-        .single();
-
-      if (fetchError) {
-        console.error('Database fetch error:', fetchError);
-        return new Response(
-          JSON.stringify({ 
-            error: 'Failed to fetch image data from database',
-            details: fetchError.message 
-          }),
-          { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-
-      if (!imageData) {
-        console.error('No image data found for ID:', recall_image_id);
-        return new Response(
-          JSON.stringify({ error: 'Image data not found in database' }),
-          { 
-            status: 404, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-
-      finalOcrText = imageData.ocr_text || '';
-      finalImageExplanation = imageData.image_explanation || '';
-      console.log('Fetched data from database');
+    if (checkError) {
+      console.error('Database check error:', checkError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to check existing embedding',
+          details: checkError.message 
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
+
+    if (!existingData) {
+      console.error('No image data found for ID:', recall_image_id);
+      return new Response(
+        JSON.stringify({ error: 'Image data not found in database' }),
+        { 
+          status: 404, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // If embedding already exists, skip processing
+    if (existingData.recall_image_embedding && Array.isArray(existingData.recall_image_embedding) && existingData.recall_image_embedding.length > 0) {
+      console.log('Embedding already exists for this image, skipping processing');
+      const processingTime = Date.now() - startTime;
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          recall_image_id: recall_image_id,
+          skipped: true,
+          reason: 'Embedding already exists',
+          processingTimeMs: processingTime,
+          embeddingDimensions: existingData.recall_image_embedding.length,
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    console.log('No existing embedding found, proceeding with generation');
+
+    // If ocr_text or image_explanation not provided, use from database
+    let finalOcrText = ocr_text || existingData.ocr_text || '';
+    let finalImageExplanation = image_explanation || existingData.image_explanation || '';
 
     // Concatenate ocr_text and image_explanation
     const inputText = `${finalOcrText} ${finalImageExplanation}`.trim();

@@ -80,17 +80,9 @@ export async function uploadImageToDatabase(
     console.log('Image ID:', data.id);
     console.log('CDN URL:', cdnUrl);
     
-    // Automatically trigger OCR processing after successful upload
-    console.log('Triggering OCR processing...');
-    triggerOCRProcessing(data.id).then(result => {
-      if (result.success) {
-        console.log('OCR processing triggered successfully for image:', data.id);
-      } else {
-        console.error('Failed to trigger OCR processing:', result.error);
-      }
-    }).catch(err => {
-      console.error('Exception while triggering OCR:', err);
-    });
+    // NOTE: OCR processing is automatically triggered by the database trigger
+    // No need to manually call triggerOCRProcessing here
+    console.log('OCR processing will be automatically triggered by database trigger');
     
     return data.id;
   } catch (error) {
@@ -405,13 +397,18 @@ export async function fetchNotesWithImagesForReels(userId: string, limit: number
  * Trigger OCR processing for an image
  * This calls the Supabase Edge Function to process the image with OpenAI Vision API
  * 
+ * NOTE: This function is kept for backward compatibility and manual retry scenarios.
+ * In normal operation, OCR processing is automatically triggered by a database trigger
+ * when a new image is inserted into the recall_images table.
+ * 
  * @param imageId - The ID of the image in the recall_images table
  * @returns Promise with success status and optional error message
  */
 export async function triggerOCRProcessing(imageId: string): Promise<{ success: boolean; error?: string; data?: any }> {
   try {
-    console.log('=== Triggering OCR processing ===');
+    console.log('=== Manually triggering OCR processing ===');
     console.log('Image ID:', imageId);
+    console.log('Note: OCR is normally triggered automatically by database trigger');
 
     const { data, error } = await supabase.functions.invoke('ocr-image', {
       body: { 
