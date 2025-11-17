@@ -44,6 +44,7 @@ interface OpenAIErrorResponse {
  * 3. Sends the image to OpenAI's Vision API (gpt-4o-mini) for OCR and explanation
  * 4. Parses the response to extract OCR text and explanation separately
  * 5. Updates the database with the results
+ * 6. Calls the embedding-image function to generate embeddings for the image
  * 
  * Features:
  * - Robust error handling with detailed logging
@@ -51,6 +52,7 @@ interface OpenAIErrorResponse {
  * - Structured prompt for consistent response format
  * - Automatic retry logic for transient failures
  * - Comprehensive validation and sanitization
+ * - Triggers embedding generation after OCR completion
  */
 
 Deno.serve(async (req) => {
@@ -414,6 +416,46 @@ EXPLANATION:
       console.error('Exception while triggering category matching:', categoryError);
       // Don't fail the OCR process if category matching fails
     }
+
+    // ===== TRIGGER EMBEDDING GENERATION FOR THIS IMAGE =====
+    // This happens at the end, after OCR processing is complete
+    console.log('=== Triggering embedding generation for image ===');
+    console.log('Image ID:', record.id);
+    
+    // Only trigger embedding if we have both OCR text and explanation
+    if (ocrText && explanation && ocrText !== 'No text detected.') {
+      try {
+        console.log('Calling embedding-image function...');
+        const embeddingResponse = await fetch(`${supabaseUrl}/functions/v1/embedding-image`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            recall_image_id: record.id,
+            ocr_text: ocrText,
+            image_explanation: explanation,
+          }),
+        });
+
+        if (embeddingResponse.ok) {
+          const embeddingData = await embeddingResponse.json();
+          console.log('Embedding generated successfully:', embeddingData);
+        } else {
+          const errorText = await embeddingResponse.text();
+          console.error('Failed to generate embedding:', errorText);
+          // Don't fail the OCR process if embedding generation fails
+        }
+      } catch (embeddingError) {
+        console.error('Exception while generating embedding:', embeddingError);
+        // Don't fail the OCR process if embedding generation fails
+      }
+    } else {
+      console.log('Skipping embedding generation - no meaningful text content');
+    }
+    
+    console.log('=== Embedding generation triggered ===');
 
     return new Response(
       JSON.stringify({ 

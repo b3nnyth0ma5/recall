@@ -514,55 +514,6 @@ Return a JSON object with:
     const finalAnswer = answerConfidence > 70 ? answerText : null;
     console.log(`Final answer (confidence ${answerConfidence}%):`, finalAnswer ? 'Included' : 'Not included (low confidence)');
 
-    // ===== TRIGGER EMBEDDING GENERATION FOR IMAGES =====
-    // This happens at the end, after the search results are ready
-    console.log('=== Triggering embedding generation for images ===');
-    
-    // Collect all image IDs from the results
-    const resultRecallIds = results.map(r => r.id);
-    const imagesToEmbed = images?.filter(img => 
-      resultRecallIds.includes(img.recall_id) && 
-      img.ocr_text && 
-      img.image_explanation
-    ) || [];
-    
-    console.log(`Found ${imagesToEmbed.length} images to generate embeddings for`);
-    
-    // Trigger embedding generation for each image (fire and forget)
-    if (imagesToEmbed.length > 0) {
-      // Don't await these - let them run in the background
-      imagesToEmbed.forEach(async (img) => {
-        try {
-          console.log(`Triggering embedding for image ${img.id}`);
-          const embeddingResponse = await fetch(`${supabaseUrl}/functions/v1/embedding-image`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseKey}`,
-            },
-            body: JSON.stringify({
-              recall_image_id: img.id,
-              ocr_text: img.ocr_text,
-              image_explanation: img.image_explanation,
-            }),
-          });
-
-          if (embeddingResponse.ok) {
-            const embeddingData = await embeddingResponse.json();
-            console.log(`Embedding generated successfully for image ${img.id}:`, embeddingData);
-          } else {
-            const errorText = await embeddingResponse.text();
-            console.error(`Failed to generate embedding for image ${img.id}:`, errorText);
-          }
-        } catch (embeddingError) {
-          console.error(`Exception while generating embedding for image ${img.id}:`, embeddingError);
-          // Don't fail the search if embedding generation fails
-        }
-      });
-    }
-    
-    console.log('=== Embedding generation triggered (running in background) ===');
-
     return new Response(JSON.stringify({
       hasLocationIntent,
       location,
