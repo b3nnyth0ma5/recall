@@ -398,10 +398,10 @@ export function useNotes() {
         return;
       }
 
-      console.log('Calling search-recalls-with-location edge function...');
+      console.log('Calling search-recalls edge function...');
       const startTime = Date.now();
       
-      const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls-with-location', {
+      const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls', {
         body: {
           query: query.trim(),
           limit: 10,
@@ -413,7 +413,7 @@ export function useNotes() {
 
       if (searchError) {
         console.error('=== EDGE FUNCTION ERROR ===');
-        console.error('Error calling search-recalls-with-location function:', searchError);
+        console.error('Error calling search-recalls function:', searchError);
         console.error('Error details:', JSON.stringify(searchError, null, 2));
         
         // Fallback to basic search
@@ -442,22 +442,35 @@ export function useNotes() {
       console.log('=== EDGE FUNCTION SUCCESS ===');
       console.log('Search results received:', JSON.stringify(searchResults, null, 2));
 
-      // Extract results, answer, and confidence from response
+      // Extract results, answer, confidence, and location info from response
       const scoredRecalls = searchResults?.results || [];
       const answer = searchResults?.answer || null;
       const confidence = searchResults?.confidence;
+      const hasLocationIntent = searchResults?.hasLocationIntent || false;
+      const location = searchResults?.location || null;
+      const proximity = searchResults?.proximity || null;
+      const locationType = searchResults?.type || null;
       
       console.log(`Found ${scoredRecalls.length} results`);
       console.log('Answer:', answer);
       console.log('Confidence:', confidence);
+      console.log('Has location intent:', hasLocationIntent);
+      console.log('Location:', location);
+      console.log('Proximity:', proximity);
+      console.log('Location type:', locationType);
       
       // Load images for the results
       const notesWithImages = await loadImagesForRecalls(scoredRecalls);
       
       // Store location info if available
-      if (searchResults?.locationInfo) {
-        setLocationInfo(searchResults.locationInfo);
-        console.log('Location filtering applied:', searchResults.locationInfo);
+      if (hasLocationIntent && location) {
+        setLocationInfo({
+          location,
+          proximity,
+          type: locationType,
+          resolvedPlace: location, // Use the extracted location name
+        });
+        console.log('Location filtering applied:', { location, proximity, type: locationType });
       } else {
         setLocationInfo(null);
       }

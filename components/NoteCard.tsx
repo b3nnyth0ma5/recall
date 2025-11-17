@@ -287,7 +287,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
                 <Text style={styles.location} numberOfLines={1} ellipsizeMode="tail">
                   {note.location}
                 </Text>
-                <IconSymbol name="chevron.right" size={12} color={colors.primary} />
+                <IconSymbol name="chevron.right" size={18} color={colors.primary} />
               </View>
             </Pressable>
           )}
