@@ -210,9 +210,10 @@ export async function embedNullImagesInBatches(batchSize: number = 10): Promise<
   let totalSkipped = 0;
   let offset = 0;
   let batchNumber = 1;
+  let hasMoreImages = true;
 
   try {
-    while (true) {
+    while (hasMoreImages) {
       console.log(`\n--- Processing Batch ${batchNumber} (offset: ${offset}) ---`);
 
       // Fetch a batch of images
@@ -229,6 +230,7 @@ export async function embedNullImagesInBatches(batchSize: number = 10): Promise<
 
       if (!images || images.length === 0) {
         console.log('✅ No more images to process');
+        hasMoreImages = false;
         break;
       }
 
@@ -330,6 +332,7 @@ export async function embedNullImagesInBatches(batchSize: number = 10): Promise<
 
       // If we got fewer images than the batch size, we've reached the end
       if (images.length < batchSize) {
+        hasMoreImages = false;
         break;
       }
 

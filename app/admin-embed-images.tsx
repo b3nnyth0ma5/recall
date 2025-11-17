@@ -19,13 +19,13 @@ interface ProcessingResult {
   successful: number;
   failed: number;
   skipped: number;
-  results: Array<{
+  results: {
     imageId: string;
     success: boolean;
     error?: string;
     skipped?: boolean;
     processingTimeMs?: number;
-  }>;
+  }[];
 }
 
 export default function AdminEmbedImagesScreen() {
