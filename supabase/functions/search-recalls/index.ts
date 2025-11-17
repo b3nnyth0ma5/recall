@@ -17,91 +17,6 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 /**
- * Use OpenAI to extract location entities from search query using NER
- */
-async function extractLocationEntities(query: string, openaiApiKey: string) {
-  try {
-    console.log('Extracting location entities from query:', query);
-
-    const systemPrompt = `You are a Named Entity Recognition (NER) expert specializing in location and proximity detection.
-
-Your task is to analyze search queries and extract location-based intent.
-
-Detect:
-1. Exact location mentions (e.g., "Sydney", "Eiffel Tower", "Central Park")
-2. Proximity-based searches (e.g., "near me", "within 5km", "nearby", "close to")
-3. Location context (e.g., "at the beach", "in the city", "downtown")
-
-Return a JSON object with this structure:
-{
-  "hasLocationIntent": true/false,
-  "location": "extracted location name or null",
-  "proximity": number (in kilometers) or null,
-  "type": "exact" | "near" | "within" | null,
-  "cleanedQuery": "query with location part removed"
-}
-
-Examples:
-- "coffee shops near Sydney Opera House" → {"hasLocationIntent": true, "location": "Sydney Opera House", "proximity": 5, "type": "near", "cleanedQuery": "coffee shops"}
-- "restaurants within 10km of Melbourne CBD" → {"hasLocationIntent": true, "location": "Melbourne CBD", "proximity": 10, "type": "within", "cleanedQuery": "restaurants"}
-- "photos at the beach" → {"hasLocationIntent": true, "location": "beach", "proximity": null, "type": "exact", "cleanedQuery": "photos"}
-- "my birthday party" → {"hasLocationIntent": false, "location": null, "proximity": null, "type": null, "cleanedQuery": "my birthday party"}
-
-If no location intent is detected, return hasLocationIntent: false.`;
-
-    const userPrompt = `Analyze this search query for location intent:\n\n"${query}"`;
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.1,
-        max_tokens: 300,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI NER API error:', errorText);
-      return null;
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
-
-    if (!content) {
-      console.log('No content in OpenAI NER response');
-      return null;
-    }
-
-    // Parse JSON response
-    let jsonContent = content.trim();
-    if (jsonContent.startsWith('```json')) {
-      jsonContent = jsonContent.replace(/^```json\n/, '').replace(/\n```$/, '');
-    } else if (jsonContent.startsWith('```')) {
-      jsonContent = jsonContent.replace(/^```\n/, '').replace(/\n```$/, '');
-    }
-
-    const nerResult = JSON.parse(jsonContent);
-    console.log('NER result:', nerResult);
-
-    return nerResult;
-  } catch (error) {
-    console.error('Error extracting location entities:', error);
-    return null;
-  }
-}
-
-/**
  * Search for a place using Google Places API
  */
 async function searchGooglePlaces(locationQuery: string, googleApiKey: string) {
@@ -261,18 +176,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Step 1: Apply NLP NER to detect location intent
-    console.log('Step 1: Applying NLP NER for location detection...');
-    const locationEntity = await extractLocationEntities(query, openaiApiKey);
-
-    // Determine the query to use for search ranking
-    const searchQuery = locationEntity?.hasLocationIntent && locationEntity.cleanedQuery
-      ? locationEntity.cleanedQuery
-      : query;
-
-    console.log('Search query for ranking:', searchQuery);
-    console.log('Location entity:', locationEntity);
-
     // Fetch all recalls for the user
     const { data: recalls, error: recallsError } = await supabase
       .from('recalls')
@@ -295,11 +198,11 @@ Deno.serve(async (req) => {
       console.log('No recalls found for user');
       return new Response(
         JSON.stringify({
-          hasLocationIntent: locationEntity?.hasLocationIntent || false,
-          location: locationEntity?.location || null,
-          proximity: locationEntity?.proximity || null,
-          type: locationEntity?.type || null,
-          cleanedQuery: locationEntity?.cleanedQuery || query,
+          hasLocationIntent: false,
+          location: null,
+          proximity: null,
+          type: null,
+          cleanedQuery: query,
           answer: null,
           confidence: 0,
           results: [],
@@ -365,23 +268,29 @@ Deno.serve(async (req) => {
       };
     });
 
-    // Construct the OpenAI prompt with question-answering capabilities
-    const systemPrompt = `You are an intelligent search assistant and question-answering expert that analyzes user recalls.
+    // Construct the unified OpenAI prompt that handles all tasks
+    const systemPrompt = `You are an intelligent search assistant with expertise in question answering, search ranking, and Named Entity Recognition (NER) for location and proximity detection.
 
-Your dual task:
-1. QUESTION ANSWERING: If the user's query is a question, attempt to answer it based on the recall data. Provide a concise answer (under 70 words). Include a confidence score (0-100).
-2. SEARCH RANKING: Analyze and rank recalls by relevance to the search query.
+Your task is to analyze the user's search query and the provided recall data, then return a comprehensive JSON response.
 
-For Question Answering:
+TASK 1 - LOCATION DETECTION (NER):
+Detect location-based intent in the query:
+- Exact location mentions (e.g., "Sydney", "Eiffel Tower", "Central Park")
+- Proximity-based searches (e.g., "near me", "within 5km", "nearby", "close to")
+- Location context (e.g., "at the beach", "in the city", "downtown")
+
+TASK 2 - QUESTION ANSWERING:
+If the query is a question, attempt to answer it based on the recall data:
 - Analyze if the query is asking a question (who, what, when, where, why, how, or implied questions)
-- Search through all recall text, location, location types, date created, OCR text, and image explanations for relevant information
-- Synthesize a clear, concise answer
-- Assign a confidence score based on how certain you are about the answer
-- Keep answers under 70 words
+- Search through all recall text, location, location types, dates, OCR text, and image explanations
+- Synthesize a clear, concise answer (under 70 words)
+- Assign a confidence score (0-100) based on certainty
+- Only include the answer if confidence >= 70%
 
-For Search Ranking:
+TASK 3 - SEARCH RANKING:
+Analyze and rank recalls by relevance:
 - Extract key entities (people, places, products, dates, etc.) from the query
-- Compare the query against each recall's text, created date, location, location type, OCR text, and image explanations
+- Compare against each recall's text, created date, location, location type, OCR text, and image explanations
 - Score each recall from 0-100 based on relevance
 - Provide a brief reason (max 30 words) for each match
 
@@ -390,33 +299,44 @@ Scoring criteria:
 - Location, proximity, OCR text and image explanation matches: 70-89
 - Semantic similarity: 60-69
 - Related concepts: 40-59
-- No or Weak connection: 0-39
+- Weak or no connection: 0-39
 
 Consider location primary type, OCR text and image explanations as important sources of information, especially when the main text is sparse.
 
 Return ONLY a valid JSON object with this exact structure (no markdown, no extra text):
 {
+  "hasLocationIntent": true/false,
+  "location": "extracted location name or null",
+  "proximity": number (in kilometers) or null,
+  "type": "exact" | "near" | "within" | null,
+  "cleanedQuery": "query with location part removed",
   "answer": "Your concise answer here or null if confidence < 70%",
   "confidence": 85,
   "results": [{"id":"recall-id","relevance_score":95,"relevance_reason":"Brief explanation"}]
 }
 
+Location detection examples:
+- "coffee shops near Sydney Opera House" → hasLocationIntent: true, location: "Sydney Opera House", proximity: 5, type: "near", cleanedQuery: "coffee shops"
+- "restaurants within 10km of Melbourne CBD" → hasLocationIntent: true, location: "Melbourne CBD", proximity: 10, type: "within", cleanedQuery: "restaurants"
+- "photos at the beach" → hasLocationIntent: true, location: "beach", proximity: null, type: "exact", cleanedQuery: "photos"
+- "my birthday party" → hasLocationIntent: false, location: null, proximity: null, type: null, cleanedQuery: "my birthday party"
+
 Include only the top ${limit} most relevant results in the results array, sorted by score (highest first).`;
 
-    const userPrompt = `Search query: "${searchQuery}"
+    const userPrompt = `Search query: "${query}"
 
 Recalls to analyze:
 ${JSON.stringify(recallsWithOCR, null, 2)}
 
 Return a JSON object with:
-1. An "answer" field (string or null) - answer the question if confidence >= 70%
-2. A "confidence" field (number 0-100) - your confidence in the answer
-3. A "results" array with the top ${limit} most relevant recalls`;
+1. Location detection fields (hasLocationIntent, location, proximity, type, cleanedQuery)
+2. Question answering fields (answer, confidence)
+3. Search ranking results array with the top ${limit} most relevant recalls`;
 
-    console.log('Calling OpenAI API...');
+    console.log('Calling OpenAI API with unified prompt...');
     console.log('Prompt size (chars):', systemPrompt.length + userPrompt.length);
 
-    // Call OpenAI API
+    // Call OpenAI API with unified prompt
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -557,56 +477,11 @@ Return a JSON object with:
       jsonContent.substring(Math.max(0, jsonContent.length - 300))
     );
 
-    let scoredResults;
-    let answerText = null;
-    let answerConfidence = 0;
+    let parsedResponse;
 
     try {
-      const parsed = JSON.parse(jsonContent);
-      console.log('Parsed response structure:', Object.keys(parsed));
-
-      // Extract answer and confidence
-      if (parsed.answer !== undefined) {
-        answerText = parsed.answer;
-        console.log(
-          'Answer extracted:',
-          answerText ? `"${answerText.substring(0, 100)}..."` : 'null'
-        );
-      }
-      if (parsed.confidence !== undefined) {
-        answerConfidence = parsed.confidence;
-        console.log('Confidence extracted:', answerConfidence);
-      }
-
-      // Handle the response - it should be an object with a "results" property
-      if (parsed.results && Array.isArray(parsed.results)) {
-        scoredResults = parsed.results;
-        console.log(
-          `Successfully parsed ${scoredResults.length} scored results from results array`
-        );
-      } else if (Array.isArray(parsed)) {
-        // Fallback: if somehow we got an array directly (shouldn't happen with json_object mode)
-        scoredResults = parsed;
-        console.log(`Parsed ${scoredResults.length} scored results from direct array`);
-      } else {
-        console.error('Unexpected response format. Expected object with "results" array.');
-        console.error('Parsed structure:', JSON.stringify(parsed, null, 2).substring(0, 500));
-        const possibleArrays = Object.values(parsed).filter((val) => Array.isArray(val));
-        if (possibleArrays.length > 0) {
-          scoredResults = possibleArrays[0];
-          console.log(`Found array in response with ${scoredResults.length} items`);
-        } else {
-          throw new Error('Response does not contain a results array or any valid array');
-        }
-      }
-
-      // Validate the structure of scored results
-      if (scoredResults.length > 0) {
-        const firstResult = scoredResults[0];
-        if (!firstResult.id || typeof firstResult.relevance_score !== 'number') {
-          console.warn('Warning: Results may have unexpected structure:', firstResult);
-        }
-      }
+      parsedResponse = JSON.parse(jsonContent);
+      console.log('Parsed response structure:', Object.keys(parsedResponse));
     } catch (parseError) {
       console.error('Failed to parse OpenAI response as JSON:', parseError);
       console.error(
@@ -627,6 +502,34 @@ Return a JSON object with:
           headers: { 'Content-Type': 'application/json' },
         }
       );
+    }
+
+    // Extract all fields from the unified response
+    const hasLocationIntent = parsedResponse.hasLocationIntent || false;
+    const location = parsedResponse.location || null;
+    const proximity = parsedResponse.proximity || null;
+    const locationType = parsedResponse.type || null;
+    const cleanedQuery = parsedResponse.cleanedQuery || query;
+    const answerText = parsedResponse.answer || null;
+    const answerConfidence = parsedResponse.confidence || 0;
+    const scoredResults = parsedResponse.results || [];
+
+    console.log('=== PARSED RESPONSE ===');
+    console.log('Has location intent:', hasLocationIntent);
+    console.log('Location:', location);
+    console.log('Proximity:', proximity);
+    console.log('Location type:', locationType);
+    console.log('Cleaned query:', cleanedQuery);
+    console.log('Answer:', answerText ? `"${answerText.substring(0, 100)}..."` : 'null');
+    console.log('Confidence:', answerConfidence);
+    console.log('Scored results count:', scoredResults.length);
+
+    // Validate the structure of scored results
+    if (scoredResults.length > 0) {
+      const firstResult = scoredResults[0];
+      if (!firstResult.id || typeof firstResult.relevance_score !== 'number') {
+        console.warn('Warning: Results may have unexpected structure:', firstResult);
+      }
     }
 
     console.log(`Total scored results before filtering: ${scoredResults.length}`);
@@ -661,18 +564,18 @@ Return a JSON object with:
 
     console.log(`Results after merging with recalls: ${results.length}`);
 
-    // Step 2: Apply location filtering if location intent was detected
-    if (locationEntity?.hasLocationIntent && locationEntity.location && googleApiKey) {
-      console.log('Step 2: Applying location filtering...');
+    // Apply location filtering if location intent was detected
+    if (hasLocationIntent && location && googleApiKey) {
+      console.log('Applying location filtering...');
       console.log('Resolving location with Google Places API...');
 
-      const placeResult = await searchGooglePlaces(locationEntity.location, googleApiKey);
+      const placeResult = await searchGooglePlaces(location, googleApiKey);
 
       if (placeResult) {
         console.log('Location resolved:', placeResult);
         console.log('Filtering results by location proximity...');
 
-        const proximityKm = locationEntity.proximity || 5;
+        const proximityKm = proximity || 5;
         results = filterByLocation(
           results,
           {
@@ -701,11 +604,11 @@ Return a JSON object with:
 
     return new Response(
       JSON.stringify({
-        hasLocationIntent: locationEntity?.hasLocationIntent || false,
-        location: locationEntity?.location || null,
-        proximity: locationEntity?.proximity || null,
-        type: locationEntity?.type || null,
-        cleanedQuery: locationEntity?.cleanedQuery || query,
+        hasLocationIntent,
+        location,
+        proximity,
+        type: locationType,
+        cleanedQuery,
         answer: finalAnswer,
         confidence: answerConfidence,
         results,
