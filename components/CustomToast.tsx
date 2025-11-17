@@ -19,7 +19,7 @@ export const toastConfig: ToastConfig = {
               ios_icon_name="checkmark.circle.fill"
               android_material_icon_name="check_circle"
               size={24}
-              color={colors.success}
+              color={colors.primary}
             />
           </View>
           <View style={styles.textContainer}>
