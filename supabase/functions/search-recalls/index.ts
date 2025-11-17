@@ -113,6 +113,22 @@ function filterByLocation(results: any[], targetLocation: any, proximityKm: numb
 }
 
 Deno.serve(async (req) => {
+  // CORS headers
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  };
+
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    console.log('Handling OPTIONS preflight request');
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
+  }
+
   try {
     // Get the authorization header
     const authHeader = req.headers.get('Authorization');
@@ -121,7 +137,7 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: 'Missing authorization header' }),
         {
           status: 401,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -142,7 +158,7 @@ Deno.serve(async (req) => {
       console.error('Authentication error:', authError);
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -154,7 +170,7 @@ Deno.serve(async (req) => {
     if (!query || typeof query !== 'string' || query.trim().length === 0) {
       return new Response(JSON.stringify({ error: 'Query parameter is required' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -171,7 +187,7 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: 'OpenAI API key not configured' }),
         {
           status: 500,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -189,7 +205,7 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: 'Failed to fetch recalls' }),
         {
           status: 500,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -211,7 +227,7 @@ Deno.serve(async (req) => {
         }),
         {
           status: 200,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -376,7 +392,7 @@ Return a JSON object with:
         }),
         {
           status: 500,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -394,7 +410,7 @@ Return a JSON object with:
         }),
         {
           status: 500,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -412,7 +428,7 @@ Return a JSON object with:
         }),
         {
           status: 500,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -499,7 +515,7 @@ Return a JSON object with:
         }),
         {
           status: 500,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -617,7 +633,7 @@ Return a JSON object with:
       }),
       {
         status: 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
   } catch (error) {
@@ -631,7 +647,11 @@ Return a JSON object with:
       }),
       {
         status: 500,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+          'Content-Type': 'application/json',
+        },
       }
     );
   }
