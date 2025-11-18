@@ -38,19 +38,18 @@ interface OpenAIErrorResponse {
  * 
  * This function:
  * 1. Receives a recall_id and optionally text, location, and location_primary_type
- * 2. Checks if an embedding already exists to prevent duplicate processing
- * 3. If not provided, fetches text, location, and location_primary_type from the database
- * 4. Concatenates text, location, and location_primary_type as input
- * 5. Calls OpenAI's text-embedding-3-small model with base64 encoding
- * 6. Stores the resulting embedding in recalls.recall_embedding
+ * 2. If not provided, fetches text, location, and location_primary_type from the database
+ * 3. Concatenates text, location, and location_primary_type as input
+ * 4. Calls OpenAI's text-embedding-3-small model with base64 encoding
+ * 5. Stores the resulting embedding in recalls.recall_embedding
+ * 6. ALWAYS generates a new embedding, even if one already exists
  * 
  * Features:
  * - Uses text-embedding-3-small model for cost efficiency
  * - Base64 encoding format for compact storage
  * - Automatic retry logic for transient failures
  * - Comprehensive error handling and logging
- * - Duplicate processing prevention
- * - Allows calls from database triggers without authentication
+ * - Re-embeds recalls even if embedding already exists
  */
 
 Deno.serve(async (req) => {
@@ -122,7 +121,6 @@ Deno.serve(async (req) => {
     }
 
     // Initialize Supabase client with service role key for admin access
-    // This allows the function to work even when called from database triggers
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
@@ -130,20 +128,20 @@ Deno.serve(async (req) => {
       },
     });
 
-    // Check if embedding already exists to prevent duplicate processing
-    console.log('Checking if embedding already exists...');
-    const { data: existingData, error: checkError } = await supabase
+    // Fetch recall data from database
+    console.log('Fetching recall data from database...');
+    const { data: recallData, error: fetchError } = await supabase
       .from('recalls')
       .select('recall_embedding, text, location, location_primary_type')
       .eq('id', recall_id)
       .single();
 
-    if (checkError) {
-      console.error('Database check error:', checkError);
+    if (fetchError) {
+      console.error('Database fetch error:', fetchError);
       return new Response(
         JSON.stringify({ 
-          error: 'Failed to check existing embedding',
-          details: checkError.message 
+          error: 'Failed to fetch recall data',
+          details: fetchError.message 
         }),
         { 
           status: 500, 
@@ -152,7 +150,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!existingData) {
+    if (!recallData) {
       console.error('No recall data found for ID:', recall_id);
       return new Response(
         JSON.stringify({ error: 'Recall data not found in database' }),
@@ -163,32 +161,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    // If embedding already exists, skip processing
-    if (existingData.recall_embedding && Array.isArray(existingData.recall_embedding) && existingData.recall_embedding.length > 0) {
-      console.log('Embedding already exists for this recall, skipping processing');
-      const processingTime = Date.now() - startTime;
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          recall_id: recall_id,
-          skipped: true,
-          reason: 'Embedding already exists',
-          processingTimeMs: processingTime,
-          embeddingDimensions: existingData.recall_embedding.length,
-        }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+    // Check if embedding already exists (for logging purposes only)
+    if (recallData.recall_embedding && Array.isArray(recallData.recall_embedding) && recallData.recall_embedding.length > 0) {
+      console.log('Existing embedding found (will be replaced)');
+      console.log('Existing embedding dimensions:', recallData.recall_embedding.length);
+    } else {
+      console.log('No existing embedding found');
     }
 
-    console.log('No existing embedding found, proceeding with generation');
-
-    // If text, location, or location_primary_type not provided, use from database
-    const finalText = text || existingData.text || '';
-    const finalLocation = location || existingData.location || '';
-    const finalLocationPrimaryType = location_primary_type || existingData.location_primary_type || '';
+    // Use provided data or fall back to database values
+    const finalText = text || recallData.text || '';
+    const finalLocation = location || recallData.location || '';
+    const finalLocationPrimaryType = location_primary_type || recallData.location_primary_type || '';
 
     // Concatenate text, location, and location_primary_type
     const inputText = `${finalText} ${finalLocation} ${finalLocationPrimaryType}`.trim();
@@ -361,6 +345,7 @@ Deno.serve(async (req) => {
         embeddingDimensions: embeddingArray.length,
         inputTextLength: inputText.length,
         tokenUsage: openaiData.usage,
+        wasReplaced: !!(recallData.recall_embedding && recallData.recall_embedding.length > 0),
       }),
       { 
         status: 200, 

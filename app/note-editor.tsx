@@ -25,7 +25,7 @@ import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
-import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -603,6 +603,30 @@ export default function NoteEditorScreen() {
           }
         }).catch(error => {
           console.error('Error triggering category matching:', error);
+        });
+      }, 500);
+
+      // Trigger embedding generation AFTER note save
+      console.log('Triggering embedding generation after note save for recall:', recallId);
+      
+      // Use setTimeout to ensure this happens after the save completes
+      setTimeout(() => {
+        triggerRecallEmbedding(
+          recallId,
+          noteData.text,
+          noteData.location,
+          noteData.location_primary_type || undefined
+        ).then(result => {
+          if (result.success) {
+            console.log('Embedding generation triggered successfully after note save');
+            if (result.data) {
+              console.log('Embedding result:', result.data);
+            }
+          } else {
+            console.error('Failed to trigger embedding generation:', result.error);
+          }
+        }).catch(error => {
+          console.error('Error triggering embedding generation:', error);
         });
       }, 500);
 

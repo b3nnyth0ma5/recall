@@ -637,6 +637,67 @@ export async function triggerCategoryMatching(recallId: string): Promise<{ succe
 }
 
 /**
+ * Trigger embedding generation for a recall
+ * This calls the embedding-recall edge function to generate and store embeddings
+ * 
+ * @param recallId - The ID of the recall to generate embeddings for
+ * @param text - Optional text content (if not provided, will be fetched from database)
+ * @param location - Optional location name (if not provided, will be fetched from database)
+ * @param locationPrimaryType - Optional location type (if not provided, will be fetched from database)
+ * @returns Promise with success status and optional error message
+ */
+export async function triggerRecallEmbedding(
+  recallId: string,
+  text?: string,
+  location?: string,
+  locationPrimaryType?: string
+): Promise<{ success: boolean; error?: string; data?: any }> {
+  try {
+    console.log('=== Triggering recall embedding generation ===');
+    console.log('Recall ID:', recallId);
+
+    const requestBody: any = { recall_id: recallId };
+    
+    // Include optional parameters if provided
+    if (text !== undefined) {
+      requestBody.text = text;
+    }
+    if (location !== undefined) {
+      requestBody.location = location;
+    }
+    if (locationPrimaryType !== undefined) {
+      requestBody.location_primary_type = locationPrimaryType;
+    }
+
+    const { data, error } = await supabase.functions.invoke('embedding-recall', {
+      body: requestBody,
+    });
+
+    if (error) {
+      console.error('Error invoking embedding-recall function:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Failed to invoke embedding-recall function' 
+      };
+    }
+
+    console.log('Embedding-recall function invoked successfully');
+    console.log('Response:', data);
+    
+    return { 
+      success: true, 
+      data 
+    };
+  } catch (error) {
+    console.error('Exception in triggerRecallEmbedding:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
+}
+
+/**
  * Batch upload images to Cloudflare CDN
  * This function finds all images without a cdn_url and uploads them to Cloudflare
  * using the cloudflare-upload edge function
