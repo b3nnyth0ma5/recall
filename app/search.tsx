@@ -344,20 +344,24 @@ export default function SearchScreen() {
                 {notes.map((note) => (
                   <View key={note.id} style={styles.noteWrapper}>
                     <View style={styles.badgeRow}>
-                      {note.used_for_answer && (
-                        <View style={styles.answerSourceBadge}>
-                          <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
-                          <Text style={styles.answerSourceText}>Used for answer</Text>
-                        </View>
-                      )}
-                      {note.relevance_score !== undefined && (
-                        <View style={styles.matchPercentageBadge}>
-                          <IconSymbol name="star.fill" size={12} color={colors.primary} />
-                          <Text style={styles.matchPercentageText}>
-                            {note.relevance_score}%
-                          </Text>
-                        </View>
-                      )}
+                      <View style={styles.badgeRowLeft}>
+                        {note.used_for_answer && (
+                          <View style={styles.answerSourceBadge}>
+                            <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                            <Text style={styles.answerSourceText}>Used for answer</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.badgeRowRight}>
+                        {note.relevance_score !== undefined && (
+                          <View style={styles.matchPercentageBadge}>
+                            <IconSymbol name="star.fill" size={12} color={colors.primary} />
+                            <Text style={styles.matchPercentageText}>
+                              {note.relevance_score}%
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
                     <View style={styles.noteCardContainer}>
                       <NoteCard
@@ -621,6 +625,15 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     marginRight: 12,
     zIndex: 1,
+  },
+  badgeRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  badgeRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 'auto',
   },
   answerSourceBadge: {
     flexDirection: 'row',
