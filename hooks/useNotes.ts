@@ -365,7 +365,7 @@ export function useNotes() {
     }
   }, [refreshNotes, user]);
 
-  const searchNotes = useCallback(async (query: string) => {
+  const searchNotes = useCallback(async (query: string, useV2: boolean = false) => {
     if (!user) {
       console.error('No user logged in');
       return;
@@ -386,6 +386,7 @@ export function useNotes() {
     try {
       console.log('=== STARTING SEARCH ===');
       console.log('Search query:', query);
+      console.log('Using V2 search:', useV2);
       setLoading(true);
       
       // Save search history
@@ -398,13 +399,14 @@ export function useNotes() {
         return;
       }
 
-      console.log('Calling search-recalls edge function...');
+      const functionName = useV2 ? 'search-recalls-v2' : 'search-recalls';
+      console.log(`Calling ${functionName} edge function...`);
       const startTime = Date.now();
       
-      const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls', {
+      const { data: searchResults, error: searchError } = await supabase.functions.invoke(functionName, {
         body: {
           query: query.trim(),
-          limit: 10,
+          limit: useV2 ? undefined : 10, // V2 always returns 8 matches
         },
       });
 
@@ -413,7 +415,7 @@ export function useNotes() {
 
       if (searchError) {
         console.error('=== EDGE FUNCTION ERROR ===');
-        console.error('Error calling search-recalls function:', searchError);
+        console.error(`Error calling ${functionName} function:`, searchError);
         console.error('Error details:', JSON.stringify(searchError, null, 2));
         
         // Fallback to basic search
@@ -442,48 +444,96 @@ export function useNotes() {
       console.log('=== EDGE FUNCTION SUCCESS ===');
       console.log('Search results received:', JSON.stringify(searchResults, null, 2));
 
-      // Extract results, answer, confidence, and location info from response
-      const scoredRecalls = searchResults?.results || [];
-      const answer = searchResults?.answer || null;
-      const confidence = searchResults?.confidence;
-      const hasLocationIntent = searchResults?.hasLocationIntent || false;
-      const location = searchResults?.location || null;
-      const proximity = searchResults?.proximity || null;
-      const locationType = searchResults?.type || null;
-      
-      console.log(`Found ${scoredRecalls.length} results`);
-      console.log('Answer:', answer);
-      console.log('Confidence:', confidence);
-      console.log('Has location intent:', hasLocationIntent);
-      console.log('Location:', location);
-      console.log('Proximity:', proximity);
-      console.log('Location type:', locationType);
-      
-      // Load images for the results
-      const notesWithImages = await loadImagesForRecalls(scoredRecalls);
-      
-      // Store location info if available
-      if (hasLocationIntent && location) {
-        setLocationInfo({
-          location,
-          proximity,
-          type: locationType,
-          resolvedPlace: location, // Use the extracted location name
-        });
-        console.log('Location filtering applied:', { location, proximity, type: locationType });
+      if (useV2) {
+        // V2 response format: { answer, confidence, results: [{ id, matchPercentage }] }
+        const matchedRecallIds = searchResults?.results?.map((r: any) => r.id) || [];
+        const answer = searchResults?.answer || null;
+        const confidence = searchResults?.confidence || 0;
+        
+        console.log(`Found ${matchedRecallIds.length} V2 results`);
+        console.log('Answer:', answer);
+        console.log('Confidence:', confidence);
+        
+        // Fetch full recall data for matched IDs
+        if (matchedRecallIds.length > 0) {
+          const { data: recallsData, error: recallsError } = await supabase
+            .from('recalls')
+            .select('*')
+            .in('id', matchedRecallIds)
+            .eq('user_id', user.id);
+
+          if (recallsError) {
+            console.error('Error fetching recalls:', recallsError);
+            return;
+          }
+
+          // Sort recalls by match percentage
+          const sortedRecalls = (recallsData || []).map(recall => {
+            const matchInfo = searchResults.results.find((r: any) => r.id === recall.id);
+            return {
+              ...recall,
+              relevance_score: matchInfo?.matchPercentage || 0,
+              relevance_reason: `${matchInfo?.matchPercentage || 0}% match based on image content`
+            };
+          }).sort((a, b) => b.relevance_score - a.relevance_score);
+
+          const notesWithImages = await loadImagesForRecalls(sortedRecalls);
+          
+          setNotes(notesWithImages);
+          setSearchAnswer(answer);
+          setSearchConfidence(confidence);
+          setLocationInfo(null); // V2 doesn't use location filtering
+        } else {
+          setNotes([]);
+          setSearchAnswer(answer);
+          setSearchConfidence(confidence);
+          setLocationInfo(null);
+        }
       } else {
-        setLocationInfo(null);
+        // V1 response format (existing)
+        const scoredRecalls = searchResults?.results || [];
+        const answer = searchResults?.answer || null;
+        const confidence = searchResults?.confidence;
+        const hasLocationIntent = searchResults?.hasLocationIntent || false;
+        const location = searchResults?.location || null;
+        const proximity = searchResults?.proximity || null;
+        const locationType = searchResults?.type || null;
+        
+        console.log(`Found ${scoredRecalls.length} results`);
+        console.log('Answer:', answer);
+        console.log('Confidence:', confidence);
+        console.log('Has location intent:', hasLocationIntent);
+        console.log('Location:', location);
+        console.log('Proximity:', proximity);
+        console.log('Location type:', locationType);
+        
+        // Load images for the results
+        const notesWithImages = await loadImagesForRecalls(scoredRecalls);
+        
+        // Store location info if available
+        if (hasLocationIntent && location) {
+          setLocationInfo({
+            location,
+            proximity,
+            type: locationType,
+            resolvedPlace: location, // Use the extracted location name
+          });
+          console.log('Location filtering applied:', { location, proximity, type: locationType });
+        } else {
+          setLocationInfo(null);
+        }
+        
+        // Store answer and confidence
+        setSearchAnswer(answer);
+        setSearchConfidence(confidence);
+        
+        setNotes(notesWithImages);
       }
       
-      // Store answer and confidence
-      setSearchAnswer(answer);
-      setSearchConfidence(confidence);
-      
-      setNotes(notesWithImages);
       console.log('=== SEARCH COMPLETE ===');
-      console.log('AI-powered search results:', notesWithImages.length);
-      console.log('Answer set:', answer ? 'Yes' : 'No');
-      console.log('Confidence:', confidence);
+      console.log('AI-powered search results:', notes.length);
+      console.log('Answer set:', searchAnswer ? 'Yes' : 'No');
+      console.log('Confidence:', searchConfidence);
     } catch (error) {
       console.error('=== SEARCH EXCEPTION ===');
       console.error('Error searching recalls:', error);
