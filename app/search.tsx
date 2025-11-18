@@ -343,17 +343,13 @@ export default function SearchScreen() {
                 </Text>
                 {notes.map((note) => (
                   <View key={note.id} style={styles.noteWrapper}>
-                    {note.used_for_answer && (
-                      <View style={styles.answerSourceBadge}>
-                        <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
-                        <Text style={styles.answerSourceText}>Used for answer</Text>
-                      </View>
-                    )}
-                    <View style={styles.noteCardContainer}>
-                      <NoteCard
-                        note={note}
-                        onPress={() => handleNotePress(note.id)}
-                      />
+                    <View style={styles.badgeRow}>
+                      {note.used_for_answer && (
+                        <View style={styles.answerSourceBadge}>
+                          <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                          <Text style={styles.answerSourceText}>Used for answer</Text>
+                        </View>
+                      )}
                       {note.relevance_score !== undefined && (
                         <View style={styles.matchPercentageBadge}>
                           <IconSymbol name="star.fill" size={12} color={colors.primary} />
@@ -362,6 +358,12 @@ export default function SearchScreen() {
                           </Text>
                         </View>
                       )}
+                    </View>
+                    <View style={styles.noteCardContainer}>
+                      <NoteCard
+                        note={note}
+                        onPress={() => handleNotePress(note.id)}
+                      />
                     </View>
                   </View>
                 ))}
@@ -611,6 +613,15 @@ const styles = StyleSheet.create({
   noteWrapper: {
     marginBottom: 16,
   },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: -12,
+    marginLeft: 12,
+    marginRight: 12,
+    zIndex: 1,
+  },
   answerSourceBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -620,37 +631,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
-    alignSelf: 'flex-start',
-    marginBottom: -12,
-    marginLeft: 12,
-    zIndex: 1,
   },
   answerSourceText: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.primary,
   },
-  noteCardContainer: {
-    position: 'relative',
-  },
   matchPercentageBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(255, 107, 122, 0.95)',
+    backgroundColor: 'rgba(255, 107, 122, 0.15)',
     paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.2)',
-    elevation: 3,
-    zIndex: 10,
+    paddingHorizontal: 12,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
   },
   matchPercentageText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  noteCardContainer: {
+    position: 'relative',
   },
 });
