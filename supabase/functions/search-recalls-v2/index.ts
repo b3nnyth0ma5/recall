@@ -117,22 +117,21 @@ Deno.serve(async (req) => {
     const embeddingArray = Array.from(float32Array);
     console.log('Decoded embedding array length:', embeddingArray.length);
 
-    // Step 2: Find top 8 closest matches using vector similarity
-    console.log('Step 2: Finding top 8 closest matches...');
+    // Step 2: Find closest matches using vector similarity (>= 70% threshold)
+    console.log('Step 2: Finding closest matches with >= 70% similarity...');
 
     // Fetch all recall images with embeddings for this user
-    // Cast the vector to text to get the array representation
-    const { data: allImages, error: fetchError } = await supabase
+    const { data: allImages, error: fetchImagesError } = await supabase
       .from('recall_images')
       .select('id, recall_id, ocr_text, image_explanation, recall_image_embedding')
       .eq('user_id', user.id)
       .not('recall_image_embedding', 'is', null);
 
-    if (fetchError) {
-      console.error('Error fetching images:', fetchError);
+    if (fetchImagesError) {
+      console.error('Error fetching images:', fetchImagesError);
       return new Response(JSON.stringify({
         error: 'Failed to fetch images',
-        details: fetchError.message
+        details: fetchImagesError.message
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -141,8 +140,121 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${allImages?.length || 0} images with embeddings`);
 
-    if (!allImages || allImages.length === 0) {
-      console.log('No images with embeddings found');
+    // Fetch all recalls with embeddings for this user
+    const { data: allRecalls, error: fetchRecallsError } = await supabase
+      .from('recalls')
+      .select('id, text, location, location_primary_type, recall_embedding')
+      .eq('user_id', user.id)
+      .not('recall_embedding', 'is', null);
+
+    if (fetchRecallsError) {
+      console.error('Error fetching recalls:', fetchRecallsError);
+      return new Response(JSON.stringify({
+        error: 'Failed to fetch recalls',
+        details: fetchRecallsError.message
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    console.log(`Found ${allRecalls?.length || 0} recalls with embeddings`);
+
+    // Helper function to calculate cosine similarity
+    const calculateCosineSimilarity = (embedding: any): number => {
+      if (!embedding) {
+        return 0;
+      }
+
+      let embeddingArray = embedding;
+
+      // Handle different embedding formats
+      if (typeof embedding === 'string') {
+        try {
+          // Remove brackets and split by comma
+          const cleanStr = embedding.replace(/[\[\]]/g, '');
+          embeddingArray = cleanStr.split(',').map(s => parseFloat(s.trim()));
+        } catch (e) {
+          console.error('Failed to parse embedding string:', e);
+          return 0;
+        }
+      }
+
+      // Verify it's an array
+      if (!Array.isArray(embeddingArray)) {
+        return 0;
+      }
+
+      if (embeddingArray.length === 0) {
+        return 0;
+      }
+
+      // Cosine similarity calculation
+      let dotProduct = 0;
+      let normA = 0;
+      let normB = 0;
+
+      const minLength = Math.min(embeddingArray.length, embeddingArray.length);
+      
+      for (let i = 0; i < minLength; i++) {
+        const a = embeddingArray[i];
+        const b = embeddingArray[i];
+        dotProduct += a * b;
+        normA += a * a;
+        normB += b * b;
+      }
+
+      const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+      return isNaN(similarity) ? 0 : similarity;
+    };
+
+    // Calculate cosine similarity for each image
+    const imageMatches = (allImages || []).map((image) => {
+      const similarity = calculateCosineSimilarity(image.recall_image_embedding);
+
+      return {
+        id: image.id,
+        recall_id: image.recall_id,
+        ocr_text: image.ocr_text || '',
+        image_explanation: image.image_explanation || '',
+        similarity,
+        source: 'image' as const
+      };
+    });
+
+    // Calculate cosine similarity for each recall
+    const recallMatches = (allRecalls || []).map((recall) => {
+      const similarity = calculateCosineSimilarity(recall.recall_embedding);
+
+      return {
+        id: recall.id,
+        recall_id: recall.id,
+        text: recall.text || '',
+        location: recall.location || '',
+        location_primary_type: recall.location_primary_type || '',
+        similarity,
+        source: 'recall' as const
+      };
+    });
+
+    // Combine all matches
+    const allMatches = [...imageMatches, ...recallMatches];
+
+    // Filter by >= 70% similarity (0.7 cosine similarity)
+    const SIMILARITY_THRESHOLD = 0.7;
+    const filteredMatches = allMatches.filter(match => match.similarity >= SIMILARITY_THRESHOLD);
+
+    // Sort by similarity (highest first)
+    filteredMatches.sort((a, b) => b.similarity - a.similarity);
+
+    console.log(`Found ${filteredMatches.length} matches with >= 70% similarity`);
+    if (filteredMatches.length > 0) {
+      console.log('Top match similarity:', filteredMatches[0]?.similarity);
+      console.log('Top 3 similarities:', filteredMatches.slice(0, 3).map(m => m.similarity));
+    }
+
+    if (filteredMatches.length === 0) {
+      console.log('No matches found with >= 70% similarity');
       return new Response(JSON.stringify({
         answer: null,
         confidence: 0,
@@ -154,130 +266,42 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Calculate cosine similarity for each image
-    const matchesWithSimilarity = allImages.map((image) => {
-      let embedding = image.recall_image_embedding;
-      
-      // Handle different embedding formats
-      // The embedding might be a vector type, string, or array
-      if (!embedding) {
-        console.log(`Image ${image.id} has null embedding`);
-        return {
-          id: image.id,
-          recall_id: image.recall_id,
-          ocr_text: image.ocr_text || '',
-          image_explanation: image.image_explanation || '',
-          similarity: 0
-        };
-      }
-
-      // If it's a string (vector type serialized), parse it
-      if (typeof embedding === 'string') {
-        try {
-          // Remove brackets and split by comma
-          const cleanStr = embedding.replace(/[\[\]]/g, '');
-          embedding = cleanStr.split(',').map(s => parseFloat(s.trim()));
-          console.log(`Parsed string embedding for image ${image.id}, length: ${embedding.length}`);
-        } catch (e) {
-          console.error(`Failed to parse embedding string for image ${image.id}:`, e);
-          return {
-            id: image.id,
-            recall_id: image.recall_id,
-            ocr_text: image.ocr_text || '',
-            image_explanation: image.image_explanation || '',
-            similarity: 0
-          };
-        }
-      }
-
-      // Verify it's an array
-      if (!Array.isArray(embedding)) {
-        console.log(`Image ${image.id} embedding is not an array, type: ${typeof embedding}`);
-        return {
-          id: image.id,
-          recall_id: image.recall_id,
-          ocr_text: image.ocr_text || '',
-          image_explanation: image.image_explanation || '',
-          similarity: 0
-        };
-      }
-
-      if (embedding.length === 0) {
-        console.log(`Image ${image.id} has empty embedding array`);
-        return {
-          id: image.id,
-          recall_id: image.recall_id,
-          ocr_text: image.ocr_text || '',
-          image_explanation: image.image_explanation || '',
-          similarity: 0
-        };
-      }
-
-      // Cosine similarity calculation
-      let dotProduct = 0;
-      let normA = 0;
-      let normB = 0;
-
-      const minLength = Math.min(embeddingArray.length, embedding.length);
-      
-      for (let i = 0; i < minLength; i++) {
-        const a = embeddingArray[i];
-        const b = embedding[i];
-        dotProduct += a * b;
-        normA += a * a;
-        normB += b * b;
-      }
-
-      const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-
-      return {
-        id: image.id,
-        recall_id: image.recall_id,
-        ocr_text: image.ocr_text || '',
-        image_explanation: image.image_explanation || '',
-        similarity: isNaN(similarity) ? 0 : similarity
-      };
-    });
-
-    // Sort by similarity (highest first) and take top 8
-    matchesWithSimilarity.sort((a, b) => b.similarity - a.similarity);
-    const top8Matches = matchesWithSimilarity.slice(0, 8);
-
-    console.log(`Found ${top8Matches.length} matches`);
-    if (top8Matches.length > 0) {
-      console.log('Top match similarity:', top8Matches[0]?.similarity);
-      console.log('Top 3 similarities:', top8Matches.slice(0, 3).map(m => m.similarity));
-    }
-
     // Convert similarity to match percentage (0-100)
-    // Cosine similarity ranges from -1 to 1, but for embeddings it's typically 0 to 1
-    const matchResults = top8Matches.map((match) => ({
-      id: match.id,
+    const matchResults = filteredMatches.map((match) => ({
+      id: match.source === 'image' ? match.id : match.recall_id,
       recall_id: match.recall_id,
-      ocr_text: match.ocr_text,
-      image_explanation: match.image_explanation,
-      matchPercentage: Math.round(Math.max(0, Math.min(100, match.similarity * 100)))
+      ocr_text: match.source === 'image' ? match.ocr_text : '',
+      image_explanation: match.source === 'image' ? match.image_explanation : '',
+      text: match.source === 'recall' ? match.text : '',
+      location: match.source === 'recall' ? match.location : '',
+      location_primary_type: match.source === 'recall' ? match.location_primary_type : '',
+      matchPercentage: Math.round(Math.max(0, Math.min(100, match.similarity * 100))),
+      source: match.source
     }));
 
-    console.log('Match percentages:', matchResults.map(m => m.matchPercentage));
+    console.log('Match percentages:', matchResults.map(m => `${m.matchPercentage}% (${m.source})`));
 
     // Step 3: Use OpenAI for question answering
     console.log('Step 3: Using OpenAI for question answering...');
 
     // Prepare context from matches
     const context = matchResults
-      .map((match, idx) => 
-        `Match ${idx + 1} (${match.matchPercentage}% match):\nOCR Text: ${match.ocr_text}\nImage Explanation: ${match.image_explanation}`
-      )
+      .map((match, idx) => {
+        if (match.source === 'image') {
+          return `Match ${idx + 1} (${match.matchPercentage}% match - from image):\nOCR Text: ${match.ocr_text}\nImage Explanation: ${match.image_explanation}`;
+        } else {
+          return `Match ${idx + 1} (${match.matchPercentage}% match - from recall):\nText: ${match.text}\nLocation: ${match.location}\nLocation Type: ${match.location_primary_type}`;
+        }
+      })
       .join('\n\n');
 
-    const qaSystemPrompt = `You are a helpful assistant that answers questions based on the provided context from image OCR text and explanations. 
+    const qaSystemPrompt = `You are a helpful assistant that answers questions based on the provided context from image OCR text, image explanations, and recall text. 
 
 Provide concise, accurate answers based only on the information given. If you cannot answer the question with confidence based on the context, say so.
 
 Also provide a confidence score (0-100) indicating how confident you are in your answer based on the available information.`;
 
-    const qaUserPrompt = `Question: ${query}\n\nContext from image matches:\n${context}\n\nProvide your answer and confidence score in JSON format: {"answer": "your answer here", "confidence": 85}`;
+    const qaUserPrompt = `Question: ${query}\n\nContext from matches:\n${context}\n\nProvide your answer and confidence score in JSON format: {"answer": "your answer here", "confidence": 85}`;
 
     const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -338,7 +362,7 @@ Also provide a confidence score (0-100) indicating how confident you are in your
       answer,
       confidence,
       results: matchResults.map((match) => ({
-        id: match.recall_id,  // Return recall_id, not image id
+        id: match.recall_id,  // Return recall_id
         matchPercentage: match.matchPercentage
       })),
       processingTimeMs: processingTime
