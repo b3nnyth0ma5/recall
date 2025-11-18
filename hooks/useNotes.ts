@@ -445,7 +445,7 @@ export function useNotes() {
       console.log('Search results received:', JSON.stringify(searchResults, null, 2));
 
       if (useV2) {
-        // V2 response format: { answer, confidence, results: [{ id, matchPercentage }] }
+        // V2 response format: { answer, confidence, results: [{ id, matchPercentage, usedForAnswer }] }
         const matchedRecallIds = searchResults?.results?.map((r: any) => r.id) || [];
         const answer = searchResults?.answer || null;
         const confidence = searchResults?.confidence || 0;
@@ -453,6 +453,7 @@ export function useNotes() {
         console.log(`Found ${matchedRecallIds.length} V2 results`);
         console.log('Answer:', answer);
         console.log('Confidence:', confidence);
+        console.log('Results with usedForAnswer flags:', searchResults?.results);
         
         // Fetch full recall data for matched IDs
         if (matchedRecallIds.length > 0) {
@@ -467,17 +468,25 @@ export function useNotes() {
             return;
           }
 
-          // Sort recalls by match percentage
-          const sortedRecalls = (recallsData || []).map(recall => {
-            const matchInfo = searchResults.results.find((r: any) => r.id === recall.id);
-            return {
-              ...recall,
-              relevance_score: matchInfo?.matchPercentage || 0,
-              relevance_reason: `${matchInfo?.matchPercentage || 0}% match based on image content`
-            };
-          }).sort((a, b) => b.relevance_score - a.relevance_score);
+          // Map recalls with match info, preserving the order from search results
+          // The search results are already ordered with answer sources first
+          const orderedRecalls = searchResults.results
+            .map((matchInfo: any) => {
+              const recall = recallsData?.find(r => r.id === matchInfo.id);
+              if (!recall) return null;
+              
+              return {
+                ...recall,
+                relevance_score: matchInfo.matchPercentage || 0,
+                used_for_answer: matchInfo.usedForAnswer || false,
+                relevance_reason: matchInfo.usedForAnswer 
+                  ? `${matchInfo.matchPercentage}% match - Used to derive answer`
+                  : `${matchInfo.matchPercentage}% match based on content similarity`
+              };
+            })
+            .filter(recall => recall !== null);
 
-          const notesWithImages = await loadImagesForRecalls(sortedRecalls);
+          const notesWithImages = await loadImagesForRecalls(orderedRecalls);
           
           setNotes(notesWithImages);
           setSearchAnswer(answer);

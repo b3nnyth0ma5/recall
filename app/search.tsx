@@ -343,12 +343,21 @@ export default function SearchScreen() {
                 </Text>
                 {notes.map((note) => (
                   <View key={note.id} style={styles.noteWrapper}>
+                    {note.used_for_answer && (
+                      <View style={styles.answerSourceBadge}>
+                        <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                        <Text style={styles.answerSourceText}>Used for answer</Text>
+                      </View>
+                    )}
                     <NoteCard
                       note={note}
                       onPress={() => handleNotePress(note.id)}
                     />
                     {note.relevance_score !== undefined && (
-                      <View style={styles.relevanceInfo}>
+                      <View style={[
+                        styles.relevanceInfo,
+                        note.used_for_answer && styles.relevanceInfoHighlight
+                      ]}>
                         <View style={styles.relevanceScore}>
                           <IconSymbol name="star.fill" size={14} color={colors.primary} />
                           <Text style={styles.relevanceScoreText}>
@@ -608,6 +617,25 @@ const styles = StyleSheet.create({
   noteWrapper: {
     marginBottom: 16,
   },
+  answerSourceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 107, 122, 0.15)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: -12,
+    marginLeft: 12,
+    zIndex: 1,
+  },
+  answerSourceText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
   relevanceInfo: {
     backgroundColor: colors.card,
     padding: 12,
@@ -617,6 +645,11 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 0,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  relevanceInfoHighlight: {
+    backgroundColor: 'rgba(255, 107, 122, 0.05)',
+    borderTopColor: colors.primary,
+    borderTopWidth: 2,
   },
   relevanceScore: {
     flexDirection: 'row',

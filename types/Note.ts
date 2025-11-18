@@ -13,6 +13,7 @@ export interface Note {
   user_id?: string;
   relevance_score?: number; // AI-powered relevance score (0-100)
   relevance_reason?: string; // Explanation of why this recall matches
+  used_for_answer?: boolean; // Whether this recall was used to derive the AI answer
 }
 
 export interface NoteImage {
