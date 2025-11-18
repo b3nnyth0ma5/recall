@@ -479,9 +479,6 @@ export function useNotes() {
                 ...recall,
                 relevance_score: matchInfo.matchPercentage || 0,
                 used_for_answer: matchInfo.usedForAnswer || false,
-                relevance_reason: matchInfo.usedForAnswer 
-                  ? `${matchInfo.matchPercentage}% match - Used to derive answer`
-                  : `${matchInfo.matchPercentage}% match based on content similarity`
               };
             })
             .filter(recall => recall !== null);
@@ -610,7 +607,7 @@ export function useNotes() {
         .select('*')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false })
-        .limit(10);
+        .limit(20); // Changed from 10 to 20
 
       if (error) {
         console.error('Error loading search history:', error);

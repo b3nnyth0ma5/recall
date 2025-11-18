@@ -29,7 +29,7 @@ export default function SearchScreen() {
   const [hasSearched, setHasSearched] = useState(false);
   const [isAiSearch, setIsAiSearch] = useState(false);
   const [isAnswerExpanded, setIsAnswerExpanded] = useState(false);
-  const [useV2Search, setUseV2Search] = useState(false);
+  const [useV2Search, setUseV2Search] = useState(true); // Default to ON
   const searchInputRef = useRef<TextInput>(null);
 
   const loadSearchHistory = useCallback(async () => {
@@ -349,26 +349,20 @@ export default function SearchScreen() {
                         <Text style={styles.answerSourceText}>Used for answer</Text>
                       </View>
                     )}
-                    <NoteCard
-                      note={note}
-                      onPress={() => handleNotePress(note.id)}
-                    />
-                    {note.relevance_score !== undefined && (
-                      <View style={[
-                        styles.relevanceInfo,
-                        note.used_for_answer && styles.relevanceInfoHighlight
-                      ]}>
-                        <View style={styles.relevanceScore}>
-                          <IconSymbol name="star.fill" size={14} color={colors.primary} />
-                          <Text style={styles.relevanceScoreText}>
-                            {note.relevance_score}% match
+                    <View style={styles.noteCardContainer}>
+                      <NoteCard
+                        note={note}
+                        onPress={() => handleNotePress(note.id)}
+                      />
+                      {note.relevance_score !== undefined && (
+                        <View style={styles.matchPercentageBadge}>
+                          <IconSymbol name="star.fill" size={12} color={colors.primary} />
+                          <Text style={styles.matchPercentageText}>
+                            {note.relevance_score}%
                           </Text>
                         </View>
-                        {note.relevance_reason && (
-                          <Text style={styles.relevanceReason}>{note.relevance_reason}</Text>
-                        )}
-                      </View>
-                    )}
+                      )}
+                    </View>
                   </View>
                 ))}
               </React.Fragment>
@@ -636,35 +630,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primary,
   },
-  relevanceInfo: {
-    backgroundColor: colors.card,
-    padding: 12,
-    borderRadius: 8,
-    marginTop: -8,
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+  noteCardContainer: {
+    position: 'relative',
   },
-  relevanceInfoHighlight: {
-    backgroundColor: 'rgba(255, 107, 122, 0.05)',
-    borderTopColor: colors.primary,
-    borderTopWidth: 2,
-  },
-  relevanceScore: {
+  matchPercentageBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
+    gap: 4,
+    backgroundColor: 'rgba(255, 107, 122, 0.95)',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.2)',
+    elevation: 3,
+    zIndex: 10,
   },
-  relevanceScoreText: {
+  matchPercentageText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  relevanceReason: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
