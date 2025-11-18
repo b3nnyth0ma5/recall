@@ -114,8 +114,8 @@ Deno.serve(async (req) => {
       bytes[i] = binaryString.charCodeAt(i);
     }
     const float32Array = new Float32Array(bytes.buffer);
-    const embeddingArray = Array.from(float32Array);
-    console.log('Decoded embedding array length:', embeddingArray.length);
+    const queryEmbedding = Array.from(float32Array);
+    console.log('Decoded query embedding array length:', queryEmbedding.length);
 
     // Step 2: Find closest matches using vector similarity (>= 70% threshold)
     console.log('Step 2: Finding closest matches with >= 70% similarity...');
@@ -160,20 +160,21 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${allRecalls?.length || 0} recalls with embeddings`);
 
-    // Helper function to calculate cosine similarity
-    const calculateCosineSimilarity = (embedding: any): number => {
-      if (!embedding) {
+    // Helper function to calculate cosine similarity between query embedding and stored embedding
+    const calculateCosineSimilarity = (storedEmbedding: any): number => {
+      if (!storedEmbedding) {
+        console.log('Stored embedding is null or undefined');
         return 0;
       }
 
-      let embeddingArray = embedding;
+      let storedEmbeddingArray = storedEmbedding;
 
       // Handle different embedding formats
-      if (typeof embedding === 'string') {
+      if (typeof storedEmbedding === 'string') {
         try {
           // Remove brackets and split by comma
-          const cleanStr = embedding.replace(/[\[\]]/g, '');
-          embeddingArray = cleanStr.split(',').map(s => parseFloat(s.trim()));
+          const cleanStr = storedEmbedding.replace(/[\[\]]/g, '');
+          storedEmbeddingArray = cleanStr.split(',').map(s => parseFloat(s.trim()));
         } catch (e) {
           console.error('Failed to parse embedding string:', e);
           return 0;
@@ -181,31 +182,62 @@ Deno.serve(async (req) => {
       }
 
       // Verify it's an array
-      if (!Array.isArray(embeddingArray)) {
+      if (!Array.isArray(storedEmbeddingArray)) {
+        console.log('Stored embedding is not an array after parsing');
         return 0;
       }
 
-      if (embeddingArray.length === 0) {
+      if (storedEmbeddingArray.length === 0) {
+        console.log('Stored embedding array is empty');
         return 0;
       }
 
-      // Cosine similarity calculation
+      // Verify query embedding is valid
+      if (!Array.isArray(queryEmbedding) || queryEmbedding.length === 0) {
+        console.log('Query embedding is invalid');
+        return 0;
+      }
+
+      // Check if dimensions match
+      if (storedEmbeddingArray.length !== queryEmbedding.length) {
+        console.log(`Dimension mismatch: stored=${storedEmbeddingArray.length}, query=${queryEmbedding.length}`);
+        return 0;
+      }
+
+      // Cosine similarity calculation: (A · B) / (||A|| * ||B||)
       let dotProduct = 0;
-      let normA = 0;
-      let normB = 0;
+      let normA = 0;  // Norm of query embedding
+      let normB = 0;  // Norm of stored embedding
 
-      const minLength = Math.min(embeddingArray.length, embeddingArray.length);
-      
-      for (let i = 0; i < minLength; i++) {
-        const a = embeddingArray[i];
-        const b = embeddingArray[i];
-        dotProduct += a * b;
-        normA += a * a;
-        normB += b * b;
+      for (let i = 0; i < queryEmbedding.length; i++) {
+        const queryVal = queryEmbedding[i];
+        const storedVal = storedEmbeddingArray[i];
+        
+        dotProduct += queryVal * storedVal;
+        normA += queryVal * queryVal;
+        normB += storedVal * storedVal;
       }
 
-      const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-      return isNaN(similarity) ? 0 : similarity;
+      // Calculate final similarity
+      const denominator = Math.sqrt(normA) * Math.sqrt(normB);
+      
+      if (denominator === 0) {
+        console.log('Denominator is zero, returning 0 similarity');
+        return 0;
+      }
+
+      const similarity = dotProduct / denominator;
+      
+      // Cosine similarity should be between -1 and 1
+      // Clamp to this range in case of floating point errors
+      const clampedSimilarity = Math.max(-1, Math.min(1, similarity));
+      
+      if (isNaN(clampedSimilarity)) {
+        console.log('Similarity calculation resulted in NaN');
+        return 0;
+      }
+
+      return clampedSimilarity;
     };
 
     // Calculate cosine similarity for each image
