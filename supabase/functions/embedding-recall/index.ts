@@ -50,6 +50,7 @@ interface OpenAIErrorResponse {
  * - Automatic retry logic for transient failures
  * - Comprehensive error handling and logging
  * - Duplicate processing prevention
+ * - Allows calls from database triggers without authentication
  */
 
 Deno.serve(async (req) => {
@@ -121,6 +122,7 @@ Deno.serve(async (req) => {
     }
 
     // Initialize Supabase client with service role key for admin access
+    // This allows the function to work even when called from database triggers
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
@@ -363,7 +365,7 @@ Deno.serve(async (req) => {
       { 
         status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+        }
     );
 
   } catch (error) {
