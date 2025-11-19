@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -121,8 +122,9 @@ Deno.serve(async (req)=>{
     const float32Array = new Float32Array(bytes.buffer);
     const queryEmbedding = Array.from(float32Array);
     console.log('Decoded query embedding array length:', queryEmbedding.length);
-    // Step 2: Find closest matches using vector similarity (>= 70% threshold)
+    // Step 2: Find closest matches using vector similarity (>= 20% threshold)
     console.log('Step 2: Finding closest matches with >= 20% similarity...');
+    
     // Fetch all recall images with embeddings for this user
     const { data: allImages, error: fetchImagesError } = await supabase.from('recall_images').select('id, recall_id, ocr_text, image_explanation, recall_image_embedding').eq('user_id', user.id).not('recall_image_embedding', 'is', null);
     if (fetchImagesError) {
@@ -139,6 +141,7 @@ Deno.serve(async (req)=>{
       });
     }
     console.log(`Found ${allImages?.length || 0} images with embeddings`);
+    
     // Fetch all recalls with embeddings for this user
     const { data: allRecalls, error: fetchRecallsError } = await supabase.from('recalls').select('id, text, location, location_primary_type, recall_embedding').eq('user_id', user.id).not('recall_embedding', 'is', null);
     if (fetchRecallsError) {
@@ -155,6 +158,24 @@ Deno.serve(async (req)=>{
       });
     }
     console.log(`Found ${allRecalls?.length || 0} recalls with embeddings`);
+    
+    // Fetch all recall URLs with embeddings for this user
+    const { data: allUrls, error: fetchUrlsError } = await supabase.from('recall_urls').select('id, recall_id, url, url_data, recall_url_embedding').eq('user_id', user.id).not('recall_url_embedding', 'is', null);
+    if (fetchUrlsError) {
+      console.error('Error fetching URLs:', fetchUrlsError);
+      return new Response(JSON.stringify({
+        error: 'Failed to fetch URLs',
+        details: fetchUrlsError.message
+      }), {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
+      });
+    }
+    console.log(`Found ${allUrls?.length || 0} URLs with embeddings`);
+    
     // Helper function to calculate cosine similarity between query embedding and stored embedding
     const calculateCosineSimilarity = (storedEmbedding)=>{
       if (!storedEmbedding) {
@@ -244,10 +265,23 @@ Deno.serve(async (req)=>{
         source: 'recall'
       };
     });
+    // Calculate cosine similarity for each URL
+    const urlMatches = (allUrls || []).map((url)=>{
+      const similarity = calculateCosineSimilarity(url.recall_url_embedding);
+      return {
+        id: url.id,
+        recall_id: url.recall_id,
+        url: url.url || '',
+        url_data: url.url_data || '',
+        similarity,
+        source: 'url'
+      };
+    });
     // Combine all matches
     const allMatches = [
       ...imageMatches,
-      ...recallMatches
+      ...recallMatches,
+      ...urlMatches
     ];
     // Log similarity distribution for debugging
     const similarities = allMatches.map((m)=>m.similarity).sort((a, b)=>b - a);
@@ -303,6 +337,13 @@ Deno.serve(async (req)=>{
           sourceId,
           recallId: match.recall_id,
           text: `${sourceId} (${Math.round(match.similarity * 100)}% match - from image):\nOCR Text: ${match.ocr_text}\nImage Explanation: ${match.image_explanation}`,
+          similarity: match.similarity
+        };
+      } else if (match.source === 'url') {
+        return {
+          sourceId,
+          recallId: match.recall_id,
+          text: `${sourceId} (${Math.round(match.similarity * 100)}% match - from URL):\nURL: ${match.url}\nURL Content: ${match.url_data.substring(0, 500)}${match.url_data.length > 500 ? '...' : ''}`,
           similarity: match.similarity
         };
       } else {
