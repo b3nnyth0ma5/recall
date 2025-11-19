@@ -182,7 +182,7 @@ export default function SearchScreen() {
               color={colors.primary} 
             />
             <Text style={styles.toggleLabel}>
-              {useV2Search ? 'Image-based search' : 'Text-based search'}
+              {useV2Search ? 'Recall search v2' : 'Recall search v1'}
             </Text>
           </View>
           <Switch

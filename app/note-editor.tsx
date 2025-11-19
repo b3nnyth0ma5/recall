@@ -26,6 +26,7 @@ import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
+import { processRecallUrls } from '@/utils/urlProcessor';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -588,6 +589,20 @@ export default function NoteEditorScreen() {
       console.log(`Upload complete: ${uploadedCount} new images uploaded, ${failedCount} failed`);
       if (uploadedImageIds.length > 0) {
         console.log(`OCR processing triggered for ${uploadedImageIds.length} images`);
+      }
+
+      // Process URLs in the note text
+      console.log('Processing URLs in note text for recall:', recallId);
+      if (user) {
+        processRecallUrls(user.id, recallId, noteData.text).then(result => {
+          if (result.success) {
+            console.log('URLs processed successfully');
+          } else {
+            console.error('Failed to process URLs:', result.error);
+          }
+        }).catch(error => {
+          console.error('Error processing URLs:', error);
+        });
       }
 
       // Trigger category matching AFTER note save and recall_id is available
