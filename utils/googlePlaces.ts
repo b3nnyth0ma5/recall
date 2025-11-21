@@ -33,17 +33,21 @@ function extractSuburbAndLocality(addressComponents: any[]): { suburb?: string; 
   let suburb: string | undefined;
   let locality: string | undefined;
 
+  console.log('Extracting suburb and locality from address components:', JSON.stringify(addressComponents, null, 2));
+
   for (const component of addressComponents) {
     const types = component.types || [];
     
     // Extract suburb (sublocality or neighborhood)
     if (!suburb && (types.includes('sublocality') || types.includes('sublocality_level_1') || types.includes('neighborhood'))) {
-      suburb = component.long_name;
+      suburb = component.longText || component.long_name;
+      console.log('Found suburb:', suburb, 'from types:', types);
     }
     
     // Extract locality (city/town)
     if (!locality && types.includes('locality')) {
-      locality = component.long_name;
+      locality = component.longText || component.long_name;
+      console.log('Found locality:', locality, 'from types:', types);
     }
     
     // If we have both, we can stop
@@ -52,6 +56,7 @@ function extractSuburbAndLocality(addressComponents: any[]): { suburb?: string; 
     }
   }
 
+  console.log('Extracted suburb:', suburb, 'locality:', locality);
   return { suburb, locality };
 }
 
@@ -86,7 +91,7 @@ export async function getPlaceDetails(placeId: string): Promise<{
     }
 
     const data = await response.json();
-    console.log('Place details response:', data);
+    console.log('Place details response:', JSON.stringify(data, null, 2));
 
     const { suburb, locality } = extractSuburbAndLocality(data.addressComponents || []);
 
@@ -150,7 +155,7 @@ export async function searchNearbyPlaces(
     }
 
     const data = await response.json();
-    console.log('Google Places API nearby response:', data);
+    console.log('Google Places API nearby response:', JSON.stringify(data, null, 2));
 
     if (!data.places || data.places.length === 0) {
       console.log('No nearby places found');
@@ -169,6 +174,9 @@ export async function searchNearbyPlaces(
         longitude
       );
 
+      console.log('Processing place:', place.displayName?.text);
+      console.log('Address components:', JSON.stringify(place.addressComponents, null, 2));
+      
       const { suburb, locality } = extractSuburbAndLocality(place.addressComponents || []);
 
       return {
@@ -191,7 +199,11 @@ export async function searchNearbyPlaces(
       return distA - distB;
     });
 
-    console.log(`Found ${results.length} nearby places`);
+    console.log(`Found ${results.length} nearby places with suburb/locality data`);
+    results.forEach(r => {
+      console.log(`- ${r.displayName}: suburb=${r.suburb}, locality=${r.locality}`);
+    });
+    
     return results;
   } catch (error) {
     console.error('Error searching nearby places:', error);
@@ -254,7 +266,7 @@ export async function searchPlaces(
     }
 
     const data = await response.json();
-    console.log('Google Places API response:', data);
+    console.log('Google Places API response:', JSON.stringify(data, null, 2));
 
     if (!data.places || data.places.length === 0) {
       console.log('No places found');
@@ -276,6 +288,9 @@ export async function searchPlaces(
         );
       }
 
+      console.log('Processing place:', place.displayName?.text);
+      console.log('Address components:', JSON.stringify(place.addressComponents, null, 2));
+      
       const { suburb, locality } = extractSuburbAndLocality(place.addressComponents || []);
 
       return {
@@ -300,7 +315,11 @@ export async function searchPlaces(
       });
     }
 
-    console.log(`Found ${results.length} places`);
+    console.log(`Found ${results.length} places with suburb/locality data`);
+    results.forEach(r => {
+      console.log(`- ${r.displayName}: suburb=${r.suburb}, locality=${r.locality}`);
+    });
+
     return results.slice(0, 5); // Return top 5 results
   } catch (error) {
     console.error('Error searching places:', error);
@@ -471,6 +490,8 @@ export function extractShortLocationName(
   suburb?: string,
   locality?: string
 ): string {
+  console.log('extractShortLocationName called with:', { displayName, suburb, locality });
+  
   // Format as "DisplayName, Suburb" if suburb is available
   if (suburb) {
     const formatted = `${displayName}, ${suburb}`;
