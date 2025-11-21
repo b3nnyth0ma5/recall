@@ -172,8 +172,12 @@ export default function LocationSearchScreen() {
 
   const handleSelectLocation = async (location: PlaceResult) => {
     try {
-      // Format location as "place name, suburb" using the display name and formatted address
-      const formattedLocationName = extractShortLocationName(location.formattedAddress, location.displayName);
+      // Format location as "DisplayName, Suburb" or "DisplayName, Locality"
+      const formattedLocationName = extractShortLocationName(
+        location.displayName,
+        location.suburb,
+        location.locality
+      );
       
       console.log('Selected location data:', {
         latitude: location.latitude,
@@ -182,6 +186,8 @@ export default function LocationSearchScreen() {
         formattedLocationName,
         fullAddress: location.formattedAddress,
         primaryTypeDisplayName: location.primaryTypeDisplayName,
+        suburb: location.suburb,
+        locality: location.locality,
       });
 
       if (params.id) {
@@ -337,7 +343,11 @@ export default function LocationSearchScreen() {
                 {searchQuery.trim() ? `Top ${results.length} Results` : `${results.length} Nearby Places`}
               </Text>
               {results.map((result) => {
-                const shortName = extractShortLocationName(result.formattedAddress, result.displayName);
+                const shortName = extractShortLocationName(
+                  result.displayName,
+                  result.suburb,
+                  result.locality
+                );
                 return (
                   <Pressable
                     key={result.placeId}

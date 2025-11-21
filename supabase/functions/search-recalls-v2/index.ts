@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -124,7 +123,6 @@ Deno.serve(async (req)=>{
     console.log('Decoded query embedding array length:', queryEmbedding.length);
     // Step 2: Find closest matches using vector similarity (>= 20% threshold)
     console.log('Step 2: Finding closest matches with >= 20% similarity...');
-    
     // Fetch all recall images with embeddings for this user
     const { data: allImages, error: fetchImagesError } = await supabase.from('recall_images').select('id, recall_id, ocr_text, image_explanation, recall_image_embedding').eq('user_id', user.id).not('recall_image_embedding', 'is', null);
     if (fetchImagesError) {
@@ -141,7 +139,6 @@ Deno.serve(async (req)=>{
       });
     }
     console.log(`Found ${allImages?.length || 0} images with embeddings`);
-    
     // Fetch all recalls with embeddings for this user
     const { data: allRecalls, error: fetchRecallsError } = await supabase.from('recalls').select('id, text, location, location_primary_type, recall_embedding').eq('user_id', user.id).not('recall_embedding', 'is', null);
     if (fetchRecallsError) {
@@ -158,7 +155,6 @@ Deno.serve(async (req)=>{
       });
     }
     console.log(`Found ${allRecalls?.length || 0} recalls with embeddings`);
-    
     // Fetch all recall URLs with embeddings for this user
     const { data: allUrls, error: fetchUrlsError } = await supabase.from('recall_urls').select('id, recall_id, url, url_data, recall_url_embedding').eq('user_id', user.id).not('recall_url_embedding', 'is', null);
     if (fetchUrlsError) {
@@ -175,7 +171,6 @@ Deno.serve(async (req)=>{
       });
     }
     console.log(`Found ${allUrls?.length || 0} URLs with embeddings`);
-    
     // Helper function to calculate cosine similarity between query embedding and stored embedding
     const calculateCosineSimilarity = (storedEmbedding)=>{
       if (!storedEmbedding) {
@@ -280,8 +275,7 @@ Deno.serve(async (req)=>{
     // Combine all matches
     const allMatches = [
       ...imageMatches,
-      ...recallMatches,
-      ...urlMatches
+      ...recallMatches //,
     ];
     // Log similarity distribution for debugging
     const similarities = allMatches.map((m)=>m.similarity).sort((a, b)=>b - a);
@@ -292,17 +286,17 @@ Deno.serve(async (req)=>{
     console.log('  Median:', similarities[Math.floor(similarities.length / 2)]);
     console.log('  Top 10:', similarities.slice(0, 10));
     // Filter by >= 20% similarity (0.2 cosine similarity)
-    const SIMILARITY_THRESHOLD = 0.2;
+    const SIMILARITY_THRESHOLD = 0.1;
     const filteredMatches = allMatches.filter((match)=>match.similarity >= SIMILARITY_THRESHOLD);
     // Sort by similarity (highest first)
     filteredMatches.sort((a, b)=>b.similarity - a.similarity);
-    console.log(`Found ${filteredMatches.length} matches with >= 20% similarity`);
+    console.log(`Found ${filteredMatches.length} matches with >= 10% similarity`);
     if (filteredMatches.length > 0) {
       console.log('Top match similarity:', filteredMatches[0]?.similarity);
       console.log('Top 5 similarities:', filteredMatches.slice(0, 5).map((m)=>m.similarity));
     }
     if (filteredMatches.length === 0) {
-      console.log('No matches found with >= 20% similarity');
+      console.log('No matches found with >= 10% similarity');
       return new Response(JSON.stringify({
         answer: null,
         confidence: 0,
@@ -343,7 +337,7 @@ Deno.serve(async (req)=>{
         return {
           sourceId,
           recallId: match.recall_id,
-          text: `${sourceId} (${Math.round(match.similarity * 100)}% match - from URL):\nURL: ${match.url}\nURL Content: ${match.url_data.substring(0, 500)}${match.url_data.length > 500 ? '...' : ''}`,
+          text: `${sourceId} (${Math.round(match.similarity * 100)}% match - from URL):\nURL: ${match.url}`,
           similarity: match.similarity
         };
       } else {
@@ -356,17 +350,7 @@ Deno.serve(async (req)=>{
       }
     });
     const context = contextWithSources.map((c)=>c.text).join('\n\n');
-    const qaSystemPrompt = `You are a helpful assistant that understands the context of the user's question and answers based on the provided recalls. 
-
-Each source is labeled with a SOURCE_ID (e.g., SOURCE_1, SOURCE_2, etc.). When you answer a question, you MUST cite which source(s) you used by including the SOURCE_ID in your response.
-
-Provide concise (< 60 words), accurate answers based only on the information given. If you cannot answer the question with confidence based on the provided recalls, say so.
-
-Also provide:
-1. A confidence score (0-100) indicating how confident you are in your answer
-2. A list of source IDs that you used to derive your answer (e.g., ["SOURCE_1", "SOURCE_3"])
-
-IMPORTANT: The source with the highest match percentage should be given priority when answering.`;
+    const qaSystemPrompt = `You are a helpful assistant that understands the context of the user's question and answers based on the provided recalls. Provide concise (< 80 words), accurate answers based only on the information given. If you cannot answer the question with confidence based on the provided information, say so. Also provide a confidence score (0-100) indicating how confident you are in your answer. IMPORTANT: The source with the highest match percentage should be given priority when answering.`;
     const qaUserPrompt = `Question: ${query}\n\nRecalls from matches:\n${context}\n\nProvide your answer in JSON format: {"answer": "your answer here", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}`;
     const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

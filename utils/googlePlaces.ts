@@ -20,14 +20,51 @@ export interface PlaceResult {
   longitude: number;
   distance?: number;
   primaryTypeDisplayName?: string;
+  suburb?: string;
+  locality?: string;
 }
 
 /**
- * Get place details including primaryTypeDisplayName
- * @param placeId - The Google Place ID
- * @returns Place details including primary type
+ * Extract suburb and locality from address components
+ * @param addressComponents - Array of address components from Google Places API
+ * @returns Object with suburb and locality
  */
-export async function getPlaceDetails(placeId: string): Promise<{ primaryTypeDisplayName?: string } | null> {
+function extractSuburbAndLocality(addressComponents: any[]): { suburb?: string; locality?: string } {
+  let suburb: string | undefined;
+  let locality: string | undefined;
+
+  for (const component of addressComponents) {
+    const types = component.types || [];
+    
+    // Extract suburb (sublocality or neighborhood)
+    if (!suburb && (types.includes('sublocality') || types.includes('sublocality_level_1') || types.includes('neighborhood'))) {
+      suburb = component.long_name;
+    }
+    
+    // Extract locality (city/town)
+    if (!locality && types.includes('locality')) {
+      locality = component.long_name;
+    }
+    
+    // If we have both, we can stop
+    if (suburb && locality) {
+      break;
+    }
+  }
+
+  return { suburb, locality };
+}
+
+/**
+ * Get place details including primaryTypeDisplayName and address components
+ * @param placeId - The Google Place ID
+ * @returns Place details including primary type, suburb, and locality
+ */
+export async function getPlaceDetails(placeId: string): Promise<{ 
+  primaryTypeDisplayName?: string;
+  suburb?: string;
+  locality?: string;
+} | null> {
   try {
     console.log('Fetching place details for:', placeId);
     
@@ -38,7 +75,7 @@ export async function getPlaceDetails(placeId: string): Promise<{ primaryTypeDis
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'primaryTypeDisplayName',
+        'X-Goog-FieldMask': 'primaryTypeDisplayName,addressComponents',
       },
     });
 
@@ -51,8 +88,12 @@ export async function getPlaceDetails(placeId: string): Promise<{ primaryTypeDis
     const data = await response.json();
     console.log('Place details response:', data);
 
+    const { suburb, locality } = extractSuburbAndLocality(data.addressComponents || []);
+
     return {
       primaryTypeDisplayName: data.primaryTypeDisplayName?.text,
+      suburb,
+      locality,
     };
   } catch (error) {
     console.error('Error fetching place details:', error);
@@ -97,7 +138,7 @@ export async function searchNearbyPlaces(
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName',
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName,places.addressComponents',
       },
       body: JSON.stringify(requestBody),
     });
@@ -128,6 +169,8 @@ export async function searchNearbyPlaces(
         longitude
       );
 
+      const { suburb, locality } = extractSuburbAndLocality(place.addressComponents || []);
+
       return {
         placeId: place.id,
         displayName: place.displayName?.text || 'Unknown Place',
@@ -136,6 +179,8 @@ export async function searchNearbyPlaces(
         longitude,
         distance,
         primaryTypeDisplayName: place.primaryTypeDisplayName?.text,
+        suburb,
+        locality,
       };
     });
 
@@ -197,7 +242,7 @@ export async function searchPlaces(
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName',
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName,places.addressComponents',
       },
       body: JSON.stringify(requestBody),
     });
@@ -231,6 +276,8 @@ export async function searchPlaces(
         );
       }
 
+      const { suburb, locality } = extractSuburbAndLocality(place.addressComponents || []);
+
       return {
         placeId: place.id,
         displayName: place.displayName?.text || 'Unknown Place',
@@ -239,6 +286,8 @@ export async function searchPlaces(
         longitude,
         distance,
         primaryTypeDisplayName: place.primaryTypeDisplayName?.text,
+        suburb,
+        locality,
       };
     });
 
@@ -261,10 +310,10 @@ export async function searchPlaces(
 
 /**
  * Reverse geocode coordinates to get place information
- * Returns formatted as "place name, suburb"
+ * Returns formatted as "DisplayName, Suburb" or "DisplayName, Locality"
  * @param latitude - Latitude coordinate
  * @param longitude - Longitude coordinate
- * @returns Formatted location name as "place name, suburb"
+ * @returns Formatted location name as "DisplayName, Suburb" or "DisplayName, Locality"
  */
 export async function reverseGeocodeGoogle(
   latitude: number,
@@ -291,10 +340,10 @@ export async function reverseGeocodeGoogle(
       return 'Unknown Location';
     }
 
-    // Extract place name and suburb from the results
+    // Extract place name, suburb, and locality from the results
     let placeName = '';
     let suburb = '';
-    let city = '';
+    let locality = '';
 
     // Try to find the most specific place first (POI, establishment, etc.)
     for (const result of data.results) {
@@ -315,12 +364,12 @@ export async function reverseGeocodeGoogle(
         }
       }
 
-      // Extract suburb and city from address components
+      // Extract suburb and locality from address components
       for (const component of addressComponents) {
         const componentTypes = component.types || [];
         
         if (componentTypes.includes('locality')) {
-          city = component.long_name;
+          locality = component.long_name;
         } else if (componentTypes.includes('sublocality') || componentTypes.includes('sublocality_level_1')) {
           suburb = component.long_name;
         } else if (componentTypes.includes('neighborhood')) {
@@ -336,25 +385,28 @@ export async function reverseGeocodeGoogle(
       }
     }
 
-    // Format the location name as "place name, suburb"
+    // Format the location name as "DisplayName, Suburb" or "DisplayName, Locality"
     if (placeName && suburb) {
-      console.log('Formatted location:', `${placeName}, ${suburb}`);
-      return `${placeName}, ${suburb}`;
-    } else if (placeName && city) {
-      console.log('Formatted location:', `${placeName}, ${city}`);
-      return `${placeName}, ${city}`;
-    } else if (suburb && city) {
-      console.log('Formatted location:', `${suburb}, ${city}`);
-      return `${suburb}, ${city}`;
+      const formatted = `${placeName}, ${suburb}`;
+      console.log('Formatted location:', formatted);
+      return formatted;
+    } else if (placeName && locality) {
+      const formatted = `${placeName}, ${locality}`;
+      console.log('Formatted location:', formatted);
+      return formatted;
+    } else if (suburb && locality) {
+      const formatted = `${suburb}, ${locality}`;
+      console.log('Formatted location:', formatted);
+      return formatted;
     } else if (placeName) {
       console.log('Formatted location:', placeName);
       return placeName;
     } else if (suburb) {
       console.log('Formatted location:', suburb);
       return suburb;
-    } else if (city) {
-      console.log('Formatted location:', city);
-      return city;
+    } else if (locality) {
+      console.log('Formatted location:', locality);
+      return locality;
     } else if (data.results[0].formatted_address) {
       // Fallback to formatted address, but try to shorten it
       const parts = data.results[0].formatted_address.split(',');
@@ -407,20 +459,35 @@ function calculateDistance(
 }
 
 /**
- * Extract a short location name from a formatted address or place result
- * Formats as "place name, suburb"
- * @param formattedAddress - Full formatted address
- * @param displayName - Optional display name (place name)
- * @returns Shortened location name as "place name, suburb"
+ * Extract a short location name from a place result
+ * Formats as "DisplayName, Suburb" or "DisplayName, Locality"
+ * @param displayName - The display name of the place
+ * @param suburb - Optional suburb name
+ * @param locality - Optional locality name
+ * @returns Shortened location name as "DisplayName, Suburb" or "DisplayName, Locality"
  */
-export function extractShortLocationName(formattedAddress: string, displayName?: string): string {
-  const parts = formattedAddress.split(',').map(p => p.trim());
-  
-  if (parts.length < 2) {
-    return formattedAddress;
+export function extractShortLocationName(
+  displayName: string,
+  suburb?: string,
+  locality?: string
+): string {
+  // Format as "DisplayName, Suburb" if suburb is available
+  if (suburb) {
+    const formatted = `${displayName}, ${suburb}`;
+    console.log('Formatted location with suburb:', formatted);
+    return formatted;
   }
-
-	return `${displayName}`;	
+  
+  // Otherwise format as "DisplayName, Locality" if locality is available
+  if (locality) {
+    const formatted = `${displayName}, ${locality}`;
+    console.log('Formatted location with locality:', formatted);
+    return formatted;
+  }
+  
+  // Fallback to just the display name
+  console.log('Formatted location (no suburb/locality):', displayName);
+  return displayName;
 }
 
 /**

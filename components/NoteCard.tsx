@@ -260,7 +260,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
         )}
 
         {/* Share Icon - Right-aligned, above location and time */}
-        <View style={styles.shareContainer}>
+				{/* } <View style={styles.shareContainer}>
           <Pressable 
             onPress={handleSharePress}
             style={styles.shareButton}
@@ -272,7 +272,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
               color={colors.primary} 
             />
           </Pressable>
-        </View>
+        </View> */}
 
         {/* Location and Time on the same line */}
         <View style={styles.locationTimeContainer}>

@@ -75,6 +75,7 @@ export default function NoteEditorScreen() {
   const canSave = text.trim().length > 0 || images.length > 0;
   const hasImages = images.length > 0;
   const textHasUrl = hasUrl(text);
+  const [hasLaunchedLocationUI, setHasLaunchedLocationUI] = useState(false);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
@@ -91,6 +92,20 @@ export default function NoteEditorScreen() {
       keyboardDidShowListener.remove();
     };
   }, []);
+
+  // Launch location UI first when creating a new note
+  useEffect(() => {
+    if (!isEditing && !isSharedRecall && !hasLaunchedLocationUI) {
+      console.log('Launching location UI for new note');
+      setHasLaunchedLocationUI(true);
+      // Dismiss keyboard first
+      Keyboard.dismiss();
+      // Launch location search after a short delay
+      setTimeout(() => {
+        router.push('/location-search');
+      }, 300);
+    }
+  }, [isEditing, isSharedRecall, hasLaunchedLocationUI, router]);
 
   // Handle shared recall data
   useEffect(() => {
@@ -822,7 +837,7 @@ export default function NoteEditorScreen() {
                 value={text}
                 onChangeText={setText}
                 multiline
-                autoFocus={!isEditing && !isSharedRecall}
+                autoFocus={false}
                 scrollEnabled={false}
                 caretHidden={false}
               />
@@ -841,7 +856,7 @@ export default function NoteEditorScreen() {
                 value={text}
                 onChangeText={setText}
                 multiline
-                autoFocus={!isEditing && !isSharedRecall}
+                autoFocus={false}
                 scrollEnabled={false}
               />
             </ScrollView>
