@@ -6,7 +6,7 @@ import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
@@ -26,6 +26,14 @@ export default function HomeScreen() {
   const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
   const [loadingFiltered, setLoadingFiltered] = useState(false);
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
+  const [showActionButtons, setShowActionButtons] = useState(false);
+
+  // Animation values for action buttons
+  const cameraButtonScale = useSharedValue(0);
+  const textButtonScale = useSharedValue(0);
+  const cameraButtonOpacity = useSharedValue(0);
+  const textButtonOpacity = useSharedValue(0);
+  const fabRotation = useSharedValue(0);
 
   // Update the previous notes count whenever notes change
   useEffect(() => {
@@ -253,8 +261,53 @@ export default function HomeScreen() {
     await handleRefresh(true);
   };
 
-  const handleCreateNote = () => {
-    router.push('/note-editor');
+  const toggleActionButtons = () => {
+    const newState = !showActionButtons;
+    setShowActionButtons(newState);
+
+    if (newState) {
+      // Show buttons with animation
+      fabRotation.value = withSpring(45);
+      
+      // Animate camera button
+      setTimeout(() => {
+        cameraButtonScale.value = withSpring(1, { damping: 15, stiffness: 150 });
+        cameraButtonOpacity.value = withTiming(1, { duration: 200 });
+      }, 50);
+      
+      // Animate text button
+      setTimeout(() => {
+        textButtonScale.value = withSpring(1, { damping: 15, stiffness: 150 });
+        textButtonOpacity.value = withTiming(1, { duration: 200 });
+      }, 100);
+    } else {
+      // Hide buttons with animation
+      fabRotation.value = withSpring(0);
+      cameraButtonScale.value = withTiming(0, { duration: 150 });
+      cameraButtonOpacity.value = withTiming(0, { duration: 150 });
+      textButtonScale.value = withTiming(0, { duration: 150 });
+      textButtonOpacity.value = withTiming(0, { duration: 150 });
+    }
+  };
+
+  const handleCameraPress = () => {
+    console.log('[handleCameraPress] Camera button pressed');
+    // Close action buttons
+    toggleActionButtons();
+    // Navigate to note editor with camera flag
+    setTimeout(() => {
+      router.push('/note-editor?openCamera=true');
+    }, 200);
+  };
+
+  const handleTextPress = () => {
+    console.log('[handleTextPress] Text button pressed');
+    // Close action buttons
+    toggleActionButtons();
+    // Navigate to note editor normally
+    setTimeout(() => {
+      router.push('/note-editor');
+    }, 200);
   };
 
   const handleNotePress = (noteId: string) => {
@@ -313,6 +366,21 @@ export default function HomeScreen() {
       </Text>
     </Animated.View>
   );
+
+  // Animated styles for action buttons
+  const cameraButtonStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: cameraButtonScale.value }],
+    opacity: cameraButtonOpacity.value,
+  }));
+
+  const textButtonStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: textButtonScale.value }],
+    opacity: textButtonOpacity.value,
+  }));
+
+  const fabRotationStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${fabRotation.value}deg` }],
+  }));
 
   // Determine which notes to display
   const displayNotes = selectedCategoryId ? filteredNotes : notes;
@@ -417,12 +485,38 @@ export default function HomeScreen() {
           <IconSymbol name="magnifyingglass" size={28} color="#FFFFFF" />
         </Pressable>
 
-        <Pressable
-          onPress={handleCreateNote}
-          style={styles.fab}
-        >
-          <IconSymbol name="plus" size={28} color="#FFFFFF" />
-        </Pressable>
+        {/* Action Buttons Container */}
+        <View style={styles.actionButtonsContainer}>
+          {/* Camera Button */}
+          <Animated.View style={[styles.actionButton, cameraButtonStyle]}>
+            <Pressable
+              onPress={handleCameraPress}
+              style={styles.cameraButton}
+            >
+              <IconSymbol name="camera.fill" size={24} color="#FFFFFF" />
+            </Pressable>
+          </Animated.View>
+
+          {/* Text Button */}
+          <Animated.View style={[styles.actionButton, textButtonStyle]}>
+            <Pressable
+              onPress={handleTextPress}
+              style={styles.textButton}
+            >
+              <IconSymbol name="text.alignleft" size={24} color="#FFFFFF" />
+            </Pressable>
+          </Animated.View>
+
+          {/* Main FAB */}
+          <Pressable
+            onPress={toggleActionButtons}
+            style={styles.fab}
+          >
+            <Animated.View style={fabRotationStyle}>
+              <IconSymbol name="plus" size={28} color="#FFFFFF" />
+            </Animated.View>
+          </Pressable>
+        </View>
       </View>
 
       {/* Deletion Indicator Modal */}
@@ -532,6 +626,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     boxShadow: '0px 4px 16px rgba(74, 144, 226, 0.4)',
     elevation: 8,
+  },
+  actionButtonsContainer: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  actionButton: {
+    position: 'absolute',
+    bottom: 70,
+  },
+  cameraButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
+    elevation: 6,
+  },
+  textButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
+    elevation: 6,
+    marginBottom: 70,
   },
   fab: {
     width: 60,

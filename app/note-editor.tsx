@@ -72,10 +72,10 @@ export default function NoteEditorScreen() {
 
   const isEditing = !!params.id;
   const isSharedRecall = params.isSharedRecall === 'true';
+  const openCamera = params.openCamera === 'true';
   const canSave = text.trim().length > 0 || images.length > 0;
   const hasImages = images.length > 0;
   const textHasUrl = hasUrl(text);
-  const [hasLaunchedLocationUI, setHasLaunchedLocationUI] = useState(false);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
@@ -93,19 +93,16 @@ export default function NoteEditorScreen() {
     };
   }, []);
 
-  // Launch location UI first when creating a new note
+  // Auto-launch camera when openCamera flag is set
   useEffect(() => {
-    if (!isEditing && !isSharedRecall && !hasLaunchedLocationUI) {
-      console.log('Launching location UI for new note');
-      setHasLaunchedLocationUI(true);
-      // Dismiss keyboard first
-      Keyboard.dismiss();
-      // Launch location search after a short delay
+    if (openCamera && !isEditing && !isSharedRecall) {
+      console.log('Auto-launching camera for new note');
+      // Small delay to ensure component is mounted
       setTimeout(() => {
-        router.push('/location-search');
+        takePhoto();
       }, 300);
     }
-  }, [isEditing, isSharedRecall, hasLaunchedLocationUI, router]);
+  }, [openCamera, isEditing, isSharedRecall]);
 
   // Handle shared recall data
   useEffect(() => {
