@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
@@ -11,7 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { Note } from '@/types/Note';
-import Toast from 'react-native-toast-message';
+import * as Haptics from 'expo-haptics';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
@@ -27,6 +27,7 @@ export default function HomeScreen() {
   const [loadingFiltered, setLoadingFiltered] = useState(false);
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
   const [showActionButtons, setShowActionButtons] = useState(false);
+  const [isNavigating, setIsNavigating] = useState<'camera' | 'text' | null>(null);
 
   // Animation values for action buttons
   const cameraButtonScale = useSharedValue(0);
@@ -265,6 +266,11 @@ export default function HomeScreen() {
     const newState = !showActionButtons;
     setShowActionButtons(newState);
 
+    // Haptic feedback when add note icon is clicked
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
     if (newState) {
       // Show buttons with animation
       fabRotation.value = withSpring(45);
@@ -272,14 +278,14 @@ export default function HomeScreen() {
       // Animate camera button
       setTimeout(() => {
         cameraButtonScale.value = withSpring(1, { damping: 15, stiffness: 150 });
-        cameraButtonOpacity.value = withTiming(1, { duration: 200 });
-      }, 50);
+        cameraButtonOpacity.value = withTiming(1, { duration: 100 });
+      }, 25);
       
       // Animate text button
       setTimeout(() => {
         textButtonScale.value = withSpring(1, { damping: 15, stiffness: 150 });
-        textButtonOpacity.value = withTiming(1, { duration: 200 });
-      }, 100);
+        textButtonOpacity.value = withTiming(1, { duration: 100 });
+      }, 50);
     } else {
       // Hide buttons with animation
       fabRotation.value = withSpring(0);
@@ -291,22 +297,44 @@ export default function HomeScreen() {
   };
 
   const handleCameraPress = () => {
+    if (isNavigating) return;
     console.log('[handleCameraPress] Camera button pressed');
+    setIsNavigating('camera');
+    
+    // Haptic feedback when camera icon is clicked
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
     // Close action buttons
     toggleActionButtons();
+    
     // Navigate to note editor with camera flag
     setTimeout(() => {
       router.push('/note-editor?openCamera=true');
+      // Reset navigation state after a delay
+      setTimeout(() => setIsNavigating(null), 1000);
     }, 200);
   };
 
   const handleTextPress = () => {
+    if (isNavigating) return;
     console.log('[handleTextPress] Text button pressed');
+    setIsNavigating('text');
+    
+    // Haptic feedback when text icon is clicked
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
     // Close action buttons
     toggleActionButtons();
+    
     // Navigate to note editor normally
     setTimeout(() => {
       router.push('/note-editor');
+      // Reset navigation state after a delay
+      setTimeout(() => setIsNavigating(null), 1000);
     }, 200);
   };
 
@@ -315,6 +343,10 @@ export default function HomeScreen() {
   };
 
   const handleSearch = () => {
+    // Haptic feedback when search icon is clicked
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
     router.push('/search');
   };
 
@@ -488,22 +520,32 @@ export default function HomeScreen() {
         {/* Action Buttons Container */}
         <View style={styles.actionButtonsContainer}>
           {/* Camera Button */}
-          <Animated.View style={[styles.actionButton, cameraButtonStyle]}>
+          <Animated.View style={[styles.actionButton, cameraButtonStyle]} pointerEvents={showActionButtons ? 'auto' : 'none'}>
             <Pressable
               onPress={handleCameraPress}
               style={styles.cameraButton}
+              disabled={isNavigating !== null}
             >
-              <IconSymbol name="camera.fill" size={24} color="#FFFFFF" />
+              {isNavigating === 'camera' ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <IconSymbol name="camera.fill" size={24} color="#FFFFFF" />
+              )}
             </Pressable>
           </Animated.View>
 
           {/* Text Button */}
-          <Animated.View style={[styles.actionButton, textButtonStyle]}>
+          <Animated.View style={[styles.actionButton, textButtonStyle]} pointerEvents={showActionButtons ? 'auto' : 'none'}>
             <Pressable
               onPress={handleTextPress}
               style={styles.textButton}
+              disabled={isNavigating !== null}
             >
-              <IconSymbol name="text.alignleft" size={24} color="#FFFFFF" />
+              {isNavigating === 'text' ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <IconSymbol name="text.alignleft" size={24} color="#FFFFFF" />
+              )}
             </Pressable>
           </Animated.View>
 

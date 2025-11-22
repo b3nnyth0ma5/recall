@@ -1,17 +1,40 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Image, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Image, Modal, Platform } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { Note } from '@/types/Note';
-import Toast from 'react-native-toast-message';
+
+export default function HomeScreen() {
+  const { notes, loading, refreshNotes, loadMoreNotes, hasPerfect! Now I have all the information I need. Let me implement the changes:
+
+1. **Web version landing page** - Add FAB with camera/text buttons animation
+2. **Busy spinner** - Show spinner within icons during navigation
+3. **Fix iOS camera icon** - Debug and fix the camera icon click issue
+4. **Haptic feedback** - Add haptic feedback to all specified interactions
+
+Let me implement these changes:
+
+<write file="app/(tabs)/(home)/index.web.tsx">
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Image, Modal, Platform } from 'react-native';
+import { Stack, useRouter, useFocusEffect } from 'expo-router';
+import { colors } from '@/styles/commonStyles';
+import { NoteCard } from '@/components/NoteCard';
+import { useNotes } from '@/hooks/useNotes';
+import { IconSymbol } from '@/components/IconSymbol';
+import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import { useAuth } from '@/contexts/AuthContext';
+import { CategoryCarousel } from '@/components/CategoryCarousel';
+import { supabase, getImageDataUrl } from '@/utils/supabase';
+import { Note } from '@/types/Note';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
@@ -26,6 +49,15 @@ export default function HomeScreen() {
   const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
   const [loadingFiltered, setLoadingFiltered] = useState(false);
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
+  const [showActionButtons, setShowActionButtons] = useState(false);
+  const [isNavigating, setIsNavigating] = useState<'camera' | 'text' | null>(null);
+
+  // Animation values for action buttons
+  const cameraButtonScale = useSharedValue(0);
+  const textButtonScale = useSharedValue(0);
+  const cameraButtonOpacity = useSharedValue(0);
+  const textButtonOpacity = useSharedValue(0);
+  const fabRotation = useSharedValue(0);
 
   // Web-specific pull-to-refresh state
   const [pullStartY, setPullStartY] = useState(0);
@@ -287,8 +319,65 @@ export default function HomeScreen() {
     setPullStartY(0);
   };
 
-  const handleCreateNote = () => {
-    router.push('/note-editor');
+  const toggleActionButtons = () => {
+    const newState = !showActionButtons;
+    setShowActionButtons(newState);
+
+    if (newState) {
+      // Show buttons with animation
+      fabRotation.value = withSpring(45);
+      
+      // Animate camera button
+      setTimeout(() => {
+        cameraButtonScale.value = withSpring(1, { damping: 15, stiffness: 150 });
+        cameraButtonOpacity.value = withTiming(1, { duration: 100 });
+      }, 25);
+      
+      // Animate text button
+      setTimeout(() => {
+        textButtonScale.value = withSpring(1, { damping: 15, stiffness: 150 });
+        textButtonOpacity.value = withTiming(1, { duration: 100 });
+      }, 50);
+    } else {
+      // Hide buttons with animation
+      fabRotation.value = withSpring(0);
+      cameraButtonScale.value = withTiming(0, { duration: 150 });
+      cameraButtonOpacity.value = withTiming(0, { duration: 150 });
+      textButtonScale.value = withTiming(0, { duration: 150 });
+      textButtonOpacity.value = withTiming(0, { duration: 150 });
+    }
+  };
+
+  const handleCameraPress = () => {
+    if (isNavigating) return;
+    console.log('[handleCameraPress] Camera button pressed');
+    setIsNavigating('camera');
+    
+    // Close action buttons
+    toggleActionButtons();
+    
+    // Navigate to note editor with camera flag
+    setTimeout(() => {
+      router.push('/note-editor?openCamera=true');
+      // Reset navigation state after a delay
+      setTimeout(() => setIsNavigating(null), 1000);
+    }, 200);
+  };
+
+  const handleTextPress = () => {
+    if (isNavigating) return;
+    console.log('[handleTextPress] Text button pressed');
+    setIsNavigating('text');
+    
+    // Close action buttons
+    toggleActionButtons();
+    
+    // Navigate to note editor normally
+    setTimeout(() => {
+      router.push('/note-editor');
+      // Reset navigation state after a delay
+      setTimeout(() => setIsNavigating(null), 1000);
+    }, 200);
   };
 
   const handleNotePress = (noteId: string) => {
@@ -353,6 +442,21 @@ export default function HomeScreen() {
       </Text>
     </Animated.View>
   );
+
+  // Animated styles for action buttons
+  const cameraButtonStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: cameraButtonScale.value }],
+    opacity: cameraButtonOpacity.value,
+  }));
+
+  const textButtonStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: textButtonScale.value }],
+    opacity: textButtonOpacity.value,
+  }));
+
+  const fabRotationStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${fabRotation.value}deg` }],
+  }));
 
   // Determine which notes to display
   const displayNotes = selectedCategoryId ? filteredNotes : notes;
@@ -476,12 +580,48 @@ export default function HomeScreen() {
           <IconSymbol name="magnifyingglass" size={28} color="#FFFFFF" />
         </Pressable>
 
-        <Pressable
-          onPress={handleCreateNote}
-          style={styles.fab}
-        >
-          <IconSymbol name="plus" size={28} color="#FFFFFF" />
-        </Pressable>
+        {/* Action Buttons Container */}
+        <View style={styles.actionButtonsContainer}>
+          {/* Camera Button */}
+          <Animated.View style={[styles.actionButton, cameraButtonStyle]}>
+            <Pressable
+              onPress={handleCameraPress}
+              style={styles.cameraButton}
+              disabled={isNavigating !== null}
+            >
+              {isNavigating === 'camera' ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <IconSymbol name="camera.fill" size={24} color="#FFFFFF" />
+              )}
+            </Pressable>
+          </Animated.View>
+
+          {/* Text Button */}
+          <Animated.View style={[styles.actionButton, textButtonStyle]}>
+            <Pressable
+              onPress={handleTextPress}
+              style={styles.textButton}
+              disabled={isNavigating !== null}
+            >
+              {isNavigating === 'text' ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <IconSymbol name="text.alignleft" size={24} color="#FFFFFF" />
+              )}
+            </Pressable>
+          </Animated.View>
+
+          {/* Main FAB */}
+          <Pressable
+            onPress={toggleActionButtons}
+            style={styles.fab}
+          >
+            <Animated.View style={fabRotationStyle}>
+              <IconSymbol name="plus" size={28} color="#FFFFFF" />
+            </Animated.View>
+          </Pressable>
+        </View>
       </View>
 
       {/* Deletion Indicator Modal */}
@@ -601,6 +741,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     boxShadow: '0px 4px 16px rgba(74, 144, 226, 0.4)',
     elevation: 8,
+  },
+  actionButtonsContainer: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  actionButton: {
+    position: 'absolute',
+    bottom: 70,
+  },
+  cameraButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
+    elevation: 6,
+  },
+  textButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
+    elevation: 6,
+    marginBottom: 70,
   },
   fab: {
     width: 60,

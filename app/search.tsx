@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Keyboard,
   Switch,
+  Platform,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -18,6 +19,7 @@ import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
 import { SearchHistory } from '@/types/Note';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -55,6 +57,11 @@ export default function SearchScreen() {
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
+      // Haptic feedback when search is clicked
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      
       setShowHistory(false);
       setHasSearched(true);
       setIsAiSearch(true);

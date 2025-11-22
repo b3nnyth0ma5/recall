@@ -53,6 +53,7 @@ const MAPPING = {
   "checkmark.circle": "check-circle",
   "checkmark.square.fill": "check-box",
   "checkmark.square": "check-box-outline-blank",
+  "checkmark.seal.fill": "verified",
   "multiply": "clear",
   "trash.fill": "delete",
   "trash": "delete",
@@ -67,10 +68,12 @@ const MAPPING = {
   "folder": "folder",
   "doc.fill": "insert-drive-file",
   "doc": "insert-drive-file",
+  "text.alignleft": "format-align-left",
 
   // Media & Content
   "photo.fill": "photo",
   "photo": "photo",
+  "photo.on.rectangle": "photo-library",
   "camera.fill": "camera-alt",
   "camera": "camera-alt",
   "video.fill": "videocam",
@@ -104,6 +107,7 @@ const MAPPING = {
   "bookmark.fill": "bookmark",
   "bookmark": "bookmark-border",
   "tray": "inbox",
+  "sparkles": "auto-awesome",
 
   // Technology & Code
   "chevron.left.forwardslash.chevron.right": "code",
@@ -130,6 +134,7 @@ const MAPPING = {
   "map.fill": "map",
   "map": "map",
   "compass.drawing": "explore",
+  "mappin.circle.fill": "place",
 
   // Time & Calendar
   "clock.fill": "schedule",
@@ -161,7 +166,6 @@ const MAPPING = {
   // Additional icons
   "note.text": "note",
   "xmark.circle.fill": "cancel",
-  "mappin.circle.fill": "place",
   "keyboard": "keyboard",
   "keyboard.chevron.compact.down": "keyboard-hide",
   "wrench.and.screwdriver": "build",

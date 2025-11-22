@@ -29,6 +29,7 @@ import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, get
 import { processRecallUrls } from '@/utils/urlProcessor';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
+import * as Haptics from 'expo-haptics';
 
 interface ImageData {
   id?: string;
@@ -656,6 +657,11 @@ export default function NoteEditorScreen() {
           console.error('Error triggering embedding generation:', error);
         });
       }, 500);
+
+      // Haptic feedback when note is saved successfully
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
 
       if (failedCount > 0) {
         Alert.alert(
