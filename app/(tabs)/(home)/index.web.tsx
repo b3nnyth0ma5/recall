@@ -300,23 +300,23 @@ export default function HomeScreen() {
     setShowActionButtons(newState);
 
     if (newState) {
-      // Show buttons with animation
-      fabRotation.value = withSpring(45);
+      // Show buttons with animation - less bouncy and faster
+      fabRotation.value = withSpring(45, { damping: 20, stiffness: 200 });
       
       // Animate camera button
       setTimeout(() => {
-        cameraButtonScale.value = withSpring(1, { damping: 15, stiffness: 150 });
-        cameraButtonOpacity.value = withTiming(1, { duration: 100 });
-      }, 25);
+        cameraButtonScale.value = withSpring(1, { damping: 20, stiffness: 200 });
+        cameraButtonOpacity.value = withTiming(1, { duration: 150 });
+      }, 20);
       
       // Animate text button
       setTimeout(() => {
-        textButtonScale.value = withSpring(1, { damping: 15, stiffness: 150 });
-        textButtonOpacity.value = withTiming(1, { duration: 100 });
-      }, 50);
+        textButtonScale.value = withSpring(1, { damping: 20, stiffness: 200 });
+        textButtonOpacity.value = withTiming(1, { duration: 150 });
+      }, 40);
     } else {
       // Hide buttons with animation
-      fabRotation.value = withSpring(0);
+      fabRotation.value = withSpring(0, { damping: 20, stiffness: 200 });
       cameraButtonScale.value = withTiming(0, { duration: 150 });
       cameraButtonOpacity.value = withTiming(0, { duration: 150 });
       textButtonScale.value = withTiming(0, { duration: 150 });
@@ -419,25 +419,51 @@ export default function HomeScreen() {
     </Animated.View>
   );
 
-  // Animated styles for action buttons
+  // Animated styles for action buttons - Wrap in try-catch for web safety
   const cameraButtonStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: cameraButtonScale.value }],
-      opacity: cameraButtonOpacity.value,
-    };
+    'worklet';
+    try {
+      return {
+        transform: [{ scale: cameraButtonScale.value }],
+        opacity: cameraButtonOpacity.value,
+      };
+    } catch (error) {
+      console.log('Error in cameraButtonStyle animation:', error);
+      return {
+        transform: [{ scale: 0 }],
+        opacity: 0,
+      };
+    }
   });
 
   const textButtonStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: textButtonScale.value }],
-      opacity: textButtonOpacity.value,
-    };
+    'worklet';
+    try {
+      return {
+        transform: [{ scale: textButtonScale.value }],
+        opacity: textButtonOpacity.value,
+      };
+    } catch (error) {
+      console.log('Error in textButtonStyle animation:', error);
+      return {
+        transform: [{ scale: 0 }],
+        opacity: 0,
+      };
+    }
   });
 
   const fabRotationStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ rotate: `${fabRotation.value}deg` }],
-    };
+    'worklet';
+    try {
+      return {
+        transform: [{ rotate: `${fabRotation.value}deg` }],
+      };
+    } catch (error) {
+      console.log('Error in fabRotationStyle animation:', error);
+      return {
+        transform: [{ rotate: '0deg' }],
+      };
+    }
   });
 
   // Determine which notes to display
@@ -564,12 +590,12 @@ export default function HomeScreen() {
 
         {/* Action Buttons Container */}
         <View style={styles.actionButtonsContainer}>
-          {/* Camera Button */}
+          {/* Camera Button - Always render but control visibility with opacity */}
           <Animated.View style={[styles.actionButton, cameraButtonStyle]}>
             <Pressable
               onPress={handleCameraPress}
               style={styles.cameraButton}
-              disabled={isNavigating !== null}
+              disabled={!showActionButtons || isNavigating !== null}
             >
               {isNavigating === 'camera' ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
@@ -579,12 +605,12 @@ export default function HomeScreen() {
             </Pressable>
           </Animated.View>
 
-          {/* Text Button */}
+          {/* Text Button - Always render but control visibility with opacity */}
           <Animated.View style={[styles.actionButton, textButtonStyle]}>
             <Pressable
               onPress={handleTextPress}
               style={styles.textButton}
-              disabled={isNavigating !== null}
+              disabled={!showActionButtons || isNavigating !== null}
             >
               {isNavigating === 'text' ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />

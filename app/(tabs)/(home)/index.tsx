@@ -272,23 +272,23 @@ export default function HomeScreen() {
     }
 
     if (newState) {
-      // Show buttons with animation
-      fabRotation.value = withSpring(45);
+      // Show buttons with animation - less bouncy and faster
+      fabRotation.value = withSpring(45, { damping: 20, stiffness: 200 });
       
       // Animate camera button
       setTimeout(() => {
-        cameraButtonScale.value = withSpring(1, { damping: 15, stiffness: 150 });
-        cameraButtonOpacity.value = withTiming(1, { duration: 100 });
-      }, 25);
+        cameraButtonScale.value = withSpring(1, { damping: 20, stiffness: 200 });
+        cameraButtonOpacity.value = withTiming(1, { duration: 150 });
+      }, 20);
       
       // Animate text button
       setTimeout(() => {
-        textButtonScale.value = withSpring(1, { damping: 15, stiffness: 150 });
-        textButtonOpacity.value = withTiming(1, { duration: 100 });
-      }, 50);
+        textButtonScale.value = withSpring(1, { damping: 20, stiffness: 200 });
+        textButtonOpacity.value = withTiming(1, { duration: 150 });
+      }, 40);
     } else {
       // Hide buttons with animation
-      fabRotation.value = withSpring(0);
+      fabRotation.value = withSpring(0, { damping: 20, stiffness: 200 });
       cameraButtonScale.value = withTiming(0, { duration: 150 });
       cameraButtonOpacity.value = withTiming(0, { duration: 150 });
       textButtonScale.value = withTiming(0, { duration: 150 });
@@ -519,12 +519,12 @@ export default function HomeScreen() {
 
         {/* Action Buttons Container */}
         <View style={styles.actionButtonsContainer}>
-          {/* Camera Button */}
-          <Animated.View style={[styles.actionButton, cameraButtonStyle]} pointerEvents={showActionButtons ? 'auto' : 'none'}>
+          {/* Camera Button - Always render but control visibility with opacity */}
+          <Animated.View style={[styles.actionButton, cameraButtonStyle]}>
             <Pressable
               onPress={handleCameraPress}
               style={styles.cameraButton}
-              disabled={isNavigating !== null}
+              disabled={!showActionButtons || isNavigating !== null}
             >
               {isNavigating === 'camera' ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
@@ -534,12 +534,12 @@ export default function HomeScreen() {
             </Pressable>
           </Animated.View>
 
-          {/* Text Button */}
-          <Animated.View style={[styles.actionButton, textButtonStyle]} pointerEvents={showActionButtons ? 'auto' : 'none'}>
+          {/* Text Button - Always render but control visibility with opacity */}
+          <Animated.View style={[styles.actionButton, textButtonStyle]}>
             <Pressable
               onPress={handleTextPress}
               style={styles.textButton}
-              disabled={isNavigating !== null}
+              disabled={!showActionButtons || isNavigating !== null}
             >
               {isNavigating === 'text' ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
