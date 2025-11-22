@@ -6,7 +6,7 @@ import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
-import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
@@ -28,18 +28,29 @@ export default function HomeScreen() {
   const [showActionButtons, setShowActionButtons] = useState(false);
   const [isNavigating, setIsNavigating] = useState<'camera' | 'text' | null>(null);
 
-  // Animation values for action buttons - Initialize with 0
+  // Web-specific pull-to-refresh state
+  const [pullStartY, setPullStartY] = useState(0);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isPulling, setIsPulling] = useState(false);
+  const PULL_THRESHOLD = 80;
+
+  // Animation values for action buttons - Initialize with explicit 0 values for web compatibility
+  // Using useSharedValue with explicit initialization to prevent "uninitialized variable" errors
   const cameraButtonScale = useSharedValue(0);
   const textButtonScale = useSharedValue(0);
   const cameraButtonOpacity = useSharedValue(0);
   const textButtonOpacity = useSharedValue(0);
   const fabRotation = useSharedValue(0);
 
-  // Web-specific pull-to-refresh state
-  const [pullStartY, setPullStartY] = useState(0);
-  const [pullDistance, setPullDistance] = useState(0);
-  const [isPulling, setIsPulling] = useState(false);
-  const PULL_THRESHOLD = 80;
+  // Ensure values are initialized on mount for web
+  useEffect(() => {
+    // Force initialization of shared values for web platform
+    cameraButtonScale.value = 0;
+    textButtonScale.value = 0;
+    cameraButtonOpacity.value = 0;
+    textButtonOpacity.value = 0;
+    fabRotation.value = 0;
+  }, []);
 
   // Update the previous notes count whenever notes change
   useEffect(() => {
@@ -419,52 +430,38 @@ export default function HomeScreen() {
     </Animated.View>
   );
 
-  // Animated styles for action buttons - Wrap in try-catch for web safety
+  // Animated styles for action buttons - Defensive approach for web compatibility
+  // Using direct value access with null coalescing to prevent uninitialized variable errors
   const cameraButtonStyle = useAnimatedStyle(() => {
     'worklet';
-    try {
-      return {
-        transform: [{ scale: cameraButtonScale.value }],
-        opacity: cameraButtonOpacity.value,
-      };
-    } catch (error) {
-      console.log('Error in cameraButtonStyle animation:', error);
-      return {
-        transform: [{ scale: 0 }],
-        opacity: 0,
-      };
-    }
-  });
+    const scale = cameraButtonScale?.value ?? 0;
+    const opacity = cameraButtonOpacity?.value ?? 0;
+    
+    return {
+      transform: [{ scale }],
+      opacity,
+    };
+  }, [cameraButtonScale, cameraButtonOpacity]);
 
   const textButtonStyle = useAnimatedStyle(() => {
     'worklet';
-    try {
-      return {
-        transform: [{ scale: textButtonScale.value }],
-        opacity: textButtonOpacity.value,
-      };
-    } catch (error) {
-      console.log('Error in textButtonStyle animation:', error);
-      return {
-        transform: [{ scale: 0 }],
-        opacity: 0,
-      };
-    }
-  });
+    const scale = textButtonScale?.value ?? 0;
+    const opacity = textButtonOpacity?.value ?? 0;
+    
+    return {
+      transform: [{ scale }],
+      opacity,
+    };
+  }, [textButtonScale, textButtonOpacity]);
 
   const fabRotationStyle = useAnimatedStyle(() => {
     'worklet';
-    try {
-      return {
-        transform: [{ rotate: `${fabRotation.value}deg` }],
-      };
-    } catch (error) {
-      console.log('Error in fabRotationStyle animation:', error);
-      return {
-        transform: [{ rotate: '0deg' }],
-      };
-    }
-  });
+    const rotation = fabRotation?.value ?? 0;
+    
+    return {
+      transform: [{ rotate: `${rotation}deg` }],
+    };
+  }, [fabRotation]);
 
   // Determine which notes to display
   const displayNotes = selectedCategoryId ? filteredNotes : notes;
