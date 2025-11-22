@@ -12,14 +12,35 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { isSharedRecallUrl } from '@/utils/shareRecall';
 import Toast from 'react-native-toast-message';
 import { toastConfig } from '@/components/CustomToast';
-import 'react-native-reanimated';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // Import CSS for web using dynamic import
 if (Platform.OS === 'web') {
-  import('../app.css');
+  import('../app.css').catch(err => {
+    console.error('Failed to load CSS:', err);
+  });
 }
 
-SplashScreen.preventAutoHideAsync();
+// Prevent Reanimated errors on web
+if (Platform.OS === 'web') {
+  // Suppress Reanimated warnings on web
+  const originalWarn = console.warn;
+  console.warn = (...args) => {
+    if (
+      typeof args[0] === 'string' &&
+      (args[0].includes('Reanimated') || 
+       args[0].includes('worklet') ||
+       args[0].includes('uninitialized'))
+    ) {
+      return;
+    }
+    originalWarn(...args);
+  };
+}
+
+SplashScreen.preventAutoHideAsync().catch(err => {
+  console.error('Failed to prevent splash screen auto hide:', err);
+});
 
 const CustomDarkTheme = {
   ...DarkTheme,
@@ -44,30 +65,38 @@ function RootLayoutNav() {
       return;
     }
 
-    const inAuthGroup = segments[0] === 'login';
+    try {
+      const inAuthGroup = segments[0] === 'login';
 
-    if (!session && !inAuthGroup) {
-      router.replace('/login');
-    } else if (session && inAuthGroup) {
-      router.replace('/(tabs)/(home)');
+      if (!session && !inAuthGroup) {
+        router.replace('/login');
+      } else if (session && inAuthGroup) {
+        router.replace('/(tabs)/(home)');
+      }
+    } catch (error) {
+      console.error('Navigation error:', error);
     }
   }, [session, loading, segments, router]);
 
   // Handle deep links for shared recalls
   useEffect(() => {
     const handleDeepLink = (event: { url: string }) => {
-      console.log('Deep link received:', event.url);
-      
-      if (isSharedRecallUrl(event.url)) {
-        console.log('Shared recall deep link detected');
-        const parsed = Linking.parse(event.url);
+      try {
+        console.log('Deep link received:', event.url);
         
-        if (parsed.queryParams?.data) {
-          router.push({
-            pathname: '/shared-recall',
-            params: { data: parsed.queryParams.data as string },
-          });
+        if (isSharedRecallUrl(event.url)) {
+          console.log('Shared recall deep link detected');
+          const parsed = Linking.parse(event.url);
+          
+          if (parsed.queryParams?.data) {
+            router.push({
+              pathname: '/shared-recall',
+              params: { data: parsed.queryParams.data as string },
+            });
+          }
         }
+      } catch (error) {
+        console.error('Error handling deep link:', error);
       }
     };
 
@@ -77,6 +106,8 @@ function RootLayoutNav() {
         console.log('Initial URL:', url);
         handleDeepLink({ url });
       }
+    }).catch(err => {
+      console.error('Error getting initial URL:', err);
     });
 
     // Handle URL changes (app already open)
@@ -146,7 +177,9 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loaded) {
-      SplashScreen.hideAsync();
+      SplashScreen.hideAsync().catch(err => {
+        console.error('Failed to hide splash screen:', err);
+      });
     }
   }, [loaded]);
 
@@ -155,13 +188,15 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <ThemeProvider value={CustomDarkTheme}>
-          <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-          <RootLayoutNav />
-        </ThemeProvider>
-      </AuthProvider>
-    </GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <AuthProvider>
+          <ThemeProvider value={CustomDarkTheme}>
+            <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+            <RootLayoutNav />
+          </ThemeProvider>
+        </AuthProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }

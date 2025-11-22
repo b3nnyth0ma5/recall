@@ -6,7 +6,6 @@ import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
-import Animated, { FadeIn } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
@@ -414,7 +413,7 @@ export default function HomeScreen() {
   }, [hasMore, isLoadingMore, loading, loadMoreNotes, selectedCategoryId, isPulling]);
 
   const renderEmptyState = () => (
-    <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+    <View style={styles.emptyContainer}>
       <IconSymbol name="house.fill" size={80} color={colors.textTertiary} />
       <Text style={styles.emptyTitle}>
         {selectedCategoryId ? 'No Recalls in This Category' : 'No Recalls Yet'}
@@ -425,7 +424,7 @@ export default function HomeScreen() {
           : 'Tap the + button to create your first recall'
         }
       </Text>
-    </Animated.View>
+    </View>
   );
 
   // Determine which notes to display
