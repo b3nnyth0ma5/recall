@@ -419,11 +419,19 @@ EXPLANATION:
 
     // ===== TRIGGER EMBEDDING GENERATION FOR THIS IMAGE =====
     // This happens at the end, after OCR processing is complete
+    // FIXED: Trigger embedding if EITHER ocr_text OR image_explanation has a value
     console.log('=== Triggering embedding generation for image ===');
     console.log('Image ID:', record.id);
     
-    // Only trigger embedding if we have both OCR text and explanation
-    if (ocrText && explanation && ocrText !== 'No text detected.') {
+    // Check if we have meaningful content for embedding
+    const hasOcrText = ocrText && ocrText !== 'No text detected.' && ocrText.trim().length > 0;
+    const hasExplanation = explanation && explanation.trim().length > 0;
+    
+    console.log('Has OCR text:', hasOcrText);
+    console.log('Has explanation:', hasExplanation);
+    
+    // Trigger embedding if we have EITHER ocr_text OR explanation
+    if (hasOcrText || hasExplanation) {
       try {
         console.log('Calling embedding-image function...');
         const embeddingResponse = await fetch(`${supabaseUrl}/functions/v1/embedding-image`, {
@@ -452,7 +460,7 @@ EXPLANATION:
         // Don't fail the OCR process if embedding generation fails
       }
     } else {
-      console.log('Skipping embedding generation - no meaningful text content');
+      console.log('Skipping embedding generation - no meaningful text content (both ocr_text and explanation are empty)');
     }
     
     console.log('=== Embedding generation triggered ===');
@@ -466,6 +474,7 @@ EXPLANATION:
         explanationLength: explanation.length,
         ocrTextPreview: ocrText.substring(0, 100) + (ocrText.length > 100 ? '...' : ''),
         explanationPreview: explanation.substring(0, 100) + (explanation.length > 100 ? '...' : ''),
+        embeddingTriggered: hasOcrText || hasExplanation,
       }),
       { 
         status: 200, 

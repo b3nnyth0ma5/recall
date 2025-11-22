@@ -36,6 +36,7 @@ export const colors = {
   
   // Card backgrounds
   card: '#2A2A2A', // Dark card background
+  cardBackground: '#2A2A2A', // Alias for card
   cardHover: '#333333', // Hover state
   cardDark: '#1F1F1F', // Darker card variant
   
@@ -56,7 +57,11 @@ export const colors = {
   border: '#3A3A3A', // Subtle border
   borderLight: '#4A4A4A', // Lighter border
   error: '#FF4444', // Error red
+  errorLight: 'rgba(255, 68, 68, 0.15)', // Light error background
   success: '#4CAF50', // Success green
+  successLight: 'rgba(76, 175, 80, 0.15)', // Light success background
+  warning: '#FFA726', // Warning orange
+  warningLight: 'rgba(255, 167, 38, 0.15)', // Light warning background
   overlay: 'rgba(0, 0, 0, 0.8)', // Dark overlay
   shadow: 'rgba(0, 0, 0, 0.5)', // Shadow
   highlight: 'rgba(255, 107, 122, 0.15)', // Highlight with primary color

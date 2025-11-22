@@ -21,6 +21,7 @@ interface ImageOCRDisplayProps {
  * - Retry functionality for failed processing
  * - Loading states and error handling
  * - Expandable sections for better UX
+ * - Auto-triggers OCR if processed_at is NULL
  */
 export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = false }: ImageOCRDisplayProps) {
   const [ocrText, setOcrText] = useState<string | undefined>();
@@ -31,6 +32,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
   const [error, setError] = useState<string | undefined>();
   const [showOcrText, setShowOcrText] = useState(true);
   const [showExplanation, setShowExplanation] = useState(true);
+  const [autoTriggered, setAutoTriggered] = useState(false);
 
   const loadOCRResults = useCallback(async () => {
     if (!imageId) {
@@ -51,7 +53,12 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
         setProcessedAt(results.processedAt);
         setIsProcessing(results.isProcessing || false);
 
-        if (results.isProcessing) {
+        // If image is unprocessed (processed_at is NULL) and we haven't auto-triggered yet
+        if (results.isProcessing && !results.processedAt && !autoTriggered) {
+          console.log('Image is unprocessed, auto-triggering OCR processing');
+          setAutoTriggered(true);
+          handleProcessImage();
+        } else if (results.isProcessing) {
           console.log('Image is still being processed, will retry in 3 seconds');
           // Retry after a delay if still processing
           setTimeout(() => {
@@ -67,7 +74,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  }, [imageId]);
+  }, [imageId, autoTriggered]);
 
   const handleProcessImage = async () => {
     setIsLoading(true);
