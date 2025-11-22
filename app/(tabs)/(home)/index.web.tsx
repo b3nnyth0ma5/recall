@@ -28,7 +28,7 @@ export default function HomeScreen() {
   const [showActionButtons, setShowActionButtons] = useState(false);
   const [isNavigating, setIsNavigating] = useState<'camera' | 'text' | null>(null);
 
-  // Animation values for action buttons
+  // Animation values for action buttons - Initialize with 0
   const cameraButtonScale = useSharedValue(0);
   const textButtonScale = useSharedValue(0);
   const cameraButtonOpacity = useSharedValue(0);
@@ -406,7 +406,7 @@ export default function HomeScreen() {
 
   const renderEmptyState = () => (
     <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-      <IconSymbol name="note.text" size={80} color={colors.textTertiary} />
+      <IconSymbol name="house.fill" size={80} color={colors.textTertiary} />
       <Text style={styles.emptyTitle}>
         {selectedCategoryId ? 'No Recalls in This Category' : 'No Recalls Yet'}
       </Text>
@@ -420,19 +420,25 @@ export default function HomeScreen() {
   );
 
   // Animated styles for action buttons
-  const cameraButtonStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: cameraButtonScale.value }],
-    opacity: cameraButtonOpacity.value,
-  }));
+  const cameraButtonStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: cameraButtonScale.value }],
+      opacity: cameraButtonOpacity.value,
+    };
+  });
 
-  const textButtonStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: textButtonScale.value }],
-    opacity: textButtonOpacity.value,
-  }));
+  const textButtonStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: textButtonScale.value }],
+      opacity: textButtonOpacity.value,
+    };
+  });
 
-  const fabRotationStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${fabRotation.value}deg` }],
-  }));
+  const fabRotationStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ rotate: `${fabRotation.value}deg` }],
+    };
+  });
 
   // Determine which notes to display
   const displayNotes = selectedCategoryId ? filteredNotes : notes;
@@ -715,7 +721,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.searchAccent,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(74, 144, 226, 0.4)',
+    shadowColor: '#4A90E2',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
     elevation: 8,
   },
   actionButtonsContainer: {
@@ -734,7 +743,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
+    shadowColor: '#FF6B7A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
     elevation: 6,
   },
   textButton: {
@@ -744,7 +756,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
+    shadowColor: '#FF6B7A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
     elevation: 6,
     marginBottom: 70,
   },
@@ -755,7 +770,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(255, 107, 53, 0.4)',
+    shadowColor: '#FF6B35',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
     elevation: 8,
   },
   deletionModalContainer: {
