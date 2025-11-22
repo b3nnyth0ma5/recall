@@ -103,6 +103,7 @@ export default function NoteEditorScreen() {
         takePhoto();
       }, 300);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openCamera, isEditing, isSharedRecall]);
 
   // Handle shared recall data

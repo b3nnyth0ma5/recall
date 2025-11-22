@@ -13,7 +13,7 @@ import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { Note } from '@/types/Note';
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes, loadMoreNotes, hasPerfect! Now I have all the information I need. Let me implement the changes:
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes(); Now I have all the information I need. Let me implement the changes:
 
 1. **Web version landing page** - Add FAB with camera/text buttons animation
 2. **Busy spinner** - Show spinner within icons during navigation

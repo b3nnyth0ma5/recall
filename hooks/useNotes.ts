@@ -553,9 +553,10 @@ export function useNotes() {
     } finally {
       setLoading(false);
     }
-  }, [refreshNotes, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshNotes, user, loadImagesForRecalls]);
 
-  const loadImagesForRecalls = async (recalls: any[]) => {
+  const loadImagesForRecalls = useCallback(async (recalls: any[]) => {
     return await Promise.all(
       recalls.map(async (recall) => {
         try {
@@ -594,7 +595,7 @@ export function useNotes() {
         }
       })
     );
-  };
+  }, []);
 
   const getSearchHistory = useCallback(async () => {
     if (!user) {
