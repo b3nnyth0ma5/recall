@@ -10,7 +10,7 @@
  * - Geocoding API
  */
 
-const GOOGLE_PLACES_API_KEY = 'AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48'; // Replace with your actual API key
+const GOOGLE_PLACES_API_KEY = 'AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48';
 
 export interface PlaceResult {
   placeId: string;
@@ -24,12 +24,15 @@ export interface PlaceResult {
   locality?: string;
 }
 
+interface SuburbLocalityResult {
+  suburb?: string;
+  locality?: string;
+}
+
 /**
  * Extract suburb and locality from address components
- * @param addressComponents - Array of address components from Google Places API
- * @returns Object with suburb and locality
  */
-function extractSuburbAndLocality(addressComponents: any[]): { suburb?: string; locality?: string } {
+function extractSuburbAndLocality(addressComponents: any[]): SuburbLocalityResult {
   let suburb: string | undefined;
   let locality: string | undefined;
 
@@ -38,19 +41,16 @@ function extractSuburbAndLocality(addressComponents: any[]): { suburb?: string; 
   for (const component of addressComponents) {
     const types = component.types || [];
     
-    // Extract suburb (sublocality or neighborhood)
     if (!suburb && (types.includes('sublocality') || types.includes('sublocality_level_1') || types.includes('neighborhood'))) {
       suburb = component.longText || component.long_name;
       console.log('Found suburb:', suburb, 'from types:', types);
     }
     
-    // Extract locality (city/town)
     if (!locality && types.includes('locality')) {
       locality = component.longText || component.long_name;
       console.log('Found locality:', locality, 'from types:', types);
     }
     
-    // If we have both, we can stop
     if (suburb && locality) {
       break;
     }
@@ -62,8 +62,6 @@ function extractSuburbAndLocality(addressComponents: any[]): { suburb?: string; 
 
 /**
  * Get place details including primaryTypeDisplayName and address components
- * @param placeId - The Google Place ID
- * @returns Place details including primary type, suburb, and locality
  */
 export async function getPlaceDetails(placeId: string): Promise<{ 
   primaryTypeDisplayName?: string;
@@ -107,10 +105,30 @@ export async function getPlaceDetails(placeId: string): Promise<{
 }
 
 /**
+ * Calculate distance between two coordinates using Haversine formula
+ */
+function calculateDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+  return distance;
+}
+
+/**
  * Search for nearby places using Google Places API (Nearby Search)
- * @param userLocation - User's current location
- * @param maxResults - Maximum number of results to return (default: 10)
- * @returns Array of nearby place results
  */
 export async function searchNearbyPlaces(
   userLocation: { latitude: number; longitude: number },
@@ -119,7 +137,6 @@ export async function searchNearbyPlaces(
   try {
     console.log('Searching for nearby places at:', userLocation);
     
-    // Build the request URL for Places API (New) - Nearby Search
     const baseUrl = 'https://places.googleapis.com/v1/places:searchNearby';
     
     const requestBody = {
@@ -129,13 +146,13 @@ export async function searchNearbyPlaces(
             latitude: userLocation.latitude,
             longitude: userLocation.longitude,
           },
-          radius: 5000.0, // 5km radius for nearby search
+          radius: 5000.0,
         },
       },
       maxResultCount: maxResults,
       languageCode: 'en',
-      regionCode: 'AU', // Restrict to Australia
-      rankPreference: 'DISTANCE', // Sort by distance
+      regionCode: 'AU',
+      rankPreference: 'DISTANCE',
     };
 
     const response = await fetch(baseUrl, {
@@ -162,7 +179,6 @@ export async function searchNearbyPlaces(
       return [];
     }
 
-    // Transform the results
     const results: PlaceResult[] = data.places.map((place: any) => {
       const latitude = place.location?.latitude || 0;
       const longitude = place.location?.longitude || 0;
@@ -192,7 +208,6 @@ export async function searchNearbyPlaces(
       };
     });
 
-    // Already sorted by distance from API, but ensure it
     results.sort((a, b) => {
       const distA = a.distance || Infinity;
       const distB = b.distance || Infinity;
@@ -213,9 +228,6 @@ export async function searchNearbyPlaces(
 
 /**
  * Search for places using Google Places API (Text Search)
- * @param query - The search query
- * @param userLocation - Optional user location for proximity bias
- * @returns Array of place results
  */
 export async function searchPlaces(
   query: string,
@@ -228,13 +240,12 @@ export async function searchPlaces(
 
     console.log('Searching Google Places for:', query);
     
-    // Build the request URL for Places API (New) - Text Search
     const baseUrl = 'https://places.googleapis.com/v1/places:searchText';
     
     const requestBody = {
       textQuery: query,
       languageCode: 'en',
-      regionCode: 'AU', // Restrict to Australia
+      regionCode: 'AU',
       maxResultCount: 10,
       ...(userLocation && {
         locationBias: {
@@ -243,7 +254,7 @@ export async function searchPlaces(
               latitude: userLocation.latitude,
               longitude: userLocation.longitude,
             },
-            radius: 50000.0, // 50km radius
+            radius: 50000.0,
           },
         },
       }),
@@ -273,7 +284,6 @@ export async function searchPlaces(
       return [];
     }
 
-    // Transform the results
     const results: PlaceResult[] = data.places.map((place: any) => {
       const latitude = place.location?.latitude || 0;
       const longitude = place.location?.longitude || 0;
@@ -306,7 +316,6 @@ export async function searchPlaces(
       };
     });
 
-    // Sort by distance if user location is available
     if (userLocation) {
       results.sort((a, b) => {
         const distA = a.distance || Infinity;
@@ -320,7 +329,7 @@ export async function searchPlaces(
       console.log(`- ${r.displayName}: suburb=${r.suburb}, locality=${r.locality}`);
     });
 
-    return results.slice(0, 5); // Return top 5 results
+    return results.slice(0, 5);
   } catch (error) {
     console.error('Error searching places:', error);
     throw error;
@@ -330,9 +339,6 @@ export async function searchPlaces(
 /**
  * Reverse geocode coordinates to get place information
  * Returns formatted as "DisplayName, Suburb" or "DisplayName, Locality"
- * @param latitude - Latitude coordinate
- * @param longitude - Longitude coordinate
- * @returns Formatted location name as "DisplayName, Suburb" or "DisplayName, Locality"
  */
 export async function reverseGeocodeGoogle(
   latitude: number,
@@ -359,31 +365,26 @@ export async function reverseGeocodeGoogle(
       return 'Unknown Location';
     }
 
-    // Extract place name, suburb, and locality from the results
     let placeName = '';
     let suburb = '';
     let locality = '';
 
-    // Try to find the most specific place first (POI, establishment, etc.)
     for (const result of data.results) {
       const types = result.types || [];
       const addressComponents = result.address_components || [];
 
-      // Look for a specific place (POI, establishment, premise, etc.)
       if (!placeName && (
         types.includes('point_of_interest') ||
         types.includes('establishment') ||
         types.includes('premise') ||
         types.includes('street_address')
       )) {
-        // Use the first part of formatted address as place name
         const addressParts = result.formatted_address.split(',');
         if (addressParts.length > 0) {
           placeName = addressParts[0].trim();
         }
       }
 
-      // Extract suburb and locality from address components
       for (const component of addressComponents) {
         const componentTypes = component.types || [];
         
@@ -398,13 +399,11 @@ export async function reverseGeocodeGoogle(
         }
       }
 
-      // If we have both place name and suburb, we can stop
       if (placeName && suburb) {
         break;
       }
     }
 
-    // Format the location name as "DisplayName, Suburb" or "DisplayName, Locality"
     if (placeName && suburb) {
       const formatted = `${placeName}, ${suburb}`;
       console.log('Formatted location:', formatted);
@@ -427,7 +426,6 @@ export async function reverseGeocodeGoogle(
       console.log('Formatted location:', locality);
       return locality;
     } else if (data.results[0].formatted_address) {
-      // Fallback to formatted address, but try to shorten it
       const parts = data.results[0].formatted_address.split(',');
       if (parts.length >= 2) {
         const formatted = `${parts[0].trim()}, ${parts[1].trim()}`;
@@ -450,40 +448,8 @@ export async function reverseGeocodeGoogle(
 }
 
 /**
- * Calculate distance between two coordinates using Haversine formula
- * @param lat1 - First latitude
- * @param lon1 - First longitude
- * @param lat2 - Second latitude
- * @param lon2 - Second longitude
- * @returns Distance in kilometers
- */
-function calculateDistance(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
-  const R = 6371; // Earth's radius in kilometers
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const distance = R * c;
-  return distance;
-}
-
-/**
  * Extract a short location name from a place result
  * Formats as "DisplayName, Suburb" or "DisplayName, Locality"
- * @param displayName - The display name of the place
- * @param suburb - Optional suburb name
- * @param locality - Optional locality name
- * @returns Shortened location name as "DisplayName, Suburb" or "DisplayName, Locality"
  */
 export function extractShortLocationName(
   displayName: string,
@@ -492,28 +458,24 @@ export function extractShortLocationName(
 ): string {
   console.log('extractShortLocationName called with:', { displayName, suburb, locality });
   
-  // Format as "DisplayName, Suburb" if suburb is available
   if (suburb) {
     const formatted = `${displayName}, ${suburb}`;
     console.log('Formatted location with suburb:', formatted);
     return formatted;
   }
   
-  // Otherwise format as "DisplayName, Locality" if locality is available
   if (locality) {
     const formatted = `${displayName}, ${locality}`;
     console.log('Formatted location with locality:', formatted);
     return formatted;
   }
   
-  // Fallback to just the display name
   console.log('Formatted location (no suburb/locality):', displayName);
   return displayName;
 }
 
 /**
  * Check if Google Places API key is configured
- * @returns true if API key is set
  */
 export function isGooglePlacesConfigured(): boolean {
   return GOOGLE_PLACES_API_KEY !== 'YOUR_GOOGLE_PLACES_API_KEY' && GOOGLE_PLACES_API_KEY.length > 0;
