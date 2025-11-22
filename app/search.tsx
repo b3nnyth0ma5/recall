@@ -9,7 +9,6 @@ import {
   Pressable,
   ActivityIndicator,
   Keyboard,
-  Switch,
   Platform,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
@@ -23,7 +22,7 @@ import * as Haptics from 'expo-haptics';
 
 export default function SearchScreen() {
   const router = useRouter();
-  const { notes, loading, searchNotes, getSearchHistory, locationInfo, searchAnswer, searchConfidence } = useNotes();
+  const { notes, loading, searchNotes, getSearchHistory, searchAnswer, searchConfidence } = useNotes();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
   const [showHistory, setShowHistory] = useState(true);
@@ -31,7 +30,6 @@ export default function SearchScreen() {
   const [hasSearched, setHasSearched] = useState(false);
   const [isAiSearch, setIsAiSearch] = useState(false);
   const [isAnswerExpanded, setIsAnswerExpanded] = useState(false);
-  const [useV2Search, setUseV2Search] = useState(true); // Default to ON
   const searchInputRef = useRef<TextInput>(null);
 
   const loadSearchHistory = useCallback(async () => {
@@ -66,7 +64,8 @@ export default function SearchScreen() {
       setHasSearched(true);
       setIsAiSearch(true);
       setIsAnswerExpanded(false);
-      searchNotes(searchQuery, useV2Search);
+      // Always use v2 search
+      searchNotes(searchQuery, true);
       setTimeout(() => {
         loadSearchHistory();
       }, 500);
@@ -79,7 +78,8 @@ export default function SearchScreen() {
     setHasSearched(true);
     setIsAiSearch(true);
     setIsAnswerExpanded(false);
-    searchNotes(searchText, useV2Search);
+    // Always use v2 search
+    searchNotes(searchText, true);
   };
 
   const handleNotePress = (noteId: string) => {
@@ -179,40 +179,6 @@ export default function SearchScreen() {
             </View>
           </Pressable>
         </View>
-        
-        {/* V2 Search Toggle */}
-        <View style={styles.toggleContainer}>
-          <View style={styles.toggleLeft}>
-            <IconSymbol 
-              name={useV2Search ? "photo.fill" : "doc.text.fill"} 
-              size={16} 
-              color={colors.primary} 
-            />
-            <Text style={styles.toggleLabel}>
-              {useV2Search ? 'Recall search v2' : 'Recall search v1'}
-            </Text>
-          </View>
-          <Switch
-            value={useV2Search}
-            onValueChange={setUseV2Search}
-            trackColor={{ false: colors.border, true: colors.primary }}
-            thumbColor="#FFFFFF"
-            ios_backgroundColor={colors.border}
-          />
-        </View>
-        
-        {isAiSearch && hasSearched && (
-          <View style={styles.indicatorsContainer}> 
-            {locationInfo && !useV2Search && (
-              <View style={styles.locationIndicator}>
-                <IconSymbol name="location.fill" size={14} color={colors.primary} />
-                <Text style={styles.locationIndicatorText}>
-                  Near {locationInfo.resolvedPlace} ({locationInfo.proximity}km)
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
@@ -239,67 +205,39 @@ export default function SearchScreen() {
         ) : !hasSearched ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
             <IconSymbol 
-              name={useV2Search ? "photo.on.rectangle" : "sparkles"} 
+              name="photo.on.rectangle" 
               size={80} 
               color={colors.textTertiary} 
             />
             <Text style={styles.emptyTitle}>
-              {useV2Search ? 'Image-Based AI Search' : 'Text-Based AI Search'}
+              Image-Based AI Search
             </Text>
             <Text style={styles.emptyText}>
-              {useV2Search 
-                ? 'Search your recalls using image embeddings and visual content analysis'
-                : 'Search your recalls using advanced NLP and named entity recognition'
-              }
+              Search your recalls using image embeddings and visual content analysis
             </Text>
             <View style={styles.featureList}>
-              {useV2Search ? (
-                <React.Fragment>
-                  <View style={styles.featureItem}>
-                    <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                    <Text style={styles.featureText}>Image embedding similarity</Text>
-                  </View>
-                  <View style={styles.featureItem}>
-                    <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                    <Text style={styles.featureText}>OCR text matching</Text>
-                  </View>
-                  <View style={styles.featureItem}>
-                    <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                    <Text style={styles.featureText}>Visual content analysis</Text>
-                  </View>
-                  <View style={styles.featureItem}>
-                    <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                    <Text style={styles.featureText}>Top 8 closest matches</Text>
-                  </View>
-                  <View style={styles.featureItem}>
-                    <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                    <Text style={styles.featureText}>Question answering</Text>
-                  </View>
-                </React.Fragment>
-              ) : (
-                <React.Fragment>
-                  <View style={styles.featureItem}>
-                    <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                    <Text style={styles.featureText}>Semantic understanding</Text>
-                  </View>
-                  <View style={styles.featureItem}>
-                    <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                    <Text style={styles.featureText}>Location & proximity filtering</Text>
-                  </View>
-                  <View style={styles.featureItem}>
-                    <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                    <Text style={styles.featureText}>Named entity recognition</Text>
-                  </View>
-                  <View style={styles.featureItem}>
-                    <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                    <Text style={styles.featureText}>Google Places integration</Text>
-                  </View>
-                  <View style={styles.featureItem}>
-                    <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                    <Text style={styles.featureText}>Question answering</Text>
-                  </View>
-                </React.Fragment>
-              )}
+              <React.Fragment>
+                <View style={styles.featureItem}>
+                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+                  <Text style={styles.featureText}>Image embedding similarity</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+                  <Text style={styles.featureText}>OCR text matching</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+                  <Text style={styles.featureText}>Visual content analysis</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+                  <Text style={styles.featureText}>Top 8 closest matches</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+                  <Text style={styles.featureText}>Question answering</Text>
+                </View>
+              </React.Fragment>
             </View>
           </Animated.View>
         ) : notes.length === 0 && !searchAnswer ? (
@@ -432,56 +370,6 @@ const styles = StyleSheet.create({
   },
   searchIconDisabled: {
     opacity: 0.4,
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-  },
-  toggleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  toggleLabel: {
-    fontSize: 14,
-    color: colors.text,
-    fontWeight: '500',
-  },
-  indicatorsContainer: {
-    marginTop: 8,
-    gap: 6,
-  },
-  aiIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 4,
-  },
-  aiIndicatorText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontStyle: 'italic',
-  },
-  locationIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.card,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  locationIndicatorText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontWeight: '500',
   },
   scrollView: {
     flex: 1,

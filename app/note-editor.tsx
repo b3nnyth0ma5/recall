@@ -27,6 +27,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
 import { processRecallUrls } from '@/utils/urlProcessor';
+import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
@@ -343,11 +344,38 @@ export default function NoteEditorScreen() {
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
         quality: 0.8,
+        exif: true, // Request EXIF data
       });
 
       if (!result.canceled && result.assets) {
         setLoading(true);
         const newImages: ImageData[] = [];
+
+        // Try to extract location from the first image if we don't have a location yet
+        if (!location && result.assets.length > 0) {
+          console.log('Attempting to extract location from first selected image...');
+          try {
+            const imageLocation = await extractLocationFromImage(result.assets[0]);
+            
+            if (imageLocation.latitude && imageLocation.longitude) {
+              console.log('Location extracted from image:', imageLocation);
+              setLocation({
+                latitude: imageLocation.latitude,
+                longitude: imageLocation.longitude,
+              });
+              
+              if (imageLocation.locationName) {
+                setLocationName(imageLocation.locationName);
+                console.log('Location name set from image:', imageLocation.locationName);
+              }
+            } else {
+              console.log('No location data found in image');
+            }
+          } catch (error) {
+            console.error('Error extracting location from image:', error);
+            // Continue without location - this is not a critical error
+          }
+        }
 
         for (const asset of result.assets) {
           const converted = await convertImageToSuitableFormat(asset.uri);
@@ -380,11 +408,38 @@ export default function NoteEditorScreen() {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         quality: 0.8,
+        exif: true, // Request EXIF data
       });
 
       if (!result.canceled && result.assets) {
         setLoading(true);
         const asset = result.assets[0];
+        
+        // Try to extract location from the captured photo if we don't have a location yet
+        if (!location) {
+          console.log('Attempting to extract location from captured photo...');
+          try {
+            const imageLocation = await extractLocationFromImage(asset);
+            
+            if (imageLocation.latitude && imageLocation.longitude) {
+              console.log('Location extracted from photo:', imageLocation);
+              setLocation({
+                latitude: imageLocation.latitude,
+                longitude: imageLocation.longitude,
+              });
+              
+              if (imageLocation.locationName) {
+                setLocationName(imageLocation.locationName);
+                console.log('Location name set from photo:', imageLocation.locationName);
+              }
+            } else {
+              console.log('No location data found in photo');
+            }
+          } catch (error) {
+            console.error('Error extracting location from photo:', error);
+            // Continue without location - this is not a critical error
+          }
+        }
         
         const converted = await convertImageToSuitableFormat(asset.uri);
 

@@ -262,7 +262,7 @@ export default function HomeScreen() {
     // Haptic feedback when add note icon is clicked
     if (Platform.OS !== 'web') {
       try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       } catch (error) {
         console.error('Error triggering haptic feedback:', error);
       }
@@ -277,7 +277,7 @@ export default function HomeScreen() {
     // Haptic feedback when camera icon is clicked
     if (Platform.OS !== 'web') {
       try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       } catch (error) {
         console.error('Error triggering haptic feedback:', error);
       }
@@ -302,7 +302,7 @@ export default function HomeScreen() {
     // Haptic feedback when text icon is clicked
     if (Platform.OS !== 'web') {
       try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       } catch (error) {
         console.error('Error triggering haptic feedback:', error);
       }
@@ -331,7 +331,7 @@ export default function HomeScreen() {
     // Haptic feedback when search icon is clicked
     if (Platform.OS !== 'web') {
       try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       } catch (error) {
         console.error('Error triggering haptic feedback:', error);
       }
