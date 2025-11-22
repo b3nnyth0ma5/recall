@@ -6,7 +6,7 @@ import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
-import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
@@ -28,13 +28,6 @@ export default function HomeScreen() {
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
   const [showActionButtons, setShowActionButtons] = useState(false);
   const [isNavigating, setIsNavigating] = useState<'camera' | 'text' | null>(null);
-
-  // Animation values for action buttons
-  const cameraButtonScale = useSharedValue(0);
-  const textButtonScale = useSharedValue(0);
-  const cameraButtonOpacity = useSharedValue(0);
-  const textButtonOpacity = useSharedValue(0);
-  const fabRotation = useSharedValue(0);
 
   // Update the previous notes count whenever notes change
   useEffect(() => {
@@ -268,31 +261,11 @@ export default function HomeScreen() {
 
     // Haptic feedback when add note icon is clicked
     if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-
-    if (newState) {
-      // Show buttons with animation - less bouncy and faster
-      fabRotation.value = withSpring(45, { damping: 20, stiffness: 200 });
-      
-      // Animate camera button
-      setTimeout(() => {
-        cameraButtonScale.value = withSpring(1, { damping: 20, stiffness: 200 });
-        cameraButtonOpacity.value = withTiming(1, { duration: 150 });
-      }, 20);
-      
-      // Animate text button
-      setTimeout(() => {
-        textButtonScale.value = withSpring(1, { damping: 20, stiffness: 200 });
-        textButtonOpacity.value = withTiming(1, { duration: 150 });
-      }, 40);
-    } else {
-      // Hide buttons with animation
-      fabRotation.value = withSpring(0, { damping: 20, stiffness: 200 });
-      cameraButtonScale.value = withTiming(0, { duration: 150 });
-      cameraButtonOpacity.value = withTiming(0, { duration: 150 });
-      textButtonScale.value = withTiming(0, { duration: 150 });
-      textButtonOpacity.value = withTiming(0, { duration: 150 });
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
     }
   };
 
@@ -303,11 +276,15 @@ export default function HomeScreen() {
     
     // Haptic feedback when camera icon is clicked
     if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
     }
     
     // Close action buttons
-    toggleActionButtons();
+    setShowActionButtons(false);
     
     // Navigate to note editor with camera flag
     setTimeout(() => {
@@ -324,11 +301,15 @@ export default function HomeScreen() {
     
     // Haptic feedback when text icon is clicked
     if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
     }
     
     // Close action buttons
-    toggleActionButtons();
+    setShowActionButtons(false);
     
     // Navigate to note editor normally
     setTimeout(() => {
@@ -339,19 +320,35 @@ export default function HomeScreen() {
   };
 
   const handleNotePress = (noteId: string) => {
-    router.push(`/note-editor?id=${noteId}`);
+    try {
+      router.push(`/note-editor?id=${noteId}`);
+    } catch (error) {
+      console.error('Error navigating to note editor:', error);
+    }
   };
 
   const handleSearch = () => {
     // Haptic feedback when search icon is clicked
     if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
     }
-    router.push('/search');
+    try {
+      router.push('/search');
+    } catch (error) {
+      console.error('Error navigating to search:', error);
+    }
   };
 
   const handleProfile = () => {
-    router.push('/(tabs)/profile');
+    try {
+      router.push('/(tabs)/profile');
+    } catch (error) {
+      console.error('Error navigating to profile:', error);
+    }
   };
 
   const handleCategorySelect = (categoryId: string | null) => {
@@ -364,23 +361,27 @@ export default function HomeScreen() {
   };
 
   const handleScroll = useCallback((event: any) => {
-    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    
-    // Save scroll position to ref (doesn't trigger re-render)
-    scrollPositionRef.current = contentOffset.y;
-    
-    // Only load more if not filtering by category
-    if (selectedCategoryId) {
-      return;
-    }
+    try {
+      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+      
+      // Save scroll position to ref (doesn't trigger re-render)
+      scrollPositionRef.current = contentOffset.y;
+      
+      // Only load more if not filtering by category
+      if (selectedCategoryId) {
+        return;
+      }
 
-    // Load more notes when near bottom
-    const paddingToBottom = 20;
-    const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+      // Load more notes when near bottom
+      const paddingToBottom = 20;
+      const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
 
-    if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
-      console.log('[handleScroll] Loading more notes...');
-      loadMoreNotes();
+      if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
+        console.log('[handleScroll] Loading more notes...');
+        loadMoreNotes();
+      }
+    } catch (error) {
+      console.error('Error handling scroll:', error);
     }
   }, [hasMore, isLoadingMore, loading, loadMoreNotes, selectedCategoryId]);
 
@@ -398,21 +399,6 @@ export default function HomeScreen() {
       </Text>
     </Animated.View>
   );
-
-  // Animated styles for action buttons
-  const cameraButtonStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: cameraButtonScale.value }],
-    opacity: cameraButtonOpacity.value,
-  }));
-
-  const textButtonStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: textButtonScale.value }],
-    opacity: textButtonOpacity.value,
-  }));
-
-  const fabRotationStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${fabRotation.value}deg` }],
-  }));
 
   // Determine which notes to display
   const displayNotes = selectedCategoryId ? filteredNotes : notes;
@@ -517,46 +503,52 @@ export default function HomeScreen() {
           <IconSymbol name="magnifyingglass" size={28} color="#FFFFFF" />
         </Pressable>
 
-        {/* Action Buttons Container */}
+        {/* Action Buttons Container - Simple visibility toggle without animations */}
         <View style={styles.actionButtonsContainer}>
-          {/* Camera Button - Always render but control visibility with opacity */}
-          <Animated.View style={[styles.actionButton, cameraButtonStyle]}>
-            <Pressable
-              onPress={handleCameraPress}
-              style={styles.cameraButton}
-              disabled={!showActionButtons || isNavigating !== null}
-            >
-              {isNavigating === 'camera' ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <IconSymbol name="camera.fill" size={24} color="#FFFFFF" />
-              )}
-            </Pressable>
-          </Animated.View>
+          {/* Camera Button */}
+          {showActionButtons && (
+            <View style={styles.actionButton}>
+              <Pressable
+                onPress={handleCameraPress}
+                style={styles.cameraButton}
+                disabled={isNavigating !== null}
+              >
+                {isNavigating === 'camera' ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <IconSymbol name="camera.fill" size={24} color="#FFFFFF" />
+                )}
+              </Pressable>
+            </View>
+          )}
 
-          {/* Text Button - Always render but control visibility with opacity */}
-          <Animated.View style={[styles.actionButton, textButtonStyle]}>
-            <Pressable
-              onPress={handleTextPress}
-              style={styles.textButton}
-              disabled={!showActionButtons || isNavigating !== null}
-            >
-              {isNavigating === 'text' ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <IconSymbol name="text.alignleft" size={24} color="#FFFFFF" />
-              )}
-            </Pressable>
-          </Animated.View>
+          {/* Text Button */}
+          {showActionButtons && (
+            <View style={[styles.actionButton, styles.textButtonContainer]}>
+              <Pressable
+                onPress={handleTextPress}
+                style={styles.textButton}
+                disabled={isNavigating !== null}
+              >
+                {isNavigating === 'text' ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <IconSymbol name="text.alignleft" size={24} color="#FFFFFF" />
+                )}
+              </Pressable>
+            </View>
+          )}
 
           {/* Main FAB */}
           <Pressable
             onPress={toggleActionButtons}
             style={styles.fab}
           >
-            <Animated.View style={fabRotationStyle}>
-              <IconSymbol name="plus" size={28} color="#FFFFFF" />
-            </Animated.View>
+            <IconSymbol 
+              name={showActionButtons ? "xmark" : "plus"} 
+              size={28} 
+              color="#FFFFFF" 
+            />
           </Pressable>
         </View>
       </View>
@@ -678,6 +670,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 70,
   },
+  textButtonContainer: {
+    bottom: 140,
+  },
   cameraButton: {
     width: 52,
     height: 52,
@@ -697,7 +692,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
     elevation: 6,
-    marginBottom: 70,
   },
   fab: {
     width: 60,

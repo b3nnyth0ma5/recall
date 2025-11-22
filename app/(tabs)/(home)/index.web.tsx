@@ -1,12 +1,12 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Image, Modal, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Image, Modal } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
-import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS } from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
@@ -33,24 +33,6 @@ export default function HomeScreen() {
   const [pullDistance, setPullDistance] = useState(0);
   const [isPulling, setIsPulling] = useState(false);
   const PULL_THRESHOLD = 80;
-
-  // Animation values for action buttons - Initialize with explicit 0 values for web compatibility
-  // Using useSharedValue with explicit initialization to prevent "uninitialized variable" errors
-  const cameraButtonScale = useSharedValue(0);
-  const textButtonScale = useSharedValue(0);
-  const cameraButtonOpacity = useSharedValue(0);
-  const textButtonOpacity = useSharedValue(0);
-  const fabRotation = useSharedValue(0);
-
-  // Ensure values are initialized on mount for web
-  useEffect(() => {
-    // Force initialization of shared values for web platform
-    cameraButtonScale.value = 0;
-    textButtonScale.value = 0;
-    cameraButtonOpacity.value = 0;
-    textButtonOpacity.value = 0;
-    fabRotation.value = 0;
-  }, []);
 
   // Update the previous notes count whenever notes change
   useEffect(() => {
@@ -266,73 +248,65 @@ export default function HomeScreen() {
   const handleRecallIconPress = async () => {
     console.log('[handleRecallIconPress] Recall icon pressed - clearing categories and reloading');
     
-    // Clear selected category
-    setSelectedCategoryId(null);
-    
-    // Scroll to top
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollTo({ y: 0, animated: true });
+    try {
+      // Clear selected category
+      setSelectedCategoryId(null);
+      
+      // Scroll to top
+      if (scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({ y: 0, animated: true });
+      }
+      
+      // Reload landing page data with clearCategory flag set to true
+      await handleRefresh(true);
+    } catch (error) {
+      console.error('Error handling recall icon press:', error);
     }
-    
-    // Reload landing page data with clearCategory flag set to true
-    await handleRefresh(true);
   };
 
   // Web-specific pull-to-refresh handlers
   const handleTouchStart = (e: any) => {
-    const touch = e.touches?.[0] || e.nativeEvent?.touches?.[0];
-    if (touch && scrollPositionRef.current === 0) {
-      setPullStartY(touch.clientY);
-      setIsPulling(true);
+    try {
+      const touch = e.touches?.[0] || e.nativeEvent?.touches?.[0];
+      if (touch && scrollPositionRef.current === 0) {
+        setPullStartY(touch.clientY);
+        setIsPulling(true);
+      }
+    } catch (error) {
+      console.error('Error handling touch start:', error);
     }
   };
 
   const handleTouchMove = (e: any) => {
     if (!isPulling) return;
     
-    const touch = e.touches?.[0] || e.nativeEvent?.touches?.[0];
-    if (touch && scrollPositionRef.current === 0) {
-      const distance = Math.max(0, touch.clientY - pullStartY);
-      setPullDistance(Math.min(distance, PULL_THRESHOLD * 1.5));
+    try {
+      const touch = e.touches?.[0] || e.nativeEvent?.touches?.[0];
+      if (touch && scrollPositionRef.current === 0) {
+        const distance = Math.max(0, touch.clientY - pullStartY);
+        setPullDistance(Math.min(distance, PULL_THRESHOLD * 1.5));
+      }
+    } catch (error) {
+      console.error('Error handling touch move:', error);
     }
   };
 
   const handleTouchEnd = async () => {
-    if (isPulling && pullDistance >= PULL_THRESHOLD) {
-      await handleRefresh(false);
+    try {
+      if (isPulling && pullDistance >= PULL_THRESHOLD) {
+        await handleRefresh(false);
+      }
+    } catch (error) {
+      console.error('Error handling touch end:', error);
+    } finally {
+      setIsPulling(false);
+      setPullDistance(0);
+      setPullStartY(0);
     }
-    setIsPulling(false);
-    setPullDistance(0);
-    setPullStartY(0);
   };
 
   const toggleActionButtons = () => {
-    const newState = !showActionButtons;
-    setShowActionButtons(newState);
-
-    if (newState) {
-      // Show buttons with animation - less bouncy and faster
-      fabRotation.value = withSpring(45, { damping: 20, stiffness: 200 });
-      
-      // Animate camera button
-      setTimeout(() => {
-        cameraButtonScale.value = withSpring(1, { damping: 20, stiffness: 200 });
-        cameraButtonOpacity.value = withTiming(1, { duration: 150 });
-      }, 20);
-      
-      // Animate text button
-      setTimeout(() => {
-        textButtonScale.value = withSpring(1, { damping: 20, stiffness: 200 });
-        textButtonOpacity.value = withTiming(1, { duration: 150 });
-      }, 40);
-    } else {
-      // Hide buttons with animation
-      fabRotation.value = withSpring(0, { damping: 20, stiffness: 200 });
-      cameraButtonScale.value = withTiming(0, { duration: 150 });
-      cameraButtonOpacity.value = withTiming(0, { duration: 150 });
-      textButtonScale.value = withTiming(0, { duration: 150 });
-      textButtonOpacity.value = withTiming(0, { duration: 150 });
-    }
+    setShowActionButtons(!showActionButtons);
   };
 
   const handleCameraPress = () => {
@@ -341,11 +315,15 @@ export default function HomeScreen() {
     setIsNavigating('camera');
     
     // Close action buttons
-    toggleActionButtons();
+    setShowActionButtons(false);
     
     // Navigate to note editor with camera flag
     setTimeout(() => {
-      router.push('/note-editor?openCamera=true');
+      try {
+        router.push('/note-editor?openCamera=true');
+      } catch (error) {
+        console.error('Error navigating to note editor with camera:', error);
+      }
       // Reset navigation state after a delay
       setTimeout(() => setIsNavigating(null), 1000);
     }, 200);
@@ -357,26 +335,42 @@ export default function HomeScreen() {
     setIsNavigating('text');
     
     // Close action buttons
-    toggleActionButtons();
+    setShowActionButtons(false);
     
     // Navigate to note editor normally
     setTimeout(() => {
-      router.push('/note-editor');
+      try {
+        router.push('/note-editor');
+      } catch (error) {
+        console.error('Error navigating to note editor:', error);
+      }
       // Reset navigation state after a delay
       setTimeout(() => setIsNavigating(null), 1000);
     }, 200);
   };
 
   const handleNotePress = (noteId: string) => {
-    router.push(`/note-editor?id=${noteId}`);
+    try {
+      router.push(`/note-editor?id=${noteId}`);
+    } catch (error) {
+      console.error('Error navigating to note editor:', error);
+    }
   };
 
   const handleSearch = () => {
-    router.push('/search');
+    try {
+      router.push('/search');
+    } catch (error) {
+      console.error('Error navigating to search:', error);
+    }
   };
 
   const handleProfile = () => {
-    router.push('/(tabs)/profile');
+    try {
+      router.push('/(tabs)/profile');
+    } catch (error) {
+      console.error('Error navigating to profile:', error);
+    }
   };
 
   const handleCategorySelect = (categoryId: string | null) => {
@@ -389,29 +383,33 @@ export default function HomeScreen() {
   };
 
   const handleScroll = useCallback((event: any) => {
-    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    
-    // Save scroll position to ref (doesn't trigger re-render)
-    scrollPositionRef.current = contentOffset.y;
-    
-    // Reset pull state if scrolling
-    if (contentOffset.y > 0 && isPulling) {
-      setIsPulling(false);
-      setPullDistance(0);
-    }
-    
-    // Only load more if not filtering by category
-    if (selectedCategoryId) {
-      return;
-    }
+    try {
+      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+      
+      // Save scroll position to ref (doesn't trigger re-render)
+      scrollPositionRef.current = contentOffset.y;
+      
+      // Reset pull state if scrolling
+      if (contentOffset.y > 0 && isPulling) {
+        setIsPulling(false);
+        setPullDistance(0);
+      }
+      
+      // Only load more if not filtering by category
+      if (selectedCategoryId) {
+        return;
+      }
 
-    // Load more notes when near bottom
-    const paddingToBottom = 20;
-    const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+      // Load more notes when near bottom
+      const paddingToBottom = 20;
+      const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
 
-    if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
-      console.log('[handleScroll] Loading more notes...');
-      loadMoreNotes();
+      if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
+        console.log('[handleScroll] Loading more notes...');
+        loadMoreNotes();
+      }
+    } catch (error) {
+      console.error('Error handling scroll:', error);
     }
   }, [hasMore, isLoadingMore, loading, loadMoreNotes, selectedCategoryId, isPulling]);
 
@@ -429,39 +427,6 @@ export default function HomeScreen() {
       </Text>
     </Animated.View>
   );
-
-  // Animated styles for action buttons - Defensive approach for web compatibility
-  // Using direct value access with null coalescing to prevent uninitialized variable errors
-  const cameraButtonStyle = useAnimatedStyle(() => {
-    'worklet';
-    const scale = cameraButtonScale?.value ?? 0;
-    const opacity = cameraButtonOpacity?.value ?? 0;
-    
-    return {
-      transform: [{ scale }],
-      opacity,
-    };
-  }, [cameraButtonScale, cameraButtonOpacity]);
-
-  const textButtonStyle = useAnimatedStyle(() => {
-    'worklet';
-    const scale = textButtonScale?.value ?? 0;
-    const opacity = textButtonOpacity?.value ?? 0;
-    
-    return {
-      transform: [{ scale }],
-      opacity,
-    };
-  }, [textButtonScale, textButtonOpacity]);
-
-  const fabRotationStyle = useAnimatedStyle(() => {
-    'worklet';
-    const rotation = fabRotation?.value ?? 0;
-    
-    return {
-      transform: [{ rotate: `${rotation}deg` }],
-    };
-  }, [fabRotation]);
 
   // Determine which notes to display
   const displayNotes = selectedCategoryId ? filteredNotes : notes;
@@ -585,46 +550,52 @@ export default function HomeScreen() {
           <IconSymbol name="magnifyingglass" size={28} color="#FFFFFF" />
         </Pressable>
 
-        {/* Action Buttons Container */}
+        {/* Action Buttons Container - Simple visibility toggle without animations */}
         <View style={styles.actionButtonsContainer}>
-          {/* Camera Button - Always render but control visibility with opacity */}
-          <Animated.View style={[styles.actionButton, cameraButtonStyle]}>
-            <Pressable
-              onPress={handleCameraPress}
-              style={styles.cameraButton}
-              disabled={!showActionButtons || isNavigating !== null}
-            >
-              {isNavigating === 'camera' ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <IconSymbol name="camera.fill" size={24} color="#FFFFFF" />
-              )}
-            </Pressable>
-          </Animated.View>
+          {/* Camera Button */}
+          {showActionButtons && (
+            <View style={styles.actionButton}>
+              <Pressable
+                onPress={handleCameraPress}
+                style={styles.cameraButton}
+                disabled={isNavigating !== null}
+              >
+                {isNavigating === 'camera' ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <IconSymbol name="camera.fill" size={24} color="#FFFFFF" />
+                )}
+              </Pressable>
+            </View>
+          )}
 
-          {/* Text Button - Always render but control visibility with opacity */}
-          <Animated.View style={[styles.actionButton, textButtonStyle]}>
-            <Pressable
-              onPress={handleTextPress}
-              style={styles.textButton}
-              disabled={!showActionButtons || isNavigating !== null}
-            >
-              {isNavigating === 'text' ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <IconSymbol name="text.alignleft" size={24} color="#FFFFFF" />
-              )}
-            </Pressable>
-          </Animated.View>
+          {/* Text Button */}
+          {showActionButtons && (
+            <View style={[styles.actionButton, styles.textButtonContainer]}>
+              <Pressable
+                onPress={handleTextPress}
+                style={styles.textButton}
+                disabled={isNavigating !== null}
+              >
+                {isNavigating === 'text' ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <IconSymbol name="text.alignleft" size={24} color="#FFFFFF" />
+                )}
+              </Pressable>
+            </View>
+          )}
 
           {/* Main FAB */}
           <Pressable
             onPress={toggleActionButtons}
             style={styles.fab}
           >
-            <Animated.View style={fabRotationStyle}>
-              <IconSymbol name="plus" size={28} color="#FFFFFF" />
-            </Animated.View>
+            <IconSymbol 
+              name={showActionButtons ? "xmark" : "plus"} 
+              size={28} 
+              color="#FFFFFF" 
+            />
           </Pressable>
         </View>
       </View>
@@ -759,6 +730,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 70,
   },
+  textButtonContainer: {
+    bottom: 140,
+  },
   cameraButton: {
     width: 52,
     height: 52,
@@ -784,7 +758,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 12,
     elevation: 6,
-    marginBottom: 70,
   },
   fab: {
     width: 60,
