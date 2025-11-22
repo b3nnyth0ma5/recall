@@ -13,30 +13,6 @@ import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { Note } from '@/types/Note';
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes(); Now I have all the information I need. Let me implement the changes:
-
-1. **Web version landing page** - Add FAB with camera/text buttons animation
-2. **Busy spinner** - Show spinner within icons during navigation
-3. **Fix iOS camera icon** - Debug and fix the camera icon click issue
-4. **Haptic feedback** - Add haptic feedback to all specified interactions
-
-Let me implement these changes:
-
-<write file="app/(tabs)/(home)/index.web.tsx">
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Image, Modal, Platform } from 'react-native';
-import { Stack, useRouter, useFocusEffect } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
-import { NoteCard } from '@/components/NoteCard';
-import { useNotes } from '@/hooks/useNotes';
-import { IconSymbol } from '@/components/IconSymbol';
-import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
-import { useAuth } from '@/contexts/AuthContext';
-import { CategoryCarousel } from '@/components/CategoryCarousel';
-import { supabase, getImageDataUrl } from '@/utils/supabase';
-import { Note } from '@/types/Note';
-
-export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
@@ -70,7 +46,7 @@ export default function HomeScreen() {
     previousNotesCountRef.current = notes.length;
   }, [notes.length]);
 
-  // Filter notes when category is selected - USING recollections.recall_id
+  // Filter notes when category is selected
   useEffect(() => {
     const filterNotesByCategory = async () => {
       if (!selectedCategoryId) {

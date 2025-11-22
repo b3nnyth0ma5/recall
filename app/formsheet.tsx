@@ -8,7 +8,7 @@ export default function FormSheetModal() {
 
   // Use a visible dark gray for dark mode instead of pure black
   const backgroundColor = theme.dark
-    ? 'rgb(28, 28, 30)' // Dark gray that's visible against black backgrounds
+    ? 'rgb(28, 28, 29)' // Dark gray that's visible against black backgrounds
     : theme.colors.background;
 
   return (
