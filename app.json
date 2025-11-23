@@ -41,6 +41,11 @@
       "favicon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "bundler": "metro"
     },
+    "updates": {
+      "enabled": false,
+      "checkAutomatically": "never",
+      "fallbackToCacheTimeout": 0
+    },
     "plugins": [
       "expo-font",
       "expo-router",
