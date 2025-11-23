@@ -15,6 +15,7 @@ import {
   Keyboard,
   Linking,
   Dimensions,
+  Modal,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -28,7 +29,6 @@ import { FullScreenImage } from '@/components/FullScreenImage';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
 import { processRecallUrls } from '@/utils/urlProcessor';
 import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
 
@@ -68,6 +68,7 @@ export default function NoteEditorScreen() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
+  const [showLocationPrompt, setShowLocationPrompt] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
@@ -517,7 +518,25 @@ export default function NoteEditorScreen() {
     });
   };
 
-  const handleLocationPress = async () => {
+  const handleLocationPress = () => {
+    if (!location) {
+      console.log('No location available');
+      return;
+    }
+
+    // Show the location prompt modal
+    setShowLocationPrompt(true);
+  };
+
+  const handleUpdateLocation = () => {
+    setShowLocationPrompt(false);
+    // Navigate to location search
+    router.push('/location-search');
+  };
+
+  const handleOpenMaps = async () => {
+    setShowLocationPrompt(false);
+    
     if (!location) {
       console.log('No location available');
       return;
@@ -874,7 +893,7 @@ export default function NoteEditorScreen() {
         scrollEnabled={true}
       >
         {/* Text Input Section with fixed height and scrolling */}
-        <Animated.View entering={FadeIn.duration(600)} style={styles.textInputContainer}>
+        <View style={styles.textInputContainer}>
           {textHasUrl ? (
             <View style={styles.richTextContainer}>
               <ScrollView 
@@ -920,7 +939,7 @@ export default function NoteEditorScreen() {
               />
             </ScrollView>
           )}
-        </Animated.View>
+        </View>
 
         {/* Spacer to push content down */}
         <View style={styles.spacer} />
@@ -928,7 +947,7 @@ export default function NoteEditorScreen() {
 
       {/* Images Section - Above Location */}
       {hasImages && (
-        <Animated.View entering={FadeInDown.duration(600).delay(400)} style={styles.imagesContainer}>
+        <View style={styles.imagesContainer}>
           <View style={styles.imagesHeader}>
             <Text style={styles.imagesTitle}>{images.length} {images.length === 1 ? 'Image' : 'Images'}</Text>
             <View style={styles.paginationDots}>
@@ -973,12 +992,12 @@ export default function NoteEditorScreen() {
               </Pressable>
             ))}
           </ScrollView>
-        </Animated.View>
+        </View>
       )}
 
       {/* Location Info - Above Toolbar - Now Clickable */}
       {locationName && (
-        <Animated.View entering={FadeIn.duration(600).delay(200)}>
+        <View>
           <Pressable 
             onPress={handleLocationPress}
             style={styles.locationInfo}
@@ -992,7 +1011,7 @@ export default function NoteEditorScreen() {
             </View>
             <IconSymbol name="chevron.right" size={14} color={colors.primary} />
           </Pressable>
-        </Animated.View>
+        </View>
       )}
 
       {/* Toolbar - Positioned above keyboard when visible */}
@@ -1028,7 +1047,7 @@ export default function NoteEditorScreen() {
             onPress={handleLocationSearch}
             style={styles.toolbarButton}
           >
-            <IconSymbol name="mappin.circle.fill" size={26} color={colors.primary} />
+            <IconSymbol name="magnifyingglass" size={26} color={colors.primary} />
           </Pressable>
           <Pressable
             onPress={toggleKeyboard}
@@ -1051,6 +1070,63 @@ export default function NoteEditorScreen() {
           </Pressable>
         )}
       </View>
+
+      {/* Location Prompt Modal */}
+      <Modal
+        visible={showLocationPrompt}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowLocationPrompt(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setShowLocationPrompt(false)}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <IconSymbol name="location.fill" size={24} color={colors.primary} />
+              <Text style={styles.modalTitle}>Location Options</Text>
+            </View>
+            
+            <Pressable
+              onPress={handleUpdateLocation}
+              style={styles.modalOption}
+            >
+              <View style={styles.modalOptionIcon}>
+                <IconSymbol name="pencil" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.modalOptionText}>
+                <Text style={styles.modalOptionTitle}>Update Location</Text>
+                <Text style={styles.modalOptionSubtitle}>Change the location for this recall</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
+            </Pressable>
+
+            <View style={styles.modalDivider} />
+
+            <Pressable
+              onPress={handleOpenMaps}
+              style={styles.modalOption}
+            >
+              <View style={styles.modalOptionIcon}>
+                <IconSymbol name="map.fill" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.modalOptionText}>
+                <Text style={styles.modalOptionTitle}>Open in Maps</Text>
+                <Text style={styles.modalOptionSubtitle}>View location in maps app</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
+            </Pressable>
+
+            <Pressable
+              onPress={() => setShowLocationPrompt(false)}
+              style={styles.modalCancelButton}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* Full Screen Image Component */}
       {hasImages && (
@@ -1268,5 +1344,76 @@ const styles = StyleSheet.create({
   },
   toolbarButton: {
     padding: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    boxShadow: '0px 8px 32px rgba(0, 0, 0, 0.3)',
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 24,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    gap: 12,
+  },
+  modalOptionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalOptionText: {
+    flex: 1,
+  },
+  modalOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  modalOptionSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 8,
+  },
+  modalCancelButton: {
+    marginTop: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 12,
+  },
+  modalCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 });
