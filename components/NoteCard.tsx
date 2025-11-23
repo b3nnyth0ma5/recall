@@ -1,10 +1,6 @@
 
 import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Alert } from 'react-native';
-import Animated, { 
-  FadeIn, 
-  FadeInDown, 
-} from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
@@ -179,7 +175,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   };
 
   return (
-    <Animated.View entering={FadeIn.duration(600)} style={styles.card}>
+    <View style={styles.card}>
       <Pressable onPress={onPress} style={styles.cardContent}>
         {/* Text Content - Now clickable to open editor */}
         {note.text && (
@@ -207,7 +203,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
 
         {/* Images */}
         {note.images && note.images.length > 0 && (
-          <Animated.View entering={FadeInDown.duration(600).delay(200)} style={styles.imagesContainer}>
+          <View style={styles.imagesContainer}>
             <ScrollView
               ref={imageScrollRef}
               horizontal
@@ -256,23 +252,8 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
                 </Text>
               </View>
             )}
-          </Animated.View>
+          </View>
         )}
-
-        {/* Share Icon - Right-aligned, above location and time */}
-				{/* } <View style={styles.shareContainer}>
-          <Pressable 
-            onPress={handleSharePress}
-            style={styles.shareButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <IconSymbol 
-              name="square.and.arrow.up" 
-              size={20} 
-              color={colors.primary} 
-            />
-          </Pressable>
-        </View> */}
 
         {/* Location and Time on the same line */}
         <View style={styles.locationTimeContainer}>
@@ -312,7 +293,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
           onClose={() => setShowFullScreenImage(false)}
         />
       )}
-    </Animated.View>
+    </View>
   );
 }
 
@@ -411,20 +392,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#FFFFFF',
     fontWeight: '600',
-  },
-  shareContainer: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  shareButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 107, 122, 0.15)',
-    borderWidth: 1,
-    borderColor: colors.primary,
   },
   locationTimeContainer: {
     flexDirection: 'row',

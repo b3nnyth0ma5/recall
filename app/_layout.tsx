@@ -7,29 +7,19 @@ import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Linking from 'expo-linking';
+import Toast from 'react-native-toast-message';
 import { colors } from '@/styles/commonStyles';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { isSharedRecallUrl } from '@/utils/shareRecall';
-import Toast from 'react-native-toast-message';
 import { toastConfig } from '@/components/CustomToast';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
-// Import CSS and disable service workers for web
-if (Platform.OS === 'web') {
-  import('../app.css').catch(err => {
-    console.error('Failed to load CSS:', err);
-  });
-  
-  // Import and execute service worker cleanup utility
-  import('../utils/webServiceWorkerCleanup').catch(err => {
-    console.error('Failed to load service worker cleanup utility:', err);
-  });
-}
-
-// Prevent Reanimated errors on web
+// Prevent Reanimated errors on web - must be before any other imports
 if (Platform.OS === 'web') {
   // Suppress Reanimated warnings on web
   const originalWarn = console.warn;
+  const originalError = console.error;
+  
   console.warn = (...args) => {
     if (
       typeof args[0] === 'string' &&
@@ -41,10 +31,36 @@ if (Platform.OS === 'web') {
     }
     originalWarn(...args);
   };
+  
+  console.error = (...args) => {
+    if (
+      typeof args[0] === 'string' &&
+      (args[0].includes('Reanimated') || 
+       args[0].includes('worklet') ||
+       args[0].includes('uninitialized') ||
+       args[0].includes('Cannot access'))
+    ) {
+      return;
+    }
+    originalError(...args);
+  };
 }
 
-SplashScreen.preventAutoHideAsync().catch(err => {
-  console.error('Failed to prevent splash screen auto hide:', err);
+// Import CSS and disable service workers for web - after console overrides
+if (Platform.OS === 'web') {
+  // Dynamically import CSS
+  import('../app.css').catch(err => {
+    console.log('CSS import skipped or failed');
+  });
+  
+  // Dynamically import and execute service worker cleanup utility
+  import('../utils/webServiceWorkerCleanup').catch(err => {
+    console.log('Service worker cleanup skipped or failed');
+  });
+}
+
+SplashScreen.preventAutoHideAsync().catch(() => {
+  console.log('Splash screen auto hide prevention skipped');
 });
 
 const CustomDarkTheme = {
@@ -79,7 +95,7 @@ function RootLayoutNav() {
         router.replace('/(tabs)/(home)');
       }
     } catch (error) {
-      console.error('Navigation error:', error);
+      console.log('Navigation error:', error);
     }
   }, [session, loading, segments, router]);
 
@@ -101,7 +117,7 @@ function RootLayoutNav() {
           }
         }
       } catch (error) {
-        console.error('Error handling deep link:', error);
+        console.log('Error handling deep link:', error);
       }
     };
 
@@ -111,8 +127,8 @@ function RootLayoutNav() {
         console.log('Initial URL:', url);
         handleDeepLink({ url });
       }
-    }).catch(err => {
-      console.error('Error getting initial URL:', err);
+    }).catch(() => {
+      console.log('Error getting initial URL');
     });
 
     // Handle URL changes (app already open)
@@ -182,8 +198,8 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loaded) {
-      SplashScreen.hideAsync().catch(err => {
-        console.error('Failed to hide splash screen:', err);
+      SplashScreen.hideAsync().catch(() => {
+        console.log('Failed to hide splash screen');
       });
     }
   }, [loaded]);

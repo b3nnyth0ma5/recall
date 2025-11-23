@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, ScrollView, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
-import Animated, { FadeIn } from 'react-native-reanimated';
 import { supabase } from '@/utils/supabase';
 
 interface Category {
@@ -118,16 +117,16 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
   // Show zero state if no categories with recollections
   if (categories.length === 0) {
     return (
-      <Animated.View entering={FadeIn.duration(400)} style={styles.zeroStateContainer}>
+      <View style={styles.zeroStateContainer}>
         <Text style={styles.zeroStateText}>
           Create your first recall to see categories here
         </Text>
-      </Animated.View>
+      </View>
     );
   }
 
   return (
-    <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
+    <View style={styles.container}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -178,7 +177,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
           );
         })}
       </ScrollView>
-    </Animated.View>
+    </View>
   );
 }
 

@@ -1,21 +1,16 @@
 
-import { Platform } from 'react-native';
-import Animated from 'react-native-reanimated';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
-// On web, use regular View instead of Animated.View to avoid initialization issues
-export const SafeAnimatedView = Platform.OS === 'web' ? View : Animated.View;
+// On web and all platforms, use regular View to avoid Reanimated initialization issues
+export const SafeAnimatedView = View;
 
-// Export animation presets that are safe for web
+// Export animation presets that are safe for all platforms (no animations)
 export const safeAnimations = {
-  fadeIn: Platform.OS === 'web' ? undefined : require('react-native-reanimated').FadeIn,
-  fadeInDown: Platform.OS === 'web' ? undefined : require('react-native-reanimated').FadeInDown,
+  fadeIn: undefined,
+  fadeInDown: undefined,
 };
 
-// Helper to conditionally apply entering animations
+// Helper to conditionally apply entering animations (always returns undefined)
 export const getEnteringAnimation = (animation: any) => {
-  if (Platform.OS === 'web') {
-    return undefined;
-  }
-  return animation;
+  return undefined;
 };

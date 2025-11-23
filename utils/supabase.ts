@@ -3,9 +3,11 @@ import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { File } from 'expo-file-system';
 
+// Initialize constants at module scope
 const supabaseUrl = 'https://cesmsdnblkdjkskmiqib.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4';
 
+// Create and export supabase client at module scope
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: AsyncStorage,
@@ -286,14 +288,6 @@ export async function saveSearchHistory(userId: string, searchText: string): Pro
   }
 }
 
-/**
- * Fetch all notes with images for story reels
- * This queries the database directly to get all recalls that have at least one image
- * 
- * @param userId - The user ID to fetch notes for
- * @param limit - Maximum number of notes to fetch (default: 10)
- * @returns Promise with array of notes with images
- */
 export async function fetchNotesWithImagesForReels(userId: string, limit: number = 10): Promise<any[]> {
   try {
     console.log('=== Fetching notes with images for story reels ===');
@@ -403,17 +397,6 @@ export async function fetchNotesWithImagesForReels(userId: string, limit: number
   }
 }
 
-/**
- * Trigger OCR processing for an image
- * This calls the Supabase Edge Function to process the image with OpenAI Vision API
- * 
- * NOTE: This function is kept for backward compatibility and manual retry scenarios.
- * In normal operation, OCR processing is automatically triggered by a database trigger
- * when a new image is inserted into the recall_images table.
- * 
- * @param imageId - The ID of the image in the recall_images table
- * @returns Promise with success status and optional error message
- */
 export async function triggerOCRProcessing(imageId: string): Promise<{ success: boolean; error?: string; data?: any }> {
   try {
     console.log('=== Manually triggering OCR processing ===');
@@ -450,13 +433,6 @@ export async function triggerOCRProcessing(imageId: string): Promise<{ success: 
   }
 }
 
-/**
- * Get OCR results for an image
- * Fetches the processed OCR text and explanation from the database
- * 
- * @param imageId - The ID of the image in the recall_images table
- * @returns Promise with OCR results or null if not found/error
- */
 export async function getImageOCRResults(imageId: string): Promise<{
   ocrText?: string;
   explanation?: string;
@@ -504,13 +480,6 @@ export async function getImageOCRResults(imageId: string): Promise<{
   }
 }
 
-/**
- * Batch get OCR results for multiple images
- * Useful for displaying OCR data for all images in a note
- * 
- * @param imageIds - Array of image IDs
- * @returns Promise with map of imageId to OCR results
- */
 export async function getBatchImageOCRResults(imageIds: string[]): Promise<Map<string, {
   ocrText?: string;
   explanation?: string;
@@ -557,13 +526,6 @@ export async function getBatchImageOCRResults(imageIds: string[]): Promise<Map<s
   }
 }
 
-/**
- * Retry OCR processing for a failed image
- * Useful if the initial processing failed or timed out
- * 
- * @param imageId - The ID of the image to reprocess
- * @returns Promise with success status
- */
 export async function retryOCRProcessing(imageId: string): Promise<{ success: boolean; error?: string }> {
   try {
     console.log('Retrying OCR processing for image:', imageId);
@@ -594,13 +556,6 @@ export async function retryOCRProcessing(imageId: string): Promise<{ success: bo
   }
 }
 
-/**
- * Trigger category matching for a recall
- * This calls the match-recollection-category edge function to categorize the recall
- * 
- * @param recallId - The ID of the recall to categorize
- * @returns Promise with success status and optional error message
- */
 export async function triggerCategoryMatching(recallId: string): Promise<{ success: boolean; error?: string; data?: any }> {
   try {
     console.log('=== Triggering category matching ===');
@@ -636,16 +591,6 @@ export async function triggerCategoryMatching(recallId: string): Promise<{ succe
   }
 }
 
-/**
- * Trigger embedding generation for a recall
- * This calls the embedding-recall edge function to generate and store embeddings
- * 
- * @param recallId - The ID of the recall to generate embeddings for
- * @param text - Optional text content (if not provided, will be fetched from database)
- * @param location - Optional location name (if not provided, will be fetched from database)
- * @param locationPrimaryType - Optional location type (if not provided, will be fetched from database)
- * @returns Promise with success status and optional error message
- */
 export async function triggerRecallEmbedding(
   recallId: string,
   text?: string,
@@ -697,14 +642,6 @@ export async function triggerRecallEmbedding(
   }
 }
 
-/**
- * Batch upload images to Cloudflare CDN
- * This function finds all images without a cdn_url and uploads them to Cloudflare
- * using the cloudflare-upload edge function
- * 
- * @param batchSize - Number of images to process in one batch (default: 100)
- * @returns Promise with results of the batch upload
- */
 export async function batchUploadImagesToCloudflare(batchSize: number = 100): Promise<{
   success: boolean;
   processed: number;
