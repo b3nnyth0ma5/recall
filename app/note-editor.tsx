@@ -59,6 +59,7 @@ export default function NoteEditorScreen() {
   const [images, setImages] = useState<ImageData[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [loadingNote, setLoadingNote] = useState(false);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationName, setLocationName] = useState<string>('');
@@ -76,6 +77,7 @@ export default function NoteEditorScreen() {
   const isEditing = !!params.id;
   const isSharedRecall = params.isSharedRecall === 'true';
   const openCamera = params.openCamera === 'true';
+  const openLocation = params.openLocation === 'true';
   const canSave = text.trim().length > 0 || images.length > 0;
   const hasImages = images.length > 0;
   const textHasUrl = hasUrl(text);
@@ -107,6 +109,18 @@ export default function NoteEditorScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openCamera, isEditing, isSharedRecall]);
+
+  // Auto-launch location search when openLocation flag is set
+  useEffect(() => {
+    if (openLocation && !isEditing && !isSharedRecall) {
+      console.log('Auto-launching location search for new note');
+      // Small delay to ensure component is mounted
+      setTimeout(() => {
+        router.push('/location-search');
+      }, 300);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openLocation, isEditing, isSharedRecall]);
 
   // Handle shared recall data
   useEffect(() => {
@@ -243,13 +257,15 @@ export default function NoteEditorScreen() {
 
   // Request location permission only for new notes (not editing, not shared recalls)
   useEffect(() => {
-    if (!isEditing && !isSharedRecall) {
+    if (!isEditing && !isSharedRecall && !openLocation) {
       console.log('Requesting location for new note');
       requestLocationPermission();
     } else if (isSharedRecall) {
       console.log('Skipping location request for shared recall');
+    } else if (openLocation) {
+      console.log('Skipping location request - will open location search');
     }
-  }, [isEditing, isSharedRecall]);
+  }, [isEditing, isSharedRecall, openLocation]);
 
   // Handle location updates from search (but not for shared recalls)
   useEffect(() => {
@@ -749,17 +765,24 @@ export default function NoteEditorScreen() {
       // Navigate back first
       router.back();
       
-      // Refresh the specific note that was updated or the entire list for new notes
-      // Also simulate pull-down refresh on landing page
-      if (isEditing && params.id) {
-        setTimeout(() => {
+      // Simulate pull-to-refresh on landing page after a short delay
+      setTimeout(() => {
+        if (isEditing && params.id) {
           refreshSingleNote(params.id as string);
-        }, 100);
-      } else {
-        setTimeout(() => {
+        } else {
           refreshNotes();
-        }, 100);
-      }
+        }
+      }, 300);
+
+      // COMMENTED OUT TOAST MESSAGE
+      // Toast.show({
+      //   type: 'success',
+      //   text1: isEditing ? 'Recall Updated' : 'Recall Added',
+      //   text2: 'Pull down to refresh',
+      //   position: 'top',
+      //   visibilityTime: 3000,
+      //   topOffset: 60,
+      // });
     } catch (error) {
       console.error('Error saving recall:', error);
       Alert.alert('Error', 'Failed to save recall. Check console logs for details.');
@@ -783,11 +806,31 @@ export default function NoteEditorScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              setDeleting(true);
               await deleteNote(params.id as string);
+              
+              // Navigate back first
               router.back();
+              
+              // Simulate pull-to-refresh on landing page after a short delay
+              setTimeout(() => {
+                refreshNotes();
+              }, 300);
+
+              // COMMENTED OUT TOAST MESSAGE
+              // Toast.show({
+              //   type: 'success',
+              //   text1: 'Recall Deleted',
+              //   text2: 'Pull down to refresh',
+              //   position: 'top',
+              //   visibilityTime: 3000,
+              //   topOffset: 60,
+              // });
             } catch (error) {
               console.error('Error deleting recall:', error);
               Alert.alert('Error', 'Failed to delete recall');
+            } finally {
+              setDeleting(false);
             }
           },
         },
@@ -1043,12 +1086,7 @@ export default function NoteEditorScreen() {
           >
             <IconSymbol name="photo.fill" size={26} color={colors.primary} />
           </Pressable>
-          <Pressable
-            onPress={handleLocationSearch}
-            style={styles.toolbarButton}
-          >
-            <IconSymbol name="magnifyingglass" size={26} color={colors.primary} />
-          </Pressable>
+          
           <Pressable
             onPress={toggleKeyboard}
             style={styles.toolbarButton}
@@ -1126,6 +1164,34 @@ export default function NoteEditorScreen() {
             </Pressable>
           </View>
         </Pressable>
+      </Modal>
+
+      {/* Saving Indicator Modal */}
+      <Modal
+        visible={saving}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.savingModalContainer}>
+          <View style={styles.savingModalContent}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.savingModalText}>Saving note...</Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Deleting Indicator Modal */}
+      <Modal
+        visible={deleting}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.savingModalContainer}>
+          <View style={styles.savingModalContent}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.savingModalText}>Deleting note...</Text>
+          </View>
+        </View>
       </Modal>
 
       {/* Full Screen Image Component */}
@@ -1415,5 +1481,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.textSecondary,
+  },
+  savingModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  savingModalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    gap: 16,
+    minWidth: 200,
+  },
+  savingModalText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
   },
 });

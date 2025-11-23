@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Image, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Image, Modal, Animated } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
@@ -25,7 +25,13 @@ export default function HomeScreen() {
   const [loadingFiltered, setLoadingFiltered] = useState(false);
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
   const [showActionButtons, setShowActionButtons] = useState(false);
-  const [isNavigating, setIsNavigating] = useState<'camera' | 'text' | null>(null);
+  const [isNavigating, setIsNavigating] = useState<'camera' | 'text' | 'location' | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Animation values for FAB buttons
+  const cameraButtonAnim = useRef(new Animated.Value(0)).current;
+  const textButtonAnim = useRef(new Animated.Value(0)).current;
+  const locationButtonAnim = useRef(new Animated.Value(0)).current;
 
   // Web-specific pull-to-refresh state
   const [pullStartY, setPullStartY] = useState(0);
@@ -37,6 +43,52 @@ export default function HomeScreen() {
   useEffect(() => {
     previousNotesCountRef.current = notes.length;
   }, [notes.length]);
+
+  // Animate FAB buttons when showActionButtons changes
+  useEffect(() => {
+    if (showActionButtons) {
+      // Stagger the animations with bounce effect
+      Animated.stagger(50, [
+        Animated.spring(cameraButtonAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 7,
+        }),
+        Animated.spring(textButtonAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 7,
+        }),
+        Animated.spring(locationButtonAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 7,
+        }),
+      ]).start();
+    } else {
+      // Reset animations
+      Animated.parallel([
+        Animated.timing(cameraButtonAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(textButtonAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(locationButtonAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [showActionButtons, cameraButtonAnim, textButtonAnim, locationButtonAnim]);
 
   // Filter notes when category is selected
   useEffect(() => {
@@ -348,6 +400,26 @@ export default function HomeScreen() {
     }, 200);
   };
 
+  const handleLocationPress = () => {
+    if (isNavigating) return;
+    console.log('[handleLocationPress] Location button pressed');
+    setIsNavigating('location');
+    
+    // Close action buttons
+    setShowActionButtons(false);
+    
+    // Navigate to note editor with location flag to immediately open location selection
+    setTimeout(() => {
+      try {
+        router.push('/note-editor?openLocation=true');
+      } catch (error) {
+        console.error('Error navigating to note editor with location:', error);
+      }
+      // Reset navigation state after a delay
+      setTimeout(() => setIsNavigating(null), 1000);
+    }, 200);
+  };
+
   const handleNotePress = (noteId: string) => {
     try {
       router.push(`/note-editor?id=${noteId}`);
@@ -435,6 +507,37 @@ export default function HomeScreen() {
   const pullProgress = Math.min(pullDistance / PULL_THRESHOLD, 1);
   const pullIndicatorOpacity = pullProgress;
   const pullIndicatorScale = 0.5 + (pullProgress * 0.5);
+
+  // Calculate button positions with new orientation
+  // Camera: directly to the left (-70px, 0px)
+  // Text: at 45 degree angle (-50px, -50px)
+  // Location: directly above (0px, -70px)
+  const cameraTranslateX = cameraButtonAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -70],
+  });
+  const cameraTranslateY = cameraButtonAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 0],
+  });
+
+  const textTranslateX = textButtonAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -50],
+  });
+  const textTranslateY = textButtonAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -50],
+  });
+
+  const locationTranslateX = locationButtonAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 0],
+  });
+  const locationTranslateY = locationButtonAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -70],
+  });
 
   return (
     <View style={styles.container}>
@@ -549,11 +652,23 @@ export default function HomeScreen() {
           <IconSymbol name="magnifyingglass" size={28} color="#FFFFFF" />
         </Pressable>
 
-        {/* Action Buttons Container - Simple visibility toggle without animations */}
+        {/* Action Buttons Container with new orientation */}
         <View style={styles.actionButtonsContainer}>
-          {/* Camera Button */}
+          {/* Camera Button - Directly to the left */}
           {showActionButtons && (
-            <View style={styles.actionButton}>
+            <Animated.View 
+              style={[
+                styles.actionButton,
+                {
+                  transform: [
+                    { translateX: cameraTranslateX },
+                    { translateY: cameraTranslateY },
+                    { scale: cameraButtonAnim },
+                  ],
+                  opacity: cameraButtonAnim,
+                }
+              ]}
+            >
               <Pressable
                 onPress={handleCameraPress}
                 style={styles.cameraButton}
@@ -565,12 +680,24 @@ export default function HomeScreen() {
                   <IconSymbol name="camera.fill" size={24} color="#FFFFFF" />
                 )}
               </Pressable>
-            </View>
+            </Animated.View>
           )}
 
-          {/* Text Button */}
+          {/* Text Button - At 45 degree angle */}
           {showActionButtons && (
-            <View style={[styles.actionButton, styles.textButtonContainer]}>
+            <Animated.View 
+              style={[
+                styles.actionButton,
+                {
+                  transform: [
+                    { translateX: textTranslateX },
+                    { translateY: textTranslateY },
+                    { scale: textButtonAnim },
+                  ],
+                  opacity: textButtonAnim,
+                }
+              ]}
+            >
               <Pressable
                 onPress={handleTextPress}
                 style={styles.textButton}
@@ -582,7 +709,36 @@ export default function HomeScreen() {
                   <IconSymbol name="text.alignleft" size={24} color="#FFFFFF" />
                 )}
               </Pressable>
-            </View>
+            </Animated.View>
+          )}
+
+          {/* Location Button - Directly above */}
+          {showActionButtons && (
+            <Animated.View 
+              style={[
+                styles.actionButton,
+                {
+                  transform: [
+                    { translateX: locationTranslateX },
+                    { translateY: locationTranslateY },
+                    { scale: locationButtonAnim },
+                  ],
+                  opacity: locationButtonAnim,
+                }
+              ]}
+            >
+              <Pressable
+                onPress={handleLocationPress}
+                style={styles.locationButton}
+                disabled={isNavigating !== null}
+              >
+                {isNavigating === 'location' ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <IconSymbol name="map.fill" size={24} color="#FFFFFF" />
+                )}
+              </Pressable>
+            </Animated.View>
           )}
 
           {/* Main FAB */}
@@ -609,6 +765,20 @@ export default function HomeScreen() {
           <View style={styles.deletionModalContent}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.deletionModalText}>Deleting note...</Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Saving Indicator Modal */}
+      <Modal
+        visible={isSaving}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.deletionModalContainer}>
+          <View style={styles.deletionModalContent}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.deletionModalText}>Saving note...</Text>
           </View>
         </View>
       </Modal>
@@ -723,14 +893,10 @@ const styles = StyleSheet.create({
   actionButtonsContainer: {
     position: 'relative',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
   },
   actionButton: {
     position: 'absolute',
-    bottom: 70,
-  },
-  textButtonContainer: {
-    bottom: 140,
   },
   cameraButton: {
     width: 52,
@@ -746,6 +912,19 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   textButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#FF6B7A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  locationButton: {
     width: 52,
     height: 52,
     borderRadius: 26,

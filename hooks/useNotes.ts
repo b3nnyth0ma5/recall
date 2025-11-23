@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Note } from '@/types/Note';
 import { supabase, getImageDataUrl, deleteImageRecord, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import Toast from 'react-native-toast-message';
+// import Toast from 'react-native-toast-message';
 
 export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -289,15 +289,15 @@ export function useNotes() {
 
       console.log('Recall added successfully with location_primary_type:', recallData.location_primary_type);
       
-      // Show success toast
-      Toast.show({
-        type: 'success',
-        text1: 'Recall Added',
-        text2: 'Pull down to refresh',
-        position: 'top',
-        visibilityTime: 3000,
-        topOffset: 60,
-      });
+      // COMMENTED OUT TOAST MESSAGE
+      // Toast.show({
+      //   type: 'success',
+      //   text1: 'Recall Added',
+      //   text2: 'Pull down to refresh',
+      //   position: 'top',
+      //   visibilityTime: 3000,
+      //   topOffset: 60,
+      // });
       
       await refreshNotes();
       return recallData.id;
@@ -336,15 +336,15 @@ export function useNotes() {
 
       console.log('Recall updated successfully with location_primary_type');
       
-      // Show success toast
-      Toast.show({
-        type: 'success',
-        text1: 'Recall Updated',
-        text2: 'Pull down to refresh',
-        position: 'top',
-        visibilityTime: 3000,
-        topOffset: 60,
-      });
+      // COMMENTED OUT TOAST MESSAGE
+      // Toast.show({
+      //   type: 'success',
+      //   text1: 'Recall Updated',
+      //   text2: 'Pull down to refresh',
+      //   position: 'top',
+      //   visibilityTime: 3000,
+      //   topOffset: 60,
+      // });
       
       // Refresh only the single note that was updated
       await refreshSingleNote(noteId);
@@ -388,15 +388,15 @@ export function useNotes() {
 
       console.log('Recall deleted successfully');
       
-      // Show success toast
-      Toast.show({
-        type: 'success',
-        text1: 'Recall Deleted',
-        text2: 'Pull down to refresh',
-        position: 'top',
-        visibilityTime: 3000,
-        topOffset: 60,
-      });
+      // COMMENTED OUT TOAST MESSAGE
+      // Toast.show({
+      //   type: 'success',
+      //   text1: 'Recall Deleted',
+      //   text2: 'Pull down to refresh',
+      //   position: 'top',
+      //   visibilityTime: 3000,
+      //   topOffset: 60,
+      // });
       
       await refreshNotes();
     } catch (error) {
