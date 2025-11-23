@@ -20,6 +20,48 @@ export function useNotes() {
 
   const ITEMS_PER_PAGE = 10;
 
+  // Define loadImagesForRecalls FIRST before it's used
+  const loadImagesForRecalls = useCallback(async (recalls: any[]) => {
+    return await Promise.all(
+      recalls.map(async (recall) => {
+        try {
+          const { data: imagesData } = await supabase
+            .from('recall_images')
+            .select('id')
+            .eq('recall_id', recall.id)
+            .order('created_at', { ascending: true });
+
+          const imageResults = await Promise.all(
+            (imagesData || []).map(async (img) => {
+              try {
+                const dataUrl = await getImageDataUrl(img.id);
+                if (!dataUrl) {
+                  return { url: '', id: img.id };
+                }
+                return { url: dataUrl, id: img.id };
+              } catch (error) {
+                console.error(`Exception processing image ${img.id}:`, error);
+                return { url: '', id: img.id };
+              }
+            })
+          );
+
+          const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
+          const imageIds = imageResults.map(result => result.id);
+          
+          return { 
+            ...recall, 
+            images: validImageUrls, 
+            imageIds: imageIds
+          };
+        } catch (error) {
+          console.error(`Exception processing recall ${recall.id}:`, error);
+          return { ...recall, images: [], imageIds: [] };
+        }
+      })
+    );
+  }, []);
+
   const loadNotes = useCallback(async (pageNum: number = 1, append: boolean = false) => {
     if (!user) {
       setNotes([]);
@@ -481,7 +523,7 @@ export function useNotes() {
                 used_for_answer: matchInfo.usedForAnswer || false,
               };
             })
-            .filter(recall => recall !== null);
+            .filter((recall: any) => recall !== null);
 
           const notesWithImages = await loadImagesForRecalls(orderedRecalls);
           
@@ -553,49 +595,7 @@ export function useNotes() {
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshNotes, user, loadImagesForRecalls]);
-
-  const loadImagesForRecalls = useCallback(async (recalls: any[]) => {
-    return await Promise.all(
-      recalls.map(async (recall) => {
-        try {
-          const { data: imagesData } = await supabase
-            .from('recall_images')
-            .select('id')
-            .eq('recall_id', recall.id)
-            .order('created_at', { ascending: true });
-
-          const imageResults = await Promise.all(
-            (imagesData || []).map(async (img) => {
-              try {
-                const dataUrl = await getImageDataUrl(img.id);
-                if (!dataUrl) {
-                  return { url: '', id: img.id };
-                }
-                return { url: dataUrl, id: img.id };
-              } catch (error) {
-                console.error(`Exception processing image ${img.id}:`, error);
-                return { url: '', id: img.id };
-              }
-            })
-          );
-
-          const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
-          const imageIds = imageResults.map(result => result.id);
-          
-          return { 
-            ...recall, 
-            images: validImageUrls, 
-            imageIds: imageIds
-          };
-        } catch (error) {
-          console.error(`Exception processing recall ${recall.id}:`, error);
-          return { ...recall, images: [], imageIds: [] };
-        }
-      })
-    );
-  }, []);
 
   const getSearchHistory = useCallback(async () => {
     if (!user) {
