@@ -509,34 +509,38 @@ export default function HomeScreen() {
   const pullIndicatorScale = 0.5 + (pullProgress * 0.5);
 
   // Calculate button positions with new orientation
-  // Camera: directly to the left (-70px, 0px)
-  // Text: at 45 degree angle (-50px, -50px)
-  // Location: directly above (0px, -70px)
+  // 10% smaller FABs: 52 * 0.9 = 46.8
+  // 10% increased spacing between FABs: 70 * 1.1 = 77
+  // 10% increased distance from main FAB: multiply base distances by 1.1
+  
+  // Camera: directly to the left (-77px, 0px)
   const cameraTranslateX = cameraButtonAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -70],
+    outputRange: [0, -77],
   });
   const cameraTranslateY = cameraButtonAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 0],
   });
 
+  // Text: at 45 degree angle (-54.45px, -54.45px)
   const textTranslateX = textButtonAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -50],
+    outputRange: [0, -54.45],
   });
   const textTranslateY = textButtonAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -50],
+    outputRange: [0, -54.45],
   });
 
+  // Location: directly above (0px, -77px)
   const locationTranslateX = locationButtonAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 0],
   });
   const locationTranslateY = locationButtonAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -70],
+    outputRange: [0, -77],
   });
 
   return (
@@ -677,7 +681,7 @@ export default function HomeScreen() {
                 {isNavigating === 'camera' ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <IconSymbol name="camera.fill" size={24} color="#FFFFFF" />
+                  <IconSymbol name="camera.fill" size={22} color="#FFFFFF" />
                 )}
               </Pressable>
             </Animated.View>
@@ -706,7 +710,7 @@ export default function HomeScreen() {
                 {isNavigating === 'text' ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <IconSymbol name="text.alignleft" size={24} color="#FFFFFF" />
+                  <IconSymbol name="text.alignleft" size={22} color="#FFFFFF" />
                 )}
               </Pressable>
             </Animated.View>
@@ -735,7 +739,7 @@ export default function HomeScreen() {
                 {isNavigating === 'location' ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <IconSymbol name="map.fill" size={24} color="#FFFFFF" />
+                  <IconSymbol name="map.fill" size={22} color="#FFFFFF" />
                 )}
               </Pressable>
             </Animated.View>
@@ -899,9 +903,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   cameraButton: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 46.8,
+    height: 46.8,
+    borderRadius: 23.4,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
@@ -912,9 +916,9 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   textButton: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 46.8,
+    height: 46.8,
+    borderRadius: 23.4,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
@@ -925,9 +929,9 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   locationButton: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 46.8,
+    height: 46.8,
+    borderRadius: 23.4,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',

@@ -1175,7 +1175,7 @@ export default function NoteEditorScreen() {
         <View style={styles.savingModalContainer}>
           <View style={styles.savingModalContent}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.savingModalText}>Saving note...</Text>
+            <Text style={styles.savingModalText}>Saving Recall...</Text>
           </View>
         </View>
       </Modal>
@@ -1189,7 +1189,7 @@ export default function NoteEditorScreen() {
         <View style={styles.savingModalContainer}>
           <View style={styles.savingModalContent}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.savingModalText}>Deleting note...</Text>
+            <Text style={styles.savingModalText}>Deleting Recall...</Text>
           </View>
         </View>
       </Modal>

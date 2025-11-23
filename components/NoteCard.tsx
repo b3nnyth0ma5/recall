@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Alert } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
@@ -7,6 +7,7 @@ import { IconSymbol } from './IconSymbol';
 import { FullScreenImage } from './FullScreenImage';
 import { TimeAgo } from './TimeAgo';
 import { shareRecall } from '@/utils/shareRecall';
+import { getImageDataUrl } from '@/utils/supabase';
 
 interface NoteCardProps {
   note: Note;
@@ -35,6 +36,64 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [imageLoadedStates, setImageLoadedStates] = useState<{ [key: number]: boolean }>({});
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const imageScrollRef = useRef<ScrollView>(null);
+  
+  // Lazy loading state for images
+  const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
+  const [isLazyLoading, setIsLazyLoading] = useState(false);
+
+  // Initialize with first 2 images if note has more than 1 image
+  useEffect(() => {
+    if (note.images && note.images.length > 1) {
+      // Set first 2 images immediately
+      const initialImages = note.images.slice(0, 2);
+      setLazyLoadedImages(initialImages);
+      console.log(`[NoteCard] Initialized with first ${initialImages.length} images for note ${note.id}`);
+    } else if (note.images && note.images.length === 1) {
+      // If only 1 image, load it immediately
+      setLazyLoadedImages(note.images);
+    }
+  }, [note.id, note.images]);
+
+  // Lazy load remaining images when user swipes to them
+  const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
+    
+    if (index >= 0 && index < (note.images?.length || 0)) {
+      setCurrentImageIndex(index);
+      
+      // If we're approaching an image that hasn't been loaded yet, load it
+      if (note.images && note.images.length > 2 && index >= 1 && !isLazyLoading) {
+        const nextIndex = index + 1;
+        
+        // Check if the next image needs to be loaded
+        if (nextIndex < note.images.length && nextIndex >= lazyLoadedImages.length) {
+          setIsLazyLoading(true);
+          console.log(`[NoteCard] Lazy loading image at index ${nextIndex} for note ${note.id}`);
+          
+          try {
+            // Load the next image
+            const imageIdToLoad = note.imageIds?.[nextIndex];
+            if (imageIdToLoad) {
+              const imageUrl = await getImageDataUrl(imageIdToLoad);
+              if (imageUrl) {
+                setLazyLoadedImages(prev => {
+                  const newImages = [...prev];
+                  newImages[nextIndex] = imageUrl;
+                  return newImages;
+                });
+                console.log(`[NoteCard] Successfully lazy loaded image at index ${nextIndex}`);
+              }
+            }
+          } catch (error) {
+            console.error(`[NoteCard] Error lazy loading image at index ${nextIndex}:`, error);
+          } finally {
+            setIsLazyLoading(false);
+          }
+        }
+      }
+    }
+  };
 
   const renderTextWithLinks = (text: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -119,14 +178,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     setIsExpanded(!isExpanded);
   };
 
-  const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
-    if (index >= 0 && index < (note.images?.length || 0)) {
-      setCurrentImageIndex(index);
-    }
-  };
-
   const handleLocationPress = async () => {
     if (!note.latitude || !note.longitude) {
       console.log('No location coordinates available');
@@ -174,6 +225,9 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     }
   };
 
+  // Determine which images to display (lazy loaded or all)
+  const displayImages = note.images && note.images.length > 1 ? lazyLoadedImages : (note.images || []);
+
   return (
     <View style={styles.card}>
       <Pressable onPress={onPress} style={styles.cardContent}>
@@ -202,7 +256,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
         )}
 
         {/* Images */}
-        {note.images && note.images.length > 0 && (
+        {displayImages && displayImages.length > 0 && (
           <View style={styles.imagesContainer}>
             <ScrollView
               ref={imageScrollRef}
@@ -216,39 +270,48 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
               snapToInterval={IMAGE_WIDTH + IMAGE_SPACING}
               snapToAlignment="start"
             >
-              {note.images.map((imageUrl, index) => (
+              {displayImages.map((imageUrl, index) => (
                 <Pressable 
                   key={`${note.id}-image-${index}`}
                   onPress={() => handleImagePress(index)}
                   style={styles.imageWrapper}
                 >
-                  {imageLoadingStates[index] && !imageErrorStates[index] && !imageLoadedStates[index] && (
+                  {!imageUrl ? (
                     <View style={styles.imageLoadingContainer}>
                       <ActivityIndicator size="large" color={colors.primary} />
-                    </View>
-                  )}
-                  {imageErrorStates[index] ? (
-                    <View style={styles.imageErrorContainer}>
-                      <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
-                      <Text style={styles.imageErrorText}>Failed to load image</Text>
+                      <Text style={styles.loadingText}>Loading...</Text>
                     </View>
                   ) : (
-                    <Image
-                      source={{ uri: imageUrl }}
-                      style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
-                      resizeMode="cover"
-                      onLoadStart={() => handleImageLoadStart(index)}
-                      onLoad={() => handleImageLoad(index)}
-                      onError={() => handleImageError(index)}
-                    />
+                    <>
+                      {imageLoadingStates[index] && !imageErrorStates[index] && !imageLoadedStates[index] && (
+                        <View style={styles.imageLoadingContainer}>
+                          <ActivityIndicator size="large" color={colors.primary} />
+                        </View>
+                      )}
+                      {imageErrorStates[index] ? (
+                        <View style={styles.imageErrorContainer}>
+                          <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
+                          <Text style={styles.imageErrorText}>Failed to load image</Text>
+                        </View>
+                      ) : (
+                        <Image
+                          source={{ uri: imageUrl }}
+                          style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
+                          resizeMode="cover"
+                          onLoadStart={() => handleImageLoadStart(index)}
+                          onLoad={() => handleImageLoad(index)}
+                          onError={() => handleImageError(index)}
+                        />
+                      )}
+                    </>
                   )}
                 </Pressable>
               ))}
             </ScrollView>
-            {note.images.length > 1 && (
+            {displayImages.length > 1 && (
               <View style={styles.imageCounter}>
                 <Text style={styles.imageCounterText}>
-                  {currentImageIndex + 1} / {note.images.length}
+                  {currentImageIndex + 1} / {note.images?.length || displayImages.length}
                 </Text>
               </View>
             )}
@@ -366,6 +429,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.cardDark,
     zIndex: 1,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 8,
   },
   imageErrorContainer: {
     width: IMAGE_WIDTH,
