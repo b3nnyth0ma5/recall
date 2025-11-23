@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Recall",
@@ -38,10 +39,7 @@
     },
     "web": {
       "favicon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
-      "bundler": "metro",
-      "serviceWorker": {
-        "enabled": false
-      }
+      "bundler": "metro"
     },
     "plugins": [
       "expo-font",
@@ -53,10 +51,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "bc7a42ca-60f4-4c04-9384-26857e2e6ccf"
-      }
+      "router": {}
     }
   },
   "scheme": "Recall"

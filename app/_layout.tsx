@@ -19,6 +19,21 @@ if (Platform.OS === 'web') {
   import('../app.css').catch(err => {
     console.error('Failed to load CSS:', err);
   });
+  
+  // Unregister any existing service workers
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((registration) => {
+        registration.unregister().then(() => {
+          console.log('Service worker unregistered successfully');
+        }).catch((error) => {
+          console.error('Failed to unregister service worker:', error);
+        });
+      });
+    }).catch((error) => {
+      console.error('Failed to get service worker registrations:', error);
+    });
+  }
 }
 
 // Prevent Reanimated errors on web
@@ -35,6 +50,20 @@ if (Platform.OS === 'web') {
       return;
     }
     originalWarn(...args);
+  };
+  
+  // Suppress service worker errors
+  const originalError = console.error;
+  console.error = (...args) => {
+    if (
+      typeof args[0] === 'string' &&
+      (args[0].includes('sw.js') || 
+       args[0].includes('service worker') ||
+       args[0].includes('ServiceWorker'))
+    ) {
+      return;
+    }
+    originalError(...args);
   };
 }
 

@@ -30,4 +30,10 @@ if (process.env.EXPO_PUBLIC_PLATFORM === 'web') {
   };
 }
 
+// Add public directory for static assets
+config.watchFolders = [
+  ...(config.watchFolders || []),
+  path.resolve(__dirname, 'public'),
+];
+
 module.exports = config;
