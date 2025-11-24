@@ -321,6 +321,19 @@ export default function SearchScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Map FAB - Bottom Right */}
+      <Pressable
+        onPress={() => {
+          if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          }
+          router.push(`/map-view?hasSearch=${hasSearched ? 'true' : 'false'}`);
+        }}
+        style={styles.mapFab}
+      >
+        <IconSymbol name="map.fill" size={24} color="#FFFFFF" />
+      </Pressable>
     </View>
   );
 }
@@ -562,5 +575,18 @@ const styles = StyleSheet.create({
   },
   noteCardContainer: {
     position: 'relative',
+  },
+  mapFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 16px rgba(255, 107, 122, 0.4)',
+    elevation: 8,
   },
 });

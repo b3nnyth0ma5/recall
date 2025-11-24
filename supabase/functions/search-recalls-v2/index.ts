@@ -286,17 +286,17 @@ Deno.serve(async (req)=>{
     console.log('  Median:', similarities[Math.floor(similarities.length / 2)]);
     console.log('  Top 10:', similarities.slice(0, 10));
     // Filter by >= 20% similarity (0.2 cosine similarity)
-    const SIMILARITY_THRESHOLD = 0.1;
+    const SIMILARITY_THRESHOLD = 0.20;
     const filteredMatches = allMatches.filter((match)=>match.similarity >= SIMILARITY_THRESHOLD);
     // Sort by similarity (highest first)
     filteredMatches.sort((a, b)=>b.similarity - a.similarity);
-    console.log(`Found ${filteredMatches.length} matches with >= 10% similarity`);
+    console.log(`Found ${filteredMatches.length} matches with >= 20% similarity`);
     if (filteredMatches.length > 0) {
       console.log('Top match similarity:', filteredMatches[0]?.similarity);
       console.log('Top 5 similarities:', filteredMatches.slice(0, 5).map((m)=>m.similarity));
     }
     if (filteredMatches.length === 0) {
-      console.log('No matches found with >= 10% similarity');
+      console.log('No matches found with >= 20% similarity');
       return new Response(JSON.stringify({
         answer: null,
         confidence: 0,
@@ -350,7 +350,13 @@ Deno.serve(async (req)=>{
       }
     });
     const context = contextWithSources.map((c)=>c.text).join('\n\n');
-    const qaSystemPrompt = `You are a helpful assistant that understands the context of the user's question and answers based on the provided recalls. Provide concise (< 80 words), accurate answers based only on the information given. If you cannot answer the question with confidence based on the provided information, say so. Also provide a confidence score (0-100) indicating how confident you are in your answer. IMPORTANT: The source with the highest match percentage should be given priority when answering.`;
+    const qaSystemPrompt = `You are an accurate search assistant that understands the intent of the user's question and provides answers based on the provided information. Provide exact answer in under 120 words, based only on the information provided to you. 
+    Use bullet points when listing things.
+    You're also a NER expert that identifies calendar/date/time entities and names of people; and uses this to provide more relevant answers.
+    If you cannot answer the question with confidence based on the provided information, say so. 
+    Also provide a confidence score (0-100) indicating how confident you are in your answer. /n
+    VERY IMPORTANT: The source with the highest match percentage should always be given the most priority when answering.
+    IMPORTANT: If the user's question includes the name of a location (or is proximity based) then prioritise the information that's most relevant to the Location and Location Type provided.`;
     const qaUserPrompt = `Question: ${query}\n\nRecalls from matches:\n${context}\n\nProvide your answer in JSON format: {"answer": "your answer here", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}`;
     const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
