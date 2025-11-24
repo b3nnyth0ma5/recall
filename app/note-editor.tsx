@@ -15,13 +15,21 @@ import {
   Keyboard,
   Linking,
   Dimensions,
-  Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withSpring, 
+  withTiming,
+  runOnJS,
+} from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
@@ -40,7 +48,7 @@ interface ImageData {
   contentType: string;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const IMAGE_CAROUSEL_WIDTH = SCREEN_WIDTH - 32;
 const IMAGE_CAROUSEL_SPACING = 12;
 
@@ -70,11 +78,19 @@ export default function NoteEditorScreen() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
-  const [showLocationPrompt, setShowLocationPrompt] = useState(false);
+  const [showLocationDrawer, setShowLocationDrawer] = useState(false);
   const [cameraLaunched, setCameraLaunched] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
+
+  // Lazy loading state for images
+  const [lazyLoadedImages, setLazyLoadedImages] = useState<ImageData[]>([]);
+  const [isLazyLoading, setIsLazyLoading] = useState(false);
+
+  // Animated values for drawer
+  const drawerTranslateY = useSharedValue(SCREEN_HEIGHT);
+  const drawerOpacity = useSharedValue(0);
 
   const isEditing = !!params.id;
   const isSharedRecall = params.isSharedRecall === 'true';
@@ -84,6 +100,105 @@ export default function NoteEditorScreen() {
   const canSave = text.trim().length > 0 || images.length > 0;
   const hasImages = images.length > 0;
   const textHasUrl = hasUrl(text);
+
+  // Initialize lazy loading with first 2 images
+  useEffect(() => {
+    if (images.length > 1) {
+      // Set first 2 images immediately
+      const initialImages = images.slice(0, 2);
+      setLazyLoadedImages(initialImages);
+      console.log(`[NoteEditor] Initialized with first ${initialImages.length} images`);
+    } else if (images.length === 1) {
+      // If only 1 image, load it immediately
+      setLazyLoadedImages(images);
+    } else {
+      setLazyLoadedImages([]);
+    }
+  }, [images.length]);
+
+  // Lazy load remaining images when user swipes to them
+  const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / (IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING));
+    
+    if (index >= 0 && index < images.length) {
+      setCurrentImageIndex(index);
+      
+      // If we're approaching an image that hasn't been loaded yet, load it
+      if (images.length > 2 && index >= 1 && !isLazyLoading) {
+        const nextIndex = index + 1;
+        
+        // Check if the next image needs to be loaded
+        if (nextIndex < images.length && nextIndex >= lazyLoadedImages.length) {
+          setIsLazyLoading(true);
+          console.log(`[NoteEditor] Lazy loading image at index ${nextIndex}`);
+          
+          try {
+            // Load the next image
+            const imageToLoad = images[nextIndex];
+            if (imageToLoad.id) {
+              const imageUrl = await getImageDataUrl(imageToLoad.id);
+              if (imageUrl) {
+                setLazyLoadedImages(prev => {
+                  const newImages = [...prev];
+                  newImages[nextIndex] = { ...imageToLoad, uri: imageUrl };
+                  return newImages;
+                });
+                console.log(`[NoteEditor] Successfully lazy loaded image at index ${nextIndex}`);
+              }
+            } else {
+              // For new images without ID, they're already loaded
+              setLazyLoadedImages(prev => {
+                const newImages = [...prev];
+                newImages[nextIndex] = imageToLoad;
+                return newImages;
+              });
+            }
+          } catch (error) {
+            console.error(`[NoteEditor] Error lazy loading image at index ${nextIndex}:`, error);
+          } finally {
+            setIsLazyLoading(false);
+          }
+        }
+      }
+    }
+  };
+
+  // Animated styles for drawer
+  const drawerAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: drawerTranslateY.value }],
+    };
+  });
+
+  const overlayAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: drawerOpacity.value,
+    };
+  });
+
+  // Open drawer with bounce effect
+  const openDrawer = () => {
+    setShowLocationDrawer(true);
+    drawerOpacity.value = withTiming(1, { duration: 300 });
+    drawerTranslateY.value = withSpring(0, {
+      damping: 15,
+      stiffness: 150,
+      mass: 0.8,
+    });
+  };
+
+  // Close drawer with bounce effect
+  const closeDrawer = () => {
+    drawerOpacity.value = withTiming(0, { duration: 200 });
+    drawerTranslateY.value = withSpring(SCREEN_HEIGHT, {
+      damping: 20,
+      stiffness: 200,
+      mass: 0.5,
+    }, () => {
+      runOnJS(setShowLocationDrawer)(false);
+    });
+  };
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
@@ -387,7 +502,10 @@ export default function NoteEditorScreen() {
           
           const loadedImages: ImageData[] = [];
           
-          for (const img of imagesData) {
+          // Load first 2 images immediately
+          const imagesToLoadImmediately = imagesData.slice(0, 2);
+          
+          for (const img of imagesToLoadImmediately) {
             try {
               const dataUrl = await getImageDataUrl(img.id);
               if (dataUrl) {
@@ -405,8 +523,17 @@ export default function NoteEditorScreen() {
             }
           }
           
+          // Add placeholders for remaining images
+          for (let i = 2; i < imagesData.length; i++) {
+            loadedImages.push({
+              id: imagesData[i].id,
+              uri: '', // Will be lazy loaded
+              contentType: 'image/jpeg',
+            });
+          }
+          
           setImages(loadedImages);
-          console.log(`Loaded ${loadedImages.length}/${imagesData.length} images`);
+          console.log(`Loaded ${imagesToLoadImmediately.length}/${imagesData.length} images immediately, ${imagesData.length - imagesToLoadImmediately.length} will be lazy loaded`);
         }
       } catch (error) {
         console.error('Error loading note:', error);
@@ -644,16 +771,18 @@ export default function NoteEditorScreen() {
       return;
     }
 
-    setShowLocationPrompt(true);
+    openDrawer();
   };
 
   const handleUpdateLocation = () => {
-    setShowLocationPrompt(false);
-    router.push('/location-search');
+    closeDrawer();
+    setTimeout(() => {
+      router.push('/location-search');
+    }, 300);
   };
 
   const handleOpenMaps = async () => {
-    setShowLocationPrompt(false);
+    closeDrawer();
     
     if (!location) {
       console.log('No location available');
@@ -896,14 +1025,6 @@ export default function NoteEditorScreen() {
     router.push('/location-search');
   };
 
-  const handleImageScroll = (event: any) => {
-    const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / (IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING));
-    if (index !== currentImageIndex && index >= 0 && index < images.length) {
-      setCurrentImageIndex(index);
-    }
-  };
-
   const handleImagePress = (index: number) => {
     setFullScreenImageIndex(index);
     setShowFullScreenImage(true);
@@ -913,6 +1034,9 @@ export default function NoteEditorScreen() {
     console.log('Rich text pressed, focusing input');
     textInputRef.current?.focus();
   };
+
+  // Determine which images to display (lazy loaded or all)
+  const displayImages = images.length > 1 ? lazyLoadedImages : images;
 
   if (loadingNote) {
     return (
@@ -1002,7 +1126,7 @@ export default function NoteEditorScreen() {
               <TextInput
                 ref={textInputRef}
                 style={[styles.textInput, styles.overlayInput]}
-                placeholder="What's on your mind?"
+                placeholder="What do you want to Recall?"
                 placeholderTextColor={colors.textTertiary}
                 value={text}
                 onChangeText={setText}
@@ -1021,7 +1145,7 @@ export default function NoteEditorScreen() {
               <TextInput
                 ref={textInputRef}
                 style={styles.textInputMultiline}
-                placeholder="What's on your mind?"
+                placeholder="What do you want to Recall?"
                 placeholderTextColor={colors.textTertiary}
                 value={text}
                 onChangeText={setText}
@@ -1064,14 +1188,21 @@ export default function NoteEditorScreen() {
             snapToInterval={IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING}
             snapToAlignment="start"
           >
-            {images.map((image, index) => (
+            {displayImages.map((image, index) => (
               <Pressable 
                 key={`${image.id || 'new'}-${index}`} 
                 style={styles.imageWrapper}
                 onPress={() => handleImagePress(index)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
+                {!image.uri ? (
+                  <View style={styles.imageLoadingContainer}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={styles.loadingImageText}>Loading...</Text>
+                  </View>
+                ) : (
+                  <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
+                )}
                 <Pressable
                   onPress={() => removeImage(index)}
                   style={styles.removeImageButton}
@@ -1161,90 +1292,86 @@ export default function NoteEditorScreen() {
         )}
       </View>
 
-      <Modal
-        visible={showLocationPrompt}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowLocationPrompt(false)}
-      >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setShowLocationPrompt(false)}
-        >
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
+      {/* Location Drawer */}
+      {showLocationDrawer && (
+        <View style={styles.drawerContainer}>
+          <Animated.View style={[styles.drawerOverlay, overlayAnimatedStyle]}>
+            <Pressable 
+              style={StyleSheet.absoluteFill}
+              onPress={closeDrawer}
+            />
+          </Animated.View>
+          
+          <Animated.View style={[styles.drawerContent, drawerAnimatedStyle]}>
+            <View style={styles.drawerHandle} />
+            
+            <View style={styles.drawerHeader}>
               <IconSymbol name="location.fill" size={24} color={colors.primary} />
-              <Text style={styles.modalTitle}>Location Options</Text>
+              <Text style={styles.drawerTitle}>Location Options</Text>
             </View>
             
             <Pressable
               onPress={handleUpdateLocation}
-              style={styles.modalOption}
+              style={styles.drawerOption}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <View style={styles.modalOptionIcon}>
+              <View style={styles.drawerOptionIcon}>
                 <IconSymbol name="pencil" size={20} color={colors.primary} />
               </View>
-              <View style={styles.modalOptionText}>
-                <Text style={styles.modalOptionTitle}>Update Location</Text>
-                <Text style={styles.modalOptionSubtitle}>Change the location for this recall</Text>
+              <View style={styles.drawerOptionText}>
+                <Text style={styles.drawerOptionTitle}>Update Location</Text>
+                <Text style={styles.drawerOptionSubtitle}>Change the location for this recall</Text>
               </View>
               <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
             </Pressable>
 
-            <View style={styles.modalDivider} />
+            <View style={styles.drawerDivider} />
 
             <Pressable
               onPress={handleOpenMaps}
-              style={styles.modalOption}
+              style={styles.drawerOption}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <View style={styles.modalOptionIcon}>
+              <View style={styles.drawerOptionIcon}>
                 <IconSymbol name="map.fill" size={20} color={colors.primary} />
               </View>
-              <View style={styles.modalOptionText}>
-                <Text style={styles.modalOptionTitle}>Open in Maps</Text>
-                <Text style={styles.modalOptionSubtitle}>View location in maps app</Text>
+              <View style={styles.drawerOptionText}>
+                <Text style={styles.drawerOptionTitle}>Open in Maps</Text>
+                <Text style={styles.drawerOptionSubtitle}>View location in maps app</Text>
               </View>
               <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
             </Pressable>
 
             <Pressable
-              onPress={() => setShowLocationPrompt(false)}
-              style={styles.modalCancelButton}
+              onPress={closeDrawer}
+              style={styles.drawerCancelButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={styles.modalCancelText}>Cancel</Text>
+              <Text style={styles.drawerCancelText}>Cancel</Text>
             </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
+          </Animated.View>
+        </View>
+      )}
 
-      <Modal
-        visible={saving}
-        transparent={true}
-        animationType="fade"
-      >
+      {/* Saving Modal */}
+      {saving && (
         <View style={styles.savingModalContainer}>
           <View style={styles.savingModalContent}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.savingModalText}>Saving Recall...</Text>
           </View>
         </View>
-      </Modal>
+      )}
 
-      <Modal
-        visible={deleting}
-        transparent={true}
-        animationType="fade"
-      >
+      {/* Deleting Modal */}
+      {deleting && (
         <View style={styles.savingModalContainer}>
           <View style={styles.savingModalContent}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.savingModalText}>Deleting Recall...</Text>
           </View>
         </View>
-      </Modal>
+      )}
 
       {hasImages && (
         <FullScreenImage
@@ -1432,6 +1559,19 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: colors.cardDark,
   },
+  imageLoadingContainer: {
+    width: IMAGE_CAROUSEL_WIDTH,
+    height: IMAGE_CAROUSEL_WIDTH * 0.75,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.cardDark,
+    borderRadius: 16,
+  },
+  loadingImageText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 8,
+  },
   removeImageButton: {
     position: 'absolute',
     top: 12,
@@ -1464,40 +1604,58 @@ const styles = StyleSheet.create({
   toolbarButton: {
     padding: 8 * 1.15,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
+  drawerContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
   },
-  modalContent: {
+  drawerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  drawerContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     backgroundColor: colors.card,
-    borderRadius: 20,
-    padding: 24,
-    width: '100%',
-    maxWidth: 400,
-    boxShadow: '0px 8px 32px rgba(0, 0, 0, 0.3)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 12,
+    paddingHorizontal: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    boxShadow: '0px -4px 20px rgba(0, 0, 0, 0.3)',
     elevation: 10,
   },
-  modalHeader: {
+  drawerHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  drawerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     marginBottom: 24,
   },
-  modalTitle: {
+  drawerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
   },
-  modalOption: {
+  drawerOption: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 16 * 1.15,
     gap: 12,
   },
-  modalOptionIcon: {
+  drawerOptionIcon: {
     width: 40 * 1.15,
     height: 40 * 1.15,
     borderRadius: 20 * 1.15,
@@ -1505,41 +1663,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalOptionText: {
+  drawerOptionText: {
     flex: 1,
   },
-  modalOptionTitle: {
+  drawerOptionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 4,
   },
-  modalOptionSubtitle: {
+  drawerOptionSubtitle: {
     fontSize: 13,
     color: colors.textSecondary,
   },
-  modalDivider: {
+  drawerDivider: {
     height: 1,
     backgroundColor: colors.border,
     marginVertical: 8,
   },
-  modalCancelButton: {
+  drawerCancelButton: {
     marginTop: 16,
     paddingVertical: 14 * 1.15,
     alignItems: 'center',
     backgroundColor: colors.background,
     borderRadius: 12,
   },
-  modalCancelText: {
+  drawerCancelText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.textSecondary,
   },
   savingModalContainer: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 2000,
   },
   savingModalContent: {
     backgroundColor: colors.card,

@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Alert, Platform } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
@@ -8,6 +8,7 @@ import { FullScreenImage } from './FullScreenImage';
 import { TimeAgo } from './TimeAgo';
 import { shareRecall } from '@/utils/shareRecall';
 import { getImageDataUrl } from '@/utils/supabase';
+import * as Haptics from 'expo-haptics';
 
 interface NoteCardProps {
   note: Note;
@@ -182,6 +183,16 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     if (!note.latitude || !note.longitude) {
       console.log('No location coordinates available');
       return;
+    }
+
+    // Trigger heavy haptic feedback
+    if (Platform.OS !== 'web') {
+      try {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        console.log('Heavy haptic feedback triggered');
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
     }
 
     const { latitude, longitude } = note;

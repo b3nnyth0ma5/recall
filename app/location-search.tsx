@@ -254,7 +254,7 @@ export default function LocationSearchScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: 'Select a location for your Recall',
+          headerTitle: 'Location of your Recall',
           headerStyle: {
             backgroundColor: colors.background,
           },
