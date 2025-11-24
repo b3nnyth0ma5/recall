@@ -17,7 +17,6 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import * as Haptics from 'expo-haptics';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 
 export default function MapViewScreen() {
   const router = useRouter();
@@ -42,7 +41,7 @@ export default function MapViewScreen() {
     setLoading(false);
   }, [notes]);
 
-  // Initialize Google Map for web
+  // Initialize Google Map
   useEffect(() => {
     if (Platform.OS !== 'web') {
       setLoading(false);
@@ -65,7 +64,7 @@ export default function MapViewScreen() {
     };
   }, []);
 
-  // Initialize map after script loads (web only)
+  // Initialize map after script loads
   const initializeMap = useCallback(() => {
     if (Platform.OS !== 'web' || !window.google) return;
 
@@ -194,7 +193,7 @@ export default function MapViewScreen() {
     setLoading(false);
   }, [mapNotes]);
 
-  // Add markers to map (web only)
+  // Add markers to map
   const addMarkers = useCallback((map: any) => {
     if (Platform.OS !== 'web' || !window.google) return;
 
@@ -293,7 +292,7 @@ export default function MapViewScreen() {
     });
   }, [mapNotes]);
 
-  // Re-add markers when mapNotes changes (web only)
+  // Re-add markers when mapNotes changes
   useEffect(() => {
     if (mapRef.current && Platform.OS === 'web') {
       addMarkers(mapRef.current);
@@ -320,74 +319,6 @@ export default function MapViewScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     router.back();
-  };
-
-  // Calculate initial region for native map
-  const getInitialRegion = () => {
-    if (mapNotes.length === 0) {
-      return {
-        latitude: -37.8136,
-        longitude: 144.9631,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-      };
-    }
-
-    // Calculate bounds
-    let minLat = mapNotes[0].latitude!;
-    let maxLat = mapNotes[0].latitude!;
-    let minLng = mapNotes[0].longitude!;
-    let maxLng = mapNotes[0].longitude!;
-
-    mapNotes.forEach(note => {
-      if (note.latitude && note.longitude) {
-        minLat = Math.min(minLat, note.latitude);
-        maxLat = Math.max(maxLat, note.latitude);
-        minLng = Math.min(minLng, note.longitude);
-        maxLng = Math.max(maxLng, note.longitude);
-      }
-    });
-
-    const centerLat = (minLat + maxLat) / 2;
-    const centerLng = (minLng + maxLng) / 2;
-    const latDelta = (maxLat - minLat) * 1.5 || 0.0922;
-    const lngDelta = (maxLng - minLng) * 1.5 || 0.0421;
-
-    return {
-      latitude: centerLat,
-      longitude: centerLng,
-      latitudeDelta: latDelta,
-      longitudeDelta: lngDelta,
-    };
-  };
-
-  // Custom marker component for native
-  const CustomMarker = ({ note }: { note: Note }) => {
-    return (
-      <Marker
-        coordinate={{
-          latitude: note.latitude!,
-          longitude: note.longitude!,
-        }}
-        onPress={() => handleMarkerClick(note)}
-      >
-        <View style={styles.markerContainer}>
-          {note.images && note.images.length > 0 ? (
-            <Image
-              source={{ uri: note.images[0] }}
-              style={styles.markerImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.markerTextContainer}>
-              <Text style={styles.markerText}>
-                {note.text ? note.text.substring(0, 2) : '📝'}
-              </Text>
-            </View>
-          )}
-        </View>
-      </Marker>
-    );
   };
 
   return (
@@ -532,194 +463,18 @@ export default function MapViewScreen() {
           </Modal>
         </React.Fragment>
       ) : (
-        <React.Fragment>
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>Loading map...</Text>
-            </View>
-          ) : mapNotes.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <IconSymbol name="map" size={80} color={colors.textTertiary} />
-              <Text style={styles.emptyTitle}>No Locations Found</Text>
-              <Text style={styles.emptyText}>
-                {hasSearchResults
-                  ? 'No search results have location data'
-                  : 'Add location data to your recalls to see them on the map'}
-              </Text>
-            </View>
-          ) : (
-            <React.Fragment>
-              <MapView
-                ref={mapRef}
-                style={styles.map}
-                provider={PROVIDER_GOOGLE}
-                initialRegion={getInitialRegion()}
-                customMapStyle={[
-                  {
-                    elementType: 'geometry',
-                    stylers: [{ color: '#242424' }],
-                  },
-                  {
-                    elementType: 'labels.text.stroke',
-                    stylers: [{ color: '#1A1A1A' }],
-                  },
-                  {
-                    elementType: 'labels.text.fill',
-                    stylers: [{ color: '#B0B0B0' }],
-                  },
-                  {
-                    featureType: 'administrative.locality',
-                    elementType: 'labels.text.fill',
-                    stylers: [{ color: '#FFFFFF' }],
-                  },
-                  {
-                    featureType: 'poi',
-                    elementType: 'labels.text.fill',
-                    stylers: [{ color: '#B0B0B0' }],
-                  },
-                  {
-                    featureType: 'poi.park',
-                    elementType: 'geometry',
-                    stylers: [{ color: '#2A3A2A' }],
-                  },
-                  {
-                    featureType: 'poi.park',
-                    elementType: 'labels.text.fill',
-                    stylers: [{ color: '#6B9A6B' }],
-                  },
-                  {
-                    featureType: 'road',
-                    elementType: 'geometry',
-                    stylers: [{ color: '#3A3A3A' }],
-                  },
-                  {
-                    featureType: 'road',
-                    elementType: 'geometry.stroke',
-                    stylers: [{ color: '#2A2A2A' }],
-                  },
-                  {
-                    featureType: 'road.highway',
-                    elementType: 'geometry',
-                    stylers: [{ color: '#4A4A4A' }],
-                  },
-                  {
-                    featureType: 'road.highway',
-                    elementType: 'geometry.stroke',
-                    stylers: [{ color: '#3A3A3A' }],
-                  },
-                  {
-                    featureType: 'water',
-                    elementType: 'geometry',
-                    stylers: [{ color: '#1A2A3A' }],
-                  },
-                  {
-                    featureType: 'water',
-                    elementType: 'labels.text.fill',
-                    stylers: [{ color: '#4A6A8A' }],
-                  },
-                ]}
-              >
-                {mapNotes.map((note, index) => (
-                  <CustomMarker key={index} note={note} />
-                ))}
-              </MapView>
-
-              {/* Info Badge */}
-              <View style={styles.infoBadge}>
-                <IconSymbol name="map.fill" size={16} color={colors.primary} />
-                <Text style={styles.infoBadgeText}>
-                  {mapNotes.length} {mapNotes.length === 1 ? 'recall' : 'recalls'} on map
-                </Text>
-              </View>
-
-              {/* Back to Search List FAB */}
-              <Pressable onPress={handleBackToSearch} style={styles.fab}>
-                <IconSymbol name="list.bullet" size={24} color="#FFFFFF" />
-              </Pressable>
-            </React.Fragment>
-          )}
-
-          {/* Note Preview Modal */}
-          <Modal
-            visible={showPreview}
-            transparent={true}
-            animationType="slide"
-            onRequestClose={() => setShowPreview(false)}
-          >
-            <Pressable
-              style={styles.modalOverlay}
-              onPress={() => setShowPreview(false)}
-            >
-              <Pressable
-                style={styles.previewContainer}
-                onPress={(e) => e.stopPropagation()}
-              >
-                {selectedNote && (
-                  <React.Fragment>
-                    <View style={styles.previewHeader}>
-                      <Text style={styles.previewTitle}>Recall Preview</Text>
-                      <Pressable
-                        onPress={() => setShowPreview(false)}
-                        style={styles.closeButton}
-                      >
-                        <IconSymbol name="xmark" size={20} color={colors.text} />
-                      </Pressable>
-                    </View>
-
-                    <ScrollView style={styles.previewContent}>
-                      {selectedNote.images && selectedNote.images.length > 0 && (
-                        <View style={styles.previewImagesContainer}>
-                          <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            style={styles.previewImagesScroll}
-                          >
-                            {selectedNote.images.map((image, index) => (
-                              <Image
-                                key={index}
-                                source={{ uri: image }}
-                                style={styles.previewImage}
-                                resizeMode="cover"
-                              />
-                            ))}
-                          </ScrollView>
-                        </View>
-                      )}
-
-                      {selectedNote.text && (
-                        <Text style={styles.previewText}>{selectedNote.text}</Text>
-                      )}
-
-                      {selectedNote.location && (
-                        <View style={styles.previewLocationContainer}>
-                          <IconSymbol name="map.fill" size={16} color={colors.textSecondary} />
-                          <Text style={styles.previewLocation}>{selectedNote.location}</Text>
-                        </View>
-                      )}
-
-                      <Text style={styles.previewDate}>
-                        {new Date(selectedNote.created_at).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                        })}
-                      </Text>
-                    </ScrollView>
-
-                    <Pressable
-                      onPress={handlePreviewPress}
-                      style={styles.openButton}
-                    >
-                      <Text style={styles.openButtonText}>Open Recall</Text>
-                      <IconSymbol name="arrow.right" size={20} color="#FFFFFF" />
-                    </Pressable>
-                  </React.Fragment>
-                )}
-              </Pressable>
-            </Pressable>
-          </Modal>
-        </React.Fragment>
+        <View style={styles.notSupportedContainer}>
+          <IconSymbol name="map" size={80} color={colors.textTertiary} />
+          <Text style={styles.notSupportedTitle}>Map View Not Available</Text>
+          <Text style={styles.notSupportedText}>
+            Map view with react-native-maps is not currently supported in Natively.
+            {'\n\n'}
+            Please use the web version to view your recalls on a map.
+          </Text>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Text style={styles.backButtonText}>Back to Search</Text>
+          </Pressable>
+        </View>
       )}
     </View>
   );
@@ -733,41 +488,6 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     marginHorizontal: 8,
-  },
-  map: {
-    flex: 1,
-  },
-  markerContainer: {
-    width: 48,
-    height: 48,
-    backgroundColor: colors.primary,
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-    borderRadius: 24,
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  markerImage: {
-    width: '100%',
-    height: '100%',
-  },
-  markerTextContainer: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  markerText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: 'bold',
-    textAlign: 'center',
   },
   loadingContainer: {
     flex: 1,
@@ -808,10 +528,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.3)',
     elevation: 4,
   },
   infoBadgeText: {
@@ -829,10 +546,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
+    boxShadow: '0px 4px 16px rgba(255, 107, 122, 0.4)',
     elevation: 8,
   },
   modalOverlay: {
@@ -909,6 +623,38 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   openButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  notSupportedContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  notSupportedTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  notSupportedText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  backButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+  },
+  backButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',

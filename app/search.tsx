@@ -40,9 +40,6 @@ export default function SearchScreen() {
   useEffect(() => {
     loadSearchHistory();
 
-    // Dismiss keyboard on mount
-    Keyboard.dismiss();
-
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
       setKeyboardVisible(true);
     });
@@ -158,7 +155,7 @@ export default function SearchScreen() {
             onChangeText={setSearchQuery}
             onSubmitEditing={handleSearch}
             returnKeyType="search"
-            autoFocus={false}
+            autoFocus
           />
           {searchQuery.length > 0 && (
             <Pressable onPress={handleClear} style={styles.clearButton}>
@@ -471,10 +468,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     borderWidth: 2,
     borderColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.15)',
     elevation: 3,
   },
   answerHeader: {
@@ -592,10 +586,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
+    boxShadow: '0px 4px 16px rgba(255, 107, 122, 0.4)',
     elevation: 8,
   },
 });
