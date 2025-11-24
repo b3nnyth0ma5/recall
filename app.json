@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Recall",
@@ -21,7 +22,30 @@
         "LSApplicationQueriesSchemes": [
           "comgooglemaps",
           "maps"
-        ]
+        ],
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Images",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "public.image",
+              "public.jpeg",
+              "public.png",
+              "public.heic"
+            ]
+          },
+          {
+            "CFBundleTypeName": "Text",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "public.plain-text",
+              "public.text"
+            ]
+          }
+        ],
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to save and share images.",
+        "NSCameraUsageDescription": "This app needs access to your camera to take photos for your recalls.",
+        "UISupportsDocumentBrowser": true
       },
       "buildNumber": "1.0.0"
     },
@@ -34,7 +58,42 @@
       "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "edgeToEdgeEnabled": false,
       "package": "com.anonymous.Natively",
-      "versionCode": 1
+      "versionCode": 1,
+      "intentFilters": [
+        {
+          "action": "android.intent.action.SEND",
+          "category": [
+            "android.intent.category.DEFAULT"
+          ],
+          "data": [
+            {
+              "mimeType": "text/plain"
+            }
+          ]
+        },
+        {
+          "action": "android.intent.action.SEND",
+          "category": [
+            "android.intent.category.DEFAULT"
+          ],
+          "data": [
+            {
+              "mimeType": "image/*"
+            }
+          ]
+        },
+        {
+          "action": "android.intent.action.SEND_MULTIPLE",
+          "category": [
+            "android.intent.category.DEFAULT"
+          ],
+          "data": [
+            {
+              "mimeType": "image/*"
+            }
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
@@ -48,7 +107,15 @@
     "plugins": [
       "expo-font",
       "expo-router",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "scheme": "natively",
     "experiments": {

@@ -465,12 +465,7 @@ export default function MapViewScreen() {
       ) : (
         <View style={styles.notSupportedContainer}>
           <IconSymbol name="map" size={80} color={colors.textTertiary} />
-          <Text style={styles.notSupportedTitle}>Map View Not Available</Text>
-          <Text style={styles.notSupportedText}>
-            Map view with react-native-maps is not currently supported in Natively.
-            {'\n\n'}
-            Please use the web version to view your recalls on a map.
-          </Text>
+          <Text style={styles.notSupportedTitle}>Map View not available yet</Text>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
             <Text style={styles.backButtonText}>Back to Search</Text>
           </Pressable>

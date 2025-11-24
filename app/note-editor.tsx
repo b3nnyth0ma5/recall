@@ -21,6 +21,7 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
+import * as FileSystem from 'expo-file-system';
 import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
@@ -76,6 +77,7 @@ export default function NoteEditorScreen() {
 
   const isEditing = !!params.id;
   const isSharedRecall = params.isSharedRecall === 'true';
+  const fromShare = params.fromShare === 'true';
   const openCamera = params.openCamera === 'true';
   const openLocation = params.openLocation === 'true';
   const canSave = text.trim().length > 0 || images.length > 0;
@@ -98,29 +100,130 @@ export default function NoteEditorScreen() {
     };
   }, []);
 
+  // Handle shared content from other apps
+  useEffect(() => {
+    const loadSharedContent = async () => {
+      if (!fromShare) {
+        return;
+      }
+
+      console.log('Loading shared content from params');
+      
+      // Set shared text
+      if (params.sharedText) {
+        const sharedTextValue = typeof params.sharedText === 'string' ? params.sharedText : '';
+        console.log('Setting shared text:', sharedTextValue);
+        setText(sharedTextValue);
+      }
+
+      // Load shared images
+      if (params.sharedImages) {
+        try {
+          const imageUris = JSON.parse(params.sharedImages as string) as string[];
+          console.log('Loading shared images:', imageUris);
+          
+          setLoading(true);
+          const loadedImages: ImageData[] = [];
+
+          for (const uri of imageUris) {
+            try {
+              console.log('Processing shared image:', uri);
+              
+              // Handle different URI schemes
+              let localUri = uri;
+              
+              // For content:// URIs (Android), copy to cache
+              if (uri.startsWith('content://')) {
+                console.log('Copying Android content URI to cache');
+                const filename = `shared_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+                const destUri = `${FileSystem.cacheDirectory}${filename}`;
+                
+                try {
+                  await FileSystem.copyAsync({
+                    from: uri,
+                    to: destUri,
+                  });
+                  localUri = destUri;
+                  console.log('Copied to:', localUri);
+                } catch (copyError) {
+                  console.error('Error copying content URI:', copyError);
+                  // Try to use the original URI
+                  localUri = uri;
+                }
+              }
+              
+              // Convert and optimize the image
+              const converted = await convertImageToSuitableFormat(localUri);
+              
+              loadedImages.push({
+                uri: converted.uri,
+                localUri: converted.uri,
+                contentType: converted.contentType,
+              });
+              
+              console.log('Shared image loaded successfully');
+            } catch (error) {
+              console.error('Error loading shared image:', error);
+            }
+          }
+
+          setImages(loadedImages);
+          console.log(`Loaded ${loadedImages.length} shared images`);
+          setLoading(false);
+        } catch (error) {
+          console.error('Error parsing shared images:', error);
+          setLoading(false);
+        }
+      }
+
+      // Get current location for shared content
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const currentLocation = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          setLocation({
+            latitude: currentLocation.coords.latitude,
+            longitude: currentLocation.coords.longitude,
+          });
+
+          const locationName = await reverseGeocode(
+            currentLocation.coords.latitude,
+            currentLocation.coords.longitude
+          );
+          setLocationName(locationName);
+          console.log('Location obtained for shared content:', locationName);
+        }
+      } catch (error) {
+        console.error('Error getting location for shared content:', error);
+      }
+    };
+
+    loadSharedContent();
+  }, [fromShare, params.sharedText, params.sharedImages]);
+
   // Auto-launch camera when openCamera flag is set
   useEffect(() => {
-    if (openCamera && !isEditing && !isSharedRecall) {
+    if (openCamera && !isEditing && !isSharedRecall && !fromShare) {
       console.log('Auto-launching camera for new note');
       // Small delay to ensure component is mounted
       setTimeout(() => {
         takePhoto();
       }, 300);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openCamera, isEditing, isSharedRecall]);
+  }, [openCamera, isEditing, isSharedRecall, fromShare]);
 
   // Auto-launch location search when openLocation flag is set
   useEffect(() => {
-    if (openLocation && !isEditing && !isSharedRecall) {
+    if (openLocation && !isEditing && !isSharedRecall && !fromShare) {
       console.log('Auto-launching location search for new note');
       // Small delay to ensure component is mounted
       setTimeout(() => {
         router.push('/location-search');
       }, 300);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openLocation, isEditing, isSharedRecall]);
+  }, [openLocation, isEditing, isSharedRecall, fromShare, router]);
 
   // Handle shared recall data
   useEffect(() => {
@@ -171,7 +274,7 @@ export default function NoteEditorScreen() {
   // Load note data directly from Supabase when editing
   useEffect(() => {
     const loadNoteFromDatabase = async () => {
-      if (!isEditing || !params.id || !user) {
+      if (!isEditing || !params.id || !user || fromShare) {
         return;
       }
 
@@ -253,19 +356,21 @@ export default function NoteEditorScreen() {
     };
 
     loadNoteFromDatabase();
-  }, [params.id, isEditing, user, router]);
+  }, [params.id, isEditing, user, router, fromShare]);
 
-  // Request location permission only for new notes (not editing, not shared recalls)
+  // Request location permission only for new notes (not editing, not shared recalls, not from share)
   useEffect(() => {
-    if (!isEditing && !isSharedRecall && !openLocation) {
+    if (!isEditing && !isSharedRecall && !openLocation && !fromShare) {
       console.log('Requesting location for new note');
       requestLocationPermission();
     } else if (isSharedRecall) {
       console.log('Skipping location request for shared recall');
     } else if (openLocation) {
       console.log('Skipping location request - will open location search');
+    } else if (fromShare) {
+      console.log('Skipping location request - from share intent');
     }
-  }, [isEditing, isSharedRecall, openLocation]);
+  }, [isEditing, isSharedRecall, openLocation, fromShare]);
 
   // Handle location updates from search (but not for shared recalls)
   useEffect(() => {
@@ -361,7 +466,7 @@ export default function NoteEditorScreen() {
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
         quality: 0.8,
-        exif: true, // Request EXIF data
+        exif: true,
       });
 
       if (!result.canceled && result.assets) {
@@ -390,7 +495,6 @@ export default function NoteEditorScreen() {
             }
           } catch (error) {
             console.error('Error extracting location from image:', error);
-            // Continue without location - this is not a critical error
           }
         }
 
@@ -425,7 +529,7 @@ export default function NoteEditorScreen() {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         quality: 0.8,
-        exif: true, // Request EXIF data
+        exif: true,
       });
 
       if (!result.canceled && result.assets) {
@@ -454,7 +558,6 @@ export default function NoteEditorScreen() {
             }
           } catch (error) {
             console.error('Error extracting location from photo:', error);
-            // Continue without location - this is not a critical error
           }
         }
         
@@ -493,7 +596,6 @@ export default function NoteEditorScreen() {
           onPress: async () => {
             if (image.id) {
               try {
-                // deleteImageRecord now handles triggering category matching
                 await deleteImageRecord(image.id);
               } catch (error) {
                 console.error('Error deleting image:', error);
@@ -540,13 +642,11 @@ export default function NoteEditorScreen() {
       return;
     }
 
-    // Show the location prompt modal
     setShowLocationPrompt(true);
   };
 
   const handleUpdateLocation = () => {
     setShowLocationPrompt(false);
-    // Navigate to location search
     router.push('/location-search');
   };
 
@@ -562,18 +662,14 @@ export default function NoteEditorScreen() {
     const formattedLocationName = locationName || '';
     
     try {
-      // Use universal URL format with location name for better context
       let universalUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
       
-      // If we have a location name, include it in the query for better context
       if (formattedLocationName) {
         const encodedLocationName = encodeURIComponent(formattedLocationName);
         universalUrl = `https://www.google.com/maps/search/?api=1&query=${encodedLocationName}+${latitude},${longitude}`;
       }
       
       console.log('Opening maps with URL:', universalUrl);
-      console.log('Location name:', formattedLocationName);
-      console.log('Coordinates:', { latitude, longitude });
       
       const canOpen = await Linking.canOpenURL(universalUrl);
       
@@ -612,29 +708,24 @@ export default function NoteEditorScreen() {
       let recallId: string;
 
       if (isEditing && params.id) {
-        // Update the note (text and location only)
         await updateNote(params.id as string, noteData);
         recallId = params.id as string;
 
-        // Get existing images from database
         const { data: existingImages } = await supabase
           .from('recall_images')
           .select('id')
           .eq('recall_id', recallId);
 
-        // Create a set of current image IDs (images that should be kept)
         const currentImageIds = new Set(
           images
-            .filter(img => img.id) // Only existing images with IDs
+            .filter(img => img.id)
             .map(img => img.id!)
         );
 
-        // Delete images that are no longer in the current images array
         if (existingImages) {
           for (const img of existingImages) {
             if (!currentImageIds.has(img.id)) {
               console.log('Deleting removed image:', img.id);
-              // deleteImageRecord now handles triggering category matching
               await deleteImageRecord(img.id);
             } else {
               console.log('Keeping existing image:', img.id);
@@ -642,24 +733,19 @@ export default function NoteEditorScreen() {
           }
         }
       } else {
-        // Create new note
         recallId = await addNote(noteData);
       }
 
-      // Only upload NEW images (those without an id)
-      // For shared recalls, all images are new (they're CDN URLs that need to be downloaded and uploaded)
       let uploadedCount = 0;
       let failedCount = 0;
       const uploadedImageIds: string[] = [];
 
       for (const image of images) {
-        // Skip images that already have an ID (already in database)
         if (image.id) {
           console.log('Skipping existing image:', image.id);
           continue;
         }
 
-        // Upload new images (those with localUri or CDN URLs from shared recalls)
         if (image.localUri || image.uri) {
           const imageUri = image.localUri || image.uri;
           console.log('Uploading new image to database:', imageUri);
@@ -671,8 +757,6 @@ export default function NoteEditorScreen() {
             uploadedImageIds.push(imageId);
             console.log('Image uploaded successfully to database');
             
-            // Trigger OCR processing for the uploaded image
-            // OCR function will trigger category matching after completion
             console.log('Triggering OCR processing for image:', imageId);
             triggerOCRProcessing(imageId).then(result => {
               if (result.success) {
@@ -691,11 +775,7 @@ export default function NoteEditorScreen() {
       }
 
       console.log(`Upload complete: ${uploadedCount} new images uploaded, ${failedCount} failed`);
-      if (uploadedImageIds.length > 0) {
-        console.log(`OCR processing triggered for ${uploadedImageIds.length} images`);
-      }
 
-      // Process URLs in the note text
       console.log('Processing URLs in note text for recall:', recallId);
       if (user) {
         processRecallUrls(user.id, recallId, noteData.text).then(result => {
@@ -709,10 +789,6 @@ export default function NoteEditorScreen() {
         });
       }
 
-      // Trigger category matching AFTER note save and recall_id is available
-      console.log('Triggering category matching after note save for recall:', recallId);
-      
-      // Use setTimeout to ensure this happens after the save completes
       setTimeout(() => {
         triggerCategoryMatching(recallId).then(result => {
           if (result.success) {
@@ -725,10 +801,6 @@ export default function NoteEditorScreen() {
         });
       }, 500);
 
-      // Trigger embedding generation AFTER note save
-      console.log('Triggering embedding generation after note save for recall:', recallId);
-      
-      // Use setTimeout to ensure this happens after the save completes
       setTimeout(() => {
         triggerRecallEmbedding(
           recallId,
@@ -738,9 +810,6 @@ export default function NoteEditorScreen() {
         ).then(result => {
           if (result.success) {
             console.log('Embedding generation triggered successfully after note save');
-            if (result.data) {
-              console.log('Embedding result:', result.data);
-            }
           } else {
             console.error('Failed to trigger embedding generation:', result.error);
           }
@@ -749,7 +818,6 @@ export default function NoteEditorScreen() {
         });
       }, 500);
 
-      // Haptic feedback when note is saved successfully
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
@@ -762,10 +830,8 @@ export default function NoteEditorScreen() {
         );
       }
 
-      // Navigate back first
       router.back();
       
-      // Simulate pull-to-refresh on landing page after a short delay
       setTimeout(() => {
         if (isEditing && params.id) {
           refreshSingleNote(params.id as string);
@@ -773,16 +839,6 @@ export default function NoteEditorScreen() {
           refreshNotes();
         }
       }, 300);
-
-      // COMMENTED OUT TOAST MESSAGE
-      // Toast.show({
-      //   type: 'success',
-      //   text1: isEditing ? 'Recall Updated' : 'Recall Added',
-      //   text2: 'Pull down to refresh',
-      //   position: 'top',
-      //   visibilityTime: 3000,
-      //   topOffset: 60,
-      // });
     } catch (error) {
       console.error('Error saving recall:', error);
       Alert.alert('Error', 'Failed to save recall. Check console logs for details.');
@@ -809,23 +865,11 @@ export default function NoteEditorScreen() {
               setDeleting(true);
               await deleteNote(params.id as string);
               
-              // Navigate back first
               router.back();
               
-              // Simulate pull-to-refresh on landing page after a short delay
               setTimeout(() => {
                 refreshNotes();
               }, 300);
-
-              // COMMENTED OUT TOAST MESSAGE
-              // Toast.show({
-              //   type: 'success',
-              //   text1: 'Recall Deleted',
-              //   text2: 'Pull down to refresh',
-              //   position: 'top',
-              //   visibilityTime: 3000,
-              //   topOffset: 60,
-              // });
             } catch (error) {
               console.error('Error deleting recall:', error);
               Alert.alert('Error', 'Failed to delete recall');
@@ -868,7 +912,6 @@ export default function NoteEditorScreen() {
     textInputRef.current?.focus();
   };
 
-  // Show loading state while fetching note data
   if (loadingNote) {
     return (
       <View style={styles.container}>
@@ -895,7 +938,7 @@ export default function NoteEditorScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: isSharedRecall ? 'Shared Recall' : (isEditing ? 'Edit Recall' : 'New Recall'),
+          headerTitle: fromShare ? 'New Recall from Share' : (isSharedRecall ? 'Shared Recall' : (isEditing ? 'Edit Recall' : 'New Recall')),
           headerStyle: {
             backgroundColor: colors.background,
           },
@@ -935,7 +978,6 @@ export default function NoteEditorScreen() {
         keyboardShouldPersistTaps="handled"
         scrollEnabled={true}
       >
-        {/* Text Input Section with fixed height and scrolling */}
         <View style={styles.textInputContainer}>
           {textHasUrl ? (
             <View style={styles.richTextContainer}>
@@ -984,11 +1026,9 @@ export default function NoteEditorScreen() {
           )}
         </View>
 
-        {/* Spacer to push content down */}
         <View style={styles.spacer} />
       </ScrollView>
 
-      {/* Images Section - Above Location */}
       {hasImages && (
         <View style={styles.imagesContainer}>
           <View style={styles.imagesHeader}>
@@ -1038,7 +1078,6 @@ export default function NoteEditorScreen() {
         </View>
       )}
 
-      {/* Location Info - Above Toolbar - Now Clickable */}
       {locationName && (
         <View>
           <Pressable 
@@ -1057,7 +1096,6 @@ export default function NoteEditorScreen() {
         </View>
       )}
 
-      {/* Toolbar - Positioned above keyboard when visible */}
       <View style={[
         styles.toolbar,
         keyboardVisible && Platform.OS === 'ios' && { 
@@ -1109,7 +1147,6 @@ export default function NoteEditorScreen() {
         )}
       </View>
 
-      {/* Location Prompt Modal */}
       <Modal
         visible={showLocationPrompt}
         transparent={true}
@@ -1166,7 +1203,6 @@ export default function NoteEditorScreen() {
         </Pressable>
       </Modal>
 
-      {/* Saving Indicator Modal */}
       <Modal
         visible={saving}
         transparent={true}
@@ -1180,7 +1216,6 @@ export default function NoteEditorScreen() {
         </View>
       </Modal>
 
-      {/* Deleting Indicator Modal */}
       <Modal
         visible={deleting}
         transparent={true}
@@ -1194,7 +1229,6 @@ export default function NoteEditorScreen() {
         </View>
       </Modal>
 
-      {/* Full Screen Image Component */}
       {hasImages && (
         <FullScreenImage
           visible={showFullScreenImage}
