@@ -42,29 +42,6 @@ export default function MapViewScreen() {
   }, [notes]);
 
   // Initialize Google Map
-  useEffect(() => {
-    if (Platform.OS !== 'web') {
-      setLoading(false);
-      return;
-    }
-
-    // Load Google Maps script
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48&libraries=places`;
-    script.async = true;
-    script.defer = true;
-    script.onload = initializeMap;
-    document.head.appendChild(script);
-
-    return () => {
-      // Cleanup
-      if (script.parentNode) {
-        script.parentNode.removeChild(script);
-      }
-    };
-  }, []);
-
-  // Initialize map after script loads
   const initializeMap = useCallback(() => {
     if (Platform.OS !== 'web' || !window.google) return;
 
@@ -193,6 +170,28 @@ export default function MapViewScreen() {
     setLoading(false);
   }, [mapNotes]);
 
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      setLoading(false);
+      return;
+    }
+
+    // Load Google Maps script
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    script.onload = initializeMap;
+    document.head.appendChild(script);
+
+    return () => {
+      // Cleanup
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
+  }, [initializeMap]);
+
   // Add markers to map
   const addMarkers = useCallback((map: any) => {
     if (Platform.OS !== 'web' || !window.google) return;
@@ -200,6 +199,14 @@ export default function MapViewScreen() {
     // Clear existing markers
     markersRef.current.forEach(marker => marker.setMap(null));
     markersRef.current = [];
+
+    const handleMarkerClick = (note: Note) => {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      setSelectedNote(note);
+      setShowPreview(true);
+    };
 
     mapNotes.forEach(note => {
       if (!note.latitude || !note.longitude) return;
@@ -298,14 +305,6 @@ export default function MapViewScreen() {
       addMarkers(mapRef.current);
     }
   }, [mapNotes, addMarkers]);
-
-  const handleMarkerClick = (note: Note) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    setSelectedNote(note);
-    setShowPreview(true);
-  };
 
   const handlePreviewPress = () => {
     if (selectedNote) {

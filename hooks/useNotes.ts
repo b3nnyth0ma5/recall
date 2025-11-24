@@ -595,7 +595,7 @@ export function useNotes() {
     } finally {
       setLoading(false);
     }
-  }, [refreshNotes, user, loadImagesForRecalls]);
+  }, [refreshNotes, user, loadImagesForRecalls, notes.length, searchAnswer, searchConfidence]);
 
   const getSearchHistory = useCallback(async () => {
     if (!user) {

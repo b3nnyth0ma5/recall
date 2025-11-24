@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -26,7 +26,7 @@ export default function AdminProcessImagesScreen() {
   const [processing, setProcessing] = useState<Set<string>>(new Set());
   const [results, setResults] = useState<Map<string, { success: boolean; error?: string }>>(new Map());
 
-  const loadUnprocessedImages = async () => {
+  const loadUnprocessedImages = useCallback(async () => {
     if (!user) {
       console.log('No user logged in');
       return;
@@ -55,7 +55,7 @@ export default function AdminProcessImagesScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   const processImage = async (imageId: string) => {
     console.log('Processing image:', imageId);
@@ -105,7 +105,7 @@ export default function AdminProcessImagesScreen() {
 
   React.useEffect(() => {
     loadUnprocessedImages();
-  }, []);
+  }, [loadUnprocessedImages]);
 
   return (
     <View style={styles.container}>
@@ -139,7 +139,7 @@ export default function AdminProcessImagesScreen() {
             <Text style={styles.loadingText}>Loading unprocessed images...</Text>
           </View>
         ) : (
-          <>
+          <React.Fragment>
             {unprocessedImages.length > 0 && (
               <View style={styles.actionsContainer}>
                 <Pressable
@@ -226,7 +226,7 @@ export default function AdminProcessImagesScreen() {
                 })}
               </View>
             )}
-          </>
+          </React.Fragment>
         )}
       </ScrollView>
     </View>

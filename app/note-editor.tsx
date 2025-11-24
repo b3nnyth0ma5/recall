@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,7 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
@@ -203,6 +203,66 @@ export default function NoteEditorScreen() {
     loadSharedContent();
   }, [fromShare, params.sharedText, params.sharedImages]);
 
+  const takePhoto = useCallback(async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant camera permissions');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+        exif: true,
+      });
+
+      if (!result.canceled && result.assets) {
+        setLoading(true);
+        const asset = result.assets[0];
+        
+        // Try to extract location from the captured photo if we don't have a location yet
+        if (!location) {
+          console.log('Attempting to extract location from captured photo...');
+          try {
+            const imageLocation = await extractLocationFromImage(asset);
+            
+            if (imageLocation.latitude && imageLocation.longitude) {
+              console.log('Location extracted from photo:', imageLocation);
+              setLocation({
+                latitude: imageLocation.latitude,
+                longitude: imageLocation.longitude,
+              });
+              
+              if (imageLocation.locationName) {
+                setLocationName(imageLocation.locationName);
+                console.log('Location name set from photo:', imageLocation.locationName);
+              }
+            } else {
+              console.log('No location data found in photo');
+            }
+          } catch (error) {
+            console.error('Error extracting location from photo:', error);
+          }
+        }
+        
+        const converted = await convertImageToSuitableFormat(asset.uri);
+
+        setImages([...images, {
+          uri: converted.uri,
+          localUri: converted.uri,
+          contentType: converted.contentType,
+        }]);
+        
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      setLoading(false);
+      Alert.alert('Error', 'Failed to take photo');
+    }
+  }, [images, location]);
+
   // Auto-launch camera when openCamera flag is set
   useEffect(() => {
     if (openCamera && !isEditing && !isSharedRecall && !fromShare) {
@@ -212,7 +272,7 @@ export default function NoteEditorScreen() {
         takePhoto();
       }, 300);
     }
-  }, [openCamera, isEditing, isSharedRecall, fromShare]);
+  }, [openCamera, isEditing, isSharedRecall, fromShare, takePhoto]);
 
   // Auto-launch location search when openLocation flag is set
   useEffect(() => {
@@ -515,66 +575,6 @@ export default function NoteEditorScreen() {
       console.error('Error picking image:', error);
       setLoading(false);
       Alert.alert('Error', 'Failed to pick image');
-    }
-  };
-
-  const takePhoto = async () => {
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please grant camera permissions');
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        quality: 0.8,
-        exif: true,
-      });
-
-      if (!result.canceled && result.assets) {
-        setLoading(true);
-        const asset = result.assets[0];
-        
-        // Try to extract location from the captured photo if we don't have a location yet
-        if (!location) {
-          console.log('Attempting to extract location from captured photo...');
-          try {
-            const imageLocation = await extractLocationFromImage(asset);
-            
-            if (imageLocation.latitude && imageLocation.longitude) {
-              console.log('Location extracted from photo:', imageLocation);
-              setLocation({
-                latitude: imageLocation.latitude,
-                longitude: imageLocation.longitude,
-              });
-              
-              if (imageLocation.locationName) {
-                setLocationName(imageLocation.locationName);
-                console.log('Location name set from photo:', imageLocation.locationName);
-              }
-            } else {
-              console.log('No location data found in photo');
-            }
-          } catch (error) {
-            console.error('Error extracting location from photo:', error);
-          }
-        }
-        
-        const converted = await convertImageToSuitableFormat(asset.uri);
-
-        setImages([...images, {
-          uri: converted.uri,
-          localUri: converted.uri,
-          contentType: converted.contentType,
-        }]);
-        
-        setLoading(false);
-      }
-    } catch (error) {
-      console.error('Error taking photo:', error);
-      setLoading(false);
-      Alert.alert('Error', 'Failed to take photo');
     }
   };
 
