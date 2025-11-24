@@ -71,6 +71,7 @@ export default function NoteEditorScreen() {
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
   const [showLocationPrompt, setShowLocationPrompt] = useState(false);
+  const [cameraLaunched, setCameraLaunched] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
@@ -263,16 +264,17 @@ export default function NoteEditorScreen() {
     }
   }, [images, location]);
 
-  // Auto-launch camera when openCamera flag is set
+  // Auto-launch camera when openCamera flag is set - FIXED: Only run once
   useEffect(() => {
-    if (openCamera && !isEditing && !isSharedRecall && !fromShare) {
+    if (openCamera && !isEditing && !isSharedRecall && !fromShare && !cameraLaunched) {
       console.log('Auto-launching camera for new note');
+      setCameraLaunched(true);
       // Small delay to ensure component is mounted
       setTimeout(() => {
         takePhoto();
       }, 300);
     }
-  }, [openCamera, isEditing, isSharedRecall, fromShare, takePhoto]);
+  }, [openCamera, isEditing, isSharedRecall, fromShare, cameraLaunched]);
 
   // Auto-launch location search when openLocation flag is set
   useEffect(() => {

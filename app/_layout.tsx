@@ -1,5 +1,5 @@
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
@@ -12,6 +12,7 @@ function RootLayoutNav() {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const [pendingShareData, setPendingShareData] = useState<{text?: string; images?: string[]} | null>(null);
 
   // Handle deep links and share intents
   useEffect(() => {
@@ -25,22 +26,8 @@ function RootLayoutNav() {
           if (shareData) {
             console.log('Share intent detected on app launch:', shareData);
             
-            // Wait for user to be loaded
-            if (!user && !loading) {
-              console.log('User not authenticated, will redirect to login');
-              return;
-            }
-            
-            // Navigate to share-intent screen with the data
-            setTimeout(() => {
-              router.push({
-                pathname: '/share-intent',
-                params: {
-                  text: shareData.text || '',
-                  images: shareData.images ? JSON.stringify(shareData.images) : '[]',
-                },
-              });
-            }, 500);
+            // Store the share data to be used after authentication
+            setPendingShareData(shareData);
           }
         }
       } catch (error) {
@@ -63,8 +50,8 @@ function RootLayoutNav() {
         
         // Check if user is authenticated
         if (!user) {
-          console.log('User not authenticated, redirecting to login first');
-          router.replace('/login');
+          console.log('User not authenticated, storing share data for later');
+          setPendingShareData(shareData);
           return;
         }
         
@@ -84,6 +71,27 @@ function RootLayoutNav() {
     };
   }, [router, user, loading]);
 
+  // Handle pending share data after user authentication
+  useEffect(() => {
+    if (user && pendingShareData && !loading) {
+      console.log('User authenticated, processing pending share data:', pendingShareData);
+      
+      // Navigate to share-intent screen with the pending data
+      setTimeout(() => {
+        router.push({
+          pathname: '/share-intent',
+          params: {
+            text: pendingShareData.text || '',
+            images: pendingShareData.images ? JSON.stringify(pendingShareData.images) : '[]',
+          },
+        });
+        
+        // Clear pending share data
+        setPendingShareData(null);
+      }, 500);
+    }
+  }, [user, pendingShareData, loading, router]);
+
   // Handle authentication routing
   useEffect(() => {
     if (loading) {
@@ -93,8 +101,11 @@ function RootLayoutNav() {
     const inAuthGroup = segments[0] === 'login';
 
     if (!user && !inAuthGroup) {
+      // User not authenticated, redirect to login
+      // But don't clear pending share data - it will be processed after login
       router.replace('/login');
     } else if (user && inAuthGroup) {
+      // User authenticated and on login screen, redirect to home
       router.replace('/(tabs)/(home)');
     }
   }, [user, segments, loading, router]);
