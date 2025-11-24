@@ -161,6 +161,7 @@ export default function LoginScreen() {
               onPress={handleAuth}
               disabled={loading}
               style={[styles.button, loading && styles.buttonDisabled]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               {loading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
@@ -175,6 +176,7 @@ export default function LoginScreen() {
               onPress={() => setIsSignUp(!isSignUp)}
               disabled={loading}
               style={styles.switchButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Text style={styles.switchButtonText}>
                 {isSignUp
@@ -237,16 +239,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 16 * 1.15,
+    paddingVertical: 14 * 1.15,
     gap: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    minHeight: 52 * 1.1,
   },
   input: {
     flex: 1,
     fontSize: 16,
     color: colors.text,
+    minHeight: 24 * 1.1,
   },
   buttonContainer: {
     width: '100%',
@@ -254,12 +258,12 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: colors.primary,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
+    paddingVertical: 16 * 1.15,
+    paddingHorizontal: 24 * 1.15,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 52,
+    minHeight: 52 * 1.15,
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -270,7 +274,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   switchButton: {
-    paddingVertical: 12,
+    paddingVertical: 12 * 1.15,
     alignItems: 'center',
   },
   switchButtonText: {

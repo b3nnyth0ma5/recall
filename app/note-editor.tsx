@@ -946,7 +946,11 @@ export default function NoteEditorScreen() {
           },
           headerTintColor: colors.text,
           headerLeft: () => (
-            <Pressable onPress={() => router.back()} style={styles.headerButton}>
+            <Pressable 
+              onPress={() => router.back()} 
+              style={styles.headerButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <IconSymbol name="chevron.left" size={24} color={colors.text} />
             </Pressable>
           ),
@@ -959,6 +963,7 @@ export default function NoteEditorScreen() {
                   styles.saveButton,
                   (saving || !canSave) && styles.saveButtonDisabled,
                 ]}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 {saving ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
@@ -1064,11 +1069,13 @@ export default function NoteEditorScreen() {
                 key={`${image.id || 'new'}-${index}`} 
                 style={styles.imageWrapper}
                 onPress={() => handleImagePress(index)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
                 <Pressable
                   onPress={() => removeImage(index)}
                   style={styles.removeImageButton}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <View style={styles.removeButtonCircle}>
                     <IconSymbol name="xmark" size={16} color="#FFFFFF" />
@@ -1085,6 +1092,7 @@ export default function NoteEditorScreen() {
           <Pressable 
             onPress={handleLocationPress}
             style={styles.locationInfo}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <IconSymbol name="location.fill" size={16} color={colors.primary} />
             <View style={styles.locationTextContainer}>
@@ -1112,6 +1120,7 @@ export default function NoteEditorScreen() {
             onPress={takePhoto}
             disabled={loading}
             style={styles.toolbarButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             {loading ? (
               <ActivityIndicator size="small" color={colors.primary} />
@@ -1123,6 +1132,7 @@ export default function NoteEditorScreen() {
             onPress={pickImage}
             disabled={loading}
             style={styles.toolbarButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <IconSymbol name="photo.fill" size={26} color={colors.primary} />
           </Pressable>
@@ -1130,6 +1140,7 @@ export default function NoteEditorScreen() {
           <Pressable
             onPress={toggleKeyboard}
             style={styles.toolbarButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <IconSymbol 
               name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
@@ -1143,6 +1154,7 @@ export default function NoteEditorScreen() {
           <Pressable
             onPress={handleDelete}
             style={styles.toolbarButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <IconSymbol name="trash" size={26} color={colors.error} />
           </Pressable>
@@ -1168,6 +1180,7 @@ export default function NoteEditorScreen() {
             <Pressable
               onPress={handleUpdateLocation}
               style={styles.modalOption}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <View style={styles.modalOptionIcon}>
                 <IconSymbol name="pencil" size={20} color={colors.primary} />
@@ -1184,6 +1197,7 @@ export default function NoteEditorScreen() {
             <Pressable
               onPress={handleOpenMaps}
               style={styles.modalOption}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <View style={styles.modalOptionIcon}>
                 <IconSymbol name="map.fill" size={20} color={colors.primary} />
@@ -1198,6 +1212,7 @@ export default function NoteEditorScreen() {
             <Pressable
               onPress={() => setShowLocationPrompt(false)}
               style={styles.modalCancelButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Text style={styles.modalCancelText}>Cancel</Text>
             </Pressable>
@@ -1278,8 +1293,8 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 12 * 1.15,
+    paddingVertical: 8 * 1.15,
     borderRadius: 20,
     minWidth: 40,
     alignItems: 'center',
@@ -1297,7 +1312,7 @@ const styles = StyleSheet.create({
   },
   textInputContainer: {
     padding: 20,
-    height: 260,
+    height: 260 * 1.1,
   },
   textInputScrollView: {
     flex: 1,
@@ -1307,12 +1322,13 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     color: colors.text,
     textAlignVertical: 'top',
+    minHeight: 48 * 1.1,
   },
   textInputMultiline: {
     fontSize: 17,
     lineHeight: 26,
     color: colors.text,
-    minHeight: 220,
+    minHeight: 220 * 1.1,
     textAlignVertical: 'top',
   },
   richTextContainer: {
@@ -1347,14 +1363,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingHorizontal: 20 * 1.15,
+    paddingVertical: 12 * 1.15,
     backgroundColor: colors.card,
     marginHorizontal: 16,
     borderRadius: 8,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: colors.primary,
+    minHeight: 48 * 1.1,
   },
   locationTextContainer: {
     flex: 1,
@@ -1421,9 +1438,9 @@ const styles = StyleSheet.create({
     right: 12,
   },
   removeButtonCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 32 * 1.15,
+    height: 32 * 1.15,
+    borderRadius: 16 * 1.15,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1433,11 +1450,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: 12 * 1.15,
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 12 * 1.15,
   },
   toolbarLeft: {
     flexDirection: 'row',
@@ -1445,7 +1462,7 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   toolbarButton: {
-    padding: 8,
+    padding: 8 * 1.15,
   },
   modalOverlay: {
     flex: 1,
@@ -1477,13 +1494,13 @@ const styles = StyleSheet.create({
   modalOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 16 * 1.15,
     gap: 12,
   },
   modalOptionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 40 * 1.15,
+    height: 40 * 1.15,
+    borderRadius: 20 * 1.15,
     backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1508,7 +1525,7 @@ const styles = StyleSheet.create({
   },
   modalCancelButton: {
     marginTop: 16,
-    paddingVertical: 14,
+    paddingVertical: 14 * 1.15,
     alignItems: 'center',
     backgroundColor: colors.background,
     borderRadius: 12,

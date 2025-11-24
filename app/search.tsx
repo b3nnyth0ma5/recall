@@ -127,12 +127,20 @@ export default function SearchScreen() {
           },
           headerTintColor: colors.text,
           headerLeft: () => (
-            <Pressable onPress={() => router.back()} style={styles.headerButton}>
+            <Pressable 
+              onPress={() => router.back()} 
+              style={styles.headerButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <IconSymbol name="chevron.left" size={24} color={colors.text} />
             </Pressable>
           ),
           headerRight: () => (
-            <Pressable onPress={toggleKeyboard} style={styles.headerButton}>
+            <Pressable 
+              onPress={toggleKeyboard} 
+              style={styles.headerButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <IconSymbol 
                 name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
                 size={24} 
@@ -158,7 +166,11 @@ export default function SearchScreen() {
             autoFocus
           />
           {searchQuery.length > 0 && (
-            <Pressable onPress={handleClear} style={styles.clearButton}>
+            <Pressable 
+              onPress={handleClear} 
+              style={styles.clearButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
             </Pressable>
           )}
@@ -166,6 +178,7 @@ export default function SearchScreen() {
             onPress={handleSearch} 
             style={styles.searchIconButton}
             disabled={!searchQuery.trim()}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <View style={[
               styles.searchIconContainer,
@@ -190,6 +203,7 @@ export default function SearchScreen() {
                 key={item.id}
                 style={styles.historyItem}
                 onPress={() => handleHistoryItemPress(item.search_text)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <IconSymbol name="clock" size={18} color={colors.textSecondary} />
                 <Text style={styles.historyText}>{item.search_text}</Text>
@@ -331,6 +345,7 @@ export default function SearchScreen() {
           router.push(`/map-view?hasSearch=${hasSearched ? 'true' : 'false'}`);
         }}
         style={styles.mapFab}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <IconSymbol name="map.fill" size={24} color="#FFFFFF" />
       </Pressable>
@@ -344,7 +359,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   headerButton: {
-    padding: 8,
+    padding: 8 * 1.15,
     marginHorizontal: 8,
   },
   searchContainer: {
@@ -358,26 +373,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 16 * 1.15,
+    paddingVertical: 12 * 1.15,
     gap: 12,
+    minHeight: 48 * 1.1,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
     color: colors.text,
+    minHeight: 24 * 1.1,
   },
   clearButton: {
-    padding: 4,
+    padding: 4 * 1.15,
   },
   searchIconButton: {
-    padding: 4,
+    padding: 4 * 1.15,
   },
   searchIconContainer: {
     backgroundColor: colors.primary,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 32 * 1.15,
+    height: 32 * 1.15,
+    borderRadius: 16 * 1.15,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -404,9 +421,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     backgroundColor: colors.card,
-    padding: 16,
+    padding: 16 * 1.15,
     borderRadius: 12,
     marginBottom: 8,
+    minHeight: 56 * 1.1,
   },
   historyText: {
     flex: 1,
@@ -464,7 +482,7 @@ const styles = StyleSheet.create({
   answerContainer: {
     backgroundColor: colors.card,
     borderRadius: 16,
-    padding: 16,
+    padding: 16 * 1.15,
     marginBottom: 24,
     borderWidth: 2,
     borderColor: colors.primary,
@@ -492,8 +510,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     backgroundColor: 'rgba(255, 107, 122, 0.15)',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+    paddingVertical: 4 * 1.15,
+    paddingHorizontal: 10 * 1.15,
     borderRadius: 12,
   },
   confidenceText: {
@@ -508,8 +526,8 @@ const styles = StyleSheet.create({
   },
   answerToggleContainer: {
     alignSelf: 'flex-end',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingVertical: 4 * 1.15,
+    paddingHorizontal: 8 * 1.15,
     marginTop: 8,
   },
   answerToggleText: {
@@ -548,8 +566,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: 'rgba(255, 107, 122, 0.15)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 6 * 1.15,
+    paddingHorizontal: 12 * 1.15,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
   },
@@ -563,8 +581,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     backgroundColor: 'rgba(255, 107, 122, 0.15)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 6 * 1.15,
+    paddingHorizontal: 12 * 1.15,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
   },
@@ -580,9 +598,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 24,
     right: 24,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 60 * 1.15,
+    height: 60 * 1.15,
+    borderRadius: 30 * 1.15,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',

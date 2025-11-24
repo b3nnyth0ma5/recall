@@ -260,7 +260,11 @@ export default function LocationSearchScreen() {
           },
           headerTintColor: colors.text,
           headerLeft: () => (
-            <Pressable onPress={() => router.back()} style={styles.headerButton}>
+            <Pressable 
+              onPress={() => router.back()} 
+              style={styles.headerButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <IconSymbol name="chevron.left" size={24} color={colors.text} />
             </Pressable>
           ),
@@ -285,11 +289,18 @@ export default function LocationSearchScreen() {
               autoFocus={false}
             />
             {searchQuery.length > 0 && (
-              <Pressable onPress={() => setSearchQuery('')}>
+              <Pressable 
+                onPress={() => setSearchQuery('')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
               </Pressable>
             )}
-            <Pressable onPress={toggleKeyboard} style={styles.keyboardToggle}>
+            <Pressable 
+              onPress={toggleKeyboard} 
+              style={styles.keyboardToggle}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <IconSymbol 
                 name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
                 size={20} 
@@ -353,6 +364,7 @@ export default function LocationSearchScreen() {
                     key={result.placeId}
                     style={styles.resultItem}
                     onPress={() => handleSelectLocation(result)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <View style={styles.resultIconContainer}>
                       <IconSymbol name="mappin.circle.fill" size={24} color={colors.primary} />
@@ -432,7 +444,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerButton: {
-    padding: 8,
+    padding: 8 * 1.15,
     marginHorizontal: 8,
   },
   searchSection: {
@@ -445,18 +457,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 16 * 1.15,
+    paddingVertical: 12 * 1.15,
     gap: 12,
+    minHeight: 48 * 1.1,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
     color: colors.text,
     outlineStyle: 'none',
+    minHeight: 24 * 1.1,
   },
   keyboardToggle: {
-    padding: 4,
+    padding: 4 * 1.15,
   },
   searchingIndicator: {
     flexDirection: 'row',
@@ -496,14 +510,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     borderRadius: 12,
-    padding: 16,
+    padding: 16 * 1.15,
     marginBottom: 12,
     gap: 12,
+    minHeight: 80 * 1.1,
   },
   resultIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 40 * 1.15,
+    height: 40 * 1.15,
+    borderRadius: 20 * 1.15,
     backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
@@ -523,8 +538,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.primary,
     backgroundColor: colors.background,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 8 * 1.15,
+    paddingVertical: 3 * 1.15,
     borderRadius: 6,
     alignSelf: 'flex-start',
     marginBottom: 4,
@@ -568,7 +583,7 @@ const styles = StyleSheet.create({
   },
   instructionsContainer: {
     marginTop: 24,
-    padding: 16,
+    padding: 16 * 1.15,
     backgroundColor: colors.card,
     borderRadius: 12,
     width: '100%',

@@ -93,12 +93,13 @@ export const Button: React.FC<ButtonProps> = ({
       style={[
         getVariantStyle(),
         {
-          height: sizeStyles[size].height,
-          paddingHorizontal: sizeStyles[size].padding,
+          height: sizeStyles[size].height * 1.15,
+          paddingHorizontal: sizeStyles[size].padding * 1.15,
           opacity: disabled ? 0.5 : 1,
         },
         style,
       ]}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     >
       {loading ? (
         <ActivityIndicator color={getTextColor()} />
