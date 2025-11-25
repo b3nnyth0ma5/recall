@@ -61,12 +61,13 @@ export default function OnboardingScreen() {
           .eq('user_id', user.id)
           .maybeSingle();
 
-        if (fetchError) {
+        if (fetchError && fetchError.code !== 'PGRST116') {
           console.error('[Onboarding] Error fetching user journey:', fetchError);
         }
 
         if (existingJourney) {
           // Update existing record
+          console.log('[Onboarding] Updating existing user journey record');
           const { error: updateError } = await supabase
             .from('user_journeys')
             .update({ main_onboarding_date: new Date().toISOString() })
@@ -79,6 +80,7 @@ export default function OnboardingScreen() {
           }
         } else {
           // Insert new record
+          console.log('[Onboarding] Inserting new user journey record');
           const { error: insertError } = await supabase
             .from('user_journeys')
             .insert({
@@ -97,13 +99,13 @@ export default function OnboardingScreen() {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
 
-      // Navigate to home screen using push instead of replace to avoid routing conflicts
+      // Navigate to home screen using replace to avoid back navigation to onboarding
       console.log('[Onboarding] Navigating to home screen');
-      router.push('/(tabs)/(home)');
+      router.replace('/(tabs)/(home)');
     } catch (error) {
       console.error('[Onboarding] Error completing onboarding:', error);
       // Navigate anyway to avoid blocking the user
-      router.push('/(tabs)/(home)');
+      router.replace('/(tabs)/(home)');
     } finally {
       setIsCompleting(false);
     }

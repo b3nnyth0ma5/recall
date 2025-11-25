@@ -13,13 +13,12 @@ import {
   ScrollView,
   Image,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { supabase } from '@/utils/supabase';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 
 export default function LoginScreen() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -83,8 +82,10 @@ export default function LoginScreen() {
         if (error) {
           Alert.alert('Sign In Error', error.message);
         } else if (data.user) {
+          console.log('[Login] User signed in successfully:', data.user.id);
           await logLogin(data.user.id);
-          router.replace('/(tabs)/(home)');
+          // Don't navigate here - let _layout.tsx handle routing based on onboarding status
+          console.log('[Login] Waiting for _layout.tsx to handle navigation');
         }
       }
     } catch (error) {

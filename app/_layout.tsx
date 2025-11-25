@@ -4,7 +4,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StyleSheet, Platform } from 'react-native';
+import { StyleSheet } from 'react-native';
 import * as Linking from 'expo-linking';
 import { handleShareIntent } from '@/utils/shareIntentHandler';
 import { supabase } from '@/utils/supabase';
@@ -20,8 +20,15 @@ function RootLayoutNav() {
   // Check if user needs onboarding
   useEffect(() => {
     const checkOnboardingStatus = async () => {
-      if (!user?.id || loading) {
+      if (!user?.id) {
+        console.log('[Onboarding Check] No user, skipping check');
+        setNeedsOnboarding(null);
         setCheckingOnboarding(false);
+        return;
+      }
+
+      if (loading) {
+        console.log('[Onboarding Check] Still loading, waiting...');
         return;
       }
 
@@ -163,14 +170,15 @@ function RootLayoutNav() {
     } else if (user && inAuthGroup) {
       // User authenticated and on login screen
       // Check if they need onboarding
-      if (needsOnboarding) {
+      if (needsOnboarding === true) {
         console.log('[Routing] Redirecting to onboarding (from login)');
         router.replace('/onboarding');
-      } else {
+      } else if (needsOnboarding === false) {
         console.log('[Routing] Redirecting to home (from login)');
         router.replace('/(tabs)/(home)');
       }
-    } else if (user && !inOnboardingGroup && !inTabsGroup && needsOnboarding) {
+      // If needsOnboarding is null, wait for the check to complete
+    } else if (user && !inOnboardingGroup && !inTabsGroup && needsOnboarding === true) {
       // User authenticated but needs onboarding and not on onboarding or tabs screen
       console.log('[Routing] Redirecting to onboarding (needs onboarding)');
       router.replace('/onboarding');
