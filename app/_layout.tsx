@@ -178,14 +178,15 @@ function RootLayoutNav() {
         router.replace('/(tabs)/(home)');
       }
       // If needsOnboarding is null, wait for the check to complete
-    } else if (user && !inOnboardingGroup && !inTabsGroup && needsOnboarding === true) {
-      // User authenticated but needs onboarding and not on onboarding or tabs screen
-      console.log('[Routing] Redirecting to onboarding (needs onboarding)');
-      router.replace('/onboarding');
     } else if (user && inOnboardingGroup && needsOnboarding === false) {
       // User authenticated, on onboarding screen, but doesn't need it anymore
       console.log('[Routing] Redirecting to home (onboarding complete)');
       router.replace('/(tabs)/(home)');
+    } else if (user && needsOnboarding === true && !inOnboardingGroup && !inTabsGroup && segments.length === 0) {
+      // User authenticated but needs onboarding and is at root (no segments)
+      // Only redirect if they're not already navigating somewhere
+      console.log('[Routing] Redirecting to onboarding (at root, needs onboarding)');
+      router.replace('/onboarding');
     }
   }, [user, segments, loading, checkingOnboarding, needsOnboarding, router]);
 
