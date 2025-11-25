@@ -7,12 +7,55 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet, Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import { handleShareIntent } from '@/utils/shareIntentHandler';
+import { supabase } from '@/utils/supabase';
 
 function RootLayoutNav() {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const [pendingShareData, setPendingShareData] = useState<{text?: string; images?: string[]} | null>(null);
+  const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
+  const [checkingOnboarding, setCheckingOnboarding] = useState(true);
+
+  // Check if user needs onboarding
+  useEffect(() => {
+    const checkOnboardingStatus = async () => {
+      if (!user?.id || loading) {
+        setCheckingOnboarding(false);
+        return;
+      }
+
+      try {
+        console.log('[Onboarding Check] Checking onboarding status for user:', user.id);
+        
+        // Check if user_journeys record exists and has main_onboarding_date
+        const { data: journey, error } = await supabase
+          .from('user_journeys')
+          .select('main_onboarding_date')
+          .eq('user_id', user.id)
+          .single();
+
+        if (error && error.code !== 'PGRST116') {
+          console.error('[Onboarding Check] Error fetching user journey:', error);
+          setNeedsOnboarding(false);
+          setCheckingOnboarding(false);
+          return;
+        }
+
+        // If no record exists or main_onboarding_date is NULL, show onboarding
+        const shouldShowOnboarding = !journey || journey.main_onboarding_date === null;
+        console.log('[Onboarding Check] Should show onboarding:', shouldShowOnboarding);
+        setNeedsOnboarding(shouldShowOnboarding);
+        setCheckingOnboarding(false);
+      } catch (error) {
+        console.error('[Onboarding Check] Exception checking onboarding status:', error);
+        setNeedsOnboarding(false);
+        setCheckingOnboarding(false);
+      }
+    };
+
+    checkOnboardingStatus();
+  }, [user?.id, loading]);
 
   // Handle deep links and share intents
   useEffect(() => {
@@ -92,23 +135,34 @@ function RootLayoutNav() {
     }
   }, [user, pendingShareData, loading, router]);
 
-  // Handle authentication routing
+  // Handle authentication and onboarding routing
   useEffect(() => {
-    if (loading) {
+    if (loading || checkingOnboarding) {
       return;
     }
 
     const inAuthGroup = segments[0] === 'login';
+    const inOnboardingGroup = segments[0] === 'onboarding';
 
     if (!user && !inAuthGroup) {
       // User not authenticated, redirect to login
-      // But don't clear pending share data - it will be processed after login
       router.replace('/login');
     } else if (user && inAuthGroup) {
-      // User authenticated and on login screen, redirect to home
+      // User authenticated and on login screen
+      // Check if they need onboarding
+      if (needsOnboarding) {
+        router.replace('/onboarding');
+      } else {
+        router.replace('/(tabs)/(home)');
+      }
+    } else if (user && !inOnboardingGroup && needsOnboarding) {
+      // User authenticated but needs onboarding and not on onboarding screen
+      router.replace('/onboarding');
+    } else if (user && inOnboardingGroup && !needsOnboarding) {
+      // User authenticated, on onboarding screen, but doesn't need it
       router.replace('/(tabs)/(home)');
     }
-  }, [user, segments, loading, router]);
+  }, [user, segments, loading, checkingOnboarding, needsOnboarding, router]);
 
   return (
     <Stack
@@ -119,6 +173,7 @@ function RootLayoutNav() {
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="note-editor" options={{ headerShown: false }} />
       <Stack.Screen name="search" options={{ headerShown: false }} />
       <Stack.Screen name="location-search" options={{ headerShown: false }} />
