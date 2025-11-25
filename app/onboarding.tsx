@@ -12,6 +12,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function OnboardingScreen() {
   const [currentPage, setCurrentPage] = useState(0);
+  const [isCompleting, setIsCompleting] = useState(false);
   const router = useRouter();
   const { user } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
@@ -33,6 +34,13 @@ export default function OnboardingScreen() {
   };
 
   const handleGetStarted = async () => {
+    if (isCompleting) {
+      console.log('[Onboarding] Already completing onboarding, ignoring duplicate call');
+      return;
+    }
+
+    setIsCompleting(true);
+
     if (Platform.OS !== 'web') {
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -51,9 +59,9 @@ export default function OnboardingScreen() {
           .from('user_journeys')
           .select('*')
           .eq('user_id', user.id)
-          .single();
+          .maybeSingle();
 
-        if (fetchError && fetchError.code !== 'PGRST116') {
+        if (fetchError) {
           console.error('[Onboarding] Error fetching user journey:', fetchError);
         }
 
@@ -84,14 +92,20 @@ export default function OnboardingScreen() {
             console.log('[Onboarding] Successfully inserted user journey');
           }
         }
+
+        // Wait a bit to ensure the database update is complete
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
-      // Navigate to home screen
-      router.replace('/(tabs)/(home)');
+      // Navigate to home screen using push instead of replace to avoid routing conflicts
+      console.log('[Onboarding] Navigating to home screen');
+      router.push('/(tabs)/(home)');
     } catch (error) {
       console.error('[Onboarding] Error completing onboarding:', error);
       // Navigate anyway to avoid blocking the user
-      router.replace('/(tabs)/(home)');
+      router.push('/(tabs)/(home)');
+    } finally {
+      setIsCompleting(false);
     }
   };
 
@@ -118,7 +132,7 @@ export default function OnboardingScreen() {
   return (
     <View style={styles.container}>
       {/* Skip Button */}
-      <Pressable onPress={handleSkip} style={styles.skipButton}>
+      <Pressable onPress={handleSkip} style={styles.skipButton} disabled={isCompleting}>
         <Text style={styles.skipText}>Skip</Text>
       </Pressable>
 
@@ -131,6 +145,7 @@ export default function OnboardingScreen() {
         onScroll={handleScroll}
         scrollEventThrottle={16}
         style={styles.scrollView}
+        scrollEnabled={!isCompleting}
       >
         {/* Page 1: Welcome */}
         <View style={[styles.page, { width: SCREEN_WIDTH }]}>
@@ -224,13 +239,15 @@ export default function OnboardingScreen() {
       {/* Bottom Button */}
       <View style={styles.bottomContainer}>
         {currentPage < 2 ? (
-          <Pressable onPress={handleNext} style={styles.nextButton}>
+          <Pressable onPress={handleNext} style={styles.nextButton} disabled={isCompleting}>
             <Text style={styles.nextButtonText}>Next</Text>
           </Pressable>
         ) : (
-          <Pressable onPress={handleGetStarted} style={styles.getStartedButton}>
-            <Text style={styles.getStartedButtonText}>Get Started Now</Text>
-            <IconSymbol name="arrow.right" size={20} color="#FFFFFF" />
+          <Pressable onPress={handleGetStarted} style={styles.getStartedButton} disabled={isCompleting}>
+            <Text style={styles.getStartedButtonText}>
+              {isCompleting ? 'Loading...' : 'Get Started Now'}
+            </Text>
+            {!isCompleting && <IconSymbol name="arrow.right" size={20} color="#FFFFFF" />}
           </Pressable>
         )}
         <Text style={styles.footerText}>🔒 Your data is secure and encrypted</Text>

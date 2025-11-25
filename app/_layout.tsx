@@ -33,7 +33,7 @@ function RootLayoutNav() {
           .from('user_journeys')
           .select('main_onboarding_date')
           .eq('user_id', user.id)
-          .single();
+          .maybeSingle();
 
         if (error && error.code !== 'PGRST116') {
           console.error('[Onboarding Check] Error fetching user journey:', error);
@@ -44,6 +44,7 @@ function RootLayoutNav() {
 
         // If no record exists or main_onboarding_date is NULL, show onboarding
         const shouldShowOnboarding = !journey || journey.main_onboarding_date === null;
+        console.log('[Onboarding Check] Journey data:', journey);
         console.log('[Onboarding Check] Should show onboarding:', shouldShowOnboarding);
         setNeedsOnboarding(shouldShowOnboarding);
         setCheckingOnboarding(false);
@@ -138,28 +139,44 @@ function RootLayoutNav() {
   // Handle authentication and onboarding routing
   useEffect(() => {
     if (loading || checkingOnboarding) {
+      console.log('[Routing] Waiting for loading/checking to complete...', { loading, checkingOnboarding });
       return;
     }
 
     const inAuthGroup = segments[0] === 'login';
     const inOnboardingGroup = segments[0] === 'onboarding';
+    const inTabsGroup = segments[0] === '(tabs)';
+
+    console.log('[Routing] Current state:', { 
+      user: !!user, 
+      inAuthGroup, 
+      inOnboardingGroup, 
+      inTabsGroup,
+      needsOnboarding,
+      segments 
+    });
 
     if (!user && !inAuthGroup) {
       // User not authenticated, redirect to login
+      console.log('[Routing] Redirecting to login (no user)');
       router.replace('/login');
     } else if (user && inAuthGroup) {
       // User authenticated and on login screen
       // Check if they need onboarding
       if (needsOnboarding) {
+        console.log('[Routing] Redirecting to onboarding (from login)');
         router.replace('/onboarding');
       } else {
+        console.log('[Routing] Redirecting to home (from login)');
         router.replace('/(tabs)/(home)');
       }
-    } else if (user && !inOnboardingGroup && needsOnboarding) {
-      // User authenticated but needs onboarding and not on onboarding screen
+    } else if (user && !inOnboardingGroup && !inTabsGroup && needsOnboarding) {
+      // User authenticated but needs onboarding and not on onboarding or tabs screen
+      console.log('[Routing] Redirecting to onboarding (needs onboarding)');
       router.replace('/onboarding');
-    } else if (user && inOnboardingGroup && !needsOnboarding) {
-      // User authenticated, on onboarding screen, but doesn't need it
+    } else if (user && inOnboardingGroup && needsOnboarding === false) {
+      // User authenticated, on onboarding screen, but doesn't need it anymore
+      console.log('[Routing] Redirecting to home (onboarding complete)');
       router.replace('/(tabs)/(home)');
     }
   }, [user, segments, loading, checkingOnboarding, needsOnboarding, router]);
