@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, Platform, ScrollView, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -153,11 +153,15 @@ export default function OnboardingScreen() {
         <View style={[styles.page, { width: SCREEN_WIDTH }]}>
           <View style={styles.pageContent}>
             <View style={styles.iconContainer}>
-              <IconSymbol name="sparkles" size={80} color={colors.primary} />
+              <Image 
+                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')} 
+                style={styles.appIcon}
+                resizeMode="contain"
+              />
             </View>
             <Text style={styles.title}>Welcome to Recall</Text>
             <Text style={styles.description}>
-              Discover amazing features designed to make your life easier and more productive.
+              The smart way to never forget
             </Text>
           </View>
         </View>
@@ -168,12 +172,12 @@ export default function OnboardingScreen() {
             <View style={styles.featuresContainer}>
               <View style={styles.featureIconWrapper}>
                 <View style={styles.featureIconCircle}>
-                  <IconSymbol name="camera.fill" size={48} color={colors.primary} />
+                  <IconSymbol name="text.alignleft" size={48} color={colors.primary} />
                 </View>
               </View>
               <View style={styles.featureIconWrapper}>
                 <View style={styles.featureIconCircle}>
-                  <IconSymbol name="text.alignleft" size={48} color={colors.primary} />
+                  <IconSymbol name="camera.fill" size={48} color={colors.primary} />
                 </View>
               </View>
               <View style={styles.featureIconWrapper}>
@@ -182,9 +186,9 @@ export default function OnboardingScreen() {
                 </View>
               </View>
             </View>
-            <Text style={styles.title}>Lightning Fast Performance</Text>
+            <Text style={styles.title}>Capture Everything</Text>
             <Text style={styles.description}>
-              Experience blazing fast speeds with optimized performance that keeps you productive all day long.
+              Save your thoughts, those photos, that location...or all three! The more you capture the more you can Recall.
             </Text>
           </View>
         </View>
@@ -195,30 +199,27 @@ export default function OnboardingScreen() {
             <View style={styles.iconContainer}>
               <IconSymbol name="magnifyingglass" size={80} color={colors.primary} />
             </View>
-            <Text style={styles.title}>You&apos;re All Set!</Text>
+            <Text style={styles.title}>Start Recalling!</Text>
             <Text style={styles.description}>
-              Join thousands of satisfied users and start your journey today
+              Recall anything. Just ask and let Recall do the work.
             </Text>
-            <View style={styles.statsContainer}>
-              <View style={styles.statBadge}>
-                <Text style={styles.statText}>⭐4.9/5 RATING</Text>
-              </View>
-              <View style={styles.statBadge}>
-                <Text style={styles.statText}>👥50K+ USERS</Text>
-              </View>
-            </View>
+            
             <View style={styles.benefitsContainer}>
               <View style={styles.benefitRow}>
                 <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>Unlimited access to all premium features</Text>
+                <Text style={styles.benefitText}>What was that wine I had at Estelle&apos;s?</Text>
               </View>
               <View style={styles.benefitRow}>
                 <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>Bank-level security for your data</Text>
+                <Text style={styles.benefitText}>Make a list of the books I&apos;ve been wanting to buy</Text>
               </View>
               <View style={styles.benefitRow}>
                 <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>Collaborate with unlimited team members</Text>
+                <Text style={styles.benefitText}>Show me everything I&apos;ve rated 7/10 or higher</Text>
+              </View>
+							<View style={styles.benefitRow}>
+                <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
+                <Text style={styles.benefitText}>Where did I take a picture of that lemon tree?</Text>
               </View>
             </View>
           </View>
@@ -247,12 +248,11 @@ export default function OnboardingScreen() {
         ) : (
           <Pressable onPress={handleGetStarted} style={styles.getStartedButton} disabled={isCompleting}>
             <Text style={styles.getStartedButtonText}>
-              {isCompleting ? 'Loading...' : 'Get Started Now'}
+              {isCompleting ? 'Loading...' : 'Start Recalling Now'}
             </Text>
             {!isCompleting && <IconSymbol name="arrow.right" size={20} color="#FFFFFF" />}
           </Pressable>
         )}
-        <Text style={styles.footerText}>🔒 Your data is secure and encrypted</Text>
       </View>
     </View>
   );
@@ -295,6 +295,10 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  appIcon: {
+    width: 120,
+    height: 120,
   },
   featuresContainer: {
     flexDirection: 'row',

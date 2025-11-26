@@ -464,7 +464,7 @@ export default function MapViewScreen() {
       ) : (
         <View style={styles.notSupportedContainer}>
           <IconSymbol name="map" size={80} color={colors.textTertiary} />
-          <Text style={styles.notSupportedTitle}>Map View not available yet</Text>
+          <Text style={styles.notSupportedTitle}>Map View coming soon...</Text>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
             <Text style={styles.backButtonText}>Back to Search</Text>
           </Pressable>
