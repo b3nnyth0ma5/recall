@@ -242,31 +242,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   return (
     <View style={styles.card}>
       <Pressable onPress={onPress} style={styles.cardContent}>
-        {/* Text Content - Now clickable to open editor */}
-        {note.text && (
-          <Pressable onPress={handleTextPress}>
-            <Text style={styles.text}>
-              {hasUrl(note.text) ? (
-                renderTextWithLinks(isExpanded ? note.text : getPreviewText())
-              ) : (
-                isExpanded ? note.text : getPreviewText()
-              )}
-            </Text>
-            {shouldShowToggle() && (
-              <Pressable 
-                onPress={handleToggleExpand}
-                style={styles.toggleContainer}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Text style={styles.toggleText}>
-                  {isExpanded ? 'Show less' : 'Show more'}
-                </Text>
-              </Pressable>
-            )}
-          </Pressable>
-        )}
-
-        {/* Images */}
+        {/* Images - Now displayed FIRST */}
         {displayImages && displayImages.length > 0 && (
           <View style={styles.imagesContainer}>
             <ScrollView
@@ -329,6 +305,30 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
           </View>
         )}
 
+        {/* Text Content - Now displayed AFTER images */}
+        {note.text && (
+          <Pressable onPress={handleTextPress}>
+            <Text style={styles.text}>
+              {hasUrl(note.text) ? (
+                renderTextWithLinks(isExpanded ? note.text : getPreviewText())
+              ) : (
+                isExpanded ? note.text : getPreviewText()
+              )}
+            </Text>
+            {shouldShowToggle() && (
+              <Pressable 
+                onPress={handleToggleExpand}
+                style={styles.toggleContainer}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Text style={styles.toggleText}>
+                  {isExpanded ? 'Show less' : 'Show more'}
+                </Text>
+              </Pressable>
+            )}
+          </Pressable>
+        )}
+
         {/* Location and Time on the same line */}
         <View style={styles.locationTimeContainer}>
           {/* Location - Left-aligned, occupies 75% of space */}
@@ -383,33 +383,8 @@ const styles = StyleSheet.create({
   cardContent: {
     padding: CARD_PADDING,
   },
-  text: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  normalText: {
-    color: colors.text,
-  },
-  linkText: {
-    color: colors.primary,
-    textDecorationLine: 'underline',
-  },
-  toggleContainer: {
-    alignSelf: 'flex-end',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginTop: 4,
-    zIndex: 10,
-  },
-  toggleText: {
-    fontSize: 14,
-    color: colors.primary,
-    fontWeight: '600',
-  },
   imagesContainer: {
-    marginTop: 12,
+    marginBottom: 12,
     marginHorizontal: -CARD_PADDING,
     position: 'relative',
   },
@@ -470,6 +445,31 @@ const styles = StyleSheet.create({
   imageCounterText: {
     fontSize: 12,
     color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  text: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.text,
+    marginBottom: 4,
+  },
+  normalText: {
+    color: colors.text,
+  },
+  linkText: {
+    color: colors.primary,
+    textDecorationLine: 'underline',
+  },
+  toggleContainer: {
+    alignSelf: 'flex-end',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    marginTop: 4,
+    zIndex: 10,
+  },
+  toggleText: {
+    fontSize: 14,
+    color: colors.primary,
     fontWeight: '600',
   },
   locationTimeContainer: {

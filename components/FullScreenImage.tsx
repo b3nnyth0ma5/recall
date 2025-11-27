@@ -11,11 +11,18 @@ import {
   ScrollView,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { IconSymbol } from './IconSymbol';
 import ImageOCRDisplay from './ImageOCRDisplay';
 import { colors } from '@/styles/commonStyles';
+import * as MediaLibrary from 'expo-media-library';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Haptics from 'expo-haptics';
+import Toast from 'react-native-toast-message';
 
 interface FullScreenImageProps {
   visible: boolean;
@@ -33,6 +40,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  * Features:
  * - Full-screen image carousel with smooth scrolling
  * - OCR button always visible and clickable on top of images
+ * - Save image to native photo library
  * - Image counter and pagination dots
  * - OCR modal for viewing image analysis
  * - Reusable across NoteCard and note-editor
@@ -46,6 +54,7 @@ export function FullScreenImage({
 }: FullScreenImageProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(initialIndex);
   const [showOCRModal, setShowOCRModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Reset to initial index when modal opens
@@ -85,6 +94,92 @@ export function FullScreenImage({
 
   const handleCloseOCRModal = () => {
     setShowOCRModal(false);
+  };
+
+  const handleSaveImage = async () => {
+    if (Platform.OS === 'web') {
+      Toast.show({
+        type: 'info',
+        text1: 'Not Available',
+        text2: 'Saving images is not supported on web',
+        position: 'bottom',
+      });
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      console.log('Requesting media library permissions...');
+
+      // Request permissions
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      
+      if (status !== 'granted') {
+        console.log('Media library permission denied');
+        Alert.alert(
+          'Permission Required',
+          'Please grant permission to save images to your photo library.',
+          [{ text: 'OK' }]
+        );
+        setIsSaving(false);
+        return;
+      }
+
+      console.log('Media library permission granted');
+      
+      // Get current image URL
+      const currentImageUrl = images[currentImageIndex];
+      console.log('Saving image:', currentImageUrl);
+
+      // Trigger haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+
+      // Download the image to a temporary location
+      const fileUri = FileSystem.cacheDirectory + `image_${Date.now()}.jpg`;
+      console.log('Downloading image to:', fileUri);
+      
+      const downloadResult = await FileSystem.downloadAsync(currentImageUrl, fileUri);
+      console.log('Download result:', downloadResult);
+
+      if (downloadResult.status !== 200) {
+        throw new Error('Failed to download image');
+      }
+
+      // Save to media library
+      console.log('Saving to media library...');
+      const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
+      console.log('Image saved successfully:', asset);
+
+      // Success haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      Toast.show({
+        type: 'success',
+        text1: 'Image Saved',
+        text2: 'Image has been saved to your photo library',
+        position: 'bottom',
+      });
+
+    } catch (error) {
+      console.error('Error saving image:', error);
+      
+      // Error haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+
+      Alert.alert(
+        'Error',
+        'Failed to save image. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -130,7 +225,28 @@ export function FullScreenImage({
           ))}
         </ScrollView>
 
-        {/* OCR Button - Bottom Right, Always on Top */}
+        {/* Save Image Button - Bottom Left */}
+        <Pressable
+          style={styles.saveButton}
+          onPress={handleSaveImage}
+          disabled={isSaving}
+          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+        >
+          <View style={styles.saveButtonContent}>
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <IconSymbol 
+                ios_icon_name="arrow.down.to.line" 
+                android_material_icon_name="download" 
+                size={24} 
+                color="#FFFFFF" 
+              />
+            )}
+          </View>
+        </Pressable>
+
+        {/* OCR Button - Bottom Right */}
         <Pressable
           style={styles.ocrButton}
           onPress={handleOCRButtonPress}
@@ -242,6 +358,28 @@ const styles = StyleSheet.create({
   image: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
+  },
+  saveButton: {
+    position: 'absolute',
+    bottom: 120,
+    left: 24,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.backgroundSecondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.6)',
+    elevation: 12,
+    borderWidth: 3,
+    borderColor: colors.primary,
+    zIndex: 1000,
+  },
+  saveButtonContent: {
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   ocrButton: {
     position: 'absolute',
