@@ -21,9 +21,8 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   runOnJS,
-  useAnimatedGestureHandler,
 } from 'react-native-reanimated';
-import { PanGestureHandler, PanGestureHandlerGestureEvent } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { IconSymbol } from './IconSymbol';
 import ImageOCRDisplay from './ImageOCRDisplay';
 import { colors } from '@/styles/commonStyles';
@@ -72,6 +71,7 @@ export function FullScreenImage({
   // Animated values for swipe-to-dismiss gesture
   const translateY = useSharedValue(0);
   const opacity = useSharedValue(1);
+  const startY = useSharedValue(0);
 
   // Reset to initial index when modal opens
   React.useEffect(() => {
@@ -198,22 +198,27 @@ export function FullScreenImage({
     }
   };
 
-  // Gesture handler for swipe-to-dismiss
-  const gestureHandler = useAnimatedGestureHandler<PanGestureHandlerGestureEvent>({
-    onActive: (event) => {
+  // Modern Gesture API for swipe-to-dismiss
+  const panGesture = Gesture.Pan()
+    .onStart(() => {
+      startY.value = translateY.value;
+    })
+    .onUpdate((event) => {
       // Only allow downward swipes
       if (event.translationY > 0) {
-        translateY.value = event.translationY;
+        translateY.value = startY.value + event.translationY;
         // Fade out as user swipes down
         opacity.value = Math.max(0.3, 1 - event.translationY / SCREEN_HEIGHT);
       }
-    },
-    onEnd: (event) => {
+    })
+    .onEnd((event) => {
       // If swiped down past threshold, dismiss the modal
       if (event.translationY > DISMISS_THRESHOLD) {
         // Animate out and close
-        translateY.value = withSpring(SCREEN_HEIGHT, {}, () => {
-          runOnJS(onClose)();
+        translateY.value = withSpring(SCREEN_HEIGHT, {}, (finished) => {
+          if (finished) {
+            runOnJS(onClose)();
+          }
         });
         opacity.value = withSpring(0);
       } else {
@@ -221,8 +226,7 @@ export function FullScreenImage({
         translateY.value = withSpring(0);
         opacity.value = withSpring(1);
       }
-    },
-  });
+    });
 
   // Animated style for the container
   const animatedContainerStyle = useAnimatedStyle(() => {
@@ -240,7 +244,7 @@ export function FullScreenImage({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <PanGestureHandler onGestureEvent={gestureHandler}>
+      <GestureDetector gesture={panGesture}>
         <Animated.View style={[styles.container, animatedContainerStyle]}>
           {/* Close Button - Top Right */}
           <Pressable
@@ -339,7 +343,7 @@ export function FullScreenImage({
             <View style={styles.swipeHintBar} />
           </View>
         </Animated.View>
-      </PanGestureHandler>
+      </GestureDetector>
 
       {/* OCR Modal */}
       <Modal
