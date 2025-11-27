@@ -3,7 +3,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Note } from '@/types/Note';
 import { supabase, getImageDataUrl, deleteImageRecord, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-// import Toast from 'react-native-toast-message';
+
+export type SearchStage = 'idle' | 'detecting' | 'resolving' | 'filtering' | 'searching' | 'complete';
 
 export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -16,6 +17,8 @@ export function useNotes() {
   const [isDeletingNote, setIsDeletingNote] = useState(false);
   const [searchAnswer, setSearchAnswer] = useState<string | null>(null);
   const [searchConfidence, setSearchConfidence] = useState<number | undefined>(undefined);
+  const [searchStage, setSearchStage] = useState<SearchStage>('idle');
+  const [searchLocationName, setSearchLocationName] = useState<string | undefined>(undefined);
   const { user } = useAuth();
 
   const ITEMS_PER_PAGE = 10;
@@ -289,16 +292,6 @@ export function useNotes() {
 
       console.log('Recall added successfully with location_primary_type:', recallData.location_primary_type);
       
-      // COMMENTED OUT TOAST MESSAGE
-      // Toast.show({
-      //   type: 'success',
-      //   text1: 'Recall Added',
-      //   text2: 'Pull down to refresh',
-      //   position: 'top',
-      //   visibilityTime: 3000,
-      //   topOffset: 60,
-      // });
-      
       await refreshNotes();
       return recallData.id;
     } catch (error) {
@@ -335,16 +328,6 @@ export function useNotes() {
       }
 
       console.log('Recall updated successfully with location_primary_type');
-      
-      // COMMENTED OUT TOAST MESSAGE
-      // Toast.show({
-      //   type: 'success',
-      //   text1: 'Recall Updated',
-      //   text2: 'Pull down to refresh',
-      //   position: 'top',
-      //   visibilityTime: 3000,
-      //   topOffset: 60,
-      // });
       
       // Refresh only the single note that was updated
       await refreshSingleNote(noteId);
@@ -388,16 +371,6 @@ export function useNotes() {
 
       console.log('Recall deleted successfully');
       
-      // COMMENTED OUT TOAST MESSAGE
-      // Toast.show({
-      //   type: 'success',
-      //   text1: 'Recall Deleted',
-      //   text2: 'Pull down to refresh',
-      //   position: 'top',
-      //   visibilityTime: 3000,
-      //   topOffset: 60,
-      // });
-      
       await refreshNotes();
     } catch (error) {
       console.error('Error deleting recall:', error);
@@ -421,15 +394,18 @@ export function useNotes() {
       setSearchAnswer(null);
       setSearchConfidence(undefined);
       setLocationInfo(null);
+      setSearchStage('idle');
+      setSearchLocationName(undefined);
       await refreshNotes();
       return;
     }
     
     try {
-      console.log('=== STARTING SEARCH ===');
+      console.log('=== STARTING OPTIMIZED SEARCH ===');
       console.log('Search query:', query);
-      console.log('Using V2 search:', useV2);
       setLoading(true);
+      setSearchStage('detecting');
+      setSearchLocationName(undefined);
       
       // Save search history
       await saveSearchHistory(user.id, query);
@@ -441,77 +417,76 @@ export function useNotes() {
         return;
       }
 
-      const functionName = useV2 ? 'search-recalls-v2' : 'search-recalls';
-      console.log(`Calling ${functionName} edge function...`);
-      const startTime = Date.now();
+      // Step 1: Check for location intent using search-recalls-with-location
+      console.log('Step 1: Checking for location intent...');
+      const locationCheckStart = Date.now();
       
-      const { data: searchResults, error: searchError } = await supabase.functions.invoke(functionName, {
-        body: {
-          query: query.trim(),
-          limit: useV2 ? undefined : 10, // V2 always returns 8 matches
-        },
+      const { data: locationData, error: locationError } = await supabase.functions.invoke('search-recalls-with-location', {
+        body: { query: query.trim() },
       });
 
-      const endTime = Date.now();
-      console.log(`Edge function call completed in ${endTime - startTime}ms`);
+      console.log(`Location check completed in ${Date.now() - locationCheckStart}ms`);
 
-      if (searchError) {
-        console.error('=== EDGE FUNCTION ERROR ===');
-        console.error(`Error calling ${functionName} function:`, searchError);
-        console.error('Error details:', JSON.stringify(searchError, null, 2));
+      // If location intent detected and resolved
+      if (locationData?.hasLocationIntent && locationData?.locationResolved && locationData?.recallIds?.length > 0) {
+        console.log('Location intent detected and resolved!');
+        console.log('Location info:', locationData.locationInfo);
+        console.log('Filtered recall IDs:', locationData.recallIds);
         
-        // Fallback to basic search
-        console.log('Falling back to basic text search...');
-        const { data: recallsData, error: recallsError } = await supabase
-          .from('recalls')
-          .select('*')
-          .eq('user_id', user.id)
-          .or(`text.ilike.%${query}%,location.ilike.%${query}%`)
-          .order('created_at', { ascending: false });
+        setSearchStage('resolving');
+        setSearchLocationName(locationData.locationInfo?.resolvedPlace);
+        
+        // Store location info
+        setLocationInfo(locationData.locationInfo);
+        
+        // Step 2: Use search-recalls-v2 with the filtered recall IDs
+        console.log('Step 2: Running AI search on location-filtered recalls...');
+        setSearchStage('searching');
+        
+        const searchStart = Date.now();
+        const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls-v2', {
+          body: {
+            query: locationData.cleanedQuery || query.trim(),
+            recallIds: locationData.recallIds, // Pass filtered IDs
+          },
+        });
 
-        if (recallsError) {
-          console.error('Error in fallback search:', recallsError);
+        console.log(`AI search completed in ${Date.now() - searchStart}ms`);
+
+        if (searchError) {
+          console.error('Error in AI search:', searchError);
+          // Fallback: just show the location-filtered recalls
+          const { data: recallsData } = await supabase
+            .from('recalls')
+            .select('*')
+            .in('id', locationData.recallIds)
+            .eq('user_id', user.id);
+
+          const notesWithImages = await loadImagesForRecalls(recallsData || []);
+          setNotes(notesWithImages);
+          setSearchAnswer(null);
+          setSearchConfidence(undefined);
+          setSearchStage('complete');
           return;
         }
 
-        const notesWithImages = await loadImagesForRecalls(recallsData || []);
-        setNotes(notesWithImages);
-        setSearchAnswer(null);
-        setSearchConfidence(undefined);
-        setLocationInfo(null);
-        console.log('Fallback search results:', notesWithImages.length);
-        return;
-      }
-
-      console.log('=== EDGE FUNCTION SUCCESS ===');
-      console.log('Search results received:', JSON.stringify(searchResults, null, 2));
-
-      if (useV2) {
-        // V2 response format: { answer, confidence, results: [{ id, matchPercentage, usedForAnswer }] }
+        // Process V2 results
         const matchedRecallIds = searchResults?.results?.map((r: any) => r.id) || [];
         const answer = searchResults?.answer || null;
         const confidence = searchResults?.confidence || 0;
         
-        console.log(`Found ${matchedRecallIds.length} V2 results`);
+        console.log(`Found ${matchedRecallIds.length} AI-ranked results`);
         console.log('Answer:', answer);
         console.log('Confidence:', confidence);
-        console.log('Results with usedForAnswer flags:', searchResults?.results);
         
-        // Fetch full recall data for matched IDs
         if (matchedRecallIds.length > 0) {
-          const { data: recallsData, error: recallsError } = await supabase
+          const { data: recallsData } = await supabase
             .from('recalls')
             .select('*')
             .in('id', matchedRecallIds)
             .eq('user_id', user.id);
 
-          if (recallsError) {
-            console.error('Error fetching recalls:', recallsError);
-            return;
-          }
-
-          // Map recalls with match info, preserving the order from search results
-          // The search results are already ordered with answer sources first
+          // Map recalls with match info
           const orderedRecalls = searchResults.results
             .map((matchInfo: any) => {
               const recall = recallsData?.find(r => r.id === matchInfo.id);
@@ -530,72 +505,107 @@ export function useNotes() {
           setNotes(notesWithImages);
           setSearchAnswer(answer);
           setSearchConfidence(confidence);
-          setLocationInfo(null); // V2 doesn't use location filtering
         } else {
           setNotes([]);
           setSearchAnswer(answer);
           setSearchConfidence(confidence);
-          setLocationInfo(null);
-        }
-      } else {
-        // V1 response format (existing)
-        const scoredRecalls = searchResults?.results || [];
-        const answer = searchResults?.answer || null;
-        const confidence = searchResults?.confidence;
-        const hasLocationIntent = searchResults?.hasLocationIntent || false;
-        const location = searchResults?.location || null;
-        const proximity = searchResults?.proximity || null;
-        const locationType = searchResults?.type || null;
-        
-        console.log(`Found ${scoredRecalls.length} results`);
-        console.log('Answer:', answer);
-        console.log('Confidence:', confidence);
-        console.log('Has location intent:', hasLocationIntent);
-        console.log('Location:', location);
-        console.log('Proximity:', proximity);
-        console.log('Location type:', locationType);
-        
-        // Load images for the results
-        const notesWithImages = await loadImagesForRecalls(scoredRecalls);
-        
-        // Store location info if available
-        if (hasLocationIntent && location) {
-          setLocationInfo({
-            location,
-            proximity,
-            type: locationType,
-            resolvedPlace: location, // Use the extracted location name
-          });
-          console.log('Location filtering applied:', { location, proximity, type: locationType });
-        } else {
-          setLocationInfo(null);
         }
         
-        // Store answer and confidence
-        setSearchAnswer(answer);
-        setSearchConfidence(confidence);
+        setSearchStage('complete');
+        console.log('=== LOCATION-BASED SEARCH COMPLETE ===');
+        return;
+      }
+
+      // No location intent or couldn't resolve - use regular V2 search
+      console.log('No location intent detected - using regular AI search');
+      setSearchStage('searching');
+      setLocationInfo(null);
+      
+      const searchStart = Date.now();
+      const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls-v2', {
+        body: { query: query.trim() },
+      });
+
+      console.log(`AI search completed in ${Date.now() - searchStart}ms`);
+
+      if (searchError) {
+        console.error('Error in AI search:', searchError);
+        // Fallback to basic search
+        const { data: recallsData } = await supabase
+          .from('recalls')
+          .select('*')
+          .eq('user_id', user.id)
+          .or(`text.ilike.%${query}%,location.ilike.%${query}%`)
+          .order('created_at', { ascending: false });
+
+        const notesWithImages = await loadImagesForRecalls(recallsData || []);
+        setNotes(notesWithImages);
+        setSearchAnswer(null);
+        setSearchConfidence(undefined);
+        setSearchStage('complete');
+        return;
+      }
+
+      // Process V2 results
+      const matchedRecallIds = searchResults?.results?.map((r: any) => r.id) || [];
+      const answer = searchResults?.answer || null;
+      const confidence = searchResults?.confidence || 0;
+      
+      console.log(`Found ${matchedRecallIds.length} results`);
+      console.log('Answer:', answer);
+      console.log('Confidence:', confidence);
+      
+      if (matchedRecallIds.length > 0) {
+        const { data: recallsData } = await supabase
+          .from('recalls')
+          .select('*')
+          .in('id', matchedRecallIds)
+          .eq('user_id', user.id);
+
+        const orderedRecalls = searchResults.results
+          .map((matchInfo: any) => {
+            const recall = recallsData?.find(r => r.id === matchInfo.id);
+            if (!recall) return null;
+            
+            return {
+              ...recall,
+              relevance_score: matchInfo.matchPercentage || 0,
+              used_for_answer: matchInfo.usedForAnswer || false,
+            };
+          })
+          .filter((recall: any) => recall !== null);
+
+        const notesWithImages = await loadImagesForRecalls(orderedRecalls);
         
         setNotes(notesWithImages);
+        setSearchAnswer(answer);
+        setSearchConfidence(confidence);
+      } else {
+        setNotes([]);
+        setSearchAnswer(answer);
+        setSearchConfidence(confidence);
       }
       
+      setSearchStage('complete');
       console.log('=== SEARCH COMPLETE ===');
-      console.log('AI-powered search results:', notes.length);
-      console.log('Answer set:', searchAnswer ? 'Yes' : 'No');
-      console.log('Confidence:', searchConfidence);
     } catch (error) {
       console.error('=== SEARCH EXCEPTION ===');
       console.error('Error searching recalls:', error);
-      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
       
       // Fallback to refresh
       await refreshNotes();
       setSearchAnswer(null);
       setSearchConfidence(undefined);
       setLocationInfo(null);
+      setSearchStage('idle');
     } finally {
       setLoading(false);
+      // Reset stage after a delay
+      setTimeout(() => {
+        setSearchStage('idle');
+      }, 1000);
     }
-  }, [refreshNotes, user, loadImagesForRecalls, notes.length, searchAnswer, searchConfidence]);
+  }, [refreshNotes, user, loadImagesForRecalls]);
 
   const getSearchHistory = useCallback(async () => {
     if (!user) {
@@ -608,7 +618,7 @@ export function useNotes() {
         .select('*')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false })
-        .limit(20); // Changed from 10 to 20
+        .limit(20);
 
       if (error) {
         console.error('Error loading search history:', error);
@@ -632,6 +642,8 @@ export function useNotes() {
     isDeletingNote,
     searchAnswer,
     searchConfidence,
+    searchStage,
+    searchLocationName,
     addNote,
     updateNote,
     deleteNote,

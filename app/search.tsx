@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  ActivityIndicator,
   Keyboard,
   Platform,
 } from 'react-native';
@@ -19,16 +18,26 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { SearchHistory } from '@/types/Note';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 
 export default function SearchScreen() {
   const router = useRouter();
-  const { notes, loading, searchNotes, getSearchHistory, searchAnswer, searchConfidence } = useNotes();
+  const { 
+    notes, 
+    loading, 
+    searchNotes, 
+    getSearchHistory, 
+    searchAnswer, 
+    searchConfidence,
+    locationInfo,
+    searchStage,
+    searchLocationName,
+  } = useNotes();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
   const [showHistory, setShowHistory] = useState(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [isAiSearch, setIsAiSearch] = useState(false);
   const [isAnswerExpanded, setIsAnswerExpanded] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
 
@@ -62,7 +71,6 @@ export default function SearchScreen() {
       
       setShowHistory(false);
       setHasSearched(true);
-      setIsAiSearch(true);
       setIsAnswerExpanded(false);
       // Always use v2 search
       searchNotes(searchQuery, true);
@@ -76,7 +84,6 @@ export default function SearchScreen() {
     setSearchQuery(searchText);
     setShowHistory(false);
     setHasSearched(true);
-    setIsAiSearch(true);
     setIsAnswerExpanded(false);
     // Always use v2 search
     searchNotes(searchText, true);
@@ -90,7 +97,6 @@ export default function SearchScreen() {
     setSearchQuery('');
     setShowHistory(true);
     setHasSearched(false);
-    setIsAiSearch(false);
     setIsAnswerExpanded(false);
     searchNotes('');
   };
@@ -115,6 +121,9 @@ export default function SearchScreen() {
     const lines = answer.split('\n');
     return lines.length > 3;
   };
+
+  const isSearching = loading && hasSearched;
+  const showProgressIndicator = isSearching && searchStage !== 'idle' && searchStage !== 'complete';
 
   return (
     <View style={styles.container}>
@@ -192,6 +201,19 @@ export default function SearchScreen() {
             </View>
           </Pressable>
         </View>
+
+        {/* Location Info Badge */}
+        {locationInfo && hasSearched && (
+          <Animated.View entering={FadeIn.duration(400)} style={styles.locationInfoBanner}>
+            <IconSymbol name="mappin.circle.fill" size={20} color={colors.primary} />
+            <View style={styles.locationInfoText}>
+              <Text style={styles.locationInfoTitle}>Location Search</Text>
+              <Text style={styles.locationInfoSubtitle}>
+                Within {locationInfo.proximity}km of {locationInfo.resolvedPlace}
+              </Text>
+            </View>
+          </Animated.View>
+        )}
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
@@ -211,11 +233,11 @@ export default function SearchScreen() {
               </Pressable>
             ))}
           </Animated.View>
-        ) : loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Analyzing with AI...</Text>
-          </View>
+        ) : showProgressIndicator ? (
+          <SearchProgressIndicator 
+            stage={searchStage} 
+            locationName={searchLocationName}
+          />
         ) : !hasSearched ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
             <IconSymbol 
@@ -224,10 +246,10 @@ export default function SearchScreen() {
               color={colors.textTertiary} 
             />
             <Text style={styles.emptyTitle}>
-              Image-Based AI Search
+              AI-Powered Search
             </Text>
             <Text style={styles.emptyText}>
-              Search your recalls using image embeddings and visual content analysis
+              Search your recalls using advanced AI and location-based filtering
             </Text>
             <View style={styles.featureList}>
               <React.Fragment>
@@ -237,15 +259,15 @@ export default function SearchScreen() {
                 </View>
                 <View style={styles.featureItem}>
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+                  <Text style={styles.featureText}>Location-based filtering</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
                   <Text style={styles.featureText}>OCR text matching</Text>
                 </View>
                 <View style={styles.featureItem}>
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
                   <Text style={styles.featureText}>Visual content analysis</Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>Top 8 closest matches</Text>
                 </View>
                 <View style={styles.featureItem}>
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
@@ -259,7 +281,10 @@ export default function SearchScreen() {
             <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
             <Text style={styles.emptyTitle}>No Results Found</Text>
             <Text style={styles.emptyText}>
-              Try a different search term or add more details
+              {locationInfo 
+                ? `No recalls found within ${locationInfo.proximity}km of ${locationInfo.resolvedPlace}`
+                : 'Try a different search term or add more details'
+              }
             </Text>
           </Animated.View>
         ) : (
@@ -299,6 +324,7 @@ export default function SearchScreen() {
               <React.Fragment>
                 <Text style={styles.resultsText}>
                   {notes.length} {notes.length === 1 ? 'result' : 'results'} found
+                  {locationInfo && ` near ${locationInfo.resolvedPlace}`}
                 </Text>
                 {notes.map((note) => (
                   <View key={note.id} style={styles.noteWrapper}>
@@ -401,6 +427,29 @@ const styles = StyleSheet.create({
   searchIconDisabled: {
     opacity: 0.4,
   },
+  locationInfoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: `${colors.primary}15`,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 12,
+  },
+  locationInfoText: {
+    flex: 1,
+  },
+  locationInfoTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+    marginBottom: 2,
+  },
+  locationInfoSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
   scrollView: {
     flex: 1,
   },
@@ -430,18 +479,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: colors.text,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 100,
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginTop: 8,
   },
   emptyContainer: {
     flex: 1,
