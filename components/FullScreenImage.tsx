@@ -15,11 +15,19 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { 
+  FadeIn,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  runOnJS,
+  useAnimatedGestureHandler,
+} from 'react-native-reanimated';
+import { PanGestureHandler, PanGestureHandlerGestureEvent } from 'react-native-gesture-handler';
 import { IconSymbol } from './IconSymbol';
 import ImageOCRDisplay from './ImageOCRDisplay';
 import { colors } from '@/styles/commonStyles';
-import * as MediaLibrary from 'expo-media-library';
+import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
@@ -34,13 +42,17 @@ interface FullScreenImageProps {
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// Threshold for dismissing the modal (swipe down distance)
+const DISMISS_THRESHOLD = 150;
+
 /**
  * Standalone full-screen image viewer component with integrated OCR functionality
  * 
  * Features:
  * - Full-screen image carousel with smooth scrolling
  * - OCR button always visible and clickable on top of images
- * - Save image to native photo library
+ * - Share image using native share functionality
+ * - Swipe down to dismiss
  * - Image counter and pagination dots
  * - OCR modal for viewing image analysis
  * - Reusable across NoteCard and note-editor
@@ -54,13 +66,19 @@ export function FullScreenImage({
 }: FullScreenImageProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(initialIndex);
   const [showOCRModal, setShowOCRModal] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // Animated values for swipe-to-dismiss gesture
+  const translateY = useSharedValue(0);
+  const opacity = useSharedValue(1);
 
   // Reset to initial index when modal opens
   React.useEffect(() => {
     if (visible) {
       setCurrentImageIndex(initialIndex);
+      translateY.value = 0;
+      opacity.value = 1;
       // Scroll to initial index after a short delay to ensure layout is ready
       setTimeout(() => {
         scrollViewRef.current?.scrollTo({
@@ -96,40 +114,40 @@ export function FullScreenImage({
     setShowOCRModal(false);
   };
 
-  const handleSaveImage = async () => {
+  const handleShareImage = async () => {
     if (Platform.OS === 'web') {
       Toast.show({
         type: 'info',
         text1: 'Not Available',
-        text2: 'Saving images is not supported on web',
+        text2: 'Sharing images is not fully supported on web',
         position: 'bottom',
       });
       return;
     }
 
     try {
-      setIsSaving(true);
-      console.log('Requesting media library permissions...');
+      setIsSharing(true);
+      console.log('Checking if sharing is available...');
 
-      // Request permissions
-      const { status } = await MediaLibrary.requestPermissionsAsync();
+      // Check if sharing is available
+      const isAvailable = await Sharing.isAvailableAsync();
       
-      if (status !== 'granted') {
-        console.log('Media library permission denied');
+      if (!isAvailable) {
+        console.log('Sharing is not available on this device');
         Alert.alert(
-          'Permission Required',
-          'Please grant permission to save images to your photo library.',
+          'Not Available',
+          'Sharing is not available on this device.',
           [{ text: 'OK' }]
         );
-        setIsSaving(false);
+        setIsSharing(false);
         return;
       }
 
-      console.log('Media library permission granted');
+      console.log('Sharing is available');
       
       // Get current image URL
       const currentImageUrl = images[currentImageIndex];
-      console.log('Saving image:', currentImageUrl);
+      console.log('Sharing image:', currentImageUrl);
 
       // Trigger haptic feedback
       if (Platform.OS !== 'web') {
@@ -137,7 +155,7 @@ export function FullScreenImage({
       }
 
       // Download the image to a temporary location
-      const fileUri = FileSystem.cacheDirectory + `image_${Date.now()}.jpg`;
+      const fileUri = FileSystem.cacheDirectory + `share_image_${Date.now()}.jpg`;
       console.log('Downloading image to:', fileUri);
       
       const downloadResult = await FileSystem.downloadAsync(currentImageUrl, fileUri);
@@ -147,25 +165,23 @@ export function FullScreenImage({
         throw new Error('Failed to download image');
       }
 
-      // Save to media library
-      console.log('Saving to media library...');
-      const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
-      console.log('Image saved successfully:', asset);
+      // Share the image
+      console.log('Opening share dialog...');
+      await Sharing.shareAsync(downloadResult.uri, {
+        dialogTitle: 'Share Image',
+        mimeType: 'image/jpeg',
+        UTI: 'public.jpeg',
+      });
+
+      console.log('Share dialog completed');
 
       // Success haptic feedback
       if (Platform.OS !== 'web') {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
-      Toast.show({
-        type: 'success',
-        text1: 'Image Saved',
-        text2: 'Image has been saved to your photo library',
-        position: 'bottom',
-      });
-
     } catch (error) {
-      console.error('Error saving image:', error);
+      console.error('Error sharing image:', error);
       
       // Error haptic feedback
       if (Platform.OS !== 'web') {
@@ -174,13 +190,47 @@ export function FullScreenImage({
 
       Alert.alert(
         'Error',
-        'Failed to save image. Please try again.',
+        'Failed to share image. Please try again.',
         [{ text: 'OK' }]
       );
     } finally {
-      setIsSaving(false);
+      setIsSharing(false);
     }
   };
+
+  // Gesture handler for swipe-to-dismiss
+  const gestureHandler = useAnimatedGestureHandler<PanGestureHandlerGestureEvent>({
+    onActive: (event) => {
+      // Only allow downward swipes
+      if (event.translationY > 0) {
+        translateY.value = event.translationY;
+        // Fade out as user swipes down
+        opacity.value = Math.max(0.3, 1 - event.translationY / SCREEN_HEIGHT);
+      }
+    },
+    onEnd: (event) => {
+      // If swiped down past threshold, dismiss the modal
+      if (event.translationY > DISMISS_THRESHOLD) {
+        // Animate out and close
+        translateY.value = withSpring(SCREEN_HEIGHT, {}, () => {
+          runOnJS(onClose)();
+        });
+        opacity.value = withSpring(0);
+      } else {
+        // Spring back to original position
+        translateY.value = withSpring(0);
+        opacity.value = withSpring(1);
+      }
+    },
+  });
+
+  // Animated style for the container
+  const animatedContainerStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: translateY.value }],
+      opacity: opacity.value,
+    };
+  });
 
   return (
     <Modal
@@ -190,99 +240,106 @@ export function FullScreenImage({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <View style={styles.container}>
-        {/* Close Button - Top Right */}
-        <Pressable
-          style={styles.closeButton}
-          onPress={onClose}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <View style={styles.closeButtonCircle}>
-            <IconSymbol name="xmark" size={24} color="#FFFFFF" />
-          </View>
-        </Pressable>
-
-        {/* Image Carousel */}
-        <ScrollView
-          ref={scrollViewRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          snapToInterval={SCREEN_WIDTH}
-          decelerationRate="fast"
-          style={styles.scrollView}
-        >
-          {images.map((imageUrl, index) => (
-            <View key={`fullscreen-${index}`} style={styles.imageWrapper}>
-              <Image
-                source={{ uri: imageUrl }}
-                style={styles.image}
-                resizeMode="contain"
-              />
+      <PanGestureHandler onGestureEvent={gestureHandler}>
+        <Animated.View style={[styles.container, animatedContainerStyle]}>
+          {/* Close Button - Top Right */}
+          <Pressable
+            style={styles.closeButton}
+            onPress={onClose}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <View style={styles.closeButtonCircle}>
+              <IconSymbol name="xmark" size={24} color="#FFFFFF" />
             </View>
-          ))}
-        </ScrollView>
+          </Pressable>
 
-        {/* Save Image Button - Bottom Left */}
-        <Pressable
-          style={styles.saveButton}
-          onPress={handleSaveImage}
-          disabled={isSaving}
-          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-        >
-          <View style={styles.saveButtonContent}>
-            {isSaving ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <IconSymbol 
-                ios_icon_name="arrow.down.to.line" 
-                android_material_icon_name="download" 
-                size={24} 
-                color="#FFFFFF" 
-              />
-            )}
-          </View>
-        </Pressable>
-
-        {/* OCR Button - Bottom Right */}
-        <Pressable
-          style={styles.ocrButton}
-          onPress={handleOCRButtonPress}
-          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-        >
-          <Image
-            source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-            style={styles.ocrButtonIcon}
-            resizeMode="contain"
-          />
-        </Pressable>
-
-        {/* Pagination Dots - Bottom Center */}
-        {images.length > 1 && (
-          <View style={styles.paginationContainer}>
-            {images.map((_, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.paginationDot,
-                  currentImageIndex === index && styles.paginationDotActive,
-                ]}
-              />
+          {/* Image Carousel */}
+          <ScrollView
+            ref={scrollViewRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            snapToInterval={SCREEN_WIDTH}
+            decelerationRate="fast"
+            style={styles.scrollView}
+          >
+            {images.map((imageUrl, index) => (
+              <View key={`fullscreen-${index}`} style={styles.imageWrapper}>
+                <Image
+                  source={{ uri: imageUrl }}
+                  style={styles.image}
+                  resizeMode="contain"
+                />
+              </View>
             ))}
-          </View>
-        )}
+          </ScrollView>
 
-        {/* Counter Badge - Top Left */}
-        {images.length > 1 && (
-          <View style={styles.counterBadge}>
-            <Text style={styles.counterText}>
-              {currentImageIndex + 1} / {images.length}
-            </Text>
+          {/* Share Image Button - Bottom Left */}
+          <Pressable
+            style={styles.shareButton}
+            onPress={handleShareImage}
+            disabled={isSharing}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          >
+            <View style={styles.shareButtonContent}>
+              {isSharing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <IconSymbol 
+                  ios_icon_name="paperplane.fill" 
+                  android_material_icon_name="send" 
+                  size={24} 
+                  color="#FFFFFF" 
+                />
+              )}
+            </View>
+          </Pressable>
+
+          {/* OCR Button - Bottom Right */}
+          <Pressable
+            style={styles.ocrButton}
+            onPress={handleOCRButtonPress}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          >
+            <Image
+              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+              style={styles.ocrButtonIcon}
+              resizeMode="contain"
+            />
+          </Pressable>
+
+          {/* Pagination Dots - Bottom Center */}
+          {images.length > 1 && (
+            <View style={styles.paginationContainer}>
+              {images.map((_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.paginationDot,
+                    currentImageIndex === index && styles.paginationDotActive,
+                  ]}
+                />
+              ))}
+            </View>
+          )}
+
+          {/* Counter Badge - Top Left */}
+          {images.length > 1 && (
+            <View style={styles.counterBadge}>
+              <Text style={styles.counterText}>
+                {currentImageIndex + 1} / {images.length}
+              </Text>
+            </View>
+          )}
+
+          {/* Swipe Down Hint - Top Center */}
+          <View style={styles.swipeHintContainer}>
+            <View style={styles.swipeHintBar} />
           </View>
-        )}
-      </View>
+        </Animated.View>
+      </PanGestureHandler>
 
       {/* OCR Modal */}
       <Modal
@@ -359,7 +416,7 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
   },
-  saveButton: {
+  shareButton: {
     position: 'absolute',
     bottom: 120,
     left: 24,
@@ -375,7 +432,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     zIndex: 1000,
   },
-  saveButtonContent: {
+  shareButtonContent: {
     width: 36,
     height: 36,
     justifyContent: 'center',
@@ -436,6 +493,20 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
+  },
+  swipeHintContainer: {
+    position: 'absolute',
+    top: 20,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 50,
+  },
+  swipeHintBar: {
+    width: 40,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
   },
   ocrModalContainer: {
     flex: 1,
