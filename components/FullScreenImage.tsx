@@ -201,10 +201,7 @@ export function FullScreenImage({
   };
 
   const handleClose = () => {
-    if (isDismissing) {
-      return;
-    }
-    setIsDismissing(true);
+    console.log('Closing full screen image');
     onClose();
   };
 
@@ -234,7 +231,14 @@ export function FullScreenImage({
           stiffness: 200,
         }, (finished) => {
           if (finished) {
+            // Reset animation values before closing
+            translateY.value = 0;
+            opacity.value = 1;
             runOnJS(handleClose)();
+            // Reset dismissing state after a short delay
+            setTimeout(() => {
+              runOnJS(setIsDismissing)(false);
+            }, 100);
           }
         });
         opacity.value = withSpring(0, {

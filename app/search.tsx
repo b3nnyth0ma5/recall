@@ -197,18 +197,22 @@ export default function SearchScreen() {
           <Pressable 
             onPress={handleSearch} 
             style={styles.searchIconButton}
-            disabled={!searchQuery.trim()}
+            disabled={!searchQuery.trim() || isLoadingHistory}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <View style={[
               styles.searchIconContainer,
-              !searchQuery.trim() && styles.searchIconDisabled
+              (!searchQuery.trim() || isLoadingHistory) && styles.searchIconDisabled
             ]}>
-              <IconSymbol 
-                name="sparkles" 
-                size={18} 
-                color="#FFFFFF" 
-              />
+              {isLoadingHistory ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <IconSymbol 
+                  name="sparkles" 
+                  size={18} 
+                  color="#FFFFFF" 
+                />
+              )}
             </View>
           </Pressable>
         </View>
@@ -231,6 +235,7 @@ export default function SearchScreen() {
         {isLoadingHistory ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Loading search history...</Text>
           </View>
         ) : showHistory && searchHistory.length > 0 ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
@@ -476,6 +481,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingTop: 100,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   historyContainer: {
     width: '100%',

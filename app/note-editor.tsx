@@ -79,6 +79,7 @@ export default function NoteEditorScreen() {
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
   const [showLocationDrawer, setShowLocationDrawer] = useState(false);
+  const [showCameraDrawer, setShowCameraDrawer] = useState(false);
   const [cameraLaunched, setCameraLaunched] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -88,9 +89,11 @@ export default function NoteEditorScreen() {
   const [lazyLoadedImages, setLazyLoadedImages] = useState<ImageData[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
 
-  // Animated values for drawer
+  // Animated values for drawers
   const drawerTranslateY = useSharedValue(SCREEN_HEIGHT);
   const drawerOpacity = useSharedValue(0);
+  const cameraDrawerTranslateY = useSharedValue(SCREEN_HEIGHT);
+  const cameraDrawerOpacity = useSharedValue(0);
 
   const isEditing = !!params.id;
   const isSharedRecall = params.isSharedRecall === 'true';
@@ -167,7 +170,7 @@ export default function NoteEditorScreen() {
     }
   };
 
-  // Animated styles for drawer
+  // Animated styles for location drawer
   const drawerAnimatedStyle = useAnimatedStyle(() => {
     return {
       transform: [{ translateY: drawerTranslateY.value }],
@@ -180,8 +183,21 @@ export default function NoteEditorScreen() {
     };
   });
 
-  // Open drawer with bounce effect
-  const openDrawer = () => {
+  // Animated styles for camera drawer
+  const cameraDrawerAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: cameraDrawerTranslateY.value }],
+    };
+  });
+
+  const cameraOverlayAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: cameraDrawerOpacity.value,
+    };
+  });
+
+  // Open location drawer with bounce effect
+  const openLocationDrawer = () => {
     setShowLocationDrawer(true);
     drawerOpacity.value = withTiming(1, { duration: 300 });
     drawerTranslateY.value = withSpring(0, {
@@ -191,8 +207,8 @@ export default function NoteEditorScreen() {
     });
   };
 
-  // Close drawer with bounce effect
-  const closeDrawer = () => {
+  // Close location drawer with bounce effect
+  const closeLocationDrawer = () => {
     drawerOpacity.value = withTiming(0, { duration: 200 });
     drawerTranslateY.value = withSpring(SCREEN_HEIGHT, {
       damping: 20,
@@ -200,6 +216,29 @@ export default function NoteEditorScreen() {
       mass: 0.5,
     }, () => {
       runOnJS(setShowLocationDrawer)(false);
+    });
+  };
+
+  // Open camera drawer with bounce effect
+  const openCameraDrawer = () => {
+    setShowCameraDrawer(true);
+    cameraDrawerOpacity.value = withTiming(1, { duration: 300 });
+    cameraDrawerTranslateY.value = withSpring(0, {
+      damping: 15,
+      stiffness: 150,
+      mass: 0.8,
+    });
+  };
+
+  // Close camera drawer with bounce effect
+  const closeCameraDrawer = () => {
+    cameraDrawerOpacity.value = withTiming(0, { duration: 200 });
+    cameraDrawerTranslateY.value = withSpring(SCREEN_HEIGHT, {
+      damping: 20,
+      stiffness: 200,
+      mass: 0.5,
+    }, () => {
+      runOnJS(setShowCameraDrawer)(false);
     });
   };
 
@@ -382,26 +421,86 @@ export default function NoteEditorScreen() {
     }
   }, [images, location]);
 
+  const pickImage = useCallback(async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant camera roll permissions');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        quality: 0.8,
+        exif: true,
+      });
+
+      if (!result.canceled && result.assets) {
+        setLoading(true);
+        const newImages: ImageData[] = [];
+
+        // Try to extract location from the first image if we don't have a location yet
+        if (!location && result.assets.length > 0) {
+          console.log('Attempting to extract location from first selected image...');
+          try {
+            const imageLocation = await extractLocationFromImage(result.assets[0]);
+            
+            if (imageLocation.latitude && imageLocation.longitude) {
+              console.log('Location extracted from image:', imageLocation);
+              setLocation({
+                latitude: imageLocation.latitude,
+                longitude: imageLocation.longitude,
+              });
+              
+              if (imageLocation.locationName) {
+                setLocationName(imageLocation.locationName);
+                console.log('Location name set from image:', imageLocation.locationName);
+              }
+            } else {
+              console.log('No location data found in image');
+            }
+          } catch (error) {
+            console.error('Error extracting location from image:', error);
+          }
+        }
+
+        for (const asset of result.assets) {
+          const converted = await convertImageToSuitableFormat(asset.uri);
+
+          newImages.push({
+            uri: converted.uri,
+            localUri: converted.uri,
+            contentType: converted.contentType,
+          });
+        }
+
+        setImages([...images, ...newImages]);
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      setLoading(false);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  }, [images, location]);
+
   const handleCameraPress = () => {
-    Alert.alert(
-      'Add Photo',
-      'Choose an option',
-      [
-        {
-          text: 'Take Photo',
-          onPress: takePhoto,
-        },
-        {
-          text: 'Choose from Library',
-          onPress: pickImage,
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ],
-      { cancelable: true }
-    );
+    openCameraDrawer();
+  };
+
+  const handleTakePhoto = () => {
+    closeCameraDrawer();
+    setTimeout(() => {
+      takePhoto();
+    }, 300);
+  };
+
+  const handleChooseFromLibrary = () => {
+    closeCameraDrawer();
+    setTimeout(() => {
+      pickImage();
+    }, 300);
   };
 
   // Auto-launch camera when openCamera flag is set - FIXED: Only run once
@@ -668,70 +767,6 @@ export default function NoteEditorScreen() {
     }
   };
 
-  const pickImage = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please grant camera roll permissions');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: true,
-        quality: 0.8,
-        exif: true,
-      });
-
-      if (!result.canceled && result.assets) {
-        setLoading(true);
-        const newImages: ImageData[] = [];
-
-        // Try to extract location from the first image if we don't have a location yet
-        if (!location && result.assets.length > 0) {
-          console.log('Attempting to extract location from first selected image...');
-          try {
-            const imageLocation = await extractLocationFromImage(result.assets[0]);
-            
-            if (imageLocation.latitude && imageLocation.longitude) {
-              console.log('Location extracted from image:', imageLocation);
-              setLocation({
-                latitude: imageLocation.latitude,
-                longitude: imageLocation.longitude,
-              });
-              
-              if (imageLocation.locationName) {
-                setLocationName(imageLocation.locationName);
-                console.log('Location name set from image:', imageLocation.locationName);
-              }
-            } else {
-              console.log('No location data found in image');
-            }
-          } catch (error) {
-            console.error('Error extracting location from image:', error);
-          }
-        }
-
-        for (const asset of result.assets) {
-          const converted = await convertImageToSuitableFormat(asset.uri);
-
-          newImages.push({
-            uri: converted.uri,
-            localUri: converted.uri,
-            contentType: converted.contentType,
-          });
-        }
-
-        setImages([...images, ...newImages]);
-        setLoading(false);
-      }
-    } catch (error) {
-      console.error('Error picking image:', error);
-      setLoading(false);
-      Alert.alert('Error', 'Failed to pick image');
-    }
-  };
-
   const removeImage = async (index: number) => {
     const image = images[index];
     
@@ -796,18 +831,18 @@ export default function NoteEditorScreen() {
       return;
     }
 
-    openDrawer();
+    openLocationDrawer();
   };
 
   const handleUpdateLocation = () => {
-    closeDrawer();
+    closeLocationDrawer();
     setTimeout(() => {
       router.push('/location-search');
     }, 300);
   };
 
   const handleOpenMaps = async () => {
-    closeDrawer();
+    closeLocationDrawer();
     
     if (!location) {
       console.log('No location available');
@@ -1315,7 +1350,7 @@ export default function NoteEditorScreen() {
           <Animated.View style={[styles.drawerOverlay, overlayAnimatedStyle]}>
             <Pressable 
               style={StyleSheet.absoluteFill}
-              onPress={closeDrawer}
+              onPress={closeLocationDrawer}
             />
           </Animated.View>
           
@@ -1360,7 +1395,68 @@ export default function NoteEditorScreen() {
             </Pressable>
 
             <Pressable
-              onPress={closeDrawer}
+              onPress={closeLocationDrawer}
+              style={styles.drawerCancelButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.drawerCancelText}>Cancel</Text>
+            </Pressable>
+          </Animated.View>
+        </View>
+      )}
+
+      {/* Camera Drawer */}
+      {showCameraDrawer && (
+        <View style={styles.drawerContainer}>
+          <Animated.View style={[styles.drawerOverlay, cameraOverlayAnimatedStyle]}>
+            <Pressable 
+              style={StyleSheet.absoluteFill}
+              onPress={closeCameraDrawer}
+            />
+          </Animated.View>
+          
+          <Animated.View style={[styles.drawerContent, cameraDrawerAnimatedStyle]}>
+            <View style={styles.drawerHandle} />
+            
+            <View style={styles.drawerHeader}>
+              <IconSymbol name="camera.fill" size={24} color={colors.primary} />
+              <Text style={styles.drawerTitle}>Add Photo</Text>
+            </View>
+            
+            <Pressable
+              onPress={handleTakePhoto}
+              style={styles.drawerOption}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <View style={styles.drawerOptionIcon}>
+                <IconSymbol name="camera.fill" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.drawerOptionText}>
+                <Text style={styles.drawerOptionTitle}>Take Photo</Text>
+                <Text style={styles.drawerOptionSubtitle}>Use your camera to take a new photo</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
+            </Pressable>
+
+            <View style={styles.drawerDivider} />
+
+            <Pressable
+              onPress={handleChooseFromLibrary}
+              style={styles.drawerOption}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <View style={styles.drawerOptionIcon}>
+                <IconSymbol name="photo.fill" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.drawerOptionText}>
+                <Text style={styles.drawerOptionTitle}>Choose from Library</Text>
+                <Text style={styles.drawerOptionSubtitle}>Select photos from your gallery</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
+            </Pressable>
+
+            <Pressable
+              onPress={closeCameraDrawer}
               style={styles.drawerCancelButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
