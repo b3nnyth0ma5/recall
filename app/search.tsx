@@ -40,7 +40,7 @@ export default function SearchScreen() {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [isAnswerExpanded, setIsAnswerExpanded] = useState(false);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
 
   const loadSearchHistory = useCallback(async () => {
@@ -66,12 +66,12 @@ export default function SearchScreen() {
     };
   }, [loadSearchHistory]);
 
-  // Show history only after it's loaded
+  // Show history when not searching and history is loaded
   useEffect(() => {
-    if (!isLoadingHistory && !hasSearched) {
+    if (!hasSearched && searchHistory.length > 0) {
       setShowHistory(true);
     }
-  }, [isLoadingHistory, hasSearched]);
+  }, [hasSearched, searchHistory]);
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
@@ -232,12 +232,7 @@ export default function SearchScreen() {
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {isLoadingHistory ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Loading search history...</Text>
-          </View>
-        ) : showHistory && searchHistory.length > 0 ? (
+        {showHistory && searchHistory.length > 0 ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
             <Text style={styles.historyTitle}>Recent Searches</Text>
             {searchHistory.map((item) => (
@@ -475,17 +470,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 100,
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
   },
   historyContainer: {
     width: '100%',
