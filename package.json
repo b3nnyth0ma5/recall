@@ -1,3 +1,4 @@
+
 {
   "name": "Natively",
   "version": "1.0.0",
@@ -10,7 +11,9 @@
     "build:web": "expo export -p web && npx workbox generateSW workbox-config.js",
     "build:android": "expo prebuild -p android",
     "build:ios": "expo prebuild -p ios --clean",
-    "lint": "eslint ."
+    "build:ios:clean": "rm -rf ios/ && expo prebuild -p ios --clean",
+    "lint": "eslint .",
+    "verify:share-extension": "echo 'Verifying Share Extension configuration...' && test -d targets/share-extension && echo '✓ Share Extension directory exists' || echo '✗ Share Extension directory missing'"
   },
   "dependencies": {
     "@babel/plugin-proposal-export-namespace-from": "^7.18.9",

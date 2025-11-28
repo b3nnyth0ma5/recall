@@ -44,11 +44,18 @@
 				<key>NSExtensionActivationSupportsWebPageWithMaxCount</key>
 				<integer>1</integer>
 			</dict>
+			<key>PHSupportedMediaTypes</key>
+			<array>
+				<string>Image</string>
+				<string>Video</string>
+			</array>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.share-services</string>
-		<key>NSExtensionPrincipalClass</key>
-		<string>ShareExtension</string>
+		<key>NSExtensionMainStoryboard</key>
+		<string>MainInterface</string>
 	</dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs access to your photo library to share images.</string>
 </dict>
 </plist>
