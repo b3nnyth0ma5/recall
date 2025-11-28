@@ -292,8 +292,7 @@ export function FullScreenImage({
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <IconSymbol 
-                  ios_icon_name="paperplane.fill" 
-                  android_material_icon_name="send" 
+                  name="paperplane.fill" 
                   size={24} 
                   color="#FFFFFF" 
                 />

@@ -5,15 +5,14 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native';
-import * as Linking from 'expo-linking';
-import { handleShareIntent } from '@/utils/shareIntentHandler';
+import { getInitialShareData, listenForShareIntents, ReceivedShareData } from '@/utils/nativeShareReceiver';
 import { supabase } from '@/utils/supabase';
 
 function RootLayoutNav() {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
-  const [pendingShareData, setPendingShareData] = useState<{text?: string; images?: string[]} | null>(null);
+  const [pendingShareData, setPendingShareData] = useState<ReceivedShareData | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
 
@@ -65,67 +64,69 @@ function RootLayoutNav() {
     checkOnboardingStatus();
   }, [user?.id, loading]);
 
-  // Handle deep links and share intents
+  // Handle initial share data when app launches
   useEffect(() => {
-    const handleInitialURL = async () => {
+    const handleInitialShare = async () => {
+      if (loading) {
+        console.log('[Share] Still loading, waiting...');
+        return;
+      }
+
       try {
-        const initialUrl = await Linking.getInitialURL();
-        console.log('Initial URL:', initialUrl);
+        console.log('[Share] Checking for initial share data...');
+        const shareData = await getInitialShareData();
         
-        if (initialUrl) {
-          const shareData = await handleShareIntent(initialUrl);
-          if (shareData) {
-            console.log('Share intent detected on app launch:', shareData);
-            
-            // Store the share data to be used after authentication
-            setPendingShareData(shareData);
-          }
+        if (shareData) {
+          console.log('[Share] Initial share data detected:', shareData);
+          
+          // Store the share data to be used after authentication
+          setPendingShareData(shareData);
+        } else {
+          console.log('[Share] No initial share data found');
         }
       } catch (error) {
-        console.error('Error handling initial URL:', error);
+        console.error('[Share] Error handling initial share:', error);
       }
     };
 
-    // Only handle initial URL after loading is complete
-    if (!loading) {
-      handleInitialURL();
-    }
+    handleInitialShare();
+  }, [loading]);
 
-    // Listen for URL changes while app is running
-    const subscription = Linking.addEventListener('url', async (event) => {
-      console.log('URL event received:', event.url);
+  // Listen for share intents while app is running
+  useEffect(() => {
+    console.log('[Share] Setting up share intent listener');
+    
+    const unsubscribe = listenForShareIntents((shareData) => {
+      console.log('[Share] Share intent received:', shareData);
       
-      const shareData = await handleShareIntent(event.url);
-      if (shareData) {
-        console.log('Share intent detected:', shareData);
-        
-        // Check if user is authenticated
-        if (!user) {
-          console.log('User not authenticated, storing share data for later');
-          setPendingShareData(shareData);
-          return;
-        }
-        
-        // Navigate to share-intent screen with the data
-        router.push({
-          pathname: '/share-intent',
-          params: {
-            text: shareData.text || '',
-            images: shareData.images ? JSON.stringify(shareData.images) : '[]',
-          },
-        });
+      // Check if user is authenticated
+      if (!user) {
+        console.log('[Share] User not authenticated, storing share data for later');
+        setPendingShareData(shareData);
+        return;
       }
+      
+      // Navigate to share-intent screen with the data
+      console.log('[Share] Navigating to share-intent screen');
+      router.push({
+        pathname: '/share-intent',
+        params: {
+          text: shareData.text || '',
+          images: shareData.images ? JSON.stringify(shareData.images) : '[]',
+        },
+      });
     });
 
     return () => {
-      subscription.remove();
+      console.log('[Share] Cleaning up share intent listener');
+      unsubscribe();
     };
-  }, [router, user, loading]);
+  }, [router, user]);
 
   // Handle pending share data after user authentication
   useEffect(() => {
     if (user && pendingShareData && !loading) {
-      console.log('User authenticated, processing pending share data:', pendingShareData);
+      console.log('[Share] User authenticated, processing pending share data:', pendingShareData);
       
       // Navigate to share-intent screen with the pending data
       setTimeout(() => {
