@@ -15,6 +15,7 @@ function RootLayoutNav() {
   const [pendingShareData, setPendingShareData] = useState<ReceivedShareData | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
+  const [hasProcessedPendingShare, setHasProcessedPendingShare] = useState(false);
 
   // Check if user needs onboarding
   useEffect(() => {
@@ -123,13 +124,18 @@ function RootLayoutNav() {
     };
   }, [router, user]);
 
-  // Handle pending share data after user authentication
+  // Handle pending share data after user authentication - PRIORITY EFFECT
   useEffect(() => {
-    if (user && pendingShareData && !loading) {
+    if (user && pendingShareData && !loading && !checkingOnboarding && !hasProcessedPendingShare) {
       console.log('[Share] User authenticated, processing pending share data:', pendingShareData);
       
+      // Mark as processed immediately to prevent re-processing
+      setHasProcessedPendingShare(true);
+      
       // Navigate to share-intent screen with the pending data
+      // Use a small delay to ensure the navigation stack is ready
       setTimeout(() => {
+        console.log('[Share] Navigating to share-intent with pending data');
         router.push({
           pathname: '/share-intent',
           params: {
@@ -138,30 +144,40 @@ function RootLayoutNav() {
           },
         });
         
-        // Clear pending share data
+        // Clear pending share data after navigation
         setPendingShareData(null);
       }, 500);
     }
-  }, [user, pendingShareData, loading, router]);
+  }, [user, pendingShareData, loading, checkingOnboarding, hasProcessedPendingShare, router]);
 
-  // Handle authentication and onboarding routing
+  // Handle authentication and onboarding routing - LOWER PRIORITY
   useEffect(() => {
     if (loading || checkingOnboarding) {
       console.log('[Routing] Waiting for loading/checking to complete...', { loading, checkingOnboarding });
       return;
     }
 
+    // IMPORTANT: Don't redirect if we have pending share data that hasn't been processed yet
+    if (pendingShareData && !hasProcessedPendingShare) {
+      console.log('[Routing] Skipping redirect - pending share data needs to be processed first');
+      return;
+    }
+
     const inAuthGroup = segments[0] === 'login';
     const inOnboardingGroup = segments[0] === 'onboarding';
     const inTabsGroup = segments[0] === '(tabs)';
+    const inShareIntentScreen = segments[0] === 'share-intent';
 
     console.log('[Routing] Current state:', { 
       user: !!user, 
       inAuthGroup, 
       inOnboardingGroup, 
       inTabsGroup,
+      inShareIntentScreen,
       needsOnboarding,
-      segments 
+      segments,
+      hasPendingShare: !!pendingShareData,
+      hasProcessedPendingShare
     });
 
     if (!user && !inAuthGroup) {
@@ -183,13 +199,13 @@ function RootLayoutNav() {
       // User authenticated, on onboarding screen, but doesn't need it anymore
       console.log('[Routing] Redirecting to home (onboarding complete)');
       router.replace('/(tabs)/(home)');
-    } else if (user && needsOnboarding === true && !inOnboardingGroup && !inTabsGroup && segments.length === 0) {
+    } else if (user && needsOnboarding === true && !inOnboardingGroup && !inTabsGroup && !inShareIntentScreen && segments.length === 0) {
       // User authenticated but needs onboarding and is at root (no segments)
       // Only redirect if they're not already navigating somewhere
       console.log('[Routing] Redirecting to onboarding (at root, needs onboarding)');
       router.replace('/onboarding');
     }
-  }, [user, segments, loading, checkingOnboarding, needsOnboarding, router]);
+  }, [user, segments, loading, checkingOnboarding, needsOnboarding, pendingShareData, hasProcessedPendingShare, router]);
 
   return (
     <Stack

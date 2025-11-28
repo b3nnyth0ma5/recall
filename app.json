@@ -1,4 +1,3 @@
-
 {
   "expo": {
     "name": "Recall",
@@ -48,7 +47,9 @@
         "UISupportsDocumentBrowser": true,
         "CFBundleURLTypes": [
           {
-            "CFBundleURLSchemes": ["natively"],
+            "CFBundleURLSchemes": [
+              "natively"
+            ],
             "CFBundleURLName": "com.anonymous.Natively"
           }
         ]
@@ -142,5 +143,6 @@
     "extra": {
       "router": {}
     }
-  }
+  },
+  "scheme": "Recall"
 }

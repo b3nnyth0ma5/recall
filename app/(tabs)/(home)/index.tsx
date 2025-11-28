@@ -822,7 +822,7 @@ const styles = StyleSheet.create({
   },
   bottomActions: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 40,
     left: 0,
     right: 0,
     flexDirection: 'row',

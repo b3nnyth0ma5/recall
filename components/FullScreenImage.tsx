@@ -421,7 +421,7 @@ const styles = StyleSheet.create({
   },
   shareButton: {
     position: 'absolute',
-    bottom: 120,
+    bottom: 40,
     left: 24,
     width: 64,
     height: 64,
@@ -443,7 +443,7 @@ const styles = StyleSheet.create({
   },
   ocrButton: {
     position: 'absolute',
-    bottom: 120,
+    bottom: 40,
     right: 24,
     width: 64,
     height: 64,
