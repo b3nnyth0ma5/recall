@@ -15,11 +15,71 @@ export interface ReceivedShareData {
  * This utility handles receiving shared content from other apps on both iOS and Android.
  * 
  * IMPORTANT NOTES:
- * - On iOS: Uses CFBundleDocumentTypes to receive shared images and text files
+ * - On iOS: Uses Share Extension to receive shared content from the share sheet
  * - On Android: Uses intent filters to receive SEND and SEND_MULTIPLE intents
  * - The app must be built with EAS or expo prebuild for native share to work
  * - Share intents are received as deep links via expo-linking
+ * 
+ * iOS SHARE EXTENSION:
+ * - The Share Extension saves images to the App Group shared container
+ * - Images are then copied to the app's document directory for permanent storage
+ * - The Share Extension passes data via deep links: natively://share-intent?text=...&images=...
  */
+
+/**
+ * Get the shared container path for iOS App Groups
+ */
+function getSharedContainerPath(): string | null {
+  if (Platform.OS !== 'ios') {
+    return null;
+  }
+  
+  // This would need to be implemented with a native module
+  // For now, we'll construct the expected path
+  // In a real implementation, you'd use a native module to get this path
+  return FileSystem.documentDirectory + '../../../Shared/AppGroup/group.com.anonymous.Natively/';
+}
+
+/**
+ * Copy images from shared container to app's document directory
+ */
+async function copySharedImages(imagePaths: string[]): Promise<string[]> {
+  const copiedImages: string[] = [];
+  
+  for (const imagePath of imagePaths) {
+    try {
+      // Check if the image exists
+      const fileInfo = await FileSystem.getInfoAsync(imagePath);
+      
+      if (fileInfo.exists) {
+        // Copy to document directory
+        const filename = imagePath.split('/').pop() || `image_${Date.now()}.jpg`;
+        const destPath = `${FileSystem.documentDirectory}${filename}`;
+        
+        await FileSystem.copyAsync({
+          from: imagePath,
+          to: destPath,
+        });
+        
+        copiedImages.push(destPath);
+        console.log('[NativeShareReceiver] Copied image to:', destPath);
+        
+        // Clean up the shared container file
+        try {
+          await FileSystem.deleteAsync(imagePath, { idempotent: true });
+        } catch (error) {
+          console.log('[NativeShareReceiver] Could not delete shared file:', error);
+        }
+      } else {
+        console.log('[NativeShareReceiver] Image file does not exist:', imagePath);
+      }
+    } catch (error) {
+      console.error('[NativeShareReceiver] Error copying shared image:', error);
+    }
+  }
+  
+  return copiedImages;
+}
 
 /**
  * Check if a URL is a file URL (file://, content://)
@@ -96,16 +156,45 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
         console.log('[NativeShareReceiver] Extracted text:', shareData.text);
       }
       
+      // Extract URLs
+      if (parsed.queryParams?.urls) {
+        try {
+          const urlsParam = parsed.queryParams.urls;
+          if (typeof urlsParam === 'string') {
+            shareData.urls = JSON.parse(urlsParam);
+          } else if (Array.isArray(urlsParam)) {
+            shareData.urls = urlsParam;
+          }
+          console.log('[NativeShareReceiver] Extracted URLs:', shareData.urls);
+        } catch (error) {
+          console.error('[NativeShareReceiver] Error parsing URLs:', error);
+        }
+      }
+      
       // Extract images
       if (parsed.queryParams?.images) {
         try {
           const imagesParam = parsed.queryParams.images;
+          let imagePaths: string[] = [];
+          
           if (typeof imagesParam === 'string') {
-            shareData.images = JSON.parse(imagesParam);
+            imagePaths = JSON.parse(imagesParam);
           } else if (Array.isArray(imagesParam)) {
-            shareData.images = imagesParam;
+            imagePaths = imagesParam;
           }
-          console.log('[NativeShareReceiver] Extracted images:', shareData.images);
+          
+          console.log('[NativeShareReceiver] Extracted image paths:', imagePaths);
+          
+          // On iOS, images from Share Extension are in the shared container
+          // We need to copy them to the app's document directory
+          if (Platform.OS === 'ios' && imagePaths.length > 0) {
+            console.log('[NativeShareReceiver] Copying images from shared container...');
+            shareData.images = await copySharedImages(imagePaths);
+          } else {
+            shareData.images = imagePaths;
+          }
+          
+          console.log('[NativeShareReceiver] Final images:', shareData.images);
         } catch (error) {
           console.error('[NativeShareReceiver] Error parsing images:', error);
         }
@@ -251,7 +340,7 @@ export function listenForShareIntents(
 /**
  * Create a test share intent URL for development
  */
-export function createTestShareUrl(text?: string, images?: string[]): string {
+export function createTestShareUrl(text?: string, images?: string[], urls?: string[]): string {
   const params: Record<string, string> = {};
   
   if (text) {
@@ -260,6 +349,10 @@ export function createTestShareUrl(text?: string, images?: string[]): string {
   
   if (images && images.length > 0) {
     params.images = JSON.stringify(images);
+  }
+  
+  if (urls && urls.length > 0) {
+    params.urls = JSON.stringify(urls);
   }
   
   return Linking.createURL('share-intent', {
