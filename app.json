@@ -149,7 +149,7 @@
             "usesCleartextTraffic": true
           },
           "ios": {
-            "deploymentTarget": "15.0"
+            "deploymentTarget": "15.1"
           }
         }
       ],
@@ -161,7 +161,7 @@
               "type": "share-extension",
               "name": "ShareExtension",
               "bundleIdentifier": "com.anonymous.Natively.ShareExtension",
-              "deploymentTarget": "15.0",
+              "deploymentTarget": "15.1",
               "entitlements": {
                 "com.apple.security.application-groups": [
                   "group.com.anonymous.Natively"
