@@ -35,6 +35,7 @@ import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
+import { ImageEditor } from '@/components/ImageEditor';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
 import { processRecallUrls } from '@/utils/urlProcessor';
 import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
@@ -81,6 +82,8 @@ export default function NoteEditorScreen() {
   const [showLocationDrawer, setShowLocationDrawer] = useState(false);
   const [showCameraDrawer, setShowCameraDrawer] = useState(false);
   const [cameraLaunched, setCameraLaunched] = useState(false);
+  const [showImageEditor, setShowImageEditor] = useState(false);
+  const [imageToEdit, setImageToEdit] = useState<string | null>(null);
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
@@ -404,15 +407,12 @@ export default function NoteEditorScreen() {
           }
         }
         
-        const converted = await convertImageToSuitableFormat(asset.uri);
-
-        setImages([...images, {
-          uri: converted.uri,
-          localUri: converted.uri,
-          contentType: converted.contentType,
-        }]);
-        
         setLoading(false);
+        
+        // Open image editor for the captured photo
+        console.log('Opening image editor for captured photo');
+        setImageToEdit(asset.uri);
+        setShowImageEditor(true);
       }
     } catch (error) {
       console.error('Error taking photo:', error);
@@ -1095,6 +1095,39 @@ export default function NoteEditorScreen() {
     textInputRef.current?.focus();
   };
 
+  const handleImageEditorSave = async (editedUri: string) => {
+    try {
+      console.log('Saving edited image:', editedUri);
+      
+      // Convert the edited image to suitable format
+      const converted = await convertImageToSuitableFormat(editedUri);
+
+      setImages([...images, {
+        uri: converted.uri,
+        localUri: converted.uri,
+        contentType: converted.contentType,
+      }]);
+      
+      setShowImageEditor(false);
+      setImageToEdit(null);
+      
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      
+      console.log('Edited image added successfully');
+    } catch (error) {
+      console.error('Error saving edited image:', error);
+      Alert.alert('Error', 'Failed to save edited image');
+    }
+  };
+
+  const handleImageEditorCancel = () => {
+    console.log('Image editor canceled');
+    setShowImageEditor(false);
+    setImageToEdit(null);
+  };
+
   // Determine which images to display (lazy loaded or all)
   const displayImages = images.length > 1 ? lazyLoadedImages : images;
 
@@ -1493,6 +1526,16 @@ export default function NoteEditorScreen() {
           imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
           initialIndex={fullScreenImageIndex}
           onClose={() => setShowFullScreenImage(false)}
+        />
+      )}
+
+      {/* Image Editor Modal */}
+      {imageToEdit && (
+        <ImageEditor
+          visible={showImageEditor}
+          imageUri={imageToEdit}
+          onSave={handleImageEditorSave}
+          onCancel={handleImageEditorCancel}
         />
       )}
     </View>

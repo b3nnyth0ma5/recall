@@ -22,6 +22,8 @@ import Animated, {
   withSpring,
   runOnJS,
   withTiming,
+  interpolate,
+  Extrapolation,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { IconSymbol } from './IconSymbol';
@@ -43,7 +45,7 @@ interface FullScreenImageProps {
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Threshold for dismissing the modal (swipe down distance)
-const DISMISS_THRESHOLD = 120;
+const DISMISS_THRESHOLD = 100;
 
 /**
  * Standalone full-screen image viewer component with integrated OCR functionality
@@ -71,16 +73,14 @@ export function FullScreenImage({
 
   // Animated values for swipe-to-dismiss gesture
   const translateY = useSharedValue(0);
-  const opacity = useSharedValue(1);
-  const scale = useSharedValue(1);
+  const contextY = useSharedValue(0);
 
   // Reset to initial index when modal opens
   React.useEffect(() => {
     if (visible) {
       setCurrentImageIndex(initialIndex);
       translateY.value = 0;
-      opacity.value = 1;
-      scale.value = 1;
+      contextY.value = 0;
       // Scroll to initial index after a short delay to ensure layout is ready
       setTimeout(() => {
         scrollViewRef.current?.scrollTo({
@@ -205,58 +205,87 @@ export function FullScreenImage({
     onClose();
   };
 
-  // Improved Pan Gesture for swipe-to-dismiss
+  // Improved Pan Gesture for swipe-to-dismiss with smoother animations
   const panGesture = Gesture.Pan()
+    .onStart(() => {
+      contextY.value = translateY.value;
+    })
     .onUpdate((event) => {
       // Only allow downward swipes
       if (event.translationY > 0) {
-        translateY.value = event.translationY;
-        // Fade out and scale down as user swipes down
-        const progress = Math.min(event.translationY / SCREEN_HEIGHT, 1);
-        opacity.value = Math.max(0.3, 1 - progress * 0.7);
-        scale.value = Math.max(0.85, 1 - progress * 0.15);
+        translateY.value = contextY.value + event.translationY;
+      } else {
+        // Allow slight upward movement for natural feel
+        translateY.value = contextY.value + event.translationY * 0.3;
       }
     })
     .onEnd((event) => {
-      // If swiped down past threshold, dismiss the modal
-      if (event.translationY > DISMISS_THRESHOLD) {
-        // Animate out quickly
-        translateY.value = withTiming(SCREEN_HEIGHT, { duration: 250 }, (finished) => {
-          if (finished) {
-            // Reset values immediately
-            translateY.value = 0;
-            opacity.value = 1;
-            scale.value = 1;
-            runOnJS(handleClose)();
+      const shouldDismiss = translateY.value > DISMISS_THRESHOLD;
+      
+      if (shouldDismiss) {
+        // Animate out smoothly
+        translateY.value = withTiming(
+          SCREEN_HEIGHT,
+          { duration: 200 },
+          (finished) => {
+            if (finished) {
+              // Reset immediately before closing
+              translateY.value = 0;
+              contextY.value = 0;
+              runOnJS(handleClose)();
+            }
           }
-        });
-        opacity.value = withTiming(0, { duration: 250 });
-        scale.value = withTiming(0.8, { duration: 250 });
+        );
       } else {
         // Spring back to original position
         translateY.value = withSpring(0, {
-          damping: 20,
-          stiffness: 300,
-        });
-        opacity.value = withSpring(1, {
-          damping: 20,
-          stiffness: 300,
-        });
-        scale.value = withSpring(1, {
-          damping: 20,
-          stiffness: 300,
+          damping: 25,
+          stiffness: 400,
+          mass: 0.8,
         });
       }
     });
 
-  // Animated style for the container
+  // Animated style for the container with smooth interpolation
   const animatedContainerStyle = useAnimatedStyle(() => {
+    const progress = translateY.value / SCREEN_HEIGHT;
+    
+    // Smooth opacity fade
+    const opacity = interpolate(
+      translateY.value,
+      [0, SCREEN_HEIGHT * 0.5],
+      [1, 0],
+      Extrapolation.CLAMP
+    );
+    
+    // Smooth scale down
+    const scale = interpolate(
+      translateY.value,
+      [0, SCREEN_HEIGHT],
+      [1, 0.85],
+      Extrapolation.CLAMP
+    );
+
     return {
       transform: [
         { translateY: translateY.value },
-        { scale: scale.value },
+        { scale: scale },
       ],
-      opacity: opacity.value,
+      opacity: opacity,
+    };
+  });
+
+  // Animated style for background overlay
+  const animatedBackgroundStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      translateY.value,
+      [0, SCREEN_HEIGHT * 0.5],
+      [0.98, 0],
+      Extrapolation.CLAMP
+    );
+
+    return {
+      opacity: opacity,
     };
   });
 
@@ -268,105 +297,110 @@ export function FullScreenImage({
       onRequestClose={handleClose}
       statusBarTranslucent
     >
-      <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.container, animatedContainerStyle]}>
-          {/* Close Button - Top Right */}
-          <Pressable
-            style={styles.closeButton}
-            onPress={handleClose}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <View style={styles.closeButtonCircle}>
-              <IconSymbol name="xmark" size={24} color="#FFFFFF" />
-            </View>
-          </Pressable>
-
-          {/* Image Carousel */}
-          <ScrollView
-            ref={scrollViewRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-            snapToInterval={SCREEN_WIDTH}
-            decelerationRate="fast"
-            style={styles.scrollView}
-          >
-            {images.map((imageUrl, index) => (
-              <View key={`fullscreen-${index}`} style={styles.imageWrapper}>
-                <Image
-                  source={{ uri: imageUrl }}
-                  style={styles.image}
-                  resizeMode="contain"
-                />
+      <View style={styles.modalContainer}>
+        {/* Animated background */}
+        <Animated.View style={[styles.background, animatedBackgroundStyle]} />
+        
+        <GestureDetector gesture={panGesture}>
+          <Animated.View style={[styles.container, animatedContainerStyle]}>
+            {/* Close Button - Top Right */}
+            <Pressable
+              style={styles.closeButton}
+              onPress={handleClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <View style={styles.closeButtonCircle}>
+                <IconSymbol name="xmark" size={24} color="#FFFFFF" />
               </View>
-            ))}
-          </ScrollView>
+            </Pressable>
 
-          {/* Share Image Button - Bottom Left */}
-          <Pressable
-            style={styles.shareButton}
-            onPress={handleShareImage}
-            disabled={isSharing}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          >
-            <View style={styles.shareButtonContent}>
-              {isSharing ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <IconSymbol 
-                  name="paperplane.fill" 
-                  size={24} 
-                  color="#FFFFFF" 
-                />
-              )}
-            </View>
-          </Pressable>
-
-          {/* OCR Button - Bottom Right */}
-          <Pressable
-            style={styles.ocrButton}
-            onPress={handleOCRButtonPress}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          >
-            <Image
-              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-              style={styles.ocrButtonIcon}
-              resizeMode="contain"
-            />
-          </Pressable>
-
-          {/* Pagination Dots - Bottom Center */}
-          {images.length > 1 && (
-            <View style={styles.paginationContainer}>
-              {images.map((_, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.paginationDot,
-                    currentImageIndex === index && styles.paginationDotActive,
-                  ]}
-                />
+            {/* Image Carousel */}
+            <ScrollView
+              ref={scrollViewRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              snapToInterval={SCREEN_WIDTH}
+              decelerationRate="fast"
+              style={styles.scrollView}
+            >
+              {images.map((imageUrl, index) => (
+                <View key={`fullscreen-${index}`} style={styles.imageWrapper}>
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.image}
+                    resizeMode="contain"
+                  />
+                </View>
               ))}
-            </View>
-          )}
+            </ScrollView>
 
-          {/* Counter Badge - Top Left */}
-          {images.length > 1 && (
-            <View style={styles.counterBadge}>
-              <Text style={styles.counterText}>
-                {currentImageIndex + 1} / {images.length}
-              </Text>
-            </View>
-          )}
+            {/* Share Image Button - Bottom Left */}
+            <Pressable
+              style={styles.shareButton}
+              onPress={handleShareImage}
+              disabled={isSharing}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+            >
+              <View style={styles.shareButtonContent}>
+                {isSharing ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <IconSymbol 
+                    name="paperplane.fill" 
+                    size={24} 
+                    color="#FFFFFF" 
+                  />
+                )}
+              </View>
+            </Pressable>
 
-          {/* Swipe Down Hint - Top Center */}
-          <View style={styles.swipeHintContainer}>
-            <View style={styles.swipeHintBar} />
-          </View>
-        </Animated.View>
-      </GestureDetector>
+            {/* OCR Button - Bottom Right */}
+            <Pressable
+              style={styles.ocrButton}
+              onPress={handleOCRButtonPress}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+            >
+              <Image
+                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+                style={styles.ocrButtonIcon}
+                resizeMode="contain"
+              />
+            </Pressable>
+
+            {/* Pagination Dots - Bottom Center */}
+            {images.length > 1 && (
+              <View style={styles.paginationContainer}>
+                {images.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.paginationDot,
+                      currentImageIndex === index && styles.paginationDotActive,
+                    ]}
+                  />
+                ))}
+              </View>
+            )}
+
+            {/* Counter Badge - Top Left */}
+            {images.length > 1 && (
+              <View style={styles.counterBadge}>
+                <Text style={styles.counterText}>
+                  {currentImageIndex + 1} / {images.length}
+                </Text>
+              </View>
+            )}
+
+            {/* Swipe Down Hint - Top Center */}
+            <View style={styles.swipeHintContainer}>
+              <View style={styles.swipeHintBar} />
+            </View>
+          </Animated.View>
+        </GestureDetector>
+      </View>
 
       {/* OCR Modal */}
       <Modal
@@ -409,9 +443,15 @@ export function FullScreenImage({
 }
 
 const styles = StyleSheet.create({
+  modalContainer: {
+    flex: 1,
+  },
+  background: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.98)',
+  },
   container: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.98)',
     justifyContent: 'center',
     alignItems: 'center',
   },
