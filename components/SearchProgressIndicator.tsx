@@ -5,8 +5,8 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
-  withTiming,
   withSequence,
+  withTiming,
   Easing,
   interpolate,
 } from 'react-native-reanimated';
@@ -54,7 +54,7 @@ export function SearchProgressIndicator({ stage, locationName }: SearchProgressI
       -1,
       false
     );
-  }, [stage]);
+  }, [stage, progress, pulseScale, iconRotation]);
 
   const progressBarStyle = useAnimatedStyle(() => {
     return {

@@ -35,7 +35,6 @@ import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
-import { ImageEditor } from '@/components/ImageEditor';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
 import { processRecallUrls } from '@/utils/urlProcessor';
 import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
@@ -82,9 +81,6 @@ export default function NoteEditorScreen() {
   const [showLocationDrawer, setShowLocationDrawer] = useState(false);
   const [showCameraDrawer, setShowCameraDrawer] = useState(false);
   const [cameraLaunched, setCameraLaunched] = useState(false);
-  const [showImageEditor, setShowImageEditor] = useState(false);
-  const [imageToEdit, setImageToEdit] = useState<string | null>(null);
-  const [imageIndexToEdit, setImageIndexToEdit] = useState<number | null>(null);
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
@@ -124,7 +120,7 @@ export default function NoteEditorScreen() {
     } else {
       setLazyLoadedImages([]);
     }
-  }, [images.length]);
+  }, [images.length, images]);
 
   // Lazy load remaining images when user swipes to them
   const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -529,7 +525,7 @@ export default function NoteEditorScreen() {
         takePhoto();
       }, 300);
     }
-  }, [openCamera, isEditing, isSharedRecall, fromShare, cameraLaunched]);
+  }, [openCamera, isEditing, isSharedRecall, fromShare, cameraLaunched, takePhoto]);
 
   // Auto-launch location search when openLocation flag is set
   useEffect(() => {
@@ -844,9 +840,8 @@ export default function NoteEditorScreen() {
       }
     }
     
-    setImageToEdit(imageUri);
-    setImageIndexToEdit(index);
-    setShowImageEditor(true);
+    // Note: Native image editing functionality has been removed
+    Alert.alert('Info', 'Image editing is not available');
   };
 
   const renderTextWithLinks = (text: string) => {
@@ -1145,69 +1140,6 @@ export default function NoteEditorScreen() {
     textInputRef.current?.focus();
   };
 
-  const handleImageEditorSave = async (editedUri: string) => {
-    try {
-      console.log('Saving edited image:', editedUri);
-      
-      // Convert the edited image to suitable format
-      const converted = await convertImageToSuitableFormat(editedUri);
-
-      if (imageIndexToEdit !== null) {
-        // Replace the existing image at the index
-        const updatedImages = [...images];
-        const originalImage = updatedImages[imageIndexToEdit];
-        
-        // If the original image had an ID (was saved to database), delete it
-        if (originalImage.id) {
-          console.log('Deleting original image from database:', originalImage.id);
-          try {
-            await deleteImageRecord(originalImage.id);
-          } catch (error) {
-            console.error('Error deleting original image:', error);
-          }
-        }
-        
-        // Replace with the edited image (without ID, so it will be uploaded as new)
-        updatedImages[imageIndexToEdit] = {
-          uri: converted.uri,
-          localUri: converted.uri,
-          contentType: converted.contentType,
-        };
-        
-        setImages(updatedImages);
-        console.log('Replaced image at index:', imageIndexToEdit);
-      } else {
-        // Add as new image (fallback, shouldn't happen)
-        setImages([...images, {
-          uri: converted.uri,
-          localUri: converted.uri,
-          contentType: converted.contentType,
-        }]);
-        console.log('Added edited image as new');
-      }
-      
-      setShowImageEditor(false);
-      setImageToEdit(null);
-      setImageIndexToEdit(null);
-      
-      if (Platform.OS !== 'web') {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-      
-      console.log('Edited image saved successfully');
-    } catch (error) {
-      console.error('Error saving edited image:', error);
-      Alert.alert('Error', 'Failed to save edited image');
-    }
-  };
-
-  const handleImageEditorCancel = () => {
-    console.log('Image editor canceled');
-    setShowImageEditor(false);
-    setImageToEdit(null);
-    setImageIndexToEdit(null);
-  };
-
   // Determine which images to display (lazy loaded or all)
   const displayImages = images.length > 1 ? lazyLoadedImages : images;
 
@@ -1377,15 +1309,6 @@ export default function NoteEditorScreen() {
                   <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
                 )}
                 <View style={styles.imageActions}>
-                  <Pressable
-                    onPress={() => editImage(index)}
-                    style={styles.imageActionButton}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <View style={styles.actionButtonCircle}>
-                      <IconSymbol name="pencil" size={16} color="#FFFFFF" />
-                    </View>
-                  </Pressable>
                   <Pressable
                     onPress={() => removeImage(index)}
                     style={styles.imageActionButton}
@@ -1617,16 +1540,6 @@ export default function NoteEditorScreen() {
           imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
           initialIndex={fullScreenImageIndex}
           onClose={() => setShowFullScreenImage(false)}
-        />
-      )}
-
-      {/* Image Editor Modal */}
-      {imageToEdit && (
-        <ImageEditor
-          visible={showImageEditor}
-          imageUri={imageToEdit}
-          onSave={handleImageEditorSave}
-          onCancel={handleImageEditorCancel}
         />
       )}
     </View>

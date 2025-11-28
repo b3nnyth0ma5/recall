@@ -41,6 +41,113 @@ export default function MapViewScreen() {
     setLoading(false);
   }, [notes]);
 
+  // Add markers to map
+  const addMarkers = useCallback((map: any) => {
+    if (Platform.OS !== 'web' || !window.google) return;
+
+    // Clear existing markers
+    markersRef.current.forEach(marker => marker.setMap(null));
+    markersRef.current = [];
+
+    const handleMarkerClick = (note: Note) => {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      setSelectedNote(note);
+      setShowPreview(true);
+    };
+
+    mapNotes.forEach(note => {
+      if (!note.latitude || !note.longitude) return;
+
+      // Create custom marker with preview
+      const markerDiv = document.createElement('div');
+      markerDiv.style.cssText = `
+        width: 48px;
+        height: 48px;
+        background: ${colors.primary};
+        border: 3px solid #FFFFFF;
+        border-radius: 24px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+        position: relative;
+      `;
+
+      // Add preview content
+      if (note.images && note.images.length > 0) {
+        const img = document.createElement('img');
+        img.src = note.images[0];
+        img.style.cssText = `
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        `;
+        markerDiv.appendChild(img);
+      } else if (note.text) {
+        const textPreview = document.createElement('div');
+        textPreview.textContent = note.text.substring(0, 2);
+        textPreview.style.cssText = `
+          color: #FFFFFF;
+          font-size: 14px;
+          font-weight: bold;
+          text-align: center;
+        `;
+        markerDiv.appendChild(textPreview);
+      }
+
+      // Create custom overlay
+      class CustomMarker extends window.google.maps.OverlayView {
+        position: any;
+        div: any;
+
+        constructor(position: any, div: any) {
+          super();
+          this.position = position;
+          this.div = div;
+        }
+
+        onAdd() {
+          const panes = this.getPanes();
+          panes.overlayMouseTarget.appendChild(this.div);
+
+          // Add click listener
+          this.div.addEventListener('click', () => {
+            handleMarkerClick(note);
+          });
+        }
+
+        draw() {
+          const overlayProjection = this.getProjection();
+          const position = overlayProjection.fromLatLngToDivPixel(this.position);
+          
+          if (position) {
+            this.div.style.left = (position.x - 24) + 'px';
+            this.div.style.top = (position.y - 24) + 'px';
+            this.div.style.position = 'absolute';
+          }
+        }
+
+        onRemove() {
+          if (this.div.parentNode) {
+            this.div.parentNode.removeChild(this.div);
+          }
+        }
+      }
+
+      const marker = new CustomMarker(
+        { lat: note.latitude, lng: note.longitude },
+        markerDiv
+      );
+
+      marker.setMap(map);
+      markersRef.current.push(marker);
+    });
+  }, [mapNotes]);
+
   // Initialize Google Map
   const initializeMap = useCallback(() => {
     if (Platform.OS !== 'web' || !window.google) return;
@@ -168,7 +275,7 @@ export default function MapViewScreen() {
     }
 
     setLoading(false);
-  }, [mapNotes]);
+  }, [mapNotes, addMarkers]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -191,113 +298,6 @@ export default function MapViewScreen() {
       }
     };
   }, [initializeMap]);
-
-  // Add markers to map
-  const addMarkers = useCallback((map: any) => {
-    if (Platform.OS !== 'web' || !window.google) return;
-
-    // Clear existing markers
-    markersRef.current.forEach(marker => marker.setMap(null));
-    markersRef.current = [];
-
-    const handleMarkerClick = (note: Note) => {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
-      setSelectedNote(note);
-      setShowPreview(true);
-    };
-
-    mapNotes.forEach(note => {
-      if (!note.latitude || !note.longitude) return;
-
-      // Create custom marker with preview
-      const markerDiv = document.createElement('div');
-      markerDiv.style.cssText = `
-        width: 48px;
-        height: 48px;
-        background: ${colors.primary};
-        border: 3px solid #FFFFFF;
-        border-radius: 24px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3);
-        overflow: hidden;
-        position: relative;
-      `;
-
-      // Add preview content
-      if (note.images && note.images.length > 0) {
-        const img = document.createElement('img');
-        img.src = note.images[0];
-        img.style.cssText = `
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        `;
-        markerDiv.appendChild(img);
-      } else if (note.text) {
-        const textPreview = document.createElement('div');
-        textPreview.textContent = note.text.substring(0, 2);
-        textPreview.style.cssText = `
-          color: #FFFFFF;
-          font-size: 14px;
-          font-weight: bold;
-          text-align: center;
-        `;
-        markerDiv.appendChild(textPreview);
-      }
-
-      // Create custom overlay
-      class CustomMarker extends window.google.maps.OverlayView {
-        position: any;
-        div: any;
-
-        constructor(position: any, div: any) {
-          super();
-          this.position = position;
-          this.div = div;
-        }
-
-        onAdd() {
-          const panes = this.getPanes();
-          panes.overlayMouseTarget.appendChild(this.div);
-
-          // Add click listener
-          this.div.addEventListener('click', () => {
-            handleMarkerClick(note);
-          });
-        }
-
-        draw() {
-          const overlayProjection = this.getProjection();
-          const position = overlayProjection.fromLatLngToDivPixel(this.position);
-          
-          if (position) {
-            this.div.style.left = (position.x - 24) + 'px';
-            this.div.style.top = (position.y - 24) + 'px';
-            this.div.style.position = 'absolute';
-          }
-        }
-
-        onRemove() {
-          if (this.div.parentNode) {
-            this.div.parentNode.removeChild(this.div);
-          }
-        }
-      }
-
-      const marker = new CustomMarker(
-        { lat: note.latitude, lng: note.longitude },
-        markerDiv
-      );
-
-      marker.setMap(map);
-      markersRef.current.push(marker);
-    });
-  }, [mapNotes]);
 
   // Re-add markers when mapNotes changes
   useEffect(() => {
