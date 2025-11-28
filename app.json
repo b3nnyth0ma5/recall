@@ -23,73 +23,6 @@
           "comgooglemaps",
           "maps"
         ],
-        "CFBundleDocumentTypes": [
-          {
-            "CFBundleTypeName": "Images",
-            "CFBundleTypeRole": "Viewer",
-            "LSHandlerRank": "Alternate",
-            "LSItemContentTypes": [
-              "public.image",
-              "public.jpeg",
-              "public.png",
-              "public.heic",
-              "public.heif",
-              "public.gif",
-              "public.webp",
-              "public.tiff",
-              "public.bmp"
-            ]
-          },
-          {
-            "CFBundleTypeName": "Text",
-            "CFBundleTypeRole": "Viewer",
-            "LSHandlerRank": "Alternate",
-            "LSItemContentTypes": [
-              "public.plain-text",
-              "public.text",
-              "public.utf8-plain-text",
-              "public.rtf"
-            ]
-          },
-          {
-            "CFBundleTypeName": "URLs",
-            "CFBundleTypeRole": "Viewer",
-            "LSHandlerRank": "Alternate",
-            "LSItemContentTypes": [
-              "public.url",
-              "public.file-url"
-            ]
-          },
-          {
-            "CFBundleTypeName": "PDFs",
-            "CFBundleTypeRole": "Viewer",
-            "LSHandlerRank": "Alternate",
-            "LSItemContentTypes": [
-              "com.adobe.pdf"
-            ]
-          },
-          {
-            "CFBundleTypeName": "Videos",
-            "CFBundleTypeRole": "Viewer",
-            "LSHandlerRank": "Alternate",
-            "LSItemContentTypes": [
-              "public.movie",
-              "public.video",
-              "public.mpeg-4",
-              "com.apple.quicktime-movie"
-            ]
-          }
-        ],
-        "UTImportedTypeDeclarations": [
-          {
-            "UTTypeIdentifier": "public.url",
-            "UTTypeDescription": "URL",
-            "UTTypeConformsTo": [
-              "public.data"
-            ],
-            "UTTypeTagSpecification": {}
-          }
-        ],
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to save and share images.",
         "NSCameraUsageDescription": "This app needs access to your camera to take photos for your recalls.",
         "UISupportsDocumentBrowser": true,
@@ -104,8 +37,7 @@
             "CFBundleURLName": "com.anonymous.Natively",
             "CFBundleTypeRole": "Editor"
           }
-        ],
-        "AppGroupIdentifier": "group.com.anonymous.Natively"
+        ]
       },
       "buildNumber": "1.0.0",
       "entitlements": {
@@ -217,6 +149,25 @@
             "usesCleartextTraffic": true
           },
           "ios": {}
+        }
+      ],
+      [
+        "@bacons/apple-targets",
+        {
+          "targets": [
+            {
+              "type": "share-extension",
+              "name": "ShareExtension",
+              "bundleIdentifier": "com.anonymous.Natively.ShareExtension",
+              "deploymentTarget": "15.0",
+              "entitlements": {
+                "com.apple.security.application-groups": [
+                  "group.com.anonymous.Natively"
+                ]
+              },
+              "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png"
+            }
+          ]
         }
       ],
       "./app.plugin.js"

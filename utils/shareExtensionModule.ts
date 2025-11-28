@@ -2,19 +2,14 @@
 /**
  * Share Extension Module
  * 
- * TypeScript wrapper for the native ShareExtensionModule
- * Provides methods to retrieve and clear shared data from the iOS Share Extension
+ * TypeScript wrapper for accessing shared data from the iOS Share Extension
+ * Built using @bacons/apple-targets
  */
 
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 
-// Define the native module interface
-interface ShareExtensionModuleNative {
-  getSharedData(): Promise<SharedData>;
-  clearSharedData(): Promise<boolean>;
-  getSharedContainerURL(): string | null;
-}
+const APP_GROUP_ID = 'group.com.anonymous.Natively';
 
 // Shared data structure
 export interface SharedData {
@@ -26,17 +21,25 @@ export interface SharedData {
   timestamp?: number;
 }
 
-// Try to import the native module
-let nativeModule: ShareExtensionModuleNative | null = null;
+/**
+ * Get the shared container path for the App Group
+ */
+export function getSharedContainerPath(): string | null {
+  if (Platform.OS !== 'ios') {
+    return null;
+  }
 
-if (Platform.OS === 'ios') {
   try {
-    // In a real implementation, this would use expo-modules-core
-    // For now, we'll provide a fallback implementation
-    // nativeModule = require('expo-modules-core').requireNativeModule('ShareExtensionModule');
-    console.log('[ShareExtensionModule] Native module not available, using fallback');
+    // Construct the App Group container path
+    const containerPath = FileSystem.documentDirectory?.replace(
+      /\/Documents\/$/,
+      `/../../../Shared/AppGroup/${APP_GROUP_ID}/`
+    );
+
+    return containerPath || null;
   } catch (error) {
-    console.log('[ShareExtensionModule] Failed to load native module:', error);
+    console.error('[ShareExtensionModule] Error getting container path:', error);
+    return null;
   }
 }
 
@@ -55,15 +58,27 @@ export async function getSharedData(): Promise<SharedData | null> {
   }
 
   try {
-    if (nativeModule) {
-      // Use native module if available
-      const data = await nativeModule.getSharedData();
-      console.log('[ShareExtensionModule] Retrieved shared data:', data);
-      return data;
-    } else {
-      // Fallback: Try to read from shared container manually
-      return await getSharedDataFallback();
+    const containerPath = getSharedContainerPath();
+    if (!containerPath) {
+      console.log('[ShareExtensionModule] Could not get container path');
+      return null;
     }
+
+    const sharedDataPath = `${containerPath}shared_data.json`;
+
+    // Check if file exists
+    const fileInfo = await FileSystem.getInfoAsync(sharedDataPath);
+    if (!fileInfo.exists) {
+      console.log('[ShareExtensionModule] No shared data file found');
+      return null;
+    }
+
+    // Read and parse the file
+    const content = await FileSystem.readAsStringAsync(sharedDataPath);
+    const data = JSON.parse(content) as SharedData;
+
+    console.log('[ShareExtensionModule] Retrieved shared data:', data);
+    return data;
   } catch (error) {
     console.error('[ShareExtensionModule] Error getting shared data:', error);
     return null;
@@ -84,36 +99,42 @@ export async function clearSharedData(): Promise<boolean> {
   }
 
   try {
-    if (nativeModule) {
-      // Use native module if available
-      return await nativeModule.clearSharedData();
-    } else {
-      // Fallback: Try to clear manually
-      return await clearSharedDataFallback();
+    const containerPath = getSharedContainerPath();
+    if (!containerPath) {
+      return false;
     }
+
+    const sharedDataPath = `${containerPath}shared_data.json`;
+
+    // Delete shared data file
+    try {
+      await FileSystem.deleteAsync(sharedDataPath, { idempotent: true });
+      console.log('[ShareExtensionModule] Deleted shared data file');
+    } catch (error) {
+      console.log('[ShareExtensionModule] Could not delete shared data file:', error);
+    }
+
+    // Delete shared directories
+    const directories = ['shared_images', 'shared_videos', 'shared_pdfs'];
+    for (const dir of directories) {
+      try {
+        const dirPath = `${containerPath}${dir}/`;
+        const dirInfo = await FileSystem.getInfoAsync(dirPath);
+        if (dirInfo.exists) {
+          await FileSystem.deleteAsync(dirPath, { idempotent: true });
+          console.log('[ShareExtensionModule] Deleted directory:', dir);
+        }
+      } catch (error) {
+        console.log('[ShareExtensionModule] Could not delete directory:', dir, error);
+      }
+    }
+
+    console.log('[ShareExtensionModule] Cleared shared data');
+    return true;
   } catch (error) {
     console.error('[ShareExtensionModule] Error clearing shared data:', error);
     return false;
   }
-}
-
-/**
- * Get the shared container URL
- * 
- * @returns string | null The path to the shared container, or null if not available
- */
-export function getSharedContainerURL(): string | null {
-  if (Platform.OS !== 'ios') {
-    return null;
-  }
-
-  if (nativeModule) {
-    return nativeModule.getSharedContainerURL();
-  }
-
-  // Fallback: Construct the expected path
-  // Note: This may not work in all cases
-  return FileSystem.documentDirectory + '../../../Shared/AppGroup/group.com.anonymous.Natively/';
 }
 
 /**
@@ -160,75 +181,6 @@ export async function copySharedImages(imagePaths: string[]): Promise<string[]> 
   return copiedImages;
 }
 
-// MARK: - Fallback Implementations
-
-/**
- * Fallback implementation for getting shared data
- * Reads directly from the shared container file system
- */
-async function getSharedDataFallback(): Promise<SharedData | null> {
-  try {
-    const containerPath = getSharedContainerURL();
-    if (!containerPath) {
-      return null;
-    }
-
-    const sharedDataPath = containerPath + 'shared_data.json';
-
-    // Check if file exists
-    const fileInfo = await FileSystem.getInfoAsync(sharedDataPath);
-    if (!fileInfo.exists) {
-      return null;
-    }
-
-    // Read and parse the file
-    const content = await FileSystem.readAsStringAsync(sharedDataPath);
-    const data = JSON.parse(content) as SharedData;
-
-    console.log('[ShareExtensionModule] Retrieved shared data (fallback):', data);
-    return data;
-  } catch (error) {
-    console.error('[ShareExtensionModule] Error in fallback getSharedData:', error);
-    return null;
-  }
-}
-
-/**
- * Fallback implementation for clearing shared data
- * Deletes files directly from the shared container
- */
-async function clearSharedDataFallback(): Promise<boolean> {
-  try {
-    const containerPath = getSharedContainerURL();
-    if (!containerPath) {
-      return false;
-    }
-
-    const sharedDataPath = containerPath + 'shared_data.json';
-    const imagesDirectory = containerPath + 'shared_images';
-
-    // Delete shared data file
-    try {
-      await FileSystem.deleteAsync(sharedDataPath, { idempotent: true });
-    } catch (error) {
-      console.log('[ShareExtensionModule] Could not delete shared data file:', error);
-    }
-
-    // Delete images directory
-    try {
-      await FileSystem.deleteAsync(imagesDirectory, { idempotent: true });
-    } catch (error) {
-      console.log('[ShareExtensionModule] Could not delete images directory:', error);
-    }
-
-    console.log('[ShareExtensionModule] Cleared shared data (fallback)');
-    return true;
-  } catch (error) {
-    console.error('[ShareExtensionModule] Error in fallback clearSharedData:', error);
-    return false;
-  }
-}
-
 /**
  * Check if there is pending shared data
  * 
@@ -252,4 +204,13 @@ export async function hasPendingSharedData(): Promise<boolean> {
     console.error('[ShareExtensionModule] Error checking for pending data:', error);
     return false;
   }
+}
+
+/**
+ * Get the shared container URL
+ * 
+ * @returns string | null The path to the shared container, or null if not available
+ */
+export function getSharedContainerURL(): string | null {
+  return getSharedContainerPath();
 }

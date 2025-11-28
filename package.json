@@ -9,6 +9,7 @@
     "web": "EXPO_NO_TELEMETRY=1 expo start --web",
     "build:web": "expo export -p web && npx workbox generateSW workbox-config.js",
     "build:android": "expo prebuild -p android",
+    "build:ios": "expo prebuild -p ios --clean",
     "lint": "eslint ."
   },
   "dependencies": {
