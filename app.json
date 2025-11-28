@@ -35,7 +35,9 @@
               "public.heic",
               "public.heif",
               "public.gif",
-              "public.webp"
+              "public.webp",
+              "public.tiff",
+              "public.bmp"
             ]
           },
           {
@@ -45,7 +47,8 @@
             "LSItemContentTypes": [
               "public.plain-text",
               "public.text",
-              "public.utf8-plain-text"
+              "public.utf8-plain-text",
+              "public.rtf"
             ]
           },
           {
@@ -55,6 +58,25 @@
             "LSItemContentTypes": [
               "public.url",
               "public.file-url"
+            ]
+          },
+          {
+            "CFBundleTypeName": "PDFs",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "com.adobe.pdf"
+            ]
+          },
+          {
+            "CFBundleTypeName": "Videos",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "public.movie",
+              "public.video",
+              "public.mpeg-4",
+              "com.apple.quicktime-movie"
             ]
           }
         ],
@@ -150,6 +172,28 @@
               "mimeType": "image/*"
             }
           ]
+        },
+        {
+          "action": "android.intent.action.SEND",
+          "category": [
+            "android.intent.category.DEFAULT"
+          ],
+          "data": [
+            {
+              "mimeType": "video/*"
+            }
+          ]
+        },
+        {
+          "action": "android.intent.action.SEND",
+          "category": [
+            "android.intent.category.DEFAULT"
+          ],
+          "data": [
+            {
+              "mimeType": "application/pdf"
+            }
+          ]
         }
       ]
     },
@@ -174,7 +218,8 @@
           },
           "ios": {}
         }
-      ]
+      ],
+      "./app.plugin.js"
     ],
     "scheme": "natively",
     "experiments": {

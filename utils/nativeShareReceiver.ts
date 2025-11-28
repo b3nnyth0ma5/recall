@@ -2,11 +2,14 @@
 import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as FileSystem from 'expo-file-system/legacy';
+import { getSharedData, clearSharedData, copySharedImages, SharedData } from './shareExtensionModule';
 
 export interface ReceivedShareData {
   text?: string;
   images?: string[];
   urls?: string[];
+  videos?: string[];
+  files?: string[];
 }
 
 /**
@@ -21,65 +24,12 @@ export interface ReceivedShareData {
  * - Share intents are received as deep links via expo-linking
  * 
  * iOS SHARE EXTENSION:
- * - The Share Extension saves images to the App Group shared container
- * - Images are then copied to the app's document directory for permanent storage
- * - The Share Extension passes data via deep links: natively://share-intent?text=...&images=...
+ * - The Share Extension saves data to the App Group shared container
+ * - Data is stored in JSON format in shared_data.json
+ * - Images are saved to shared_images/ directory
+ * - The Share Extension opens the main app via deep link: natively://share-intent
+ * - The main app retrieves the data from the shared container
  */
-
-/**
- * Get the shared container path for iOS App Groups
- */
-function getSharedContainerPath(): string | null {
-  if (Platform.OS !== 'ios') {
-    return null;
-  }
-  
-  // This would need to be implemented with a native module
-  // For now, we'll construct the expected path
-  // In a real implementation, you'd use a native module to get this path
-  return FileSystem.documentDirectory + '../../../Shared/AppGroup/group.com.anonymous.Natively/';
-}
-
-/**
- * Copy images from shared container to app's document directory
- */
-async function copySharedImages(imagePaths: string[]): Promise<string[]> {
-  const copiedImages: string[] = [];
-  
-  for (const imagePath of imagePaths) {
-    try {
-      // Check if the image exists
-      const fileInfo = await FileSystem.getInfoAsync(imagePath);
-      
-      if (fileInfo.exists) {
-        // Copy to document directory
-        const filename = imagePath.split('/').pop() || `image_${Date.now()}.jpg`;
-        const destPath = `${FileSystem.documentDirectory}${filename}`;
-        
-        await FileSystem.copyAsync({
-          from: imagePath,
-          to: destPath,
-        });
-        
-        copiedImages.push(destPath);
-        console.log('[NativeShareReceiver] Copied image to:', destPath);
-        
-        // Clean up the shared container file
-        try {
-          await FileSystem.deleteAsync(imagePath, { idempotent: true });
-        } catch (error) {
-          console.log('[NativeShareReceiver] Could not delete shared file:', error);
-        }
-      } else {
-        console.log('[NativeShareReceiver] Image file does not exist:', imagePath);
-      }
-    } catch (error) {
-      console.error('[NativeShareReceiver] Error copying shared image:', error);
-    }
-  }
-  
-  return copiedImages;
-}
 
 /**
  * Check if a URL is a file URL (file://, content://)
@@ -99,9 +49,18 @@ function isHttpUrl(url: string): boolean {
  * Check if a file is an image based on extension
  */
 function isImageFile(url: string): boolean {
-  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif', '.bmp'];
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif', '.bmp', '.tiff'];
   const lowerUrl = url.toLowerCase();
   return imageExtensions.some(ext => lowerUrl.endsWith(ext));
+}
+
+/**
+ * Check if a file is a video based on extension
+ */
+function isVideoFile(url: string): boolean {
+  const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'];
+  const lowerUrl = url.toLowerCase();
+  return videoExtensions.some(ext => lowerUrl.endsWith(ext));
 }
 
 /**
@@ -134,6 +93,70 @@ async function copyFileToCache(sourceUri: string): Promise<string | null> {
 }
 
 /**
+ * Get shared data from iOS Share Extension
+ */
+async function getShareExtensionData(): Promise<ReceivedShareData | null> {
+  if (Platform.OS !== 'ios') {
+    return null;
+  }
+
+  try {
+    console.log('[NativeShareReceiver] Checking for Share Extension data...');
+    
+    const sharedData = await getSharedData();
+    
+    if (!sharedData) {
+      console.log('[NativeShareReceiver] No Share Extension data found');
+      return null;
+    }
+
+    console.log('[NativeShareReceiver] Share Extension data:', sharedData);
+
+    const receiveData: ReceivedShareData = {};
+
+    // Process text
+    if (sharedData.text) {
+      receiveData.text = sharedData.text;
+    }
+
+    // Process URLs
+    if (sharedData.urls && sharedData.urls.length > 0) {
+      receiveData.urls = sharedData.urls;
+      
+      // Also add first URL as text if no text is present
+      if (!receiveData.text) {
+        receiveData.text = sharedData.urls[0];
+      }
+    }
+
+    // Process images - copy from shared container to app directory
+    if (sharedData.images && sharedData.images.length > 0) {
+      console.log('[NativeShareReceiver] Copying images from shared container...');
+      receiveData.images = await copySharedImages(sharedData.images);
+      console.log('[NativeShareReceiver] Copied images:', receiveData.images);
+    }
+
+    // Process videos
+    if (sharedData.videos && sharedData.videos.length > 0) {
+      receiveData.videos = sharedData.videos;
+    }
+
+    // Process files
+    if (sharedData.files && sharedData.files.length > 0) {
+      receiveData.files = sharedData.files;
+    }
+
+    // Clear the shared data after processing
+    await clearSharedData();
+
+    return Object.keys(receiveData).length > 0 ? receiveData : null;
+  } catch (error) {
+    console.error('[NativeShareReceiver] Error getting Share Extension data:', error);
+    return null;
+  }
+}
+
+/**
  * Process a received URL and extract share data
  */
 export async function processReceivedUrl(url: string): Promise<ReceivedShareData | null> {
@@ -150,7 +173,16 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
     if (parsed.hostname === 'share-intent' || parsed.path === 'share-intent') {
       console.log('[NativeShareReceiver] Detected custom share-intent deep link');
       
-      // Extract text
+      // On iOS, check for Share Extension data
+      if (Platform.OS === 'ios') {
+        const extensionData = await getShareExtensionData();
+        if (extensionData) {
+          console.log('[NativeShareReceiver] Using Share Extension data');
+          return extensionData;
+        }
+      }
+      
+      // Extract text from query params
       if (parsed.queryParams?.text) {
         shareData.text = parsed.queryParams.text as string;
         console.log('[NativeShareReceiver] Extracted text:', shareData.text);
@@ -183,20 +215,25 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
             imagePaths = imagesParam;
           }
           
-          console.log('[NativeShareReceiver] Extracted image paths:', imagePaths);
-          
-          // On iOS, images from Share Extension are in the shared container
-          // We need to copy them to the app's document directory
-          if (Platform.OS === 'ios' && imagePaths.length > 0) {
-            console.log('[NativeShareReceiver] Copying images from shared container...');
-            shareData.images = await copySharedImages(imagePaths);
-          } else {
-            shareData.images = imagePaths;
-          }
-          
-          console.log('[NativeShareReceiver] Final images:', shareData.images);
+          shareData.images = imagePaths;
+          console.log('[NativeShareReceiver] Extracted images:', shareData.images);
         } catch (error) {
           console.error('[NativeShareReceiver] Error parsing images:', error);
+        }
+      }
+      
+      // Extract videos
+      if (parsed.queryParams?.videos) {
+        try {
+          const videosParam = parsed.queryParams.videos;
+          if (typeof videosParam === 'string') {
+            shareData.videos = JSON.parse(videosParam);
+          } else if (Array.isArray(videosParam)) {
+            shareData.videos = videosParam;
+          }
+          console.log('[NativeShareReceiver] Extracted videos:', shareData.videos);
+        } catch (error) {
+          console.error('[NativeShareReceiver] Error parsing videos:', error);
         }
       }
       
@@ -215,6 +252,9 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
           if (isImageFile(url)) {
             shareData.images = [url];
             console.log('[NativeShareReceiver] Added image:', url);
+          } else if (isVideoFile(url)) {
+            shareData.videos = [url];
+            console.log('[NativeShareReceiver] Added video:', url);
           } else {
             // Try to read as text
             try {
@@ -223,6 +263,8 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
               console.log('[NativeShareReceiver] Read text content');
             } catch (error) {
               console.error('[NativeShareReceiver] Error reading file as text:', error);
+              // Add as file
+              shareData.files = [url];
             }
           }
         }
@@ -245,6 +287,9 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
           if (isImageFile(cachedUri)) {
             shareData.images = [cachedUri];
             console.log('[NativeShareReceiver] Added image from content URI');
+          } else if (isVideoFile(cachedUri)) {
+            shareData.videos = [cachedUri];
+            console.log('[NativeShareReceiver] Added video from content URI');
           } else {
             // Try to read as text
             try {
@@ -253,6 +298,8 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
               console.log('[NativeShareReceiver] Read text content from content URI');
             } catch (error) {
               console.error('[NativeShareReceiver] Error reading content URI as text:', error);
+              // Add as file
+              shareData.files = [cachedUri];
             }
           }
         }
@@ -271,6 +318,9 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
       if (isImageFile(url)) {
         shareData.images = [url];
         console.log('[NativeShareReceiver] Added image URL');
+      } else if (isVideoFile(url)) {
+        shareData.videos = [url];
+        console.log('[NativeShareReceiver] Added video URL');
       } else {
         // Treat as a shared URL
         shareData.urls = [url];
@@ -297,6 +347,16 @@ export async function getInitialShareData(): Promise<ReceivedShareData | null> {
   try {
     console.log('[NativeShareReceiver] Checking for initial share data...');
     
+    // On iOS, first check for Share Extension data
+    if (Platform.OS === 'ios') {
+      const extensionData = await getShareExtensionData();
+      if (extensionData) {
+        console.log('[NativeShareReceiver] Found Share Extension data on launch');
+        return extensionData;
+      }
+    }
+    
+    // Check for deep link
     const initialUrl = await Linking.getInitialURL();
     
     if (!initialUrl) {
@@ -340,7 +400,12 @@ export function listenForShareIntents(
 /**
  * Create a test share intent URL for development
  */
-export function createTestShareUrl(text?: string, images?: string[], urls?: string[]): string {
+export function createTestShareUrl(
+  text?: string,
+  images?: string[],
+  urls?: string[],
+  videos?: string[]
+): string {
   const params: Record<string, string> = {};
   
   if (text) {
@@ -353,6 +418,10 @@ export function createTestShareUrl(text?: string, images?: string[], urls?: stri
   
   if (urls && urls.length > 0) {
     params.urls = JSON.stringify(urls);
+  }
+  
+  if (videos && videos.length > 0) {
+    params.videos = JSON.stringify(videos);
   }
   
   return Linking.createURL('share-intent', {
