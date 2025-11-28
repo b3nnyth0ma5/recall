@@ -66,6 +66,7 @@ export function FullScreenImage({
   const [currentImageIndex, setCurrentImageIndex] = useState(initialIndex);
   const [showOCRModal, setShowOCRModal] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [isDismissing, setIsDismissing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Animated values for swipe-to-dismiss gesture
@@ -79,6 +80,7 @@ export function FullScreenImage({
       setCurrentImageIndex(initialIndex);
       translateY.value = 0;
       opacity.value = 1;
+      setIsDismissing(false);
       // Scroll to initial index after a short delay to ensure layout is ready
       setTimeout(() => {
         scrollViewRef.current?.scrollTo({
@@ -198,8 +200,17 @@ export function FullScreenImage({
     }
   };
 
+  const handleClose = () => {
+    if (isDismissing) {
+      return;
+    }
+    setIsDismissing(true);
+    onClose();
+  };
+
   // Modern Gesture API for swipe-to-dismiss
   const panGesture = Gesture.Pan()
+    .enabled(!isDismissing)
     .onStart(() => {
       startY.value = translateY.value;
     })
@@ -214,17 +225,32 @@ export function FullScreenImage({
     .onEnd((event) => {
       // If swiped down past threshold, dismiss the modal
       if (event.translationY > DISMISS_THRESHOLD) {
+        // Mark as dismissing to prevent further gestures
+        runOnJS(setIsDismissing)(true);
+        
         // Animate out and close
-        translateY.value = withSpring(SCREEN_HEIGHT, {}, (finished) => {
+        translateY.value = withSpring(SCREEN_HEIGHT, {
+          damping: 20,
+          stiffness: 200,
+        }, (finished) => {
           if (finished) {
-            runOnJS(onClose)();
+            runOnJS(handleClose)();
           }
         });
-        opacity.value = withSpring(0);
+        opacity.value = withSpring(0, {
+          damping: 20,
+          stiffness: 200,
+        });
       } else {
         // Spring back to original position
-        translateY.value = withSpring(0);
-        opacity.value = withSpring(1);
+        translateY.value = withSpring(0, {
+          damping: 15,
+          stiffness: 150,
+        });
+        opacity.value = withSpring(1, {
+          damping: 15,
+          stiffness: 150,
+        });
       }
     });
 
@@ -241,7 +267,7 @@ export function FullScreenImage({
       visible={visible}
       transparent={true}
       animationType="fade"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
       statusBarTranslucent
     >
       <GestureDetector gesture={panGesture}>
@@ -249,7 +275,7 @@ export function FullScreenImage({
           {/* Close Button - Top Right */}
           <Pressable
             style={styles.closeButton}
-            onPress={onClose}
+            onPress={handleClose}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <View style={styles.closeButtonCircle}>
@@ -268,6 +294,7 @@ export function FullScreenImage({
             snapToInterval={SCREEN_WIDTH}
             decelerationRate="fast"
             style={styles.scrollView}
+            scrollEnabled={!isDismissing}
           >
             {images.map((imageUrl, index) => (
               <View key={`fullscreen-${index}`} style={styles.imageWrapper}>
@@ -284,7 +311,7 @@ export function FullScreenImage({
           <Pressable
             style={styles.shareButton}
             onPress={handleShareImage}
-            disabled={isSharing}
+            disabled={isSharing || isDismissing}
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
             <View style={styles.shareButtonContent}>
@@ -304,6 +331,7 @@ export function FullScreenImage({
           <Pressable
             style={styles.ocrButton}
             onPress={handleOCRButtonPress}
+            disabled={isDismissing}
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
             <Image

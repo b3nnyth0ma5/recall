@@ -100,6 +100,9 @@ export default function NoteEditorScreen() {
   const canSave = text.trim().length > 0 || images.length > 0;
   const hasImages = images.length > 0;
   const textHasUrl = hasUrl(text);
+  
+  // Dynamic text area height based on whether there are images
+  const textInputHeight = hasImages ? 260 * 1.1 : 480 * 1.1;
 
   // Initialize lazy loading with first 2 images
   useEffect(() => {
@@ -378,6 +381,28 @@ export default function NoteEditorScreen() {
       Alert.alert('Error', 'Failed to take photo');
     }
   }, [images, location]);
+
+  const handleCameraPress = () => {
+    Alert.alert(
+      'Add Photo',
+      'Choose an option',
+      [
+        {
+          text: 'Take Photo',
+          onPress: takePhoto,
+        },
+        {
+          text: 'Choose from Library',
+          onPress: pickImage,
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ],
+      { cancelable: true }
+    );
+  };
 
   // Auto-launch camera when openCamera flag is set - FIXED: Only run once
   useEffect(() => {
@@ -1109,7 +1134,7 @@ export default function NoteEditorScreen() {
         keyboardShouldPersistTaps="handled"
         scrollEnabled={true}
       >
-        <View style={styles.textInputContainer}>
+        <View style={[styles.textInputContainer, { height: textInputHeight }]}>
           {textHasUrl ? (
             <View style={styles.richTextContainer}>
               <ScrollView 
@@ -1248,7 +1273,7 @@ export default function NoteEditorScreen() {
       ]}>
         <View style={styles.toolbarLeft}>
           <Pressable
-            onPress={takePhoto}
+            onPress={handleCameraPress}
             disabled={loading}
             style={styles.toolbarButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -1258,14 +1283,6 @@ export default function NoteEditorScreen() {
             ) : (
               <IconSymbol name="camera.fill" size={26} color={colors.primary} />
             )}
-          </Pressable>
-          <Pressable
-            onPress={pickImage}
-            disabled={loading}
-            style={styles.toolbarButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <IconSymbol name="photo.fill" size={26} color={colors.primary} />
           </Pressable>
           
           <Pressable
@@ -1439,7 +1456,6 @@ const styles = StyleSheet.create({
   },
   textInputContainer: {
     padding: 20,
-    height: 260 * 1.1,
   },
   textInputScrollView: {
     flex: 1,
@@ -1455,7 +1471,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 26,
     color: colors.text,
-    minHeight: 220 * 1.1,
     textAlignVertical: 'top',
   },
   richTextContainer: {

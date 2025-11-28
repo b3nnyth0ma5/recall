@@ -9,6 +9,7 @@ import {
   Pressable,
   Keyboard,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -35,15 +36,18 @@ export default function SearchScreen() {
   } = useNotes();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
-  const [showHistory, setShowHistory] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [isAnswerExpanded, setIsAnswerExpanded] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const searchInputRef = useRef<TextInput>(null);
 
   const loadSearchHistory = useCallback(async () => {
+    setIsLoadingHistory(true);
     const history = await getSearchHistory();
     setSearchHistory(history);
+    setIsLoadingHistory(false);
   }, [getSearchHistory]);
 
   useEffect(() => {
@@ -61,6 +65,13 @@ export default function SearchScreen() {
       keyboardDidShowListener.remove();
     };
   }, [loadSearchHistory]);
+
+  // Show history only after it's loaded
+  useEffect(() => {
+    if (!isLoadingHistory && !hasSearched) {
+      setShowHistory(true);
+    }
+  }, [isLoadingHistory, hasSearched]);
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
@@ -217,7 +228,11 @@ export default function SearchScreen() {
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {showHistory && searchHistory.length > 0 ? (
+        {isLoadingHistory ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : showHistory && searchHistory.length > 0 ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
             <Text style={styles.historyTitle}>Recent Searches</Text>
             {searchHistory.map((item) => (
@@ -455,6 +470,12 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
   },
   historyContainer: {
     width: '100%',
