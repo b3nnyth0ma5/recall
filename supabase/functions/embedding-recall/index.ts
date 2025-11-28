@@ -43,6 +43,7 @@ interface OpenAIErrorResponse {
  * 4. Calls OpenAI's text-embedding-3-small model with base64 encoding
  * 5. Stores the resulting embedding in recalls.recall_embedding
  * 6. ALWAYS generates a new embedding, even if one already exists
+ * 7. Triggers people-finder function after embedding is complete
  * 
  * Features:
  * - Uses text-embedding-3-small model for cost efficiency
@@ -50,6 +51,7 @@ interface OpenAIErrorResponse {
  * - Automatic retry logic for transient failures
  * - Comprehensive error handling and logging
  * - Re-embeds recalls even if embedding already exists
+ * - Triggers people-finder for person name extraction
  */
 
 Deno.serve(async (req) => {
@@ -132,7 +134,7 @@ Deno.serve(async (req) => {
     console.log('Fetching recall data from database...');
     const { data: recallData, error: fetchError } = await supabase
       .from('recalls')
-      .select('recall_embedding, text, location, location_primary_type')
+      .select('recall_embedding, text, location, location_primary_type, user_id')
       .eq('id', recall_id)
       .single();
 
@@ -337,6 +339,64 @@ Deno.serve(async (req) => {
     console.log('=== Embedding processing completed successfully ===');
     console.log('Total processing time:', processingTime, 'ms');
 
+    // ===== TRIGGER PEOPLE FINDER FUNCTION ASYNCHRONOUSLY =====
+    // This happens at the end, after embedding processing is complete
+    // The people-finder function will extract person names from the text
+    console.log('=== Triggering people-finder function asynchronously ===');
+    console.log('Recall ID:', recall_id);
+    console.log('User ID:', recallData.user_id);
+    
+    // Fetch all image explanations for this recall to combine with recall text
+    let imageExplanations = '';
+    try {
+      const { data: imagesData, error: imagesError } = await supabase
+        .from('recall_images')
+        .select('image_explanation')
+        .eq('recall_id', recall_id);
+      
+      if (imagesError) {
+        console.error('Failed to fetch image explanations:', imagesError);
+      } else if (imagesData && imagesData.length > 0) {
+        imageExplanations = imagesData
+          .map(img => img.image_explanation || '')
+          .filter(exp => exp.length > 0)
+          .join(' ');
+        console.log('Image explanations length:', imageExplanations.length);
+      }
+    } catch (imagesFetchError) {
+      console.error('Exception fetching image explanations:', imagesFetchError);
+    }
+    
+    // Trigger people-finder asynchronously (don't wait for response)
+    // We use fetch without await to make it truly asynchronous
+    fetch(`${supabaseUrl}/functions/v1/people-finder`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({
+        recall_id: recall_id,
+        user_id: recallData.user_id,
+        text: finalText,
+        image_explanation: imageExplanations,
+      }),
+    })
+      .then(async (response) => {
+        if (response.ok) {
+          const data = await response.json();
+          console.log('People-finder triggered successfully:', data);
+        } else {
+          const errorText = await response.text();
+          console.error('Failed to trigger people-finder:', errorText);
+        }
+      })
+      .catch((error) => {
+        console.error('Exception while triggering people-finder:', error);
+      });
+    
+    console.log('=== People-finder function triggered asynchronously ===');
+
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -346,6 +406,7 @@ Deno.serve(async (req) => {
         inputTextLength: inputText.length,
         tokenUsage: openaiData.usage,
         wasReplaced: !!(recallData.recall_embedding && recallData.recall_embedding.length > 0),
+        peopleFinderTriggered: true,
       }),
       { 
         status: 200, 
