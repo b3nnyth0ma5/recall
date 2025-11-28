@@ -16,7 +16,6 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Animated, { 
-  FadeIn,
   useSharedValue,
   useAnimatedStyle,
   withSpring,
@@ -81,6 +80,7 @@ export function FullScreenImage({
     if (visible) {
       setCurrentImageIndex(initialIndex);
       setIsClosing(false);
+      // Reset animation values immediately
       translateY.value = 0;
       contextY.value = 0;
       // Scroll to initial index after a short delay to ensure layout is ready
@@ -92,7 +92,7 @@ export function FullScreenImage({
         });
       }, 100);
     }
-  }, [visible, initialIndex, translateY, contextY]);
+  }, [visible, initialIndex]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
@@ -205,11 +205,15 @@ export function FullScreenImage({
   const handleClose = () => {
     if (isClosing) return;
     
-    console.log('Closing full screen image without refresh');
+    console.log('Closing full screen image - preventing route refresh');
     setIsClosing(true);
     
-    // Call onClose immediately without any navigation
-    // This prevents the previous route from refreshing
+    // Reset animation values immediately to prevent any lingering animations
+    translateY.value = 0;
+    contextY.value = 0;
+    
+    // Call onClose which will update the parent's state
+    // This should NOT trigger navigation or route refresh
     onClose();
   };
 
@@ -237,7 +241,7 @@ export function FullScreenImage({
           { duration: 200 },
           (finished) => {
             if (finished) {
-              // Reset immediately before closing
+              // Reset immediately before closing to prevent flicker
               translateY.value = 0;
               contextY.value = 0;
               runOnJS(handleClose)();
@@ -256,8 +260,6 @@ export function FullScreenImage({
 
   // Animated style for the container with smooth interpolation
   const animatedContainerStyle = useAnimatedStyle(() => {
-    const progress = translateY.value / SCREEN_HEIGHT;
-    
     // Smooth opacity fade
     const opacity = interpolate(
       translateY.value,

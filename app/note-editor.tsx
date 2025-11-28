@@ -1140,6 +1140,12 @@ export default function NoteEditorScreen() {
     textInputRef.current?.focus();
   };
 
+  // Handler for closing full screen image - prevents route refresh
+  const handleCloseFullScreenImage = useCallback(() => {
+    console.log('Closing full screen image modal - no route refresh');
+    setShowFullScreenImage(false);
+  }, []);
+
   // Determine which images to display (lazy loaded or all)
   const displayImages = images.length > 1 ? lazyLoadedImages : images;
 
@@ -1539,7 +1545,7 @@ export default function NoteEditorScreen() {
           images={images.map(img => img.uri)}
           imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
           initialIndex={fullScreenImageIndex}
-          onClose={() => setShowFullScreenImage(false)}
+          onClose={handleCloseFullScreenImage}
         />
       )}
     </View>
