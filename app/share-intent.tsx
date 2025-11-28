@@ -10,13 +10,22 @@ export default function ShareIntentScreen() {
   const params = useLocalSearchParams();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [hasNavigated, setHasNavigated] = useState(false);
 
   useEffect(() => {
-    console.log('ShareIntentScreen mounted with params:', params);
+    console.log('[ShareIntentScreen] Mounted with params:', params);
+    console.log('[ShareIntentScreen] User:', user ? 'authenticated' : 'not authenticated');
     
+    // Prevent multiple navigations
+    if (hasNavigated) {
+      console.log('[ShareIntentScreen] Already navigated, skipping');
+      return;
+    }
+
     // Check if user is authenticated
     if (!user) {
-      console.log('User not authenticated, redirecting to login');
+      console.log('[ShareIntentScreen] User not authenticated, redirecting to login');
+      setHasNavigated(true);
       router.replace('/login');
       return;
     }
@@ -30,7 +39,7 @@ export default function ShareIntentScreen() {
       try {
         images = JSON.parse(imagesParam);
       } catch (error) {
-        console.error('Error parsing images:', error);
+        console.error('[ShareIntentScreen] Error parsing images:', error);
         // If it's a single image URL
         if (imagesParam.startsWith('http') || imagesParam.startsWith('file://') || imagesParam.startsWith('content://')) {
           images = [imagesParam];
@@ -40,13 +49,16 @@ export default function ShareIntentScreen() {
       images = imagesParam;
     }
 
-    console.log('Parsed shared content:', { text, images });
+    console.log('[ShareIntentScreen] Parsed shared content:', { text, images });
 
     setLoading(false);
 
     // Navigate to note editor with pre-populated content
     if (text || images.length > 0) {
-      console.log('Navigating to note editor with shared content');
+      console.log('[ShareIntentScreen] Navigating to note editor with shared content');
+      
+      // Mark as navigated to prevent duplicate navigation
+      setHasNavigated(true);
       
       // Small delay to ensure smooth transition
       setTimeout(() => {
@@ -60,10 +72,11 @@ export default function ShareIntentScreen() {
         });
       }, 300);
     } else {
-      console.log('No shared content found, redirecting to home');
+      console.log('[ShareIntentScreen] No shared content found, redirecting to home');
+      setHasNavigated(true);
       router.replace('/(tabs)/(home)');
     }
-  }, [params, router, user]);
+  }, [params, router, user, hasNavigated]);
 
   return (
     <>

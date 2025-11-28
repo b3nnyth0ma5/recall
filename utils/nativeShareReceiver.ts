@@ -110,28 +110,31 @@ async function getShareExtensionData(): Promise<ReceivedShareData | null> {
       return null;
     }
 
-    console.log('[NativeShareReceiver] Share Extension data:', sharedData);
+    console.log('[NativeShareReceiver] Share Extension data found:', JSON.stringify(sharedData, null, 2));
 
     const receiveData: ReceivedShareData = {};
 
     // Process text
     if (sharedData.text) {
       receiveData.text = sharedData.text;
+      console.log('[NativeShareReceiver] Processed text:', receiveData.text);
     }
 
     // Process URLs
     if (sharedData.urls && sharedData.urls.length > 0) {
       receiveData.urls = sharedData.urls;
+      console.log('[NativeShareReceiver] Processed URLs:', receiveData.urls);
       
       // Also add first URL as text if no text is present
       if (!receiveData.text) {
         receiveData.text = sharedData.urls[0];
+        console.log('[NativeShareReceiver] Using first URL as text:', receiveData.text);
       }
     }
 
     // Process images - copy from shared container to app directory
     if (sharedData.images && sharedData.images.length > 0) {
-      console.log('[NativeShareReceiver] Copying images from shared container...');
+      console.log('[NativeShareReceiver] Copying images from shared container:', sharedData.images);
       receiveData.images = await copySharedImages(sharedData.images);
       console.log('[NativeShareReceiver] Copied images:', receiveData.images);
     }
@@ -139,17 +142,24 @@ async function getShareExtensionData(): Promise<ReceivedShareData | null> {
     // Process videos
     if (sharedData.videos && sharedData.videos.length > 0) {
       receiveData.videos = sharedData.videos;
+      console.log('[NativeShareReceiver] Processed videos:', receiveData.videos);
     }
 
     // Process files
     if (sharedData.files && sharedData.files.length > 0) {
       receiveData.files = sharedData.files;
+      console.log('[NativeShareReceiver] Processed files:', receiveData.files);
     }
 
     // Clear the shared data after processing
+    console.log('[NativeShareReceiver] Clearing shared data...');
     await clearSharedData();
+    console.log('[NativeShareReceiver] Shared data cleared');
 
-    return Object.keys(receiveData).length > 0 ? receiveData : null;
+    const hasData = Object.keys(receiveData).length > 0;
+    console.log('[NativeShareReceiver] Final received data:', hasData ? receiveData : 'none');
+    
+    return hasData ? receiveData : null;
   } catch (error) {
     console.error('[NativeShareReceiver] Error getting Share Extension data:', error);
     return null;
@@ -161,7 +171,9 @@ async function getShareExtensionData(): Promise<ReceivedShareData | null> {
  */
 export async function processReceivedUrl(url: string): Promise<ReceivedShareData | null> {
   try {
+    console.log('[NativeShareReceiver] ========================================');
     console.log('[NativeShareReceiver] Processing received URL:', url);
+    console.log('[NativeShareReceiver] Platform:', Platform.OS);
     
     // Parse the URL using expo-linking
     const parsed = Linking.parse(url);
@@ -171,21 +183,25 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
     
     // Check if this is our custom share-intent deep link
     if (parsed.hostname === 'share-intent' || parsed.path === 'share-intent') {
-      console.log('[NativeShareReceiver] Detected custom share-intent deep link');
+      console.log('[NativeShareReceiver] ✓ Detected custom share-intent deep link');
       
-      // On iOS, check for Share Extension data
+      // On iOS, check for Share Extension data FIRST
       if (Platform.OS === 'ios') {
+        console.log('[NativeShareReceiver] iOS detected, checking Share Extension data...');
         const extensionData = await getShareExtensionData();
         if (extensionData) {
-          console.log('[NativeShareReceiver] Using Share Extension data');
+          console.log('[NativeShareReceiver] ✓ Using Share Extension data:', extensionData);
+          console.log('[NativeShareReceiver] ========================================');
           return extensionData;
+        } else {
+          console.log('[NativeShareReceiver] ✗ No Share Extension data found');
         }
       }
       
       // Extract text from query params
       if (parsed.queryParams?.text) {
         shareData.text = parsed.queryParams.text as string;
-        console.log('[NativeShareReceiver] Extracted text:', shareData.text);
+        console.log('[NativeShareReceiver] ✓ Extracted text from params:', shareData.text);
       }
       
       // Extract URLs
@@ -197,9 +213,9 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
           } else if (Array.isArray(urlsParam)) {
             shareData.urls = urlsParam;
           }
-          console.log('[NativeShareReceiver] Extracted URLs:', shareData.urls);
+          console.log('[NativeShareReceiver] ✓ Extracted URLs from params:', shareData.urls);
         } catch (error) {
-          console.error('[NativeShareReceiver] Error parsing URLs:', error);
+          console.error('[NativeShareReceiver] ✗ Error parsing URLs:', error);
         }
       }
       
@@ -216,9 +232,9 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
           }
           
           shareData.images = imagePaths;
-          console.log('[NativeShareReceiver] Extracted images:', shareData.images);
+          console.log('[NativeShareReceiver] ✓ Extracted images from params:', shareData.images);
         } catch (error) {
-          console.error('[NativeShareReceiver] Error parsing images:', error);
+          console.error('[NativeShareReceiver] ✗ Error parsing images:', error);
         }
       }
       
@@ -231,18 +247,21 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
           } else if (Array.isArray(videosParam)) {
             shareData.videos = videosParam;
           }
-          console.log('[NativeShareReceiver] Extracted videos:', shareData.videos);
+          console.log('[NativeShareReceiver] ✓ Extracted videos from params:', shareData.videos);
         } catch (error) {
-          console.error('[NativeShareReceiver] Error parsing videos:', error);
+          console.error('[NativeShareReceiver] ✗ Error parsing videos:', error);
         }
       }
       
-      return Object.keys(shareData).length > 0 ? shareData : null;
+      const hasData = Object.keys(shareData).length > 0;
+      console.log('[NativeShareReceiver] Final share data:', hasData ? shareData : 'none');
+      console.log('[NativeShareReceiver] ========================================');
+      return hasData ? shareData : null;
     }
     
     // Handle iOS file URLs (file://)
     if (Platform.OS === 'ios' && isFileUrl(url)) {
-      console.log('[NativeShareReceiver] Detected iOS file URL');
+      console.log('[NativeShareReceiver] ✓ Detected iOS file URL');
       
       try {
         const fileInfo = await FileSystem.getInfoAsync(url);
@@ -251,33 +270,35 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
         if (fileInfo.exists) {
           if (isImageFile(url)) {
             shareData.images = [url];
-            console.log('[NativeShareReceiver] Added image:', url);
+            console.log('[NativeShareReceiver] ✓ Added image:', url);
           } else if (isVideoFile(url)) {
             shareData.videos = [url];
-            console.log('[NativeShareReceiver] Added video:', url);
+            console.log('[NativeShareReceiver] ✓ Added video:', url);
           } else {
             // Try to read as text
             try {
               const content = await FileSystem.readAsStringAsync(url);
               shareData.text = content;
-              console.log('[NativeShareReceiver] Read text content');
+              console.log('[NativeShareReceiver] ✓ Read text content');
             } catch (error) {
-              console.error('[NativeShareReceiver] Error reading file as text:', error);
+              console.error('[NativeShareReceiver] ✗ Error reading file as text:', error);
               // Add as file
               shareData.files = [url];
             }
           }
         }
       } catch (error) {
-        console.error('[NativeShareReceiver] Error processing iOS file URL:', error);
+        console.error('[NativeShareReceiver] ✗ Error processing iOS file URL:', error);
       }
       
-      return Object.keys(shareData).length > 0 ? shareData : null;
+      const hasData = Object.keys(shareData).length > 0;
+      console.log('[NativeShareReceiver] ========================================');
+      return hasData ? shareData : null;
     }
     
     // Handle Android content URIs (content://)
     if (Platform.OS === 'android' && url.startsWith('content://')) {
-      console.log('[NativeShareReceiver] Detected Android content URI');
+      console.log('[NativeShareReceiver] ✓ Detected Android content URI');
       
       try {
         // Copy the file to cache so we can access it
@@ -286,56 +307,61 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
         if (cachedUri) {
           if (isImageFile(cachedUri)) {
             shareData.images = [cachedUri];
-            console.log('[NativeShareReceiver] Added image from content URI');
+            console.log('[NativeShareReceiver] ✓ Added image from content URI');
           } else if (isVideoFile(cachedUri)) {
             shareData.videos = [cachedUri];
-            console.log('[NativeShareReceiver] Added video from content URI');
+            console.log('[NativeShareReceiver] ✓ Added video from content URI');
           } else {
             // Try to read as text
             try {
               const content = await FileSystem.readAsStringAsync(cachedUri);
               shareData.text = content;
-              console.log('[NativeShareReceiver] Read text content from content URI');
+              console.log('[NativeShareReceiver] ✓ Read text content from content URI');
             } catch (error) {
-              console.error('[NativeShareReceiver] Error reading content URI as text:', error);
+              console.error('[NativeShareReceiver] ✗ Error reading content URI as text:', error);
               // Add as file
               shareData.files = [cachedUri];
             }
           }
         }
       } catch (error) {
-        console.error('[NativeShareReceiver] Error processing Android content URI:', error);
+        console.error('[NativeShareReceiver] ✗ Error processing Android content URI:', error);
       }
       
-      return Object.keys(shareData).length > 0 ? shareData : null;
+      const hasData = Object.keys(shareData).length > 0;
+      console.log('[NativeShareReceiver] ========================================');
+      return hasData ? shareData : null;
     }
     
     // Handle HTTP URLs
     if (isHttpUrl(url)) {
-      console.log('[NativeShareReceiver] Detected HTTP URL');
+      console.log('[NativeShareReceiver] ✓ Detected HTTP URL');
       
       // Check if it's an image URL
       if (isImageFile(url)) {
         shareData.images = [url];
-        console.log('[NativeShareReceiver] Added image URL');
+        console.log('[NativeShareReceiver] ✓ Added image URL');
       } else if (isVideoFile(url)) {
         shareData.videos = [url];
-        console.log('[NativeShareReceiver] Added video URL');
+        console.log('[NativeShareReceiver] ✓ Added video URL');
       } else {
         // Treat as a shared URL
         shareData.urls = [url];
         shareData.text = url; // Also add as text for convenience
-        console.log('[NativeShareReceiver] Added URL as text');
+        console.log('[NativeShareReceiver] ✓ Added URL as text');
       }
       
+      console.log('[NativeShareReceiver] ========================================');
       return shareData;
     }
     
     // If we get here, we couldn't process the URL
-    console.log('[NativeShareReceiver] Could not process URL');
+    console.log('[NativeShareReceiver] ✗ Could not process URL - unknown format');
+    console.log('[NativeShareReceiver] ========================================');
     return null;
   } catch (error) {
-    console.error('[NativeShareReceiver] Error processing received URL:', error);
+    console.error('[NativeShareReceiver] ✗ Error processing received URL:', error);
+    console.log('[NativeShareReceiver] ========================================');
     return null;
   }
 }
@@ -345,14 +371,20 @@ export async function processReceivedUrl(url: string): Promise<ReceivedShareData
  */
 export async function getInitialShareData(): Promise<ReceivedShareData | null> {
   try {
+    console.log('[NativeShareReceiver] ========================================');
     console.log('[NativeShareReceiver] Checking for initial share data...');
+    console.log('[NativeShareReceiver] Platform:', Platform.OS);
     
     // On iOS, first check for Share Extension data
     if (Platform.OS === 'ios') {
+      console.log('[NativeShareReceiver] iOS detected, checking Share Extension data first...');
       const extensionData = await getShareExtensionData();
       if (extensionData) {
-        console.log('[NativeShareReceiver] Found Share Extension data on launch');
+        console.log('[NativeShareReceiver] ✓ Found Share Extension data on launch:', extensionData);
+        console.log('[NativeShareReceiver] ========================================');
         return extensionData;
+      } else {
+        console.log('[NativeShareReceiver] No Share Extension data found');
       }
     }
     
@@ -361,13 +393,17 @@ export async function getInitialShareData(): Promise<ReceivedShareData | null> {
     
     if (!initialUrl) {
       console.log('[NativeShareReceiver] No initial URL found');
+      console.log('[NativeShareReceiver] ========================================');
       return null;
     }
     
-    console.log('[NativeShareReceiver] Initial URL:', initialUrl);
-    return await processReceivedUrl(initialUrl);
+    console.log('[NativeShareReceiver] Initial URL found:', initialUrl);
+    const result = await processReceivedUrl(initialUrl);
+    console.log('[NativeShareReceiver] ========================================');
+    return result;
   } catch (error) {
-    console.error('[NativeShareReceiver] Error getting initial share data:', error);
+    console.error('[NativeShareReceiver] ✗ Error getting initial share data:', error);
+    console.log('[NativeShareReceiver] ========================================');
     return null;
   }
 }
@@ -381,14 +417,18 @@ export function listenForShareIntents(
   console.log('[NativeShareReceiver] Setting up share intent listener');
   
   const subscription = Linking.addEventListener('url', async (event) => {
+    console.log('[NativeShareReceiver] ========================================');
     console.log('[NativeShareReceiver] Received URL event:', event.url);
     
     const shareData = await processReceivedUrl(event.url);
     
     if (shareData) {
-      console.log('[NativeShareReceiver] Calling callback with share data:', shareData);
+      console.log('[NativeShareReceiver] ✓ Calling callback with share data:', shareData);
       callback(shareData);
+    } else {
+      console.log('[NativeShareReceiver] ✗ No share data extracted from URL');
     }
+    console.log('[NativeShareReceiver] ========================================');
   });
   
   return () => {
