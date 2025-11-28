@@ -465,6 +465,62 @@ EXPLANATION:
     
     console.log('=== Embedding generation triggered ===');
 
+    // ===== TRIGGER PEOPLE FINDER FUNCTION ASYNCHRONOUSLY =====
+    // This happens at the end, after OCR processing is complete
+    // The people-finder function will extract person names from the text
+    console.log('=== Triggering people-finder function asynchronously ===');
+    console.log('Recall ID:', record.recall_id);
+    console.log('User ID:', imageData.user_id);
+    
+    // Fetch the recall text to combine with image explanation
+    let recallText = '';
+    try {
+      const { data: recallData, error: recallError } = await supabase
+        .from('recalls')
+        .select('text')
+        .eq('id', record.recall_id)
+        .single();
+      
+      if (recallError) {
+        console.error('Failed to fetch recall text:', recallError);
+      } else if (recallData) {
+        recallText = recallData.text || '';
+        console.log('Recall text length:', recallText.length);
+      }
+    } catch (recallFetchError) {
+      console.error('Exception fetching recall text:', recallFetchError);
+    }
+    
+    // Trigger people-finder asynchronously (don't wait for response)
+    // We use fetch without await to make it truly asynchronous
+    fetch(`${supabaseUrl}/functions/v1/people-finder`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({
+        recall_id: record.recall_id,
+        user_id: imageData.user_id,
+        text: recallText,
+        image_explanation: explanation,
+      }),
+    })
+      .then(async (response) => {
+        if (response.ok) {
+          const data = await response.json();
+          console.log('People-finder triggered successfully:', data);
+        } else {
+          const errorText = await response.text();
+          console.error('Failed to trigger people-finder:', errorText);
+        }
+      })
+      .catch((error) => {
+        console.error('Exception while triggering people-finder:', error);
+      });
+    
+    console.log('=== People-finder function triggered asynchronously ===');
+
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -475,6 +531,7 @@ EXPLANATION:
         ocrTextPreview: ocrText.substring(0, 100) + (ocrText.length > 100 ? '...' : ''),
         explanationPreview: explanation.substring(0, 100) + (explanation.length > 100 ? '...' : ''),
         embeddingTriggered: hasOcrText || hasExplanation,
+        peopleFinderTriggered: true,
       }),
       { 
         status: 200, 
