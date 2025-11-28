@@ -166,7 +166,6 @@
       "expo-font",
       "expo-router",
       "expo-web-browser",
-      "./app.plugin.js",
       [
         "expo-build-properties",
         {
