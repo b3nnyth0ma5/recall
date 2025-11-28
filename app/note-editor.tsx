@@ -84,6 +84,7 @@ export default function NoteEditorScreen() {
   const [cameraLaunched, setCameraLaunched] = useState(false);
   const [showImageEditor, setShowImageEditor] = useState(false);
   const [imageToEdit, setImageToEdit] = useState<string | null>(null);
+  const [imageIndexToEdit, setImageIndexToEdit] = useState<number | null>(null);
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
@@ -817,7 +818,34 @@ export default function NoteEditorScreen() {
   const editImage = async (index: number) => {
     const image = images[index];
     console.log('Opening native editor for image at index:', index);
-    setImageToEdit(image.uri);
+    
+    // Make sure we have the full image URI loaded
+    let imageUri = image.uri;
+    
+    // If the image hasn't been loaded yet (lazy loading), load it now
+    if (!imageUri && image.id) {
+      console.log('Loading image before editing:', image.id);
+      try {
+        const dataUrl = await getImageDataUrl(image.id);
+        if (dataUrl) {
+          imageUri = dataUrl;
+          // Update the images array with the loaded URI
+          const updatedImages = [...images];
+          updatedImages[index] = { ...image, uri: dataUrl };
+          setImages(updatedImages);
+        } else {
+          Alert.alert('Error', 'Failed to load image for editing');
+          return;
+        }
+      } catch (error) {
+        console.error('Error loading image for editing:', error);
+        Alert.alert('Error', 'Failed to load image for editing');
+        return;
+      }
+    }
+    
+    setImageToEdit(imageUri);
+    setImageIndexToEdit(index);
     setShowImageEditor(true);
   };
 
@@ -1124,20 +1152,49 @@ export default function NoteEditorScreen() {
       // Convert the edited image to suitable format
       const converted = await convertImageToSuitableFormat(editedUri);
 
-      setImages([...images, {
-        uri: converted.uri,
-        localUri: converted.uri,
-        contentType: converted.contentType,
-      }]);
+      if (imageIndexToEdit !== null) {
+        // Replace the existing image at the index
+        const updatedImages = [...images];
+        const originalImage = updatedImages[imageIndexToEdit];
+        
+        // If the original image had an ID (was saved to database), delete it
+        if (originalImage.id) {
+          console.log('Deleting original image from database:', originalImage.id);
+          try {
+            await deleteImageRecord(originalImage.id);
+          } catch (error) {
+            console.error('Error deleting original image:', error);
+          }
+        }
+        
+        // Replace with the edited image (without ID, so it will be uploaded as new)
+        updatedImages[imageIndexToEdit] = {
+          uri: converted.uri,
+          localUri: converted.uri,
+          contentType: converted.contentType,
+        };
+        
+        setImages(updatedImages);
+        console.log('Replaced image at index:', imageIndexToEdit);
+      } else {
+        // Add as new image (fallback, shouldn't happen)
+        setImages([...images, {
+          uri: converted.uri,
+          localUri: converted.uri,
+          contentType: converted.contentType,
+        }]);
+        console.log('Added edited image as new');
+      }
       
       setShowImageEditor(false);
       setImageToEdit(null);
+      setImageIndexToEdit(null);
       
       if (Platform.OS !== 'web') {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       
-      console.log('Edited image added successfully');
+      console.log('Edited image saved successfully');
     } catch (error) {
       console.error('Error saving edited image:', error);
       Alert.alert('Error', 'Failed to save edited image');
@@ -1148,6 +1205,7 @@ export default function NoteEditorScreen() {
     console.log('Image editor canceled');
     setShowImageEditor(false);
     setImageToEdit(null);
+    setImageIndexToEdit(null);
   };
 
   // Determine which images to display (lazy loaded or all)
