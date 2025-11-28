@@ -54,7 +54,7 @@ const DISMISS_THRESHOLD = 100;
  * - Full-screen image carousel with smooth scrolling
  * - OCR button always visible and clickable on top of images
  * - Share image using native share functionality
- * - Swipe down to dismiss with improved gesture handling
+ * - Swipe down to dismiss with improved gesture handling (no refresh on close)
  * - Image counter and pagination dots
  * - OCR modal for viewing image analysis
  * - Reusable across NoteCard and note-editor
@@ -69,6 +69,7 @@ export function FullScreenImage({
   const [currentImageIndex, setCurrentImageIndex] = useState(initialIndex);
   const [showOCRModal, setShowOCRModal] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Animated values for swipe-to-dismiss gesture
@@ -79,6 +80,7 @@ export function FullScreenImage({
   React.useEffect(() => {
     if (visible) {
       setCurrentImageIndex(initialIndex);
+      setIsClosing(false);
       translateY.value = 0;
       contextY.value = 0;
       // Scroll to initial index after a short delay to ensure layout is ready
@@ -201,7 +203,13 @@ export function FullScreenImage({
   };
 
   const handleClose = () => {
-    console.log('Closing full screen image');
+    if (isClosing) return;
+    
+    console.log('Closing full screen image without refresh');
+    setIsClosing(true);
+    
+    // Call onClose immediately without any navigation
+    // This prevents the previous route from refreshing
     onClose();
   };
 
