@@ -374,7 +374,8 @@ export default function NoteEditorScreen() {
 
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
-        quality: 0.8,
+        allowsEditing: true,
+        quality: 0.9,
         exif: true,
       });
 
@@ -407,12 +408,21 @@ export default function NoteEditorScreen() {
           }
         }
         
+        // Convert and add the image
+        const converted = await convertImageToSuitableFormat(asset.uri);
+        setImages([...images, {
+          uri: converted.uri,
+          localUri: converted.uri,
+          contentType: converted.contentType,
+        }]);
+        
         setLoading(false);
         
-        // Open image editor for the captured photo
-        console.log('Opening image editor for captured photo');
-        setImageToEdit(asset.uri);
-        setShowImageEditor(true);
+        if (Platform.OS !== 'web') {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        
+        console.log('Photo captured and added successfully');
       }
     } catch (error) {
       console.error('Error taking photo:', error);
@@ -432,7 +442,8 @@ export default function NoteEditorScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
-        quality: 0.8,
+        allowsEditing: false,
+        quality: 0.9,
         exif: true,
       });
 
@@ -477,6 +488,10 @@ export default function NoteEditorScreen() {
 
         setImages([...images, ...newImages]);
         setLoading(false);
+        
+        if (Platform.OS !== 'web') {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
       }
     } catch (error) {
       console.error('Error picking image:', error);
@@ -797,6 +812,13 @@ export default function NoteEditorScreen() {
         },
       ]
     );
+  };
+
+  const editImage = async (index: number) => {
+    const image = images[index];
+    console.log('Opening native editor for image at index:', index);
+    setImageToEdit(image.uri);
+    setShowImageEditor(true);
   };
 
   const renderTextWithLinks = (text: string) => {
@@ -1296,15 +1318,26 @@ export default function NoteEditorScreen() {
                 ) : (
                   <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
                 )}
-                <Pressable
-                  onPress={() => removeImage(index)}
-                  style={styles.removeImageButton}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <View style={styles.removeButtonCircle}>
-                    <IconSymbol name="xmark" size={16} color="#FFFFFF" />
-                  </View>
-                </Pressable>
+                <View style={styles.imageActions}>
+                  <Pressable
+                    onPress={() => editImage(index)}
+                    style={styles.imageActionButton}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <View style={styles.actionButtonCircle}>
+                      <IconSymbol name="pencil" size={16} color="#FFFFFF" />
+                    </View>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => removeImage(index)}
+                    style={styles.imageActionButton}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <View style={styles.actionButtonCircle}>
+                      <IconSymbol name="xmark" size={16} color="#FFFFFF" />
+                    </View>
+                  </Pressable>
+                </View>
               </Pressable>
             ))}
           </ScrollView>
@@ -1466,7 +1499,7 @@ export default function NoteEditorScreen() {
               </View>
               <View style={styles.drawerOptionText}>
                 <Text style={styles.drawerOptionTitle}>Take Photo</Text>
-                <Text style={styles.drawerOptionSubtitle}>Use your camera to take a new photo</Text>
+                <Text style={styles.drawerOptionSubtitle}>Use camera with native editing</Text>
               </View>
               <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
             </Pressable>
@@ -1726,12 +1759,17 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 8,
   },
-  removeImageButton: {
+  imageActions: {
     position: 'absolute',
     top: 12,
     right: 12,
+    flexDirection: 'row',
+    gap: 8,
   },
-  removeButtonCircle: {
+  imageActionButton: {
+    // No additional styles needed
+  },
+  actionButtonCircle: {
     width: 32 * 1.15,
     height: 32 * 1.15,
     borderRadius: 16 * 1.15,

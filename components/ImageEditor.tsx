@@ -1,18 +1,14 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   ActivityIndicator,
   Modal,
   Platform,
-  Alert,
 } from 'react-native';
-import { PESDK, Configuration } from 'react-native-photoeditorsdk';
-import * as FileSystem from 'expo-file-system/legacy';
-import { IconSymbol } from './IconSymbol';
+import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/styles/commonStyles';
 import * as Haptics from 'expo-haptics';
 
@@ -24,17 +20,14 @@ interface ImageEditorProps {
 }
 
 /**
- * Image Editor Component using IMG.LY PhotoEditor SDK
+ * Native Image Editor Component
  * 
- * Provides professional image editing capabilities including:
- * - Crop with various aspect ratios
- * - Rotate and flip
- * - Filters and adjustments
- * - Text and stickers
- * - Drawing tools
- * - And much more
+ * Uses the native OS image editing capabilities:
+ * - iOS: Photos app built-in editor
+ * - Android: Native image editor
  * 
- * Documentation: https://github.com/imgly/catalog-react-native
+ * Provides basic editing features like crop, rotate, and filters
+ * through the platform's native interface.
  */
 export function ImageEditor({
   visible,
@@ -42,109 +35,39 @@ export function ImageEditor({
   onSave,
   onCancel,
 }: ImageEditorProps) {
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [editorReady, setEditorReady] = useState(false);
-
   useEffect(() => {
-    if (visible) {
-      console.log('[ImageEditor] Opening IMG.LY PhotoEditor SDK');
-      setEditorReady(true);
-      openPhotoEditor();
+    if (visible && imageUri) {
+      console.log('[ImageEditor] Opening native image editor');
+      openNativeEditor();
     }
   }, [visible, imageUri]);
 
-  const openPhotoEditor = async () => {
-    if (isProcessing) {
-      console.log('[ImageEditor] Editor already processing, skipping');
-      return;
-    }
-
+  const openNativeEditor = async () => {
     try {
-      setIsProcessing(true);
+      console.log('[ImageEditor] Launching native editor for:', imageUri);
 
-      // Prepare the image URI for the editor
-      let editorImageUri = imageUri;
+      // Use expo-image-picker's built-in editing capability
+      // This opens the native OS image editor
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.9,
+        // On iOS, this opens the Photos app editor
+        // On Android, this opens the native image editor
+        base64: false,
+        exif: false,
+      });
 
-      // For content:// URIs (Android), copy to cache first
-      if (Platform.OS === 'android' && imageUri.startsWith('content://')) {
-        console.log('[ImageEditor] Converting Android content URI to file URI');
-        const filename = `editor_input_${Date.now()}.jpg`;
-        const destUri = `${FileSystem.cacheDirectory}${filename}`;
-        
-        try {
-          await FileSystem.copyAsync({
-            from: imageUri,
-            to: destUri,
-          });
-          editorImageUri = destUri;
-          console.log('[ImageEditor] Converted to:', editorImageUri);
-        } catch (copyError) {
-          console.error('[ImageEditor] Error copying content URI:', copyError);
-          // Try to use the original URI
-          editorImageUri = imageUri;
-        }
-      }
-
-      // Configure the PhotoEditor SDK
-      const configuration: Configuration = {
-        // Export settings
-        export: {
-          image: {
-            exportType: 1, // JPEG
-            quality: 0.9,
-          },
-        },
-        
-        // Enable/disable features
-        tools: [
-          'transform', // Crop, rotate, flip
-          'filter',    // Photo filters
-          'adjustment', // Brightness, contrast, saturation, etc.
-          'text',      // Add text
-          'sticker',   // Add stickers
-          'brush',     // Drawing tools
-          'focus',     // Focus effects
-          'overlay',   // Color overlays
-          'frame',     // Photo frames
-        ],
-
-        // Transform tool configuration
-        transform: {
-          items: [
-            { identifier: 'imgly_transform_common_custom', name: 'Custom' },
-            { identifier: 'imgly_transform_common_square', name: 'Square' },
-            { identifier: 'imgly_transform_common_4-3', name: '4:3' },
-            { identifier: 'imgly_transform_common_16-9', name: '16:9' },
-            { identifier: 'imgly_transform_common_3-2', name: '3:2' },
-          ],
-        },
-
-        // Theme configuration
-        theme: {
-          // Customize colors to match your app
-          primaryColor: colors.primary,
-          backgroundColor: colors.background,
-          surfaceColor: colors.card,
-        },
-      };
-
-      console.log('[ImageEditor] Opening PhotoEditor SDK with image:', editorImageUri);
-
-      // Open the PhotoEditor SDK
-      const result = await PESDK.openEditor(editorImageUri, configuration);
-
-      console.log('[ImageEditor] PhotoEditor SDK result:', result);
-
-      if (result && result.image) {
-        // User saved the edited image
-        console.log('[ImageEditor] Image edited successfully:', result.image);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const editedImage = result.assets[0];
+        console.log('[ImageEditor] Image edited successfully:', editedImage.uri);
         
         if (Platform.OS !== 'web') {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
 
         // Return the edited image URI
-        onSave(result.image);
+        onSave(editedImage.uri);
       } else {
         // User canceled the editor
         console.log('[ImageEditor] User canceled editing');
@@ -156,27 +79,14 @@ export function ImageEditor({
         onCancel();
       }
     } catch (error) {
-      console.error('[ImageEditor] Error opening PhotoEditor SDK:', error);
+      console.error('[ImageEditor] Error opening native editor:', error);
       
-      // Show user-friendly error message
-      Alert.alert(
-        'Editor Error',
-        'Failed to open the image editor. Please try again.',
-        [
-          {
-            text: 'OK',
-            onPress: () => onCancel(),
-          },
-        ]
-      );
-    } finally {
-      setIsProcessing(false);
-      setEditorReady(false);
+      // If there's an error, just cancel
+      onCancel();
     }
   };
 
-  // The IMG.LY SDK opens as a native modal, so we don't need to render much here
-  // Just show a loading indicator while the SDK is initializing
+  // Show a brief loading indicator while the native editor is launching
   if (!visible) {
     return null;
   }
@@ -192,8 +102,10 @@ export function ImageEditor({
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Opening Image Editor...</Text>
-          <Text style={styles.loadingSubtext}>Powered by IMG.LY PhotoEditor SDK</Text>
+          <Text style={styles.loadingText}>Opening Editor...</Text>
+          <Text style={styles.loadingSubtext}>
+            {Platform.OS === 'ios' ? 'Using Photos app' : 'Using native editor'}
+          </Text>
         </View>
       </View>
     </Modal>
