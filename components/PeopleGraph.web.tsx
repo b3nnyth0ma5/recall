@@ -31,11 +31,11 @@ const NODE_HEIGHT = 40;
 const NODE_MIN_WIDTH = 120;
 const NODE_PADDING = 16;
 const ROOT_NODE_SIZE = 50;
-const EDGE_LENGTH = 120;
-const REPULSION_STRENGTH = 5000;
-const ATTRACTION_STRENGTH = 0.08;
-const DAMPING = 0.75;
-const ITERATIONS = 150;
+const EDGE_LENGTH = 150; // Increased from 120 for more separation
+const REPULSION_STRENGTH = 8000; // Increased from 5000 for more separation
+const ATTRACTION_STRENGTH = 0.06; // Decreased from 0.08 for more flexibility
+const DAMPING = 0.7; // Decreased from 0.75 for more movement
+const ITERATIONS = 200; // Increased from 150 for better convergence
 
 // Generate a consistent color based on the name (same as PersonAvatar)
 const getAvatarColor = (name: string): string => {
@@ -61,7 +61,13 @@ const calculateNodeWidth = (name: string): number => {
   return Math.max(NODE_MIN_WIDTH, Math.min(calculatedWidth, SCREEN_WIDTH * 0.7));
 };
 
-// Force-directed layout algorithm
+// Seeded random number generator for consistent randomization
+const seededRandom = (seed: number) => {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+};
+
+// Force-directed layout algorithm with improved separation and randomization
 const calculateLayout = (
   people: Person[],
   anchorPosition: { x: number; y: number }
@@ -78,10 +84,19 @@ const calculateLayout = (
     isRoot: true,
   };
 
-  // Initialize person nodes with random positions around the root
+  // Initialize person nodes with randomized positions around the root
   const personNodes: GraphNode[] = people.map((person, index) => {
-    const angle = (index / people.length) * 2 * Math.PI;
-    const radius = EDGE_LENGTH * 1.5;
+    // Base angle with even distribution
+    const baseAngle = (index / people.length) * 2 * Math.PI;
+    
+    // Add randomization to angle (±30 degrees)
+    const seed = person.id.charCodeAt(0) + index;
+    const angleVariation = (seededRandom(seed) - 0.5) * (Math.PI / 3);
+    const angle = baseAngle + angleVariation;
+    
+    // Randomize radius between 1.2x and 2.0x of EDGE_LENGTH
+    const radiusVariation = seededRandom(seed + 100);
+    const radius = EDGE_LENGTH * (1.2 + radiusVariation * 0.8);
     
     return {
       id: person.id,
@@ -99,14 +114,24 @@ const calculateLayout = (
 
   // Run force-directed layout simulation
   for (let iteration = 0; iteration < ITERATIONS; iteration++) {
-    // Apply repulsion force between all nodes
+    // Apply repulsion force between all nodes (including node-to-node repulsion)
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
         const dx = nodes[j].x - nodes[i].x;
         const dy = nodes[j].y - nodes[i].y;
         const distance = Math.sqrt(dx * dx + dy * dy) || 1;
         
-        const force = REPULSION_STRENGTH / (distance * distance);
+        // Calculate node widths for overlap prevention
+        const nodeIWidth = nodes[i].isRoot ? ROOT_NODE_SIZE : calculateNodeWidth(nodes[i].name);
+        const nodeJWidth = nodes[j].isRoot ? ROOT_NODE_SIZE : calculateNodeWidth(nodes[j].name);
+        const minDistance = (nodeIWidth + nodeJWidth) / 2 + 20; // 20px padding
+        
+        // Stronger repulsion if nodes are too close
+        let force = REPULSION_STRENGTH / (distance * distance);
+        if (distance < minDistance) {
+          force *= 2; // Double the force if overlapping
+        }
+        
         const fx = (dx / distance) * force;
         const fy = (dy / distance) * force;
         
@@ -183,6 +208,11 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
     setTimeout(() => {
       onClose();
     }, 200);
+  };
+
+  const handleRootNodePress = () => {
+    console.log('[PeopleGraph] Root node pressed - collapsing graph');
+    handleClose();
   };
 
   const nodes = nodesRef.current;
@@ -262,9 +292,10 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
           })}
         </View>
 
-        {/* Render root node (people icon) */}
+        {/* Render root node (people icon) - Now clickable to collapse */}
         {rootNode && (
-          <View
+          <Pressable
+            onPress={handleRootNodePress}
             style={[
               styles.rootNode,
               {
@@ -282,7 +313,7 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
               size={28} 
               color="#FFFFFF" 
             />
-          </View>
+          </Pressable>
         )}
 
         {/* Render person nodes */}
@@ -339,6 +370,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 107, 122, 0.9)',
     borderRadius: 20,
     padding: 4,
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.6)',
   },
   graphContainer: {
     flex: 1,
@@ -366,7 +398,7 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#FFFFFF',
     boxShadow: '0px 6px 20px rgba(255, 107, 122, 0.6)',
-    elevation: 12,
+    cursor: 'pointer',
   },
   personNode: {
     position: 'absolute',
@@ -377,7 +409,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#776C6E',
     boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.5)',
-    elevation: 8,
   },
   nodeName: {
     fontSize: 15,
