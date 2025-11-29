@@ -3,6 +3,9 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
+import { useRouter } from 'expo-router';
+import { supabase } from '@/utils/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Person {
   id: string;
@@ -39,6 +42,7 @@ const ATTRACTION_STRENGTH = 0.05; // Attraction to maintain connection to root
 const DAMPING = 0.65; // Damping for smooth movement
 const ITERATIONS = 250; // Iterations for force simulation
 const MIN_NODE_SPACING = 60; // Minimum space between nodes
+const BADGE_SIZE = 24; // Size of the recall count badge
 
 // Generate a consistent color based on the name (same as PersonAvatar)
 const getAvatarColor = (name: string): string => {
@@ -195,9 +199,48 @@ const calculateLayout = (
 };
 
 export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
+  const router = useRouter();
+  const { user } = useAuth();
   const nodesRef = useRef<GraphNode[]>([]);
   const [opacity, setOpacity] = React.useState(0);
   const [scale, setScale] = React.useState(0.8);
+  const [recallCounts, setRecallCounts] = React.useState<{ [personId: string]: number }>({});
+
+  // Load recall counts for each person
+  useEffect(() => {
+    const loadRecallCounts = async () => {
+      if (!user || people.length === 0) return;
+
+      try {
+        const personIds = people.map(p => p.id);
+        
+        // Get recall counts for each person
+        const { data: recallPeopleData, error } = await supabase
+          .from('recall_people')
+          .select('person_id, recall_id')
+          .in('person_id', personIds)
+          .eq('user_id', user.id);
+
+        if (error) {
+          console.error('Error loading recall counts:', error);
+          return;
+        }
+
+        // Count recalls per person
+        const counts: { [personId: string]: number } = {};
+        (recallPeopleData || []).forEach((rp: any) => {
+          counts[rp.person_id] = (counts[rp.person_id] || 0) + 1;
+        });
+
+        console.log('[PeopleGraph Web] Recall counts:', counts);
+        setRecallCounts(counts);
+      } catch (error) {
+        console.error('Error loading recall counts:', error);
+      }
+    };
+
+    loadRecallCounts();
+  }, [people, user]);
 
   useEffect(() => {
     console.log('[PeopleGraph Web] Rendering graph with people:', people);
@@ -226,6 +269,18 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
   const handleRootNodePress = () => {
     console.log('[PeopleGraph Web] Root node pressed - collapsing graph');
     handleClose();
+  };
+
+  const handlePersonPress = (personId: string, personName: string) => {
+    console.log('[PeopleGraph Web] Person node pressed:', personName);
+    
+    // Close the graph first
+    handleClose();
+    
+    // Navigate to person recalls screen after a short delay
+    setTimeout(() => {
+      router.push(`/person-recalls?personId=${personId}`);
+    }, 300);
   };
 
   const nodes = nodesRef.current;
@@ -337,9 +392,13 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
 
         {/* Render person nodes */}
         {personNodes.map((node) => {
+          const recallCount = recallCounts[node.id] || 0;
+          const showBadge = recallCount > 1;
+
           return (
-            <View
+            <Pressable
               key={node.id}
+              onPress={() => handlePersonPress(node.id, node.name)}
               style={[
                 styles.personNode,
                 {
@@ -358,7 +417,14 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
               >
                 {node.name}
               </Text>
-            </View>
+
+              {/* Recall count badge */}
+              {showBadge && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{recallCount}</Text>
+                </View>
+              )}
+            </Pressable>
           );
         })}
       </View>
@@ -435,11 +501,31 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#776C6E',
     boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.5)',
+    cursor: 'pointer',
   },
   nodeName: {
     fontSize: 15,
     fontWeight: '700',
     color: '#4E4749',
     textAlign: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    width: BADGE_SIZE,
+    height: BADGE_SIZE,
+    borderRadius: BADGE_SIZE / 2,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    boxShadow: '0px 2px 8px rgba(255, 107, 122, 0.6)',
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
 });

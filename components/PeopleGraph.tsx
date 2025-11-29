@@ -3,6 +3,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Animated, Platform } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
+import { useRouter } from 'expo-router';
+import { supabase } from '@/utils/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Person {
   id: string;
@@ -18,7 +21,7 @@ interface PeopleGraphProps {
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Constants for layout
-const ROOT_NODE_SIZE = 56;
+const ROOT_NODE_SIZE = 50;
 const PERSON_NODE_HEIGHT = 44;
 const PERSON_NODE_MIN_WIDTH = 100;
 const PERSON_NODE_PADDING = 16;
@@ -26,6 +29,7 @@ const MIN_RADIUS = 120; // Minimum distance from root
 const MAX_RADIUS = 220; // Maximum distance from root
 const EDGE_WIDTH = 2;
 const MIN_NODE_SPACING = 60; // Minimum space between nodes to prevent overlap
+const BADGE_SIZE = 24; // Size of the recall count badge
 
 // Color palette for avatars (matching PersonAvatar)
 const AVATAR_COLORS = [
@@ -189,6 +193,9 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
   console.log('People count:', people.length);
   console.log('Screen dimensions:', { width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
 
+  const router = useRouter();
+  const { user } = useAuth();
+
   // Animation values
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const graphScale = useRef(new Animated.Value(0.5)).current;
@@ -204,6 +211,43 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     width: number;
   }>>([]);
   const [rootPosition, setRootPosition] = useState({ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT / 2 });
+  const [recallCounts, setRecallCounts] = useState<{ [personId: string]: number }>({});
+
+  // Load recall counts for each person
+  useEffect(() => {
+    const loadRecallCounts = async () => {
+      if (!user || people.length === 0) return;
+
+      try {
+        const personIds = people.map(p => p.id);
+        
+        // Get recall counts for each person
+        const { data: recallPeopleData, error } = await supabase
+          .from('recall_people')
+          .select('person_id, recall_id')
+          .in('person_id', personIds)
+          .eq('user_id', user.id);
+
+        if (error) {
+          console.error('Error loading recall counts:', error);
+          return;
+        }
+
+        // Count recalls per person
+        const counts: { [personId: string]: number } = {};
+        (recallPeopleData || []).forEach((rp: any) => {
+          counts[rp.person_id] = (counts[rp.person_id] || 0) + 1;
+        });
+
+        console.log('[PeopleGraph] Recall counts:', counts);
+        setRecallCounts(counts);
+      } catch (error) {
+        console.error('Error loading recall counts:', error);
+      }
+    };
+
+    loadRecallCounts();
+  }, [people, user]);
 
   // Calculate positions on mount
   useEffect(() => {
@@ -266,6 +310,18 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
   const handleRootPress = () => {
     console.log('[PeopleGraph] Root node pressed - collapsing graph');
     handleClose();
+  };
+
+  const handlePersonPress = (personId: string, personName: string) => {
+    console.log('[PeopleGraph] Person node pressed:', personName);
+    
+    // Close the graph first
+    handleClose();
+    
+    // Navigate to person recalls screen after a short delay
+    setTimeout(() => {
+      router.push(`/person-recalls?personId=${personId}`);
+    }, 300);
   };
 
   // Render edges from root to each person node
@@ -347,24 +403,37 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
           </Pressable>
 
           {/* Person nodes */}
-          {nodePositions.map((node) => (
-            <View
-              key={node.id}
-              style={[
-                styles.personNode,
-                {
-                  left: node.x - node.width / 2,
-                  top: node.y - PERSON_NODE_HEIGHT / 2,
-                  width: node.width,
-                  backgroundColor: node.color,
-                },
-              ]}
-            >
-              <Text style={styles.personName} numberOfLines={1}>
-                {node.name}
-              </Text>
-            </View>
-          ))}
+          {nodePositions.map((node) => {
+            const recallCount = recallCounts[node.id] || 0;
+            const showBadge = recallCount > 1;
+
+            return (
+              <Pressable
+                key={node.id}
+                onPress={() => handlePersonPress(node.id, node.name)}
+                style={[
+                  styles.personNode,
+                  {
+                    left: node.x - node.width / 2,
+                    top: node.y - PERSON_NODE_HEIGHT / 2,
+                    width: node.width,
+                    backgroundColor: node.color,
+                  },
+                ]}
+              >
+                <Text style={styles.personName} numberOfLines={1}>
+                  {node.name}
+                </Text>
+                
+                {/* Recall count badge */}
+                {showBadge && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{recallCount}</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
         </View>
       </Animated.View>
     </View>
@@ -443,9 +512,38 @@ const styles = StyleSheet.create({
     }),
   },
   personName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: '#4E4749',
     textAlign: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    width: BADGE_SIZE,
+    height: BADGE_SIZE,
+    borderRadius: BADGE_SIZE / 2,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.6,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
 });
