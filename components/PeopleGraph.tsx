@@ -80,26 +80,13 @@ const calculateLayout = (
     vy: 0,
   }));
 
-  // Create edges - connect all nodes to the root node (first person)
+  // Create edges - ONLY connect all nodes to the root node (first person)
   const edges: GraphEdge[] = [];
   for (let i = 1; i < people.length; i++) {
     edges.push({
       source: people[0].id,
       target: people[i].id,
     });
-  }
-
-  // Also create some connections between non-root nodes for a more interesting graph
-  for (let i = 1; i < people.length; i++) {
-    for (let j = i + 1; j < people.length; j++) {
-      // Connect some nodes randomly (30% chance)
-      if (Math.random() < 0.3) {
-        edges.push({
-          source: people[i].id,
-          target: people[j].id,
-        });
-      }
-    }
   }
 
   // Run force-directed layout simulation
@@ -174,6 +161,9 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
   const nodesRef = useRef<GraphNode[]>([]);
 
   useEffect(() => {
+    console.log('[PeopleGraph] Rendering graph with people:', people);
+    console.log('[PeopleGraph] Anchor position:', anchorPosition);
+    
     // Calculate layout
     nodesRef.current = calculateLayout(people, anchorPosition);
 
@@ -194,6 +184,7 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
   }, [people, anchorPosition]);
 
   const handleClose = () => {
+    console.log('[PeopleGraph] Closing graph');
     // Animate out
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -213,10 +204,10 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
 
   const nodes = nodesRef.current;
 
-  // Create edges for rendering
+  // Create edges for rendering - ONLY connect to root node
   const edges: { x1: number; y1: number; x2: number; y2: number }[] = [];
   
-  // Connect all nodes to the root node
+  // Connect all nodes to the root node ONLY
   for (let i = 1; i < nodes.length; i++) {
     edges.push({
       x1: nodes[0].x,
@@ -226,19 +217,7 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
     });
   }
 
-  // Add some connections between non-root nodes
-  for (let i = 1; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      if (Math.random() < 0.3) {
-        edges.push({
-          x1: nodes[i].x,
-          y1: nodes[i].y,
-          x2: nodes[j].x,
-          y2: nodes[j].y,
-        });
-      }
-    }
-  }
+  console.log('[PeopleGraph] Rendering', nodes.length, 'nodes and', edges.length, 'edges');
 
   return (
     <Animated.View 
@@ -251,11 +230,14 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
     >
       {/* Close button */}
       <Pressable style={styles.closeButton} onPress={handleClose}>
-        <IconSymbol 
-          name="xmark.circle.fill"
-          size={32} 
-          color={colors.text} 
-        />
+        <View style={styles.closeButtonInner}>
+          <IconSymbol 
+            ios_icon_name="xmark.circle.fill"
+            android_material_icon_name="cancel"
+            size={36} 
+            color="#FFFFFF" 
+          />
+        </View>
       </Pressable>
 
       {/* Graph visualization */}
@@ -307,7 +289,7 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
                   width: nodeWidth,
                   height: NODE_HEIGHT,
                   backgroundColor: node.color,
-                  borderWidth: index === 0 ? 2 : 1.25,
+                  borderWidth: index === 0 ? 3 : 1.5,
                   borderColor: index === 0 ? colors.primary : '#776C6E',
                 },
               ]}
@@ -334,7 +316,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
     zIndex: 9999,
   },
   closeButton: {
@@ -343,6 +325,11 @@ const styles = StyleSheet.create({
     right: 16,
     zIndex: 10000,
     padding: 8,
+  },
+  closeButtonInner: {
+    backgroundColor: 'rgba(255, 107, 122, 0.9)',
+    borderRadius: 20,
+    padding: 4,
   },
   graphContainer: {
     flex: 1,
@@ -357,9 +344,9 @@ const styles = StyleSheet.create({
   },
   edge: {
     position: 'absolute',
-    height: 2,
+    height: 2.5,
     backgroundColor: colors.primary,
-    opacity: 0.3,
+    opacity: 0.6,
     transformOrigin: 'left center',
   },
   node: {
@@ -368,8 +355,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 18,
     paddingHorizontal: NODE_PADDING,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.3)',
-    elevation: 5,
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.5)',
+    elevation: 8,
   },
   nodeName: {
     fontSize: 14,
