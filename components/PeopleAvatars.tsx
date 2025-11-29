@@ -41,7 +41,8 @@ export function PeopleAvatars({
             styles.avatar,
             { 
               marginLeft: index > 0 ? -overlapOffset : 0,
-              zIndex: visiblePeople.length - index,
+              zIndex: 1000 + (visiblePeople.length - index),
+              elevation: 10 + (visiblePeople.length - index),
             }
           ]}
         />
@@ -56,7 +57,8 @@ export function PeopleAvatars({
               height: avatarSize,
               borderRadius: avatarSize / 2,
               marginLeft: -overlapOffset,
-              zIndex: 0,
+              zIndex: 1000,
+              elevation: 10,
             }
           ]}
         >

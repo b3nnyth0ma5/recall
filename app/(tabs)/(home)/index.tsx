@@ -825,6 +825,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 24,
+    zIndex: 100,
+    elevation: 100,
   },
   searchFab: {
     width: 60,

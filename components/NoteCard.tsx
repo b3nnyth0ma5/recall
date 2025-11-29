@@ -392,26 +392,28 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 16,
     marginBottom: 16,
-    overflow: 'visible', // Changed from 'hidden' to allow avatars to overflow
+    overflow: 'visible',
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
     elevation: 2,
   },
   cardContent: {
     padding: CARD_PADDING,
     position: 'relative',
-    overflow: 'hidden', // Keep content clipped but allow avatars to overflow
+    overflow: 'visible',
     borderRadius: 16,
   },
   peopleAvatarsContainer: {
     position: 'absolute',
-    top: -8, // Negative value to position partially off the card
-    right: 4, // Adjusted to be closer to the edge
-    zIndex: 10,
+    top: -10,
+    right: 8,
+    zIndex: 1000,
+    elevation: 10,
   },
   imagesContainer: {
     marginBottom: 12,
     marginHorizontal: -CARD_PADDING,
     position: 'relative',
+    zIndex: 1,
   },
   imagesScrollContent: {
     paddingHorizontal: CARD_PADDING,
@@ -466,6 +468,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
+    zIndex: 2,
   },
   imageCounterText: {
     fontSize: 12,
@@ -477,6 +480,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: colors.text,
     marginBottom: 4,
+    zIndex: 1,
   },
   normalText: {
     color: colors.text,
@@ -490,7 +494,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     marginTop: 4,
-    zIndex: 10,
+    zIndex: 1,
   },
   toggleText: {
     fontSize: 14,
@@ -506,6 +510,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     gap: 8,
+    zIndex: 1,
   },
   locationWrapper: {
     flexDirection: 'row',

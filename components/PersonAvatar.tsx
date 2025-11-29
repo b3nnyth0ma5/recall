@@ -52,7 +52,7 @@ const getAvatarColor = (name: string): string => {
   return colors[index];
 };
 
-export function PersonAvatar({ personName, size = 28, style }: PersonAvatarProps) {
+export function PersonAvatar({ personName, size = 40, style }: PersonAvatarProps) {
   const initials = getInitials(personName);
   const backgroundColor = getAvatarColor(personName);
   const fontSize = size * 0.4; // Font size is 40% of avatar size
@@ -82,7 +82,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: colors.background,
+    borderColor: '#FFFFFF',
+    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.2)',
   },
   initials: {
     color: '#FFFFFF',
