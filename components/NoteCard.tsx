@@ -251,9 +251,9 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
           <View style={styles.peopleAvatarsContainer}>
             <PeopleAvatars 
               people={note.people || []} 
-              maxVisible={3}
-              avatarSize={28}
-              overlapOffset={10}
+              maxVisible={5}
+              avatarSize={36}
+              overlapOffset={8}
             />
           </View>
         )}

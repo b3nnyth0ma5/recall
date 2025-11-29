@@ -3,10 +3,28 @@ import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
+import { PeopleGraphProvider, usePeopleGraph } from '@/contexts/PeopleGraphContext';
+import { PeopleGraph } from '@/components/PeopleGraph';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native';
 import { getInitialShareData, listenForShareIntents, ReceivedShareData } from '@/utils/nativeShareReceiver';
 import { supabase } from '@/utils/supabase';
+
+function PeopleGraphOverlay() {
+  const { showGraph, people, anchorPosition, closeGraph } = usePeopleGraph();
+
+  if (!showGraph) {
+    return null;
+  }
+
+  return (
+    <PeopleGraph
+      people={people}
+      onClose={closeGraph}
+      anchorPosition={anchorPosition}
+    />
+  );
+}
 
 function RootLayoutNav() {
   const { user, loading } = useAuth();
@@ -231,43 +249,48 @@ function RootLayoutNav() {
   }, [user, segments, loading, checkingOnboarding, needsOnboarding, pendingShareData, hasProcessedPendingShare, isProcessingShare, router]);
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        animation: 'default',
-      }}
-    >
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="login" options={{ headerShown: false }} />
-      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-      <Stack.Screen name="note-editor" options={{ headerShown: false }} />
-      <Stack.Screen name="search" options={{ headerShown: false }} />
-      <Stack.Screen name="location-search" options={{ headerShown: false }} />
-      <Stack.Screen name="map-view" options={{ headerShown: false }} />
-      <Stack.Screen name="share-intent" options={{ headerShown: false }} />
-      <Stack.Screen name="shared-recall" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="modal"
-        options={{
-          presentation: 'modal',
+    <>
+      <Stack
+        screenOptions={{
           headerShown: false,
+          animation: 'default',
         }}
-      />
-      <Stack.Screen
-        name="formsheet"
-        options={{
-          presentation: 'formSheet',
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="transparent-modal"
-        options={{
-          presentation: 'transparentModal',
-          headerShown: false,
-        }}
-      />
-    </Stack>
+      >
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="note-editor" options={{ headerShown: false }} />
+        <Stack.Screen name="search" options={{ headerShown: false }} />
+        <Stack.Screen name="location-search" options={{ headerShown: false }} />
+        <Stack.Screen name="map-view" options={{ headerShown: false }} />
+        <Stack.Screen name="share-intent" options={{ headerShown: false }} />
+        <Stack.Screen name="shared-recall" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="modal"
+          options={{
+            presentation: 'modal',
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="formsheet"
+          options={{
+            presentation: 'formSheet',
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="transparent-modal"
+          options={{
+            presentation: 'transparentModal',
+            headerShown: false,
+          }}
+        />
+      </Stack>
+      
+      {/* People Graph Overlay */}
+      <PeopleGraphOverlay />
+    </>
   );
 }
 
@@ -276,7 +299,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.container}>
       <AuthProvider>
         <WidgetProvider>
-          <RootLayoutNav />
+          <PeopleGraphProvider>
+            <RootLayoutNav />
+          </PeopleGraphProvider>
         </WidgetProvider>
       </AuthProvider>
     </GestureHandlerRootView>
