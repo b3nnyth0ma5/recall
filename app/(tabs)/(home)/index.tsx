@@ -7,7 +7,6 @@ import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
-// import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { Note } from '@/types/Note';
 import * as Haptics from 'expo-haptics';
@@ -21,10 +20,6 @@ export default function HomeScreen() {
   const previousNotesCountRef = useRef(notes.length);
   const isFirstFocusRef = useRef(true);
   const { user } = useAuth();
-  // const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  // const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
-  // const [loadingFiltered, setLoadingFiltered] = useState(false);
-  // const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
   const [showActionButtons, setShowActionButtons] = useState(false);
   const [isNavigating, setIsNavigating] = useState<'camera' | 'text' | 'location' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -85,150 +80,6 @@ export default function HomeScreen() {
     }
   }, [showActionButtons, cameraButtonAnim, textButtonAnim, locationButtonAnim]);
 
-  // Filter notes when category is selected - USING recollections.recall_id
-  // useEffect(() => {
-  //   const filterNotesByCategory = async () => {
-  //     if (!selectedCategoryId) {
-  //       setFilteredNotes([]);
-  //       return;
-  //     }
-
-  //     if (!user?.id) {
-  //       console.error('No user logged in');
-  //       setFilteredNotes([]);
-  //       return;
-  //     }
-
-  //     try {
-  //       setLoadingFiltered(true);
-  //       console.log('Filtering notes by category:', selectedCategoryId);
-  //       console.log('User ID:', user.id);
-
-  //       // Fetch recollections using recall_id
-  //       const { data: recollections, error: recollectionsError } = await supabase
-  //         .from('recollections')
-  //         .select('recall_id, match_score, category_id')
-  //         .eq('category_id', selectedCategoryId)
-  //         .eq('user_id', user.id)
-  //         .order('match_score', { ascending: false });
-
-  //       if (recollectionsError) {
-  //         console.error('Error fetching recollections:', recollectionsError);
-  //         setFilteredNotes([]);
-  //         return;
-  //       }
-
-  //       if (!recollections || recollections.length === 0) {
-  //         console.log('No recollections found for this category');
-  //         setFilteredNotes([]);
-  //         return;
-  //       }
-
-  //       console.log(`Found ${recollections.length} recollections for category`);
-  //       console.log('Recollections data:', recollections);
-
-  //       // Extract recall_ids from recollections
-  //       const recallIds = recollections.map(r => r.recall_id);
-  //       console.log('Recall IDs to fetch:', recallIds);
-        
-  //       // Fetch the actual recalls using recall_id
-  //       const { data: recalls, error: recallsError } = await supabase
-  //         .from('recalls')
-  //         .select('*')
-  //         .in('id', recallIds);
-
-  //       if (recallsError) {
-  //         console.error('Error fetching recalls:', recallsError);
-  //         setFilteredNotes([]);
-  //         return;
-  //       }
-
-  //       if (!recalls || recalls.length === 0) {
-  //         console.log('No recalls found for the recollection recall_ids');
-  //         setFilteredNotes([]);
-  //         return;
-  //       }
-
-  //       console.log(`Found ${recalls.length} recalls`);
-
-  //       // Create a map of recall_id to match_score
-  //       const matchScoreMap = new Map(
-  //         recollections.map(r => [r.recall_id, r.match_score])
-  //       );
-
-  //       // Process the recalls and load their images
-  //       const notesWithImages = await Promise.all(
-  //         recalls.map(async (recall) => {
-  //           try {
-  //             // Load images for this recall using recall_id
-  //             const { data: imagesData, error: imagesError } = await supabase
-  //               .from('recall_images')
-  //               .select('id')
-  //               .eq('recall_id', recall.id)
-  //               .order('created_at', { ascending: true });
-
-  //             if (imagesError) {
-  //               console.error('Error loading images for recall:', recall.id, imagesError);
-  //               return { 
-  //                 ...recall, 
-  //                 images: [], 
-  //                 imageIds: [],
-  //                 match_score: matchScoreMap.get(recall.id) || 0
-  //               };
-  //             }
-
-  //             const imageResults = await Promise.all(
-  //               (imagesData || []).map(async (img) => {
-  //                 try {
-  //                   const dataUrl = await getImageDataUrl(img.id);
-  //                   if (!dataUrl) {
-  //                     return { url: '', id: img.id };
-  //                   }
-  //                   return { url: dataUrl, id: img.id };
-  //                 } catch (error) {
-  //                   console.error(`Exception processing image ${img.id}:`, error);
-  //                   return { url: '', id: img.id };
-  //                 }
-  //               })
-  //             );
-
-  //             const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
-  //             const imageIds = imageResults.map(result => result.id);
-              
-  //             return { 
-  //               ...recall, 
-  //               images: validImageUrls, 
-  //               imageIds: imageIds,
-  //               match_score: matchScoreMap.get(recall.id) || 0
-  //             };
-  //           } catch (error) {
-  //             console.error(`Exception processing recall ${recall.id}:`, error);
-  //             return { 
-  //               ...recall, 
-  //               images: [], 
-  //               imageIds: [],
-  //               match_score: matchScoreMap.get(recall.id) || 0
-  //             };
-  //           }
-  //         })
-  //       );
-
-  //       // Sort by match_score (highest first)
-  //       notesWithImages.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
-
-  //       console.log(`Filtered ${notesWithImages.length} notes for category (sorted by match_score)`);
-  //       setFilteredNotes(notesWithImages);
-  //     } catch (error) {
-  //       console.error('Error filtering notes:', error);
-  //       setFilteredNotes([]);
-  //     } finally {
-  //       setLoadingFiltered(false);
-  //     }
-  //   };
-
-  //   filterNotesByCategory();
-  // }, [selectedCategoryId, user?.id]);
-
   useFocusEffect(
     useCallback(() => {
       console.log('[useFocusEffect] Home screen focused');
@@ -268,21 +119,8 @@ export default function HomeScreen() {
     console.log('[handleRefresh] Refreshing landing page data from Supabase...');
     
     try {
-      // Refresh categories by triggering a re-render in CategoryCarousel
-      // console.log('[handleRefresh] Triggering category refresh...');
-      // setCategoryRefreshTrigger(prev => prev + 1);
-      
-      // Refresh notes/recalls
-      // if (selectedCategoryId && !clearCategory) {
-      //   console.log('[handleRefresh] Refreshing filtered notes for category:', selectedCategoryId);
-      //   // Trigger re-fetch of filtered notes by temporarily clearing and resetting category
-      //   const currentCategory = selectedCategoryId;
-      //   setSelectedCategoryId(null);
-      //   setTimeout(() => setSelectedCategoryId(currentCategory), 100);
-      // } else {
-        console.log('[handleRefresh] Refreshing all notes...');
-        await refreshNotes();
-      // }
+      console.log('[handleRefresh] Refreshing all notes...');
+      await refreshNotes();
     } catch (error) {
       console.error('[handleRefresh] Error refreshing data:', error);
     } finally {
@@ -292,17 +130,14 @@ export default function HomeScreen() {
   };
 
   const handleRecallIconPress = async () => {
-    console.log('[handleRecallIconPress] Recall icon pressed - clearing categories and reloading');
-    
-    // Clear selected category
-    // setSelectedCategoryId(null);
+    console.log('[handleRecallIconPress] Recall icon pressed - reloading');
     
     // Scroll to top
     if (scrollViewRef.current) {
       scrollViewRef.current.scrollTo({ y: 0, animated: true });
     }
     
-    // Reload landing page data with clearCategory flag set to true
+    // Reload landing page data
     await handleRefresh(true);
   };
 
@@ -427,26 +262,12 @@ export default function HomeScreen() {
     }
   };
 
-  // const handleCategorySelect = (categoryId: string | null) => {
-  //   console.log('Category selected:', categoryId);
-  //   setSelectedCategoryId(categoryId);
-  //   // Scroll to top when category changes
-  //   if (scrollViewRef.current) {
-  //     scrollViewRef.current.scrollTo({ y: 0, animated: true });
-  //   }
-  // };
-
   const handleScroll = useCallback((event: any) => {
     try {
       const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
       
       // Save scroll position to ref (doesn't trigger re-render)
       scrollPositionRef.current = contentOffset.y;
-      
-      // Only load more if not filtering by category
-      // if (selectedCategoryId) {
-      //   return;
-      // }
 
       // Load more notes when near bottom
       const paddingToBottom = 20;
@@ -561,14 +382,6 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Category Carousel - Only show categories with recollections */}
-        {/* <CategoryCarousel 
-          onCategorySelect={handleCategorySelect}
-          selectedCategoryId={selectedCategoryId}
-          userId={user?.id}
-          refreshTrigger={categoryRefreshTrigger}
-        /> */}
-
         {isLoading && !refreshing ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />

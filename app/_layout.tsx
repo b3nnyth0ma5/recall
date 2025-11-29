@@ -13,11 +13,17 @@ import { supabase } from '@/utils/supabase';
 function PeopleGraphOverlay() {
   const { showGraph, people, anchorPosition, closeGraph } = usePeopleGraph();
 
+  console.log('[PeopleGraphOverlay] Render state:', { 
+    showGraph, 
+    peopleCount: people.length, 
+    anchorPosition 
+  });
+
   if (!showGraph) {
     return null;
   }
 
-  console.log('[PeopleGraphOverlay] Rendering overlay with showGraph:', showGraph);
+  console.log('[PeopleGraphOverlay] Rendering PeopleGraph with', people.length, 'people');
 
   return (
     <View style={styles.overlayContainer} pointerEvents="box-none">
