@@ -17,11 +17,7 @@ interface GraphNode {
   color: string;
   vx: number;
   vy: number;
-}
-
-interface GraphEdge {
-  source: string;
-  target: string;
+  isRoot: boolean;
 }
 
 interface PeopleGraphProps {
@@ -31,14 +27,15 @@ interface PeopleGraphProps {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const NODE_HEIGHT = 36;
+const NODE_HEIGHT = 40;
 const NODE_MIN_WIDTH = 120;
 const NODE_PADDING = 16;
-const EDGE_LENGTH = 100;
-const REPULSION_STRENGTH = 3000;
-const ATTRACTION_STRENGTH = 0.05;
-const DAMPING = 0.8;
-const ITERATIONS = 100;
+const ROOT_NODE_SIZE = 50;
+const EDGE_LENGTH = 120;
+const REPULSION_STRENGTH = 5000;
+const ATTRACTION_STRENGTH = 0.08;
+const DAMPING = 0.75;
+const ITERATIONS = 150;
 
 // Generate a consistent color based on the name (same as PersonAvatar)
 const getAvatarColor = (name: string): string => {
@@ -59,9 +56,9 @@ const getAvatarColor = (name: string): string => {
 
 // Calculate node width based on name length
 const calculateNodeWidth = (name: string): number => {
-  const charWidth = 8; // Approximate character width
+  const charWidth = 9;
   const calculatedWidth = name.length * charWidth + NODE_PADDING * 2;
-  return Math.max(NODE_MIN_WIDTH, Math.min(calculatedWidth, SCREEN_WIDTH * 0.8));
+  return Math.max(NODE_MIN_WIDTH, Math.min(calculatedWidth, SCREEN_WIDTH * 0.7));
 };
 
 // Force-directed layout algorithm
@@ -69,25 +66,36 @@ const calculateLayout = (
   people: Person[],
   anchorPosition: { x: number; y: number }
 ): GraphNode[] => {
-  // Initialize nodes with random positions
-  const nodes: GraphNode[] = people.map((person, index) => ({
-    id: person.id,
-    name: person.person_name,
-    x: index === 0 ? anchorPosition.x : Math.random() * SCREEN_WIDTH,
-    y: index === 0 ? anchorPosition.y : Math.random() * SCREEN_HEIGHT,
-    color: getAvatarColor(person.person_name),
+  // Create root node (people icon placeholder)
+  const rootNode: GraphNode = {
+    id: 'root',
+    name: 'People',
+    x: anchorPosition.x,
+    y: anchorPosition.y,
+    color: colors.primary,
     vx: 0,
     vy: 0,
-  }));
+    isRoot: true,
+  };
 
-  // Create edges - ONLY connect all nodes to the root node (first person)
-  const edges: GraphEdge[] = [];
-  for (let i = 1; i < people.length; i++) {
-    edges.push({
-      source: people[0].id,
-      target: people[i].id,
-    });
-  }
+  // Initialize person nodes with random positions around the root
+  const personNodes: GraphNode[] = people.map((person, index) => {
+    const angle = (index / people.length) * 2 * Math.PI;
+    const radius = EDGE_LENGTH * 1.5;
+    
+    return {
+      id: person.id,
+      name: person.person_name,
+      x: anchorPosition.x + Math.cos(angle) * radius,
+      y: anchorPosition.y + Math.sin(angle) * radius,
+      color: getAvatarColor(person.person_name),
+      vx: 0,
+      vy: 0,
+      isRoot: false,
+    };
+  });
+
+  const nodes = [rootNode, ...personNodes];
 
   // Run force-directed layout simulation
   for (let iteration = 0; iteration < ITERATIONS; iteration++) {
@@ -102,43 +110,35 @@ const calculateLayout = (
         const fx = (dx / distance) * force;
         const fy = (dy / distance) * force;
         
-        nodes[i].vx -= fx;
-        nodes[i].vy -= fy;
-        nodes[j].vx += fx;
-        nodes[j].vy += fy;
+        // Don't move the root node
+        if (!nodes[i].isRoot) {
+          nodes[i].vx -= fx;
+          nodes[i].vy -= fy;
+        }
+        
+        if (!nodes[j].isRoot) {
+          nodes[j].vx += fx;
+          nodes[j].vy += fy;
+        }
       }
     }
 
-    // Apply attraction force along edges
-    edges.forEach(edge => {
-      const source = nodes.find(n => n.id === edge.source);
-      const target = nodes.find(n => n.id === edge.target);
+    // Apply attraction force from each person node to root node ONLY
+    personNodes.forEach(node => {
+      const dx = rootNode.x - node.x;
+      const dy = rootNode.y - node.y;
+      const distance = Math.sqrt(dx * dx + dy * dy) || 1;
       
-      if (source && target) {
-        const dx = target.x - source.x;
-        const dy = target.y - source.y;
-        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-        
-        const force = (distance - EDGE_LENGTH) * ATTRACTION_STRENGTH;
-        const fx = (dx / distance) * force;
-        const fy = (dy / distance) * force;
-        
-        source.vx += fx;
-        source.vy += fy;
-        target.vx -= fx;
-        target.vy -= fy;
-      }
+      const force = (distance - EDGE_LENGTH) * ATTRACTION_STRENGTH;
+      const fx = (dx / distance) * force;
+      const fy = (dy / distance) * force;
+      
+      node.vx += fx;
+      node.vy += fy;
     });
 
-    // Update positions and apply damping
-    nodes.forEach((node, index) => {
-      // Don't move the root node (anchored)
-      if (index === 0) {
-        node.vx = 0;
-        node.vy = 0;
-        return;
-      }
-
+    // Update positions and apply damping (skip root node)
+    personNodes.forEach((node) => {
       node.x += node.vx;
       node.y += node.vy;
       node.vx *= DAMPING;
@@ -146,9 +146,9 @@ const calculateLayout = (
 
       // Keep nodes within screen bounds with padding
       const nodeWidth = calculateNodeWidth(node.name);
-      const padding = 20;
+      const padding = 40;
       node.x = Math.max(nodeWidth / 2 + padding, Math.min(SCREEN_WIDTH - nodeWidth / 2 - padding, node.x));
-      node.y = Math.max(NODE_HEIGHT / 2 + padding, Math.min(SCREEN_HEIGHT - NODE_HEIGHT / 2 - padding - 100, node.y));
+      node.y = Math.max(NODE_HEIGHT / 2 + padding + 60, Math.min(SCREEN_HEIGHT - NODE_HEIGHT / 2 - padding - 120, node.y));
     });
   }
 
@@ -166,6 +166,7 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
     
     // Calculate layout
     nodesRef.current = calculateLayout(people, anchorPosition);
+    console.log('[PeopleGraph] Calculated nodes:', nodesRef.current);
 
     // Animate in
     Animated.parallel([
@@ -203,17 +204,20 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
   };
 
   const nodes = nodesRef.current;
+  const rootNode = nodes.find(n => n.isRoot);
+  const personNodes = nodes.filter(n => !n.isRoot);
 
-  // Create edges for rendering - ONLY connect to root node
+  // Create edges for rendering - ONLY connect person nodes to root node
   const edges: { x1: number; y1: number; x2: number; y2: number }[] = [];
   
-  // Connect all nodes to the root node ONLY
-  for (let i = 1; i < nodes.length; i++) {
-    edges.push({
-      x1: nodes[0].x,
-      y1: nodes[0].y,
-      x2: nodes[i].x,
-      y2: nodes[i].y,
+  if (rootNode) {
+    personNodes.forEach(node => {
+      edges.push({
+        x1: rootNode.x,
+        y1: rootNode.y,
+        x2: node.x,
+        y2: node.y,
+      });
     });
   }
 
@@ -274,23 +278,44 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
           })}
         </View>
 
-        {/* Render nodes */}
-        {nodes.map((node, index) => {
+        {/* Render root node (people icon) */}
+        {rootNode && (
+          <View
+            style={[
+              styles.rootNode,
+              {
+                left: rootNode.x - ROOT_NODE_SIZE / 2,
+                top: rootNode.y - ROOT_NODE_SIZE / 2,
+                width: ROOT_NODE_SIZE,
+                height: ROOT_NODE_SIZE,
+                backgroundColor: colors.primary,
+              },
+            ]}
+          >
+            <IconSymbol 
+              ios_icon_name="person.3.fill"
+              android_material_icon_name="group"
+              size={28} 
+              color="#FFFFFF" 
+            />
+          </View>
+        )}
+
+        {/* Render person nodes */}
+        {personNodes.map((node) => {
           const nodeWidth = calculateNodeWidth(node.name);
           
           return (
             <View
               key={node.id}
               style={[
-                styles.node,
+                styles.personNode,
                 {
                   left: node.x - nodeWidth / 2,
                   top: node.y - NODE_HEIGHT / 2,
                   width: nodeWidth,
                   height: NODE_HEIGHT,
                   backgroundColor: node.color,
-                  borderWidth: index === 0 ? 3 : 1.5,
-                  borderColor: index === 0 ? colors.primary : '#776C6E',
                 },
               ]}
             >
@@ -344,22 +369,34 @@ const styles = StyleSheet.create({
   },
   edge: {
     position: 'absolute',
-    height: 2.5,
+    height: 3,
     backgroundColor: colors.primary,
-    opacity: 0.6,
+    opacity: 0.7,
     transformOrigin: 'left center',
   },
-  node: {
+  rootNode: {
     position: 'absolute',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 18,
+    borderRadius: 25,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    boxShadow: '0px 6px 20px rgba(255, 107, 122, 0.6)',
+    elevation: 12,
+  },
+  personNode: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
     paddingHorizontal: NODE_PADDING,
+    borderWidth: 2,
+    borderColor: '#776C6E',
     boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.5)',
     elevation: 8,
   },
   nodeName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: '#4E4749',
     textAlign: 'center',
