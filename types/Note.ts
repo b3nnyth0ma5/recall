@@ -14,6 +14,12 @@ export interface Note {
   relevance_score?: number; // AI-powered relevance score (0-100)
   relevance_reason?: string; // Explanation of why this recall matches
   used_for_answer?: boolean; // Whether this recall was used to derive the AI answer
+  people?: Person[]; // People mentioned in this recall
+}
+
+export interface Person {
+  id: string;
+  person_name: string;
 }
 
 export interface NoteImage {

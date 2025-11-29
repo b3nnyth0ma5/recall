@@ -23,8 +23,55 @@ export function useNotes() {
 
   const ITEMS_PER_PAGE = 10;
 
+  // Helper function to load people for recalls
+  const loadPeopleForRecalls = useCallback(async (recallIds: string[]) => {
+    if (!recallIds || recallIds.length === 0) {
+      return {};
+    }
+
+    try {
+      // Fetch all recall_people entries for these recalls in one query
+      const { data: recallPeopleData, error: recallPeopleError } = await supabase
+        .from('recall_people')
+        .select('recall_id, person_id, persons(id, person_name)')
+        .in('recall_id', recallIds);
+
+      if (recallPeopleError) {
+        console.error('Error loading recall_people:', recallPeopleError);
+        return {};
+      }
+
+      // Group people by recall_id
+      const peopleByRecallId: { [key: string]: any[] } = {};
+      
+      (recallPeopleData || []).forEach((rp: any) => {
+        if (!peopleByRecallId[rp.recall_id]) {
+          peopleByRecallId[rp.recall_id] = [];
+        }
+        
+        // Extract person data from the nested persons object
+        if (rp.persons) {
+          peopleByRecallId[rp.recall_id].push({
+            id: rp.persons.id,
+            person_name: rp.persons.person_name,
+          });
+        }
+      });
+
+      console.log(`Loaded people for ${Object.keys(peopleByRecallId).length} recalls`);
+      return peopleByRecallId;
+    } catch (error) {
+      console.error('Error loading people for recalls:', error);
+      return {};
+    }
+  }, []);
+
   // Define loadImagesForRecalls FIRST before it's used
   const loadImagesForRecalls = useCallback(async (recalls: any[]) => {
+    // First, load people for all recalls in one batch
+    const recallIds = recalls.map(r => r.id);
+    const peopleByRecallId = await loadPeopleForRecalls(recallIds);
+
     return await Promise.all(
       recalls.map(async (recall) => {
         try {
@@ -55,15 +102,21 @@ export function useNotes() {
           return { 
             ...recall, 
             images: validImageUrls, 
-            imageIds: imageIds
+            imageIds: imageIds,
+            people: peopleByRecallId[recall.id] || [],
           };
         } catch (error) {
           console.error(`Exception processing recall ${recall.id}:`, error);
-          return { ...recall, images: [], imageIds: [] };
+          return { 
+            ...recall, 
+            images: [], 
+            imageIds: [],
+            people: [],
+          };
         }
       })
     );
-  }, []);
+  }, [loadPeopleForRecalls]);
 
   const loadNotes = useCallback(async (pageNum: number = 1, append: boolean = false) => {
     if (!user) {
@@ -119,7 +172,7 @@ export function useNotes() {
 
             if (imagesError) {
               console.error('Error loading images for recall:', recall.id, imagesError);
-              return { ...recall, images: [], imageIds: [] };
+              return { ...recall, images: [], imageIds: [], people: [] };
             }
 
             console.log(`Loaded ${imagesData?.length || 0} image records for recall ${recall.id}`);
@@ -150,35 +203,46 @@ export function useNotes() {
             return { 
               ...recall, 
               images: validImageUrls, 
-              imageIds: imageIds
+              imageIds: imageIds,
+              people: [], // Will be populated in batch below
             };
           } catch (error) {
             console.error(`Exception processing recall ${recall.id}:`, error);
-            return { ...recall, images: [], imageIds: [] };
+            return { ...recall, images: [], imageIds: [], people: [] };
           }
         })
       );
+
+      // Load people for all recalls in one batch
+      const recallIds = notesWithImages.map(note => note.id);
+      const peopleByRecallId = await loadPeopleForRecalls(recallIds);
+
+      // Attach people to each note
+      const notesWithPeople = notesWithImages.map(note => ({
+        ...note,
+        people: peopleByRecallId[note.id] || [],
+      }));
 
       if (append) {
         // Prevent duplicates by filtering out notes that already exist
         setNotes(prevNotes => {
           const existingIds = new Set(prevNotes.map(note => note.id));
-          const newUniqueNotes = notesWithImages.filter(note => !existingIds.has(note.id));
-          console.log(`Adding ${newUniqueNotes.length} new unique notes (filtered ${notesWithImages.length - newUniqueNotes.length} duplicates)`);
+          const newUniqueNotes = notesWithPeople.filter(note => !existingIds.has(note.id));
+          console.log(`Adding ${newUniqueNotes.length} new unique notes (filtered ${notesWithPeople.length - newUniqueNotes.length} duplicates)`);
           return [...prevNotes, ...newUniqueNotes];
         });
       } else {
-        setNotes(notesWithImages);
+        setNotes(notesWithPeople);
       }
       
-      console.log(`Loaded ${notesWithImages.length} notes for page ${pageNum}`);
+      console.log(`Loaded ${notesWithPeople.length} notes for page ${pageNum}`);
     } catch (error) {
       console.error('Error loading notes:', error);
     } finally {
       setLoading(false);
       setIsLoadingMore(false);
     }
-  }, [user]);
+  }, [user, loadPeopleForRecalls]);
 
   useEffect(() => {
     loadNotes(1, false);
@@ -245,11 +309,15 @@ export function useNotes() {
 
       const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
       const imageIds = imageResults.map(result => result.id);
+
+      // Load people for this recall
+      const peopleByRecallId = await loadPeopleForRecalls([recallData.id]);
       
       const updatedNote = { 
         ...recallData, 
         images: validImageUrls, 
-        imageIds: imageIds
+        imageIds: imageIds,
+        people: peopleByRecallId[recallData.id] || [],
       };
 
       // Update the note in the list
@@ -261,7 +329,7 @@ export function useNotes() {
     } catch (error) {
       console.error('Error refreshing single note:', error);
     }
-  }, [user]);
+  }, [user, loadPeopleForRecalls]);
 
   const addNote = useCallback(async (note: Omit<Note, 'id' | 'created_at' | 'updated_at'>) => {
     if (!user) {

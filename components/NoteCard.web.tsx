@@ -8,6 +8,7 @@ import { FullScreenImage } from './FullScreenImage';
 import { TimeAgo } from './TimeAgo';
 import { shareRecall } from '@/utils/shareRecall';
 import { getImageDataUrl } from '@/utils/supabase';
+import { PeopleAvatars } from './PeopleAvatars';
 
 interface NoteCardProps {
   note: Note;
@@ -228,9 +229,24 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   // Determine which images to display (lazy loaded or all)
   const displayImages = note.images && note.images.length > 1 ? lazyLoadedImages : (note.images || []);
 
+  // Check if note has people mentioned
+  const hasPeople = note.people && note.people.length > 0;
+
   return (
     <View style={styles.card}>
       <Pressable onPress={onPress} style={styles.cardContent}>
+        {/* People Avatars - Top Right Corner */}
+        {hasPeople && (
+          <View style={styles.peopleAvatarsContainer}>
+            <PeopleAvatars 
+              people={note.people || []} 
+              maxVisible={3}
+              avatarSize={28}
+              overlapOffset={10}
+            />
+          </View>
+        )}
+
         {/* Text Content - Now clickable to open editor */}
         {note.text && (
           <Pressable onPress={handleTextPress}>
@@ -371,6 +387,13 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     padding: CARD_PADDING,
+    position: 'relative',
+  },
+  peopleAvatarsContainer: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 10,
   },
   text: {
     fontSize: 16,
