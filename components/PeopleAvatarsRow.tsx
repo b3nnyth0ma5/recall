@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { PersonAvatarWithTooltip } from './PersonAvatarWithTooltip';
 import { colors } from '@/styles/commonStyles';
 
@@ -16,7 +16,7 @@ interface PeopleAvatarsRowProps {
 
 export function PeopleAvatarsRow({ 
   people, 
-  avatarSize = 44,
+  avatarSize = 40,
 }: PeopleAvatarsRowProps) {
   if (!people || people.length === 0) {
     return null;
@@ -24,7 +24,12 @@ export function PeopleAvatarsRow({
 
   return (
     <View style={styles.container}>
-      <View style={styles.avatarsRow}>
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={true}
+        contentContainerStyle={styles.avatarsRow}
+        style={styles.scrollView}
+      >
         {people.map((person, index) => (
           <PersonAvatarWithTooltip
             key={person.id}
@@ -36,7 +41,7 @@ export function PeopleAvatarsRow({
             ]}
           />
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -44,13 +49,14 @@ export function PeopleAvatarsRow({
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: 4,
+  },
+  scrollView: {
+    flexGrow: 0,
   },
   avatarsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
   },
   avatar: {
     // Individual avatar styles handled in PersonAvatar component
