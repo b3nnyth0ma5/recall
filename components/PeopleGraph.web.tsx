@@ -186,12 +186,12 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
   const [scale, setScale] = React.useState(0.8);
 
   useEffect(() => {
-    console.log('[PeopleGraph] Rendering graph with people:', people);
-    console.log('[PeopleGraph] Anchor position:', anchorPosition);
+    console.log('[PeopleGraph Web] Rendering graph with people:', people);
+    console.log('[PeopleGraph Web] Anchor position:', anchorPosition);
     
     // Calculate layout
     nodesRef.current = calculateLayout(people, anchorPosition);
-    console.log('[PeopleGraph] Calculated nodes:', nodesRef.current);
+    console.log('[PeopleGraph Web] Calculated nodes:', nodesRef.current);
 
     // Animate in
     setTimeout(() => {
@@ -201,7 +201,7 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
   }, [people, anchorPosition]);
 
   const handleClose = () => {
-    console.log('[PeopleGraph] Closing graph');
+    console.log('[PeopleGraph Web] Closing graph');
     // Animate out
     setOpacity(0);
     setScale(0.8);
@@ -211,7 +211,7 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
   };
 
   const handleRootNodePress = () => {
-    console.log('[PeopleGraph] Root node pressed - collapsing graph');
+    console.log('[PeopleGraph Web] Root node pressed - collapsing graph');
     handleClose();
   };
 
@@ -233,7 +233,7 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
     });
   }
 
-  console.log('[PeopleGraph] Rendering', nodes.length, 'nodes and', edges.length, 'edges');
+  console.log('[PeopleGraph Web] Rendering', nodes.length, 'nodes and', edges.length, 'edges');
 
   return (
     <View 
@@ -245,6 +245,12 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
         }
       ]}
     >
+      {/* Backdrop - clickable to close */}
+      <Pressable 
+        style={styles.backdrop} 
+        onPress={handleClose}
+      />
+
       {/* Close button */}
       <Pressable style={styles.closeButton} onPress={handleClose}>
         <View style={styles.closeButtonInner}>
@@ -356,21 +362,29 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
-    zIndex: 9999,
+    zIndex: 999999,
+  },
+  backdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
   },
   closeButton: {
     position: 'absolute',
     top: 48,
     right: 16,
-    zIndex: 10000,
+    zIndex: 1000000,
     padding: 8,
   },
   closeButtonInner: {
-    backgroundColor: 'rgba(255, 107, 122, 0.9)',
+    backgroundColor: 'rgba(255, 107, 122, 0.95)',
     borderRadius: 20,
     padding: 4,
     boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.6)',
+    cursor: 'pointer',
   },
   graphContainer: {
     flex: 1,
@@ -382,6 +396,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    pointerEvents: 'none',
   },
   edge: {
     position: 'absolute',

@@ -6,7 +6,7 @@ import { WidgetProvider } from '@/contexts/WidgetContext';
 import { PeopleGraphProvider, usePeopleGraph } from '@/contexts/PeopleGraphContext';
 import { PeopleGraph } from '@/components/PeopleGraph';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { getInitialShareData, listenForShareIntents, ReceivedShareData } from '@/utils/nativeShareReceiver';
 import { supabase } from '@/utils/supabase';
 
@@ -17,12 +17,16 @@ function PeopleGraphOverlay() {
     return null;
   }
 
+  console.log('[PeopleGraphOverlay] Rendering overlay with showGraph:', showGraph);
+
   return (
-    <PeopleGraph
-      people={people}
-      onClose={closeGraph}
-      anchorPosition={anchorPosition}
-    />
+    <View style={styles.overlayContainer} pointerEvents="box-none">
+      <PeopleGraph
+        people={people}
+        onClose={closeGraph}
+        anchorPosition={anchorPosition}
+      />
+    </View>
   );
 }
 
@@ -249,7 +253,7 @@ function RootLayoutNav() {
   }, [user, segments, loading, checkingOnboarding, needsOnboarding, pendingShareData, hasProcessedPendingShare, isProcessingShare, router]);
 
   return (
-    <>
+    <View style={styles.container}>
       <Stack
         screenOptions={{
           headerShown: false,
@@ -288,9 +292,9 @@ function RootLayoutNav() {
         />
       </Stack>
       
-      {/* People Graph Overlay */}
+      {/* People Graph Overlay - Rendered at the highest level with maximum z-index */}
       <PeopleGraphOverlay />
-    </>
+    </View>
   );
 }
 
@@ -311,5 +315,10 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 999999,
+    elevation: 999999,
   },
 });

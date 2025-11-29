@@ -188,6 +188,7 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
   useEffect(() => {
     console.log('[PeopleGraph] Rendering graph with people:', people);
     console.log('[PeopleGraph] Anchor position:', anchorPosition);
+    console.log('[PeopleGraph] Platform:', Platform.OS);
     
     // Calculate layout
     nodesRef.current = calculateLayout(people, anchorPosition);
@@ -261,7 +262,14 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
           opacity: fadeAnim,
         }
       ]}
+      pointerEvents="box-none"
     >
+      {/* Backdrop - clickable to close */}
+      <Pressable 
+        style={styles.backdrop} 
+        onPress={handleClose}
+      />
+
       {/* Close button */}
       <Pressable style={styles.closeButton} onPress={handleClose}>
         <View style={styles.closeButtonInner}>
@@ -282,9 +290,10 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
             transform: [{ scale: scaleAnim }],
           }
         ]}
+        pointerEvents="box-none"
       >
         {/* Render edges */}
-        <View style={styles.edgesContainer}>
+        <View style={styles.edgesContainer} pointerEvents="none">
           {edges.map((edge, index) => {
             const length = Math.sqrt(
               Math.pow(edge.x2 - edge.x1, 2) + Math.pow(edge.y2 - edge.y1, 2)
@@ -367,43 +376,37 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
-    zIndex: 9999,
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 999999,
+    elevation: 999999,
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
   },
   closeButton: {
     position: 'absolute',
-    top: 48,
+    top: Platform.OS === 'ios' ? 60 : 48,
     right: 16,
-    zIndex: 10000,
+    zIndex: 1000000,
+    elevation: 1000000,
     padding: 8,
   },
   closeButtonInner: {
-    backgroundColor: 'rgba(255, 107, 122, 0.9)',
+    backgroundColor: 'rgba(255, 107, 122, 0.95)',
     borderRadius: 20,
     padding: 4,
-    // iOS shadow
     shadowColor: '#FF6B7A',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.6,
     shadowRadius: 8,
-    // Android elevation
-    elevation: 8,
+    elevation: 12,
   },
   graphContainer: {
-    flex: 1,
-    position: 'relative',
+    ...StyleSheet.absoluteFillObject,
   },
   edgesContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
   },
   edge: {
     position: 'absolute',
@@ -419,12 +422,10 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     borderWidth: 3,
     borderColor: '#FFFFFF',
-    // iOS shadow
     shadowColor: '#FF6B7A',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.6,
     shadowRadius: 20,
-    // Android elevation
     elevation: 12,
   },
   personNode: {
@@ -435,12 +436,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: NODE_PADDING,
     borderWidth: 2,
     borderColor: '#776C6E',
-    // iOS shadow
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5,
     shadowRadius: 12,
-    // Android elevation
     elevation: 8,
   },
   nodeName: {
