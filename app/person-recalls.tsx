@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -18,6 +19,12 @@ export default function PersonRecallsScreen() {
   const [personName, setPersonName] = useState<string>('');
 
   const personId = params.personId as string;
+
+  // Trigger heavy haptic feedback when screen loads
+  useEffect(() => {
+    console.log('[PersonRecalls] Screen loaded - triggering heavy haptic feedback');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  }, []);
 
   useEffect(() => {
     if (personId && user) {
@@ -166,11 +173,12 @@ export default function PersonRecallsScreen() {
           headerStyle: {
             backgroundColor: colors.background,
           },
-          headerTintColor: colors.text,
+          headerTintColor: colors.primary,
           headerTitleAlign: 'center',
           headerTitleStyle: {
             fontSize: 20,
             fontWeight: 'bold',
+            color: colors.text,
           },
           headerLeft: () => (
             <Pressable onPress={handleBack} style={styles.backButton}>
@@ -178,7 +186,7 @@ export default function PersonRecallsScreen() {
                 ios_icon_name="chevron.left" 
                 android_material_icon_name="arrow_back" 
                 size={28} 
-                color={colors.text} 
+                color={colors.primary} 
               />
             </Pressable>
           ),
@@ -275,5 +283,7 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     marginLeft: 8,
+    backgroundColor: 'rgba(255, 107, 122, 0.15)',
+    borderRadius: 8,
   },
 });

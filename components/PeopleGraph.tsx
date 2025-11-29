@@ -1,6 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Animated, Platform } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { useRouter } from 'expo-router';
@@ -249,7 +250,7 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     loadRecallCounts();
   }, [people, user]);
 
-  // Calculate positions on mount
+  // Calculate positions on mount and trigger haptic feedback
   useEffect(() => {
     console.log('[PeopleGraph] Calculating node positions...');
     const { positions, centerX, centerY } = calculateNodePositions(people);
@@ -257,6 +258,10 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     console.log('[PeopleGraph] Root position:', { x: centerX, y: centerY });
     setNodePositions(positions);
     setRootPosition({ x: centerX, y: centerY });
+
+    // Trigger heavy haptic feedback when graph loads
+    console.log('[PeopleGraph] Graph loaded - triggering heavy haptic feedback');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     // Animate in
     console.log('[PeopleGraph] Starting entrance animation');

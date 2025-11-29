@@ -249,6 +249,12 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     nodesRef.current = calculateLayout(people);
     console.log('[PeopleGraph Web] Calculated nodes:', nodesRef.current);
 
+    // Trigger haptic feedback on web (vibration API if available)
+    console.log('[PeopleGraph Web] Graph loaded - triggering vibration feedback');
+    if (navigator.vibrate) {
+      navigator.vibrate(50); // 50ms vibration
+    }
+
     // Animate in
     setTimeout(() => {
       setOpacity(1);
