@@ -22,8 +22,10 @@ const ROOT_NODE_SIZE = 56;
 const PERSON_NODE_HEIGHT = 44;
 const PERSON_NODE_MIN_WIDTH = 100;
 const PERSON_NODE_PADDING = 16;
-const RADIUS_FROM_ROOT = 140; // Distance from root to person nodes
+const MIN_RADIUS = 120; // Minimum distance from root
+const MAX_RADIUS = 220; // Maximum distance from root
 const EDGE_WIDTH = 2;
+const MIN_NODE_SPACING = 60; // Minimum space between nodes to prevent overlap
 
 // Color palette for avatars (matching PersonAvatar)
 const AVATAR_COLORS = [
@@ -49,12 +51,36 @@ const calculateNodeWidth = (name: string): number => {
   return Math.max(PERSON_NODE_MIN_WIDTH, Math.min(calculatedWidth, SCREEN_WIDTH * 0.6));
 };
 
-// Calculate positions for person nodes in a circle around root
+// Seeded random number generator for consistent randomization
+const seededRandom = (seed: number): number => {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+};
+
+// Check if two nodes overlap
+const nodesOverlap = (
+  x1: number,
+  y1: number,
+  width1: number,
+  x2: number,
+  y2: number,
+  width2: number
+): boolean => {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  const minDistance = (width1 + width2) / 2 + MIN_NODE_SPACING;
+  return distance < minDistance;
+};
+
+// Calculate positions for person nodes with randomized distances and overlap prevention
 const calculateNodePositions = (
-  people: Person[],
-  anchorX: number,
-  anchorY: number
+  people: Person[]
 ) => {
+  // Center the root node on the screen
+  const centerX = SCREEN_WIDTH / 2;
+  const centerY = SCREEN_HEIGHT / 2;
+
   const positions: Array<{
     id: string;
     name: string;
@@ -67,40 +93,100 @@ const calculateNodePositions = (
   const count = people.length;
   const angleStep = (2 * Math.PI) / count;
 
-  people.forEach((person, index) => {
+  // First pass: calculate initial positions with randomized distances
+  const tempPositions = people.map((person, index) => {
     // Calculate angle for this node (start from top and go clockwise)
     const angle = angleStep * index - Math.PI / 2;
     
+    // Generate a seed based on person ID for consistent randomization
+    const seed = person.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    
+    // Randomize the radius between MIN_RADIUS and MAX_RADIUS
+    const randomFactor = seededRandom(seed + index);
+    const radius = MIN_RADIUS + randomFactor * (MAX_RADIUS - MIN_RADIUS);
+    
     // Calculate position
-    let x = anchorX + Math.cos(angle) * RADIUS_FROM_ROOT;
-    let y = anchorY + Math.sin(angle) * RADIUS_FROM_ROOT;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
 
     // Get node width
     const width = calculateNodeWidth(person.person_name);
 
-    // Ensure node stays within screen bounds
-    const padding = 20;
-    x = Math.max(width / 2 + padding, Math.min(SCREEN_WIDTH - width / 2 - padding, x));
-    y = Math.max(PERSON_NODE_HEIGHT / 2 + padding + 80, Math.min(SCREEN_HEIGHT - PERSON_NODE_HEIGHT / 2 - padding - 100, y));
-
-    positions.push({
+    return {
       id: person.id,
       name: person.person_name,
       x,
       y,
       color: getAvatarColor(person.person_name),
       width,
+      angle,
+      radius,
+    };
+  });
+
+  // Second pass: adjust positions to prevent overlaps
+  const maxIterations = 50;
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
+    let hasOverlap = false;
+
+    for (let i = 0; i < tempPositions.length; i++) {
+      for (let j = i + 1; j < tempPositions.length; j++) {
+        if (nodesOverlap(
+          tempPositions[i].x,
+          tempPositions[i].y,
+          tempPositions[i].width,
+          tempPositions[j].x,
+          tempPositions[j].y,
+          tempPositions[j].width
+        )) {
+          hasOverlap = true;
+
+          // Push nodes apart
+          const dx = tempPositions[j].x - tempPositions[i].x;
+          const dy = tempPositions[j].y - tempPositions[i].y;
+          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+          const minDistance = (tempPositions[i].width + tempPositions[j].width) / 2 + MIN_NODE_SPACING;
+          const pushDistance = (minDistance - distance) / 2;
+
+          const pushX = (dx / distance) * pushDistance;
+          const pushY = (dy / distance) * pushDistance;
+
+          tempPositions[i].x -= pushX;
+          tempPositions[i].y -= pushY;
+          tempPositions[j].x += pushX;
+          tempPositions[j].y += pushY;
+        }
+      }
+    }
+
+    if (!hasOverlap) {
+      break;
+    }
+  }
+
+  // Third pass: ensure nodes stay within screen bounds
+  tempPositions.forEach((pos) => {
+    const padding = 20;
+    pos.x = Math.max(pos.width / 2 + padding, Math.min(SCREEN_WIDTH - pos.width / 2 - padding, pos.x));
+    pos.y = Math.max(PERSON_NODE_HEIGHT / 2 + padding + 80, Math.min(SCREEN_HEIGHT - PERSON_NODE_HEIGHT / 2 - padding - 100, pos.y));
+
+    positions.push({
+      id: pos.id,
+      name: pos.name,
+      x: pos.x,
+      y: pos.y,
+      color: pos.color,
+      width: pos.width,
     });
   });
 
-  return positions;
+  return { positions, centerX, centerY };
 };
 
-export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProps) {
+export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
   console.log('=== PeopleGraph Native Render ===');
   console.log('Platform:', Platform.OS);
   console.log('People count:', people.length);
-  console.log('Anchor position:', anchorPosition);
   console.log('Screen dimensions:', { width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
 
   // Animation values
@@ -108,7 +194,7 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
   const graphScale = useRef(new Animated.Value(0.5)).current;
   const graphOpacity = useRef(new Animated.Value(0)).current;
 
-  // Node positions
+  // Node positions and root position
   const [nodePositions, setNodePositions] = useState<Array<{
     id: string;
     name: string;
@@ -117,13 +203,16 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
     color: string;
     width: number;
   }>>([]);
+  const [rootPosition, setRootPosition] = useState({ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT / 2 });
 
   // Calculate positions on mount
   useEffect(() => {
     console.log('[PeopleGraph] Calculating node positions...');
-    const positions = calculateNodePositions(people, anchorPosition.x, anchorPosition.y);
+    const { positions, centerX, centerY } = calculateNodePositions(people);
     console.log('[PeopleGraph] Calculated positions:', positions);
+    console.log('[PeopleGraph] Root position:', { x: centerX, y: centerY });
     setNodePositions(positions);
+    setRootPosition({ x: centerX, y: centerY });
 
     // Animate in
     console.log('[PeopleGraph] Starting entrance animation');
@@ -147,7 +236,7 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
     ]).start(() => {
       console.log('[PeopleGraph] Entrance animation complete');
     });
-  }, [people, anchorPosition]);
+  }, [people]);
 
   const handleClose = () => {
     console.log('[PeopleGraph] Closing graph - starting exit animation');
@@ -181,9 +270,9 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
 
   // Render edges from root to each person node
   const renderEdges = () => {
-    return nodePositions.map((node, index) => {
-      const dx = node.x - anchorPosition.x;
-      const dy = node.y - anchorPosition.y;
+    return nodePositions.map((node) => {
+      const dx = node.x - rootPosition.x;
+      const dy = node.y - rootPosition.y;
       const length = Math.sqrt(dx * dx + dy * dy);
       const angle = Math.atan2(dy, dx) * (180 / Math.PI);
 
@@ -194,8 +283,8 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
             styles.edge,
             {
               width: length,
-              left: anchorPosition.x,
-              top: anchorPosition.y,
+              left: rootPosition.x,
+              top: rootPosition.y,
               transform: [{ rotate: `${angle}deg` }],
             },
           ]}
@@ -220,20 +309,6 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
         <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
       </Animated.View>
 
-      {/* Close button */}
-      <View style={styles.closeButtonContainer} pointerEvents="box-none">
-        <Pressable style={styles.closeButton} onPress={handleClose}>
-          <View style={styles.closeButtonInner}>
-            <IconSymbol
-              ios_icon_name="xmark.circle.fill"
-              android_material_icon_name="cancel"
-              size={32}
-              color="#FFFFFF"
-            />
-          </View>
-        </Pressable>
-      </View>
-
       {/* Graph content */}
       <Animated.View
         style={[
@@ -252,14 +327,14 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
 
         {/* Nodes layer */}
         <View style={styles.nodesLayer} pointerEvents="box-none">
-          {/* Root node */}
+          {/* Root node - centered on screen */}
           <Pressable
             onPress={handleRootPress}
             style={[
               styles.rootNode,
               {
-                left: anchorPosition.x - ROOT_NODE_SIZE / 2,
-                top: anchorPosition.y - ROOT_NODE_SIZE / 2,
+                left: rootPosition.x - ROOT_NODE_SIZE / 2,
+                top: rootPosition.y - ROOT_NODE_SIZE / 2,
               },
             ]}
           >
@@ -292,20 +367,6 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
           ))}
         </View>
       </Animated.View>
-
-      {/* Debug overlay (only in development) */}
-      {__DEV__ && (
-        <View style={styles.debugOverlay} pointerEvents="none">
-          <View style={styles.debugInfo}>
-            <Text style={styles.debugText}>Platform: {Platform.OS}</Text>
-            <Text style={styles.debugText}>People: {people.length}</Text>
-            <Text style={styles.debugText}>Nodes: {nodePositions.length}</Text>
-            <Text style={styles.debugText}>
-              Anchor: ({Math.round(anchorPosition.x)}, {Math.round(anchorPosition.y)})
-            </Text>
-          </View>
-        </View>
-      )}
     </View>
   );
 }
@@ -319,37 +380,6 @@ const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
-  },
-  closeButtonContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 120,
-    zIndex: 1000001,
-    elevation: 1000001,
-    alignItems: 'flex-end',
-    paddingTop: Platform.OS === 'ios' ? 60 : 48,
-    paddingRight: 20,
-  },
-  closeButton: {
-    padding: 8,
-  },
-  closeButtonInner: {
-    backgroundColor: colors.primary,
-    borderRadius: 24,
-    padding: 6,
-    ...Platform.select({
-      ios: {
-        shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.6,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 12,
-      },
-    }),
   },
   graphContainer: {
     ...StyleSheet.absoluteFillObject,
@@ -417,25 +447,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#4E4749',
     textAlign: 'center',
-  },
-  debugOverlay: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 120 : 100,
-    left: 20,
-    zIndex: 1000002,
-    elevation: 1000002,
-  },
-  debugInfo: {
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  debugText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 4,
   },
 });

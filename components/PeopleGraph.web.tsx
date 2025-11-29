@@ -18,6 +18,7 @@ interface GraphNode {
   vx: number;
   vy: number;
   isRoot: boolean;
+  width: number;
 }
 
 interface PeopleGraphProps {
@@ -31,11 +32,13 @@ const NODE_HEIGHT = 40;
 const NODE_MIN_WIDTH = 120;
 const NODE_PADDING = 16;
 const ROOT_NODE_SIZE = 50;
-const EDGE_LENGTH = 150; // Increased from 120 for more separation
-const REPULSION_STRENGTH = 8000; // Increased from 5000 for more separation
-const ATTRACTION_STRENGTH = 0.06; // Decreased from 0.08 for more flexibility
-const DAMPING = 0.7; // Decreased from 0.75 for more movement
-const ITERATIONS = 200; // Increased from 150 for better convergence
+const MIN_RADIUS = 120; // Minimum distance from root
+const MAX_RADIUS = 220; // Maximum distance from root
+const REPULSION_STRENGTH = 10000; // Increased for better separation
+const ATTRACTION_STRENGTH = 0.05; // Attraction to maintain connection to root
+const DAMPING = 0.65; // Damping for smooth movement
+const ITERATIONS = 250; // Iterations for force simulation
+const MIN_NODE_SPACING = 60; // Minimum space between nodes
 
 // Generate a consistent color based on the name (same as PersonAvatar)
 const getAvatarColor = (name: string): string => {
@@ -67,21 +70,25 @@ const seededRandom = (seed: number) => {
   return x - Math.floor(x);
 };
 
-// Force-directed layout algorithm with improved separation and randomization
+// Force-directed layout algorithm with centered root and randomized distances
 const calculateLayout = (
-  people: Person[],
-  anchorPosition: { x: number; y: number }
+  people: Person[]
 ): GraphNode[] => {
-  // Create root node (people icon placeholder)
+  // Center the root node on the screen
+  const centerX = SCREEN_WIDTH / 2;
+  const centerY = SCREEN_HEIGHT / 2;
+
+  // Create root node at center
   const rootNode: GraphNode = {
     id: 'root',
     name: 'People',
-    x: anchorPosition.x,
-    y: anchorPosition.y,
+    x: centerX,
+    y: centerY,
     color: colors.primary,
     vx: 0,
     vy: 0,
     isRoot: true,
+    width: ROOT_NODE_SIZE,
   };
 
   // Initialize person nodes with randomized positions around the root
@@ -89,24 +96,29 @@ const calculateLayout = (
     // Base angle with even distribution
     const baseAngle = (index / people.length) * 2 * Math.PI;
     
+    // Generate seed from person ID for consistent randomization
+    const seed = person.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    
     // Add randomization to angle (±30 degrees)
-    const seed = person.id.charCodeAt(0) + index;
     const angleVariation = (seededRandom(seed) - 0.5) * (Math.PI / 3);
     const angle = baseAngle + angleVariation;
     
-    // Randomize radius between 1.2x and 2.0x of EDGE_LENGTH
+    // Randomize radius between MIN_RADIUS and MAX_RADIUS
     const radiusVariation = seededRandom(seed + 100);
-    const radius = EDGE_LENGTH * (1.2 + radiusVariation * 0.8);
+    const radius = MIN_RADIUS + radiusVariation * (MAX_RADIUS - MIN_RADIUS);
+    
+    const width = calculateNodeWidth(person.person_name);
     
     return {
       id: person.id,
       name: person.person_name,
-      x: anchorPosition.x + Math.cos(angle) * radius,
-      y: anchorPosition.y + Math.sin(angle) * radius,
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius,
       color: getAvatarColor(person.person_name),
       vx: 0,
       vy: 0,
       isRoot: false,
+      width,
     };
   });
 
@@ -114,22 +126,20 @@ const calculateLayout = (
 
   // Run force-directed layout simulation
   for (let iteration = 0; iteration < ITERATIONS; iteration++) {
-    // Apply repulsion force between all nodes (including node-to-node repulsion)
+    // Apply repulsion force between all nodes to prevent overlap
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
         const dx = nodes[j].x - nodes[i].x;
         const dy = nodes[j].y - nodes[i].y;
         const distance = Math.sqrt(dx * dx + dy * dy) || 1;
         
-        // Calculate node widths for overlap prevention
-        const nodeIWidth = nodes[i].isRoot ? ROOT_NODE_SIZE : calculateNodeWidth(nodes[i].name);
-        const nodeJWidth = nodes[j].isRoot ? ROOT_NODE_SIZE : calculateNodeWidth(nodes[j].name);
-        const minDistance = (nodeIWidth + nodeJWidth) / 2 + 20; // 20px padding
+        // Calculate minimum distance based on node widths
+        const minDistance = (nodes[i].width + nodes[j].width) / 2 + MIN_NODE_SPACING;
         
         // Stronger repulsion if nodes are too close
         let force = REPULSION_STRENGTH / (distance * distance);
         if (distance < minDistance) {
-          force *= 2; // Double the force if overlapping
+          force *= 3; // Triple the force if overlapping
         }
         
         const fx = (dx / distance) * force;
@@ -154,7 +164,12 @@ const calculateLayout = (
       const dy = rootNode.y - node.y;
       const distance = Math.sqrt(dx * dx + dy * dy) || 1;
       
-      const force = (distance - EDGE_LENGTH) * ATTRACTION_STRENGTH;
+      // Calculate target distance (randomized for each node)
+      const seed = node.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+      const radiusVariation = seededRandom(seed + 100);
+      const targetDistance = MIN_RADIUS + radiusVariation * (MAX_RADIUS - MIN_RADIUS);
+      
+      const force = (distance - targetDistance) * ATTRACTION_STRENGTH;
       const fx = (dx / distance) * force;
       const fy = (dy / distance) * force;
       
@@ -170,9 +185,8 @@ const calculateLayout = (
       node.vy *= DAMPING;
 
       // Keep nodes within screen bounds with padding
-      const nodeWidth = calculateNodeWidth(node.name);
       const padding = 40;
-      node.x = Math.max(nodeWidth / 2 + padding, Math.min(SCREEN_WIDTH - nodeWidth / 2 - padding, node.x));
+      node.x = Math.max(node.width / 2 + padding, Math.min(SCREEN_WIDTH - node.width / 2 - padding, node.x));
       node.y = Math.max(NODE_HEIGHT / 2 + padding + 60, Math.min(SCREEN_HEIGHT - NODE_HEIGHT / 2 - padding - 120, node.y));
     });
   }
@@ -180,17 +194,16 @@ const calculateLayout = (
   return nodes;
 };
 
-export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProps) {
+export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
   const nodesRef = useRef<GraphNode[]>([]);
   const [opacity, setOpacity] = React.useState(0);
   const [scale, setScale] = React.useState(0.8);
 
   useEffect(() => {
     console.log('[PeopleGraph Web] Rendering graph with people:', people);
-    console.log('[PeopleGraph Web] Anchor position:', anchorPosition);
     
-    // Calculate layout
-    nodesRef.current = calculateLayout(people, anchorPosition);
+    // Calculate layout with centered root
+    nodesRef.current = calculateLayout(people);
     console.log('[PeopleGraph Web] Calculated nodes:', nodesRef.current);
 
     // Animate in
@@ -198,7 +211,7 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
       setOpacity(1);
       setScale(1);
     }, 50);
-  }, [people, anchorPosition]);
+  }, [people]);
 
   const handleClose = () => {
     console.log('[PeopleGraph Web] Closing graph');
@@ -298,7 +311,7 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
           })}
         </View>
 
-        {/* Render root node (people icon) - Now clickable to collapse */}
+        {/* Render root node (people icon) - Centered and clickable to collapse */}
         {rootNode && (
           <Pressable
             onPress={handleRootNodePress}
@@ -324,17 +337,15 @@ export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProp
 
         {/* Render person nodes */}
         {personNodes.map((node) => {
-          const nodeWidth = calculateNodeWidth(node.name);
-          
           return (
             <View
               key={node.id}
               style={[
                 styles.personNode,
                 {
-                  left: node.x - nodeWidth / 2,
+                  left: node.x - node.width / 2,
                   top: node.y - NODE_HEIGHT / 2,
-                  width: nodeWidth,
+                  width: node.width,
                   height: NODE_HEIGHT,
                   backgroundColor: node.color,
                 },
