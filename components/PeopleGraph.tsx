@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Animated, Platform } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
@@ -9,17 +9,6 @@ interface Person {
   person_name: string;
 }
 
-interface GraphNode {
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  color: string;
-  vx: number;
-  vy: number;
-  isRoot: boolean;
-}
-
 interface PeopleGraphProps {
   people: Person[];
   onClose: () => void;
@@ -27,350 +16,297 @@ interface PeopleGraphProps {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const NODE_HEIGHT = 40;
-const NODE_MIN_WIDTH = 120;
-const NODE_PADDING = 16;
-const ROOT_NODE_SIZE = 50;
-const EDGE_LENGTH = 150; // Increased from 120 for more separation
-const REPULSION_STRENGTH = 8000; // Increased from 5000 for more separation
-const ATTRACTION_STRENGTH = 0.06; // Decreased from 0.08 for more flexibility
-const DAMPING = 0.7; // Decreased from 0.75 for more movement
-const ITERATIONS = 200; // Increased from 150 for better convergence
 
-// Generate a consistent color based on the name (same as PersonAvatar)
+// Constants for layout
+const ROOT_NODE_SIZE = 56;
+const PERSON_NODE_HEIGHT = 44;
+const PERSON_NODE_MIN_WIDTH = 100;
+const PERSON_NODE_PADDING = 16;
+const RADIUS_FROM_ROOT = 140; // Distance from root to person nodes
+const EDGE_WIDTH = 2;
+
+// Color palette for avatars (matching PersonAvatar)
+const AVATAR_COLORS = [
+  '#FF6B7A', '#FFAFAF', '#9E9093', '#FFD0D0', '#D4C7C8',
+  '#FF8D92', '#FFF2F2', '#E86B77', '#FEC8C8', '#C7B7B9',
+  '#9F9194', '#EFE8E8',
+];
+
+// Generate consistent color for a name
 const getAvatarColor = (name: string): string => {
-  const colorPalette = [
-    '#FF6B7A', '#FFAFAF', '#9E9093', '#FFD0D0', '#D4C7C8',
-    '#FF8D92', '#FFF2F2', '#E86B77', '#FEC8C8', '#C7B7B9',
-    '#9F9194', '#EFE8E8',
-  ];
-  
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  
-  const index = Math.abs(hash) % colorPalette.length;
-  return colorPalette[index];
+  const index = Math.abs(hash) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[index];
 };
 
 // Calculate node width based on name length
 const calculateNodeWidth = (name: string): number => {
-  const charWidth = 9;
-  const calculatedWidth = name.length * charWidth + NODE_PADDING * 2;
-  return Math.max(NODE_MIN_WIDTH, Math.min(calculatedWidth, SCREEN_WIDTH * 0.7));
+  const charWidth = 8;
+  const calculatedWidth = name.length * charWidth + PERSON_NODE_PADDING * 2;
+  return Math.max(PERSON_NODE_MIN_WIDTH, Math.min(calculatedWidth, SCREEN_WIDTH * 0.6));
 };
 
-// Seeded random number generator for consistent randomization
-const seededRandom = (seed: number) => {
-  const x = Math.sin(seed) * 10000;
-  return x - Math.floor(x);
-};
-
-// Force-directed layout algorithm with improved separation and randomization
-const calculateLayout = (
+// Calculate positions for person nodes in a circle around root
+const calculateNodePositions = (
   people: Person[],
-  anchorPosition: { x: number; y: number }
-): GraphNode[] => {
-  // Create root node (people icon placeholder)
-  const rootNode: GraphNode = {
-    id: 'root',
-    name: 'People',
-    x: anchorPosition.x,
-    y: anchorPosition.y,
-    color: colors.primary,
-    vx: 0,
-    vy: 0,
-    isRoot: true,
-  };
+  anchorX: number,
+  anchorY: number
+) => {
+  const positions: Array<{
+    id: string;
+    name: string;
+    x: number;
+    y: number;
+    color: string;
+    width: number;
+  }> = [];
 
-  // Initialize person nodes with randomized positions around the root
-  const personNodes: GraphNode[] = people.map((person, index) => {
-    // Base angle with even distribution
-    const baseAngle = (index / people.length) * 2 * Math.PI;
+  const count = people.length;
+  const angleStep = (2 * Math.PI) / count;
+
+  people.forEach((person, index) => {
+    // Calculate angle for this node (start from top and go clockwise)
+    const angle = angleStep * index - Math.PI / 2;
     
-    // Add randomization to angle (±30 degrees)
-    const seed = person.id.charCodeAt(0) + index;
-    const angleVariation = (seededRandom(seed) - 0.5) * (Math.PI / 3);
-    const angle = baseAngle + angleVariation;
-    
-    // Randomize radius between 1.2x and 2.0x of EDGE_LENGTH
-    const radiusVariation = seededRandom(seed + 100);
-    const radius = EDGE_LENGTH * (1.2 + radiusVariation * 0.8);
-    
-    return {
+    // Calculate position
+    let x = anchorX + Math.cos(angle) * RADIUS_FROM_ROOT;
+    let y = anchorY + Math.sin(angle) * RADIUS_FROM_ROOT;
+
+    // Get node width
+    const width = calculateNodeWidth(person.person_name);
+
+    // Ensure node stays within screen bounds
+    const padding = 20;
+    x = Math.max(width / 2 + padding, Math.min(SCREEN_WIDTH - width / 2 - padding, x));
+    y = Math.max(PERSON_NODE_HEIGHT / 2 + padding + 80, Math.min(SCREEN_HEIGHT - PERSON_NODE_HEIGHT / 2 - padding - 100, y));
+
+    positions.push({
       id: person.id,
       name: person.person_name,
-      x: anchorPosition.x + Math.cos(angle) * radius,
-      y: anchorPosition.y + Math.sin(angle) * radius,
+      x,
+      y,
       color: getAvatarColor(person.person_name),
-      vx: 0,
-      vy: 0,
-      isRoot: false,
-    };
+      width,
+    });
   });
 
-  const nodes = [rootNode, ...personNodes];
-
-  // Run force-directed layout simulation
-  for (let iteration = 0; iteration < ITERATIONS; iteration++) {
-    // Apply repulsion force between all nodes (including node-to-node repulsion)
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const dx = nodes[j].x - nodes[i].x;
-        const dy = nodes[j].y - nodes[i].y;
-        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-        
-        // Calculate node widths for overlap prevention
-        const nodeIWidth = nodes[i].isRoot ? ROOT_NODE_SIZE : calculateNodeWidth(nodes[i].name);
-        const nodeJWidth = nodes[j].isRoot ? ROOT_NODE_SIZE : calculateNodeWidth(nodes[j].name);
-        const minDistance = (nodeIWidth + nodeJWidth) / 2 + 20; // 20px padding
-        
-        // Stronger repulsion if nodes are too close
-        let force = REPULSION_STRENGTH / (distance * distance);
-        if (distance < minDistance) {
-          force *= 2; // Double the force if overlapping
-        }
-        
-        const fx = (dx / distance) * force;
-        const fy = (dy / distance) * force;
-        
-        // Don't move the root node
-        if (!nodes[i].isRoot) {
-          nodes[i].vx -= fx;
-          nodes[i].vy -= fy;
-        }
-        
-        if (!nodes[j].isRoot) {
-          nodes[j].vx += fx;
-          nodes[j].vy += fy;
-        }
-      }
-    }
-
-    // Apply attraction force from each person node to root node ONLY
-    personNodes.forEach(node => {
-      const dx = rootNode.x - node.x;
-      const dy = rootNode.y - node.y;
-      const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-      
-      const force = (distance - EDGE_LENGTH) * ATTRACTION_STRENGTH;
-      const fx = (dx / distance) * force;
-      const fy = (dy / distance) * force;
-      
-      node.vx += fx;
-      node.vy += fy;
-    });
-
-    // Update positions and apply damping (skip root node)
-    personNodes.forEach((node) => {
-      node.x += node.vx;
-      node.y += node.vy;
-      node.vx *= DAMPING;
-      node.vy *= DAMPING;
-
-      // Keep nodes within screen bounds with padding
-      const nodeWidth = calculateNodeWidth(node.name);
-      const padding = 40;
-      node.x = Math.max(nodeWidth / 2 + padding, Math.min(SCREEN_WIDTH - nodeWidth / 2 - padding, node.x));
-      node.y = Math.max(NODE_HEIGHT / 2 + padding + 60, Math.min(SCREEN_HEIGHT - NODE_HEIGHT / 2 - padding - 120, node.y));
-    });
-  }
-
-  return nodes;
+  return positions;
 };
 
 export function PeopleGraph({ people, onClose, anchorPosition }: PeopleGraphProps) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
-  const nodesRef = useRef<GraphNode[]>([]);
+  console.log('=== PeopleGraph Native Render ===');
+  console.log('Platform:', Platform.OS);
+  console.log('People count:', people.length);
+  console.log('Anchor position:', anchorPosition);
+  console.log('Screen dimensions:', { width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
 
+  // Animation values
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const graphScale = useRef(new Animated.Value(0.5)).current;
+  const graphOpacity = useRef(new Animated.Value(0)).current;
+
+  // Node positions
+  const [nodePositions, setNodePositions] = useState<Array<{
+    id: string;
+    name: string;
+    x: number;
+    y: number;
+    color: string;
+    width: number;
+  }>>([]);
+
+  // Calculate positions on mount
   useEffect(() => {
-    console.log('[PeopleGraph] Rendering graph with people:', people);
-    console.log('[PeopleGraph] Anchor position:', anchorPosition);
-    console.log('[PeopleGraph] Platform:', Platform.OS);
-    
-    // Calculate layout
-    nodesRef.current = calculateLayout(people, anchorPosition);
-    console.log('[PeopleGraph] Calculated nodes:', nodesRef.current);
+    console.log('[PeopleGraph] Calculating node positions...');
+    const positions = calculateNodePositions(people, anchorPosition.x, anchorPosition.y);
+    console.log('[PeopleGraph] Calculated positions:', positions);
+    setNodePositions(positions);
 
     // Animate in
+    console.log('[PeopleGraph] Starting entrance animation');
     Animated.parallel([
-      Animated.timing(fadeAnim, {
+      Animated.timing(backdropOpacity, {
         toValue: 1,
-        duration: 300,
+        duration: 250,
         useNativeDriver: true,
       }),
-      Animated.spring(scaleAnim, {
+      Animated.spring(graphScale, {
         toValue: 1,
-        tension: 50,
-        friction: 7,
+        tension: 60,
+        friction: 8,
         useNativeDriver: true,
       }),
-    ]).start();
+      Animated.timing(graphOpacity, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      console.log('[PeopleGraph] Entrance animation complete');
+    });
   }, [people, anchorPosition]);
 
   const handleClose = () => {
-    console.log('[PeopleGraph] Closing graph');
-    // Animate out
+    console.log('[PeopleGraph] Closing graph - starting exit animation');
+    
     Animated.parallel([
-      Animated.timing(fadeAnim, {
+      Animated.timing(backdropOpacity, {
         toValue: 0,
         duration: 200,
         useNativeDriver: true,
       }),
-      Animated.timing(scaleAnim, {
-        toValue: 0.8,
+      Animated.timing(graphScale, {
+        toValue: 0.5,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(graphOpacity, {
+        toValue: 0,
         duration: 200,
         useNativeDriver: true,
       }),
     ]).start(() => {
+      console.log('[PeopleGraph] Exit animation complete, calling onClose');
       onClose();
     });
   };
 
-  const handleRootNodePress = () => {
+  const handleRootPress = () => {
     console.log('[PeopleGraph] Root node pressed - collapsing graph');
     handleClose();
   };
 
-  const nodes = nodesRef.current;
-  const rootNode = nodes.find(n => n.isRoot);
-  const personNodes = nodes.filter(n => !n.isRoot);
+  // Render edges from root to each person node
+  const renderEdges = () => {
+    return nodePositions.map((node, index) => {
+      const dx = node.x - anchorPosition.x;
+      const dy = node.y - anchorPosition.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
 
-  // Create edges for rendering - ONLY connect person nodes to root node
-  const edges: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  
-  if (rootNode) {
-    personNodes.forEach(node => {
-      edges.push({
-        x1: rootNode.x,
-        y1: rootNode.y,
-        x2: node.x,
-        y2: node.y,
-      });
+      return (
+        <View
+          key={`edge-${node.id}`}
+          style={[
+            styles.edge,
+            {
+              width: length,
+              left: anchorPosition.x,
+              top: anchorPosition.y,
+              transform: [{ rotate: `${angle}deg` }],
+            },
+          ]}
+        />
+      );
     });
-  }
+  };
 
-  console.log('[PeopleGraph] Rendering', nodes.length, 'nodes and', edges.length, 'edges');
+  console.log('[PeopleGraph] Rendering with', nodePositions.length, 'nodes');
 
   return (
-    <Animated.View 
-      style={[
-        styles.container,
-        {
-          opacity: fadeAnim,
-        }
-      ]}
-      pointerEvents="box-none"
-    >
-      {/* Backdrop - clickable to close */}
-      <Pressable 
-        style={styles.backdrop} 
-        onPress={handleClose}
-      />
+    <View style={styles.container} pointerEvents="box-none">
+      {/* Backdrop */}
+      <Animated.View
+        style={[
+          styles.backdrop,
+          {
+            opacity: backdropOpacity,
+          },
+        ]}
+      >
+        <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
+      </Animated.View>
 
       {/* Close button */}
-      <Pressable style={styles.closeButton} onPress={handleClose}>
-        <View style={styles.closeButtonInner}>
-          <IconSymbol 
-            ios_icon_name="xmark.circle.fill"
-            android_material_icon_name="cancel"
-            size={36} 
-            color="#FFFFFF" 
-          />
-        </View>
-      </Pressable>
+      <View style={styles.closeButtonContainer} pointerEvents="box-none">
+        <Pressable style={styles.closeButton} onPress={handleClose}>
+          <View style={styles.closeButtonInner}>
+            <IconSymbol
+              ios_icon_name="xmark.circle.fill"
+              android_material_icon_name="cancel"
+              size={32}
+              color="#FFFFFF"
+            />
+          </View>
+        </Pressable>
+      </View>
 
-      {/* Graph visualization */}
-      <Animated.View 
+      {/* Graph content */}
+      <Animated.View
         style={[
           styles.graphContainer,
           {
-            transform: [{ scale: scaleAnim }],
-          }
+            opacity: graphOpacity,
+            transform: [{ scale: graphScale }],
+          },
         ]}
         pointerEvents="box-none"
       >
-        {/* Render edges */}
-        <View style={styles.edgesContainer} pointerEvents="none">
-          {edges.map((edge, index) => {
-            const length = Math.sqrt(
-              Math.pow(edge.x2 - edge.x1, 2) + Math.pow(edge.y2 - edge.y1, 2)
-            );
-            const angle = Math.atan2(edge.y2 - edge.y1, edge.x2 - edge.x1) * (180 / Math.PI);
-
-            return (
-              <View
-                key={`edge-${index}`}
-                style={[
-                  styles.edge,
-                  {
-                    width: length,
-                    left: edge.x1,
-                    top: edge.y1,
-                    transform: [{ rotate: `${angle}deg` }],
-                  },
-                ]}
-              />
-            );
-          })}
+        {/* Edges layer */}
+        <View style={styles.edgesLayer} pointerEvents="none">
+          {renderEdges()}
         </View>
 
-        {/* Render root node (people icon) - Now clickable to collapse */}
-        {rootNode && (
+        {/* Nodes layer */}
+        <View style={styles.nodesLayer} pointerEvents="box-none">
+          {/* Root node */}
           <Pressable
-            onPress={handleRootNodePress}
+            onPress={handleRootPress}
             style={[
               styles.rootNode,
               {
-                left: rootNode.x - ROOT_NODE_SIZE / 2,
-                top: rootNode.y - ROOT_NODE_SIZE / 2,
-                width: ROOT_NODE_SIZE,
-                height: ROOT_NODE_SIZE,
-                backgroundColor: colors.primary,
+                left: anchorPosition.x - ROOT_NODE_SIZE / 2,
+                top: anchorPosition.y - ROOT_NODE_SIZE / 2,
               },
             ]}
           >
-            <IconSymbol 
+            <IconSymbol
               ios_icon_name="person.3.fill"
               android_material_icon_name="group"
-              size={28} 
-              color="#FFFFFF" 
+              size={30}
+              color="#FFFFFF"
             />
           </Pressable>
-        )}
 
-        {/* Render person nodes */}
-        {personNodes.map((node) => {
-          const nodeWidth = calculateNodeWidth(node.name);
-          
-          return (
+          {/* Person nodes */}
+          {nodePositions.map((node) => (
             <View
               key={node.id}
               style={[
                 styles.personNode,
                 {
-                  left: node.x - nodeWidth / 2,
-                  top: node.y - NODE_HEIGHT / 2,
-                  width: nodeWidth,
-                  height: NODE_HEIGHT,
+                  left: node.x - node.width / 2,
+                  top: node.y - PERSON_NODE_HEIGHT / 2,
+                  width: node.width,
                   backgroundColor: node.color,
                 },
               ]}
             >
-              <Text 
-                style={styles.nodeName}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
+              <Text style={styles.personName} numberOfLines={1}>
                 {node.name}
               </Text>
             </View>
-          );
-        })}
+          ))}
+        </View>
       </Animated.View>
-    </Animated.View>
+
+      {/* Debug overlay (only in development) */}
+      {__DEV__ && (
+        <View style={styles.debugOverlay} pointerEvents="none">
+          <View style={styles.debugInfo}>
+            <Text style={styles.debugText}>Platform: {Platform.OS}</Text>
+            <Text style={styles.debugText}>People: {people.length}</Text>
+            <Text style={styles.debugText}>Nodes: {nodePositions.length}</Text>
+            <Text style={styles.debugText}>
+              Anchor: ({Math.round(anchorPosition.x)}, {Math.round(anchorPosition.y)})
+            </Text>
+          </View>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -382,70 +318,124 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  },
+  closeButtonContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 120,
+    zIndex: 1000001,
+    elevation: 1000001,
+    alignItems: 'flex-end',
+    paddingTop: Platform.OS === 'ios' ? 60 : 48,
+    paddingRight: 20,
   },
   closeButton: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 60 : 48,
-    right: 16,
-    zIndex: 1000000,
-    elevation: 1000000,
     padding: 8,
   },
   closeButtonInner: {
-    backgroundColor: 'rgba(255, 107, 122, 0.95)',
-    borderRadius: 20,
-    padding: 4,
-    shadowColor: '#FF6B7A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.6,
-    shadowRadius: 8,
-    elevation: 12,
+    backgroundColor: colors.primary,
+    borderRadius: 24,
+    padding: 6,
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.6,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 12,
+      },
+    }),
   },
   graphContainer: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 1000000,
+    elevation: 1000000,
   },
-  edgesContainer: {
+  edgesLayer: {
     ...StyleSheet.absoluteFillObject,
   },
   edge: {
     position: 'absolute',
-    height: 3,
+    height: EDGE_WIDTH,
     backgroundColor: colors.primary,
-    opacity: 0.7,
+    opacity: 0.6,
     transformOrigin: 'left center',
+  },
+  nodesLayer: {
+    ...StyleSheet.absoluteFillObject,
   },
   rootNode: {
     position: 'absolute',
+    width: ROOT_NODE_SIZE,
+    height: ROOT_NODE_SIZE,
+    borderRadius: ROOT_NODE_SIZE / 2,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 25,
     borderWidth: 3,
     borderColor: '#FFFFFF',
-    shadowColor: '#FF6B7A',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.6,
-    shadowRadius: 20,
-    elevation: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.7,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 16,
+      },
+    }),
   },
   personNode: {
     position: 'absolute',
+    height: PERSON_NODE_HEIGHT,
+    borderRadius: 22,
+    paddingHorizontal: PERSON_NODE_PADDING,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 20,
-    paddingHorizontal: NODE_PADDING,
     borderWidth: 2,
     borderColor: '#776C6E',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 8,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 10,
+      },
+    }),
   },
-  nodeName: {
+  personName: {
     fontSize: 15,
     fontWeight: '700',
     color: '#4E4749',
     textAlign: 'center',
+  },
+  debugOverlay: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 120 : 100,
+    left: 20,
+    zIndex: 1000002,
+    elevation: 1000002,
+  },
+  debugInfo: {
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  debugText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
   },
 });
