@@ -246,7 +246,7 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   return (
     <View style={styles.card}>
       <Pressable onPress={onPress} style={styles.cardContent}>
-        {/* People Avatars - Top Right Corner */}
+        {/* People Avatars - Top Right Edge (Superscript Position) */}
         {hasPeople && (
           <View style={styles.peopleAvatarsContainer}>
             <PeopleAvatars 
@@ -392,18 +392,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 16,
     marginBottom: 16,
-    overflow: 'hidden',
+    overflow: 'visible', // Changed from 'hidden' to allow avatars to overflow
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
     elevation: 2,
   },
   cardContent: {
     padding: CARD_PADDING,
     position: 'relative',
+    overflow: 'hidden', // Keep content clipped but allow avatars to overflow
+    borderRadius: 16,
   },
   peopleAvatarsContainer: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: -8, // Negative value to position partially off the card
+    right: 4, // Adjusted to be closer to the edge
     zIndex: 10,
   },
   imagesContainer: {
