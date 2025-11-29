@@ -32,9 +32,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
-import { Note } from '@/types/Note';
+import { Note, Person } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
+import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
 import { processRecallUrls } from '@/utils/urlProcessor';
 import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
@@ -81,6 +82,7 @@ export default function NoteEditorScreen() {
   const [showLocationDrawer, setShowLocationDrawer] = useState(false);
   const [showCameraDrawer, setShowCameraDrawer] = useState(false);
   const [cameraLaunched, setCameraLaunched] = useState(false);
+  const [people, setPeople] = useState<Person[]>([]);
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
@@ -622,6 +624,25 @@ export default function NoteEditorScreen() {
             latitude: recallData.latitude,
             longitude: recallData.longitude,
           });
+        }
+
+        // Load people for this recall
+        const { data: recallPeopleData, error: recallPeopleError } = await supabase
+          .from('recall_people')
+          .select('person_id, persons(id, person_name)')
+          .eq('recall_id', params.id);
+
+        if (recallPeopleError) {
+          console.error('Error loading recall_people:', recallPeopleError);
+        } else if (recallPeopleData && recallPeopleData.length > 0) {
+          const loadedPeople: Person[] = recallPeopleData
+            .filter((rp: any) => rp.persons)
+            .map((rp: any) => ({
+              id: rp.persons.id,
+              person_name: rp.persons.person_name,
+            }));
+          setPeople(loadedPeople);
+          console.log(`Loaded ${loadedPeople.length} people for recall`);
         }
 
         // Load images for this note
@@ -1271,6 +1292,10 @@ export default function NoteEditorScreen() {
         <View style={styles.spacer} />
       </ScrollView>
 
+      {people.length > 0 && hasImages && (
+        <PeopleAvatarsRow people={people} avatarSize={44} />
+      )}
+
       {hasImages && (
         <View style={styles.imagesContainer}>
           <View style={styles.imagesHeader}>
@@ -1329,6 +1354,10 @@ export default function NoteEditorScreen() {
             ))}
           </ScrollView>
         </View>
+      )}
+
+      {people.length > 0 && !hasImages && (
+        <PeopleAvatarsRow people={people} avatarSize={44} />
       )}
 
       {locationName && (

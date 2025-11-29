@@ -18,8 +18,8 @@ interface PeopleAvatarsProps {
 
 export function PeopleAvatars({ 
   people, 
-  maxVisible = 3, 
-  avatarSize = 28,
+  maxVisible = 5, 
+  avatarSize = 40,
   overlapOffset = 10,
 }: PeopleAvatarsProps) {
   if (!people || people.length === 0) {
@@ -62,7 +62,7 @@ export function PeopleAvatars({
             }
           ]}
         >
-          <Text style={[styles.remainingText, { fontSize: avatarSize * 0.35 }]}>
+          <Text style={[styles.remainingText, { fontSize: avatarSize * 0.4 }]}>
             +{remainingCount}
           </Text>
         </View>

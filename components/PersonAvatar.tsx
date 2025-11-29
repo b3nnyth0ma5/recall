@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
   avatar: {
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
+    borderWidth: 1.25,
     borderColor: '#FFFFFF',
     boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.2)',
   },
