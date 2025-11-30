@@ -134,10 +134,9 @@ export default function CreateCategoryScreen() {
     try {
       console.log('Triggering category matching for new category:', categoryId);
       
-      const { data, error } = await supabase.functions.invoke('match-recollection-category', {
+      const { data, error } = await supabase.functions.invoke('new-category-matching', {
         body: { 
-          categoryId: categoryId,
-          mode: 'category' // Indicate we're matching a category against all recalls
+          categoryId: categoryId
         },
       });
 

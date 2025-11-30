@@ -281,8 +281,8 @@ const styles = StyleSheet.create({
   },
   plusBadge: {
     position: 'absolute',
-    bottom: 2,
-    right: 2,
+    bottom: -4,
+    right: -4,
     width: 26,
     height: 26,
     borderRadius: 13,
