@@ -47,9 +47,8 @@ function RootLayoutNav() {
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
   
   // Use refs to track navigation state and prevent infinite loops
-  const hasNavigatedRef = useRef(false);
-  const lastNavigationRef = useRef<string>('');
-  const isNavigatingRef = useRef(false);
+  const hasInitializedRef = useRef(false);
+  const lastRouteRef = useRef<string>('');
 
   // Check if user needs onboarding
   useEffect(() => {
@@ -158,7 +157,7 @@ function RootLayoutNav() {
       console.log('[Share] Cleaning up share intent listener');
       unsubscribe();
     };
-  }, [user]);
+  }, [user, router]);
 
   // Handle pending share data after user authentication
   useEffect(() => {
@@ -184,9 +183,9 @@ function RootLayoutNav() {
         }
       }, 300);
     }
-  }, [user, pendingShareData, loading, checkingOnboarding]);
+  }, [user, pendingShareData, loading, checkingOnboarding, router]);
 
-  // Handle authentication and onboarding routing with proper guards
+  // Handle authentication and onboarding routing - FIXED to prevent infinite loops
   useEffect(() => {
     // Don't do anything while loading or checking onboarding
     if (loading || checkingOnboarding) {
@@ -194,9 +193,9 @@ function RootLayoutNav() {
       return;
     }
 
-    // Don't navigate if already navigating
-    if (isNavigatingRef.current) {
-      console.log('[Routing] Already navigating, skipping...');
+    // Don't navigate if we have pending share data (let the share handler deal with it)
+    if (pendingShareData) {
+      console.log('[Routing] Pending share data exists, not redirecting');
       return;
     }
 
@@ -219,65 +218,68 @@ function RootLayoutNav() {
       inOtherScreens,
       needsOnboarding,
       segments,
-      hasPendingShare: !!pendingShareData
+      hasInitialized: hasInitializedRef.current,
+      lastRoute: lastRouteRef.current
     });
 
-    // Don't redirect if user is on special screens
+    // Don't redirect if user is on special screens (they can navigate freely)
     if (inShareIntentScreen || inNoteEditor || inModalScreens || inOtherScreens) {
       console.log('[Routing] User on special screen, not redirecting');
-      return;
-    }
-
-    // Don't redirect if we have pending share data
-    if (pendingShareData) {
-      console.log('[Routing] Pending share data exists, not redirecting');
       return;
     }
 
     // Determine target route
     let targetRoute: string | null = null;
 
-    if (!user && !inAuthGroup) {
-      // User not authenticated, redirect to login
-      targetRoute = '/login';
-      console.log('[Routing] Need to redirect to login (no user)');
-    } else if (user && inAuthGroup) {
-      // User authenticated and on login screen
-      if (needsOnboarding === true) {
-        targetRoute = '/onboarding';
-        console.log('[Routing] Need to redirect to onboarding (from login)');
-      } else if (needsOnboarding === false) {
-        targetRoute = '/(tabs)/(home)';
-        console.log('[Routing] Need to redirect to home (from login)');
+    if (!user) {
+      // User not authenticated
+      if (!inAuthGroup) {
+        targetRoute = '/login';
+        console.log('[Routing] Need to redirect to login (no user)');
       }
-    } else if (user && inOnboardingGroup && needsOnboarding === false) {
-      // User authenticated, on onboarding screen, but doesn't need it anymore
-      targetRoute = '/(tabs)/(home)';
-      console.log('[Routing] Need to redirect to home (onboarding complete)');
-    } else if (user && needsOnboarding === true && !inOnboardingGroup && !inTabsGroup && segments.length === 0) {
-      // User authenticated but needs onboarding and is at root
-      targetRoute = '/onboarding';
-      console.log('[Routing] Need to redirect to onboarding (at root, needs onboarding)');
+    } else {
+      // User is authenticated
+      if (inAuthGroup) {
+        // On login screen but authenticated
+        if (needsOnboarding === true) {
+          targetRoute = '/onboarding';
+          console.log('[Routing] Need to redirect to onboarding (from login)');
+        } else if (needsOnboarding === false) {
+          targetRoute = '/(tabs)/(home)';
+          console.log('[Routing] Need to redirect to home (from login)');
+        }
+      } else if (inOnboardingGroup && needsOnboarding === false) {
+        // On onboarding screen but doesn't need it
+        targetRoute = '/(tabs)/(home)';
+        console.log('[Routing] Need to redirect to home (onboarding complete)');
+      } else if (!inOnboardingGroup && !inTabsGroup && needsOnboarding === true) {
+        // Not on onboarding but needs it
+        targetRoute = '/onboarding';
+        console.log('[Routing] Need to redirect to onboarding (needs onboarding)');
+      } else if (!inOnboardingGroup && !inTabsGroup && needsOnboarding === false && !hasInitializedRef.current) {
+        // Initial load - redirect to home
+        targetRoute = '/(tabs)/(home)';
+        console.log('[Routing] Initial load - redirect to home');
+      }
     }
 
-    // Only navigate if we have a target and haven't navigated to it yet
-    if (targetRoute && lastNavigationRef.current !== targetRoute) {
+    // Only navigate if we have a target and it's different from the last route
+    if (targetRoute && targetRoute !== lastRouteRef.current) {
       console.log('[Routing] Navigating to:', targetRoute);
-      isNavigatingRef.current = true;
-      lastNavigationRef.current = targetRoute;
+      lastRouteRef.current = targetRoute;
+      hasInitializedRef.current = true;
       
       try {
         router.replace(targetRoute);
       } catch (error) {
         console.error('[Routing] Error navigating:', error);
-      } finally {
-        // Reset navigation flag after a delay
-        setTimeout(() => {
-          isNavigatingRef.current = false;
-        }, 1000);
       }
+    } else if (targetRoute === null && !hasInitializedRef.current) {
+      // No navigation needed, mark as initialized
+      hasInitializedRef.current = true;
+      console.log('[Routing] No navigation needed, marking as initialized');
     }
-  }, [user, segments, loading, checkingOnboarding, needsOnboarding, pendingShareData]);
+  }, [user, loading, checkingOnboarding, needsOnboarding, pendingShareData, segments[0], router]);
 
   return (
     <View style={styles.container}>
