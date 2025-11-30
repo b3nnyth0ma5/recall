@@ -315,8 +315,8 @@ export default function HomeScreen() {
     }
   };
 
-  // Web-specific pull-to-refresh handlers
-  const handleTouchStart = (e: any) => {
+  // Web-specific pull-to-refresh handlers - wrapped in useCallback to prevent infinite re-renders
+  const handleTouchStart = useCallback((e: any) => {
     try {
       const touch = e.touches?.[0] || e.nativeEvent?.touches?.[0];
       if (touch && scrollPositionRef.current === 0) {
@@ -324,11 +324,11 @@ export default function HomeScreen() {
         setIsPulling(true);
       }
     } catch (error) {
-      console.error('Error handling touch start:', error);
+      console.error('Error in handleTouchStart:', error);
     }
-  };
+  }, []);
 
-  const handleTouchMove = (e: any) => {
+  const handleTouchMove = useCallback((e: any) => {
     if (!isPulling) return;
     
     try {
@@ -338,23 +338,23 @@ export default function HomeScreen() {
         setPullDistance(Math.min(distance, PULL_THRESHOLD * 1.5));
       }
     } catch (error) {
-      console.error('Error handling touch move:', error);
+      console.error('Error in handleTouchMove:', error);
     }
-  };
+  }, [isPulling, pullStartY, PULL_THRESHOLD]);
 
-  const handleTouchEnd = async () => {
+  const handleTouchEnd = useCallback(async () => {
     try {
       if (isPulling && pullDistance >= PULL_THRESHOLD) {
         await handleRefresh(false);
       }
     } catch (error) {
-      console.error('Error handling touch end:', error);
+      console.error('Error in handleTouchEnd:', error);
     } finally {
       setIsPulling(false);
       setPullDistance(0);
       setPullStartY(0);
     }
-  };
+  }, [isPulling, pullDistance, PULL_THRESHOLD]);
 
   const toggleActionButtons = () => {
     setShowActionButtons(!showActionButtons);
