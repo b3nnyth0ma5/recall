@@ -108,9 +108,6 @@ export default function CreateCategoryScreen() {
 
       console.log('Category created successfully:', data.id);
 
-      // Trigger category matching asynchronously
-      triggerCategoryMatchingForNewCategory(data.id);
-
       // Haptic feedback
       if (Platform.OS !== 'web') {
         try {
@@ -120,12 +117,14 @@ export default function CreateCategoryScreen() {
         }
       }
 
-      // Navigate back
+      // Navigate back to landing page immediately
       router.back();
+
+      // Trigger category matching asynchronously (fire and forget)
+      triggerCategoryMatchingForNewCategory(data.id);
     } catch (error) {
       console.error('Error creating category:', error);
       Alert.alert('Error', 'Failed to create category');
-    } finally {
       setIsCreating(false);
     }
   };
@@ -200,68 +199,62 @@ export default function CreateCategoryScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Main Content Container with Horizontal Layout */}
-          <View style={styles.contentContainer}>
-            {/* Left Side - Category Photo */}
-            <View style={styles.leftColumn}>
-              <Text style={styles.sectionLabel}>Category Icon</Text>
-              <Pressable onPress={handleSelectImage} style={styles.imageSelector}>
-                {categoryImage ? (
-                  <Image source={{ uri: categoryImage }} style={styles.selectedImage} resizeMode="cover" />
-                ) : (
-                  <View style={styles.emptyImagePlaceholder}>
-                    <IconSymbol 
-                      ios_icon_name="photo" 
-                      android_material_icon_name="image" 
-                      size={48} 
-                      color={colors.textSecondary} 
-                    />
-                    <Text style={styles.emptyImageText}>Tap to select</Text>
-                  </View>
-                )}
-              </Pressable>
-              <Text style={styles.optionalText}>(Optional)</Text>
-            </View>
+          {/* Category Icon - 25% smaller (105px -> 78.75px, rounded to 80px) */}
+          <View style={styles.imageSection}>
+            <Text style={styles.sectionLabel}>Category Icon</Text>
+            <Pressable onPress={handleSelectImage} style={styles.imageSelector}>
+              {categoryImage ? (
+                <Image source={{ uri: categoryImage }} style={styles.selectedImage} resizeMode="cover" />
+              ) : (
+                <View style={styles.emptyImagePlaceholder}>
+                  <IconSymbol 
+                    ios_icon_name="photo" 
+                    android_material_icon_name="image" 
+                    size={36} 
+                    color={colors.textSecondary} 
+                  />
+                  <Text style={styles.emptyImageText}>Tap to select</Text>
+                </View>
+              )}
+            </Pressable>
+            <Text style={styles.optionalText}>(Optional)</Text>
+          </View>
 
-            {/* Right Side - Category Name and Description */}
-            <View style={styles.rightColumn}>
-              {/* Category Name */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.label}>Category Name *</Text>
-                <Text style={styles.hint}>Keep it short (e.g., &quot;Travel&quot;, &quot;Food&quot;, &quot;Work&quot;)</Text>
-                <TextInput
-                  ref={nameInputRef}
-                  style={styles.input}
-                  value={categoryName}
-                  onChangeText={setCategoryName}
-                  placeholder="Enter category name"
-                  placeholderTextColor={colors.textSecondary}
-                  maxLength={30}
-                  returnKeyType="next"
-                  onSubmitEditing={() => descriptionInputRef.current?.focus()}
-                  blurOnSubmit={false}
-                />
-              </View>
+          {/* Category Name */}
+          <View style={styles.fieldContainer}>
+            <Text style={styles.label}>Category Name *</Text>
+            <Text style={styles.hint}>Keep it short (e.g., &quot;Travel&quot;, &quot;Food&quot;, &quot;Work&quot;)</Text>
+            <TextInput
+              ref={nameInputRef}
+              style={styles.input}
+              value={categoryName}
+              onChangeText={setCategoryName}
+              placeholder="Enter category name"
+              placeholderTextColor={colors.textSecondary}
+              maxLength={30}
+              returnKeyType="next"
+              onSubmitEditing={() => descriptionInputRef.current?.focus()}
+              blurOnSubmit={false}
+            />
+          </View>
 
-              {/* Category Description */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.label}>Search Description *</Text>
-                <Text style={styles.hint}>Describe what recalls should be in this category. Be as detailed as you want.</Text>
-                <TextInput
-                  ref={descriptionInputRef}
-                  style={[styles.input, styles.textArea]}
-                  value={categoryDescription}
-                  onChangeText={setCategoryDescription}
-                  placeholder="E.g., 'Memories from trips, vacations, places I visited, travel experiences'"
-                  placeholderTextColor={colors.textSecondary}
-                  multiline
-                  numberOfLines={6}
-                  textAlignVertical="top"
-                  returnKeyType="done"
-                  blurOnSubmit={true}
-                />
-              </View>
-            </View>
+          {/* Search Description - Now on its own row below image and name */}
+          <View style={styles.fieldContainer}>
+            <Text style={styles.label}>Search Description *</Text>
+            <Text style={styles.hint}>Describe what recalls should be in this category. Be as detailed as you want.</Text>
+            <TextInput
+              ref={descriptionInputRef}
+              style={[styles.input, styles.textArea]}
+              value={categoryDescription}
+              onChangeText={setCategoryDescription}
+              placeholder="E.g., 'Memories from trips, vacations, places I visited, travel experiences'"
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              numberOfLines={6}
+              textAlignVertical="top"
+              returnKeyType="done"
+              blurOnSubmit={true}
+            />
           </View>
 
           {/* Create Button - Full Width at Bottom */}
@@ -301,19 +294,9 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: 8,
   },
-  contentContainer: {
-    flexDirection: 'row',
-    gap: 24,
-    marginBottom: 32,
-  },
-  leftColumn: {
+  imageSection: {
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 8,
-  },
-  rightColumn: {
-    flex: 1,
-    gap: 24,
+    marginBottom: 32,
   },
   sectionLabel: {
     fontSize: 16,
@@ -323,9 +306,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   imageSelector: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: colors.cardBackground,
     justifyContent: 'center',
     alignItems: 'center',
@@ -343,9 +326,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyImageText: {
-    fontSize: 12,
+    fontSize: 10,
     color: colors.textSecondary,
-    marginTop: 8,
+    marginTop: 6,
     textAlign: 'center',
   },
   optionalText: {
@@ -355,17 +338,19 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   fieldContainer: {
-    gap: 8,
+    marginBottom: 24,
   },
   label: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
+    marginBottom: 4,
   },
   hint: {
     fontSize: 13,
     color: colors.textSecondary,
     fontStyle: 'italic',
+    marginBottom: 8,
   },
   input: {
     backgroundColor: colors.cardBackground,

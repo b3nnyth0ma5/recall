@@ -16,13 +16,13 @@ const corsHeaders = {
  * 
  * Process:
  * 1. Receives a category ID
- * 2. Generates category embedding from category_search_description
+ * 2. Generates category embedding from category_search_description using base64 encoding
  * 3. Finds all recalls with similarity >= 0.20 using embeddings
  * 4. Uses OpenAI to analyze and rank the candidate recalls
  * 5. Updates recollections table with high-confidence matches
  */
 
-// Helper function to generate embedding using OpenAI
+// Helper function to generate embedding using OpenAI with base64 encoding
 async function generateEmbedding(text: string, openaiApiKey: string): Promise<number[]> {
   if (!text || text.trim().length === 0) {
     throw new Error('Cannot generate embedding for empty text');
@@ -36,7 +36,8 @@ async function generateEmbedding(text: string, openaiApiKey: string): Promise<nu
     },
     body: JSON.stringify({
       model: 'text-embedding-3-small',
-      input: text.trim()
+      input: text.trim(),
+      encoding_format: 'base64'
     })
   });
 
@@ -46,7 +47,20 @@ async function generateEmbedding(text: string, openaiApiKey: string): Promise<nu
   }
 
   const data = await response.json();
-  return data.data[0].embedding;
+  const embeddingBase64 = data.data[0].embedding;
+  
+  // Decode base64 to get the actual embedding array
+  const binaryString = atob(embeddingBase64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  const float32Array = new Float32Array(bytes.buffer);
+  const embedding = Array.from(float32Array);
+  
+  console.log('Decoded embedding array length:', embedding.length);
+  
+  return embedding;
 }
 
 // Helper function to calculate cosine similarity between two vectors
@@ -79,6 +93,30 @@ function cosineSimilarity(vecA: number[], vecB: number[]): number {
 
   const similarity = dotProduct / (normA * normB);
   return similarity;
+}
+
+// Helper function to parse stored embeddings (handles both array and string formats)
+function parseStoredEmbedding(storedEmbedding: any): number[] | null {
+  if (!storedEmbedding) return null;
+
+  // If already an array, return it
+  if (Array.isArray(storedEmbedding)) {
+    return storedEmbedding;
+  }
+
+  // If it's a string, try to parse it
+  if (typeof storedEmbedding === 'string') {
+    try {
+      const cleanStr = storedEmbedding.replace(/[\[\]]/g, '');
+      const embeddingArray = cleanStr.split(',').map((s: string) => parseFloat(s.trim()));
+      return embeddingArray;
+    } catch (e) {
+      console.error('Failed to parse embedding string:', e);
+      return null;
+    }
+  }
+
+  return null;
 }
 
 // Helper function to sanitize and truncate text for OpenAI
@@ -182,8 +220,8 @@ Deno.serve(async (req) => {
       userId: categoryData.user_id
     });
 
-    // Step 2: Generate category embedding from category_search_description
-    console.log('Step 2: Generating category embedding from category_search_description...');
+    // Step 2: Generate category embedding from category_search_description using base64
+    console.log('Step 2: Generating category embedding from category_search_description with base64 encoding...');
     const categoryText = categoryData.category_search_description || '';
     
     if (!categoryText.trim()) {
@@ -268,8 +306,9 @@ Deno.serve(async (req) => {
         let matchSource = 'none';
 
         // Compare with recall text embedding
-        if (recall.recall_embedding && Array.isArray(recall.recall_embedding)) {
-          const textSimilarity = cosineSimilarity(recall.recall_embedding, categoryEmbedding);
+        const recallEmbeddingArray = parseStoredEmbedding(recall.recall_embedding);
+        if (recallEmbeddingArray && recallEmbeddingArray.length > 0) {
+          const textSimilarity = cosineSimilarity(recallEmbeddingArray, categoryEmbedding);
           console.log(`Recall ${recall.id} text similarity: ${textSimilarity.toFixed(4)}`);
           if (textSimilarity > maxSimilarity) {
             maxSimilarity = textSimilarity;
@@ -287,8 +326,9 @@ Deno.serve(async (req) => {
         if (!imagesError && imagesData) {
           for (let i = 0; i < imagesData.length; i++) {
             const image = imagesData[i];
-            if (image.recall_image_embedding && Array.isArray(image.recall_image_embedding)) {
-              const imgSimilarity = cosineSimilarity(image.recall_image_embedding, categoryEmbedding);
+            const imageEmbeddingArray = parseStoredEmbedding(image.recall_image_embedding);
+            if (imageEmbeddingArray && imageEmbeddingArray.length > 0) {
+              const imgSimilarity = cosineSimilarity(imageEmbeddingArray, categoryEmbedding);
               console.log(`Recall ${recall.id} image ${i} similarity: ${imgSimilarity.toFixed(4)}`);
               if (imgSimilarity > maxSimilarity) {
                 maxSimilarity = imgSimilarity;
