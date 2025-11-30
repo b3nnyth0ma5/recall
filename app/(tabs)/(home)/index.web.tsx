@@ -270,7 +270,8 @@ export default function HomeScreen() {
     }, [notes.length, refreshNotes])
   );
 
-  const handleRefresh = async (clearCategory: boolean = false) => {
+  // Stable handleRefresh function using useCallback with stable dependencies
+  const handleRefresh = useCallback(async (clearCategory: boolean = false) => {
     setRefreshing(true);
     console.log('[handleRefresh] Refreshing landing page data from Supabase...');
     
@@ -296,7 +297,7 @@ export default function HomeScreen() {
       setRefreshing(false);
       console.log('[handleRefresh] Refresh complete');
     }
-  };
+  }, [selectedCategoryId, refreshNotes]);
 
   const handleRecallIconPress = async () => {
     console.log('[handleRecallIconPress] Recall icon pressed - clearing categories and reloading');
@@ -351,10 +352,17 @@ export default function HomeScreen() {
     }
   }, []); // No dependencies - uses refs only
 
+  // Store handleRefresh in a ref to avoid dependency issues
+  const handleRefreshRef = useRef(handleRefresh);
+  useEffect(() => {
+    handleRefreshRef.current = handleRefresh;
+  }, [handleRefresh]);
+
   const handleTouchEnd = useCallback(async () => {
     try {
       if (isPullingRef.current && pullDistanceRef.current >= PULL_THRESHOLD) {
-        await handleRefresh(false);
+        // Call handleRefresh through ref to avoid dependency
+        await handleRefreshRef.current(false);
       }
     } catch (error) {
       console.error('Error in handleTouchEnd:', error);
@@ -364,7 +372,7 @@ export default function HomeScreen() {
       pullStartYRef.current = 0;
       setPullIndicatorVisible(false);
     }
-  }, [handleRefresh]); // Only depends on handleRefresh
+  }, []); // No dependencies - uses refs only
 
   const toggleActionButtons = () => {
     setShowActionButtons(!showActionButtons);
