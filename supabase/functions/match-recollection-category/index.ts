@@ -34,6 +34,57 @@ const corsHeaders = {
  * - Category creation/update
  */
 
+// Helper function to sanitize text for JSON
+function sanitizeTextForJSON(text: string): string {
+  if (!text) return '';
+  
+  // Replace problematic characters
+  return text
+    .replace(/\\/g, '\\\\')  // Escape backslashes
+    .replace(/"/g, '\\"')    // Escape double quotes
+    .replace(/\n/g, '\\n')   // Escape newlines
+    .replace(/\r/g, '\\r')   // Escape carriage returns
+    .replace(/\t/g, '\\t')   // Escape tabs
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, ''); // Remove control characters
+}
+
+// Helper function to truncate text to prevent token limits
+function truncateText(text: string, maxLength: number = 2000): string {
+  if (!text) return '';
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength) + '...';
+}
+
+// Helper function to safely parse OpenAI response
+function safeParseJSON(responseText: string): any {
+  try {
+    // First, try direct parsing
+    return JSON.parse(responseText);
+  } catch (firstError) {
+    console.log('First parse attempt failed, trying to clean response...');
+    
+    try {
+      // Try to extract JSON from markdown code blocks
+      const jsonMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[1]);
+      }
+      
+      // Try to find JSON object in the response
+      const objectMatch = responseText.match(/\{[\s\S]*\}/);
+      if (objectMatch) {
+        return JSON.parse(objectMatch[0]);
+      }
+      
+      throw new Error('Could not extract valid JSON from response');
+    } catch (secondError) {
+      console.error('Failed to parse OpenAI response after cleanup:', secondError);
+      console.error('Raw response text:', responseText.substring(0, 500));
+      throw new Error(`Failed to parse OpenAI response: ${secondError instanceof Error ? secondError.message : 'Unknown error'}`);
+    }
+  }
+}
+
 // Helper function to match a recall against all categories
 async function matchRecallAgainstCategories(
   recallId: string,
@@ -122,26 +173,26 @@ async function matchRecallAgainstCategories(
   // Step 4: Combine all text data for relevance scoring
   const textParts = [];
   if (recallData.text) {
-    textParts.push(`Note text: ${recallData.text}`);
+    textParts.push(`Note text: ${sanitizeTextForJSON(recallData.text)}`);
   }
   if (recallData.location) {
-    textParts.push(`Location: ${recallData.location}`);
+    textParts.push(`Location: ${sanitizeTextForJSON(recallData.location)}`);
   }
   if (recallData.location_primary_type) {
-    textParts.push(`Location Type: ${recallData.location_primary_type}`);
+    textParts.push(`Location Type: ${sanitizeTextForJSON(recallData.location_primary_type)}`);
   }
 
   // Add OCR text and image explanations
   images.forEach((img, index) => {
     if (img.ocr_text) {
-      textParts.push(`Image ${index + 1} text: ${img.ocr_text}`);
+      textParts.push(`Image ${index + 1} text: ${sanitizeTextForJSON(img.ocr_text)}`);
     }
     if (img.image_explanation) {
-      textParts.push(`Image ${index + 1} description: ${img.image_explanation}`);
+      textParts.push(`Image ${index + 1} description: ${sanitizeTextForJSON(img.image_explanation)}`);
     }
   });
 
-  const combinedText = textParts.join('\n\n');
+  const combinedText = truncateText(textParts.join('\n\n'), 3000);
   console.log('Combined text length:', combinedText.length);
 
   if (combinedText.trim().length === 0) {
@@ -164,7 +215,7 @@ async function matchRecallAgainstCategories(
   
   // Create a prompt with category descriptions
   const categoryDescriptions = categories.map(c => 
-    `${c.category_name}: ${c.category_search_description}`
+    `${sanitizeTextForJSON(c.category_name)}: ${sanitizeTextForJSON(c.category_search_description)}`
   ).join('\n');
 
   const systemPrompt = `You are a categorization expert. Your task is to score how relevant each category is to the given content. Provide scores from 0 to 100 where:
@@ -184,7 +235,7 @@ ${categoryDescriptions}
 Content:
 ${combinedText}
 
-Respond with ONLY a JSON object mapping each category name to its score (0-100). 
+Respond with ONLY a valid JSON object mapping each category name to its score (0-100). Do not include any markdown formatting or code blocks.
 Example format:
 {"Food": 85, "Travel": 45, "Work": 10}`;
 
@@ -279,17 +330,19 @@ Example format:
   }
 
   const responseText = openaiData.choices[0]?.message?.content || '{}';
-  console.log('OpenAI response received:', responseText);
+  console.log('OpenAI response received (first 200 chars):', responseText.substring(0, 200));
 
-  // Parse the scores
+  // Parse the scores with safe parsing
   let scoresMap;
   try {
-    scoresMap = JSON.parse(responseText);
+    scoresMap = safeParseJSON(responseText);
   } catch (parseError) {
     console.error('Failed to parse OpenAI response as JSON:', parseError);
+    console.error('Full response text:', responseText);
     return new Response(JSON.stringify({
       error: 'Failed to parse category scores',
-      details: responseText.substring(0, 200)
+      details: parseError instanceof Error ? parseError.message : 'Unknown parsing error',
+      rawResponse: responseText.substring(0, 500)
     }), {
       status: 500,
       headers: {
@@ -488,27 +541,27 @@ async function matchCategoryAgainstRecalls(
       
       const textParts = [];
       if (recall.text) {
-        textParts.push(`Note text: ${recall.text}`);
+        textParts.push(`Note text: ${sanitizeTextForJSON(recall.text)}`);
       }
       if (recall.location) {
-        textParts.push(`Location: ${recall.location}`);
+        textParts.push(`Location: ${sanitizeTextForJSON(recall.location)}`);
       }
       if (recall.location_primary_type) {
-        textParts.push(`Location Type: ${recall.location_primary_type}`);
+        textParts.push(`Location Type: ${sanitizeTextForJSON(recall.location_primary_type)}`);
       }
 
       images.forEach((img, index) => {
         if (img.ocr_text) {
-          textParts.push(`Image ${index + 1} text: ${img.ocr_text}`);
+          textParts.push(`Image ${index + 1} text: ${sanitizeTextForJSON(img.ocr_text)}`);
         }
         if (img.image_explanation) {
-          textParts.push(`Image ${index + 1} description: ${img.image_explanation}`);
+          textParts.push(`Image ${index + 1} description: ${sanitizeTextForJSON(img.image_explanation)}`);
         }
       });
 
       return {
         id: recall.id,
-        content: textParts.join('\n\n')
+        content: truncateText(textParts.join('\n\n'), 1000)
       };
     })
   );
@@ -551,13 +604,13 @@ Be strict with your scoring. Only give scores of 70+ when the recall clearly bel
 
   const userPrompt = `Score the relevance of each recall to this category:
 
-Category: ${categoryData.category_name}
-Description: ${categoryData.category_search_description}
+Category: ${sanitizeTextForJSON(categoryData.category_name)}
+Description: ${sanitizeTextForJSON(categoryData.category_search_description)}
 
 Recalls:
 ${recallsText}
 
-Respond with ONLY a JSON object mapping each recall ID to its score (0-100). 
+Respond with ONLY a valid JSON object mapping each recall ID to its score (0-100). Do not include any markdown formatting or code blocks.
 Example format:
 {"recall-id-1": 85, "recall-id-2": 45, "recall-id-3": 10}`;
 
@@ -652,17 +705,19 @@ Example format:
   }
 
   const responseText = openaiData.choices[0]?.message?.content || '{}';
-  console.log('OpenAI response received:', responseText);
+  console.log('OpenAI response received (first 200 chars):', responseText.substring(0, 200));
 
-  // Parse the scores
+  // Parse the scores with safe parsing
   let scoresMap;
   try {
-    scoresMap = JSON.parse(responseText);
+    scoresMap = safeParseJSON(responseText);
   } catch (parseError) {
     console.error('Failed to parse OpenAI response as JSON:', parseError);
+    console.error('Full response text:', responseText);
     return new Response(JSON.stringify({
       error: 'Failed to parse recall scores',
-      details: responseText.substring(0, 200)
+      details: parseError instanceof Error ? parseError.message : 'Unknown parsing error',
+      rawResponse: responseText.substring(0, 500)
     }), {
       status: 500,
       headers: {

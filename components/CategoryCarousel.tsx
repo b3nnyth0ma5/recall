@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, ScrollView, ActivityIndicator, Modal, TextInput, Alert, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, Image, ScrollView, ActivityIndicator, Modal, TextInput, Alert, Platform, Keyboard, KeyboardAvoidingView } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/utils/supabase';
 import { IconSymbol } from './IconSymbol';
@@ -33,6 +33,10 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
   const [categoryDescription, setCategoryDescription] = useState('');
   const [categoryImage, setCategoryImage] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  
+  // Refs for input fields
+  const nameInputRef = useRef<TextInput>(null);
+  const descriptionInputRef = useRef<TextInput>(null);
 
   const loadAllUserCategories = useCallback(async () => {
     if (!userId) {
@@ -119,6 +123,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
     setCategoryName('');
     setCategoryDescription('');
     setCategoryImage(null);
+    Keyboard.dismiss();
   };
 
   const handleSelectImage = async () => {
@@ -361,7 +366,14 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
         animationType="slide"
         onRequestClose={handleCloseModal}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <Pressable 
+            style={styles.modalBackdrop} 
+            onPress={handleCloseModal}
+          />
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Create Category</Text>
@@ -370,7 +382,12 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
               </Pressable>
             </View>
 
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+            <ScrollView 
+              style={styles.modalBody} 
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalBodyContent}
+            >
               {/* Category Image */}
               <Text style={styles.label}>Category Icon (Optional)</Text>
               <Pressable onPress={handleSelectImage} style={styles.imageSelector}>
@@ -393,18 +410,23 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
               <Text style={styles.label}>Category Name *</Text>
               <Text style={styles.hint}>Keep it short (e.g., &quot;Travel&quot;, &quot;Food&quot;, &quot;Work&quot;)</Text>
               <TextInput
+                ref={nameInputRef}
                 style={styles.input}
                 value={categoryName}
                 onChangeText={setCategoryName}
                 placeholder="Enter category name"
                 placeholderTextColor={colors.textSecondary}
                 maxLength={30}
+                returnKeyType="next"
+                onSubmitEditing={() => descriptionInputRef.current?.focus()}
+                blurOnSubmit={false}
               />
 
               {/* Category Description */}
               <Text style={styles.label}>Search Description *</Text>
               <Text style={styles.hint}>Describe what recalls should be in this category. Be as detailed as you want.</Text>
               <TextInput
+                ref={descriptionInputRef}
                 style={[styles.input, styles.textArea]}
                 value={categoryDescription}
                 onChangeText={setCategoryDescription}
@@ -413,6 +435,8 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
                 multiline
                 numberOfLines={4}
                 textAlignVertical="top"
+                returnKeyType="done"
+                blurOnSubmit={true}
               />
 
               {/* Create Button */}
@@ -429,7 +453,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
               </Pressable>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
@@ -525,15 +549,22 @@ const styles = StyleSheet.create({
   // Modal Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
   },
   modalContent: {
     backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '90%',
-    paddingBottom: 40,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -554,8 +585,12 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   modalBody: {
+    flex: 1,
+  },
+  modalBodyContent: {
     paddingHorizontal: 24,
     paddingTop: 24,
+    paddingBottom: 40,
   },
   label: {
     fontSize: 16,
@@ -605,6 +640,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
+    minHeight: 50,
   },
   textArea: {
     minHeight: 120,
