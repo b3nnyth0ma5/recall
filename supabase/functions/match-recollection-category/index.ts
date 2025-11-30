@@ -1,23 +1,51 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
 };
+
+// Helper function to match a recall against all categories
+async function matchRecallAgainstCategories(
+  recallId: string,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  openaiApiKey: string,
+  corsHeaders: Record<string, string>,
+  startTime: number
+): Promise<Response> {
+  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
 /**
  * Match Recollection Category Edge Function
  * 
- * This function:
+ * This function supports two modes:
+ * 
+ * MODE 1: Match a recall against all categories (recallId provided)
  * 1. Receives a recall ID
  * 2. Fetches recall data (text, location, images with OCR and explanations)
  * 3. Fetches all categories from recollection_categories table
  * 4. Uses OpenAI to score relevance of each category (0-100)
- * 5. Updates recollections table with ALL matching categories if score >= 70
+ * 5. Updates recollections table with ALL matching categories if score >= 75
  * 6. Stores the match_score for each category match
+ * 
+ * MODE 2: Match a category against all recalls (categoryId provided)
+ * 1. Receives a category ID
+ * 2. Fetches category data (name, description)
+ * 3. Fetches all recalls for the user
+ * 4. Uses OpenAI to score relevance of each recall (0-100)
+ * 5. Updates recollections table with ALL matching recalls if score >= 75
+ * 6. Stores the match_score for each recall match
  * 
  * Triggered by:
  * - OCR image processing completion
  * - Image deletion
  * - Note save/update
+ * - Category creation/update
  */ Deno.serve(async (req)=>{
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -45,11 +73,21 @@ const corsHeaders = {
         }
       });
     }
-    const { recallId } = requestBody;
-    if (!recallId) {
-      console.error('No recallId provided in request');
+    const { recallId, categoryId, mode } = requestBody;
+    
+    // Determine which mode we're in
+    if (mode === 'category' && categoryId) {
+      console.log('Mode: Match category against all recalls');
+      console.log('Category ID:', categoryId);
+      return await matchCategoryAgainstRecalls(categoryId, supabaseUrl, supabaseServiceKey, openaiApiKey, corsHeaders, startTime);
+    } else if (recallId) {
+      console.log('Mode: Match recall against all categories');
+      console.log('Recall ID:', recallId);
+      return await matchRecallAgainstCategories(recallId, supabaseUrl, supabaseServiceKey, openaiApiKey, corsHeaders, startTime);
+    } else {
+      console.error('No recallId or categoryId provided in request');
       return new Response(JSON.stringify({
-        error: 'Missing required field: recallId'
+        error: 'Missing required field: recallId or categoryId with mode'
       }), {
         status: 400,
         headers: {
@@ -58,11 +96,11 @@ const corsHeaders = {
         }
       });
     }
-    console.log('Processing recall ID:', recallId);
     // Validate environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error('Missing Supabase configuration');
       return new Response(JSON.stringify({
@@ -87,13 +125,6 @@ const corsHeaders = {
         }
       });
     }
-    // Initialize Supabase client
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    });
     // Step 1: Fetch recall data
     console.log('Fetching recall data...');
     const { data: recallData, error: recallError } = await supabase.from('recalls').select('id, text, location, location_primary_type, user_id').eq('id', recallId).single();

@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { Note } from '@/types/Note';
 import * as Haptics from 'expo-haptics';
+import { CategoryCarousel } from '@/components/CategoryCarousel';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
@@ -23,6 +24,9 @@ export default function HomeScreen() {
   const [showActionButtons, setShowActionButtons] = useState(false);
   const [isNavigating, setIsNavigating] = useState<'camera' | 'text' | 'location' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
+  const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
 
   // Animation values for FAB buttons
   const cameraButtonAnim = useRef(new Animated.Value(0)).current;
@@ -114,6 +118,50 @@ export default function HomeScreen() {
     }, [notes.length, refreshNotes])
   );
 
+  // Filter notes when category selection changes
+  useEffect(() => {
+    const filterNotesByCategory = async () => {
+      if (!selectedCategoryId || !user) {
+        setFilteredNotes(notes);
+        return;
+      }
+
+      try {
+        console.log('[filterNotesByCategory] Filtering notes for category:', selectedCategoryId);
+        
+        // Fetch recall IDs that match this category
+        const { data: recollectionsData, error } = await supabase
+          .from('recollections')
+          .select('recall_id')
+          .eq('category_id', selectedCategoryId)
+          .eq('user_id', user.id);
+
+        if (error) {
+          console.error('[filterNotesByCategory] Error fetching recollections:', error);
+          setFilteredNotes(notes);
+          return;
+        }
+
+        if (!recollectionsData || recollectionsData.length === 0) {
+          console.log('[filterNotesByCategory] No recalls found for this category');
+          setFilteredNotes([]);
+          return;
+        }
+
+        const recallIds = recollectionsData.map(r => r.recall_id);
+        const filtered = notes.filter(note => recallIds.includes(note.id));
+        
+        console.log(`[filterNotesByCategory] Filtered ${filtered.length} notes from ${notes.length} total`);
+        setFilteredNotes(filtered);
+      } catch (error) {
+        console.error('[filterNotesByCategory] Error filtering notes:', error);
+        setFilteredNotes(notes);
+      }
+    };
+
+    filterNotesByCategory();
+  }, [selectedCategoryId, notes, user]);
+
   const handleRefresh = async (clearCategory: boolean = false) => {
     setRefreshing(true);
     console.log('[handleRefresh] Refreshing landing page data from Supabase...');
@@ -121,11 +169,28 @@ export default function HomeScreen() {
     try {
       console.log('[handleRefresh] Refreshing all notes...');
       await refreshNotes();
+      
+      // Refresh categories
+      setCategoryRefreshTrigger(prev => prev + 1);
+      
+      if (clearCategory) {
+        setSelectedCategoryId(null);
+      }
     } catch (error) {
       console.error('[handleRefresh] Error refreshing data:', error);
     } finally {
       setRefreshing(false);
       console.log('[handleRefresh] Refresh complete');
+    }
+  };
+
+  const handleCategorySelect = (categoryId: string | null) => {
+    console.log('[handleCategorySelect] Category selected:', categoryId);
+    setSelectedCategoryId(categoryId);
+    
+    // Scroll to top when category changes
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: true });
     }
   };
 
@@ -295,7 +360,7 @@ export default function HomeScreen() {
   );
 
   // Determine which notes to display
-  const displayNotes = notes;
+  const displayNotes = filteredNotes;
   const isLoading = loading;
 
   // Calculate button positions with new orientation
@@ -366,6 +431,16 @@ export default function HomeScreen() {
         }}
       />
 
+      {/* Category Carousel */}
+      {user && (
+        <CategoryCarousel
+          onCategorySelect={handleCategorySelect}
+          selectedCategoryId={selectedCategoryId}
+          userId={user.id}
+          refreshTrigger={categoryRefreshTrigger}
+        />
+      )}
+
       {/* Main Content ScrollView */}
       <ScrollView
         ref={scrollViewRef}
@@ -387,7 +462,19 @@ export default function HomeScreen() {
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : displayNotes.length === 0 ? (
-          renderEmptyState()
+          selectedCategoryId ? (
+            <View style={styles.emptyContainer}>
+              <IconSymbol name="folder" size={80} color={colors.textTertiary} />
+              <Text style={styles.emptyTitle}>
+                No Recalls in This Category
+              </Text>
+              <Text style={styles.emptyText}>
+                Create recalls that match this category or select a different category
+              </Text>
+            </View>
+          ) : (
+            renderEmptyState()
+          )
         ) : (
           <View style={styles.notesContainer}>
             {/* Notes section */}
@@ -401,13 +488,13 @@ export default function HomeScreen() {
               ))}
             </View>
 
-            {isLoadingMore && (
+            {isLoadingMore && !selectedCategoryId && (
               <View style={styles.loadingMoreContainer}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={styles.loadingMoreText}>Loading more...</Text>
               </View>
             )}
-            {!hasMore && displayNotes.length > 0 && (
+            {!hasMore && displayNotes.length > 0 && !selectedCategoryId && (
               <View style={styles.endContainer}>
                 <Text style={styles.endText}>You&apos;ve reached the end</Text>
               </View>
