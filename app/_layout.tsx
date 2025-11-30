@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
@@ -10,7 +10,7 @@ import { StyleSheet, View } from 'react-native';
 import { getInitialShareData, listenForShareIntents, ReceivedShareData } from '@/utils/nativeShareReceiver';
 import { supabase } from '@/utils/supabase';
 
-function PeopleGraphOverlay() {
+const PeopleGraphOverlay = memo(() => {
   const { showGraph, people, anchorPosition, closeGraph } = usePeopleGraph();
 
   console.log('[PeopleGraphOverlay] Render state:', { 
@@ -34,7 +34,9 @@ function PeopleGraphOverlay() {
       />
     </View>
   );
-}
+});
+
+PeopleGraphOverlay.displayName = 'PeopleGraphOverlay';
 
 function RootLayoutNav() {
   const { user, loading } = useAuth();
@@ -275,6 +277,7 @@ function RootLayoutNav() {
         <Stack.Screen name="map-view" options={{ headerShown: false }} />
         <Stack.Screen name="share-intent" options={{ headerShown: false }} />
         <Stack.Screen name="shared-recall" options={{ headerShown: false }} />
+        <Stack.Screen name="person-recalls" options={{ headerShown: false }} />
         <Stack.Screen
           name="modal"
           options={{
@@ -306,7 +309,7 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={styles.container}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
         <WidgetProvider>
           <PeopleGraphProvider>
