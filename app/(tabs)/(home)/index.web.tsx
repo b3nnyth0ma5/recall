@@ -33,10 +33,12 @@ export default function HomeScreen() {
   const textButtonAnim = useRef(new Animated.Value(0)).current;
   const locationButtonAnim = useRef(new Animated.Value(0)).current;
 
-  // Web-specific pull-to-refresh state
-  const [pullStartY, setPullStartY] = useState(0);
-  const [pullDistance, setPullDistance] = useState(0);
-  const [isPulling, setIsPulling] = useState(false);
+  // Web-specific pull-to-refresh state - using refs to avoid re-renders
+  const pullStartYRef = useRef(0);
+  const pullDistanceRef = useRef(0);
+  const isPullingRef = useRef(false);
+  const [pullIndicatorVisible, setPullIndicatorVisible] = useState(false);
+  const [pullIndicatorText, setPullIndicatorText] = useState('Pull to refresh');
   const PULL_THRESHOLD = 80;
 
   // Update the previous notes count whenever notes change
@@ -315,46 +317,54 @@ export default function HomeScreen() {
     }
   };
 
-  // Web-specific pull-to-refresh handlers - wrapped in useCallback to prevent infinite re-renders
+  // Web-specific pull-to-refresh handlers - using refs to prevent infinite re-renders
   const handleTouchStart = useCallback((e: any) => {
     try {
       const touch = e.touches?.[0] || e.nativeEvent?.touches?.[0];
       if (touch && scrollPositionRef.current === 0) {
-        setPullStartY(touch.clientY);
-        setIsPulling(true);
+        pullStartYRef.current = touch.clientY;
+        isPullingRef.current = true;
       }
     } catch (error) {
       console.error('Error in handleTouchStart:', error);
     }
-  }, []);
+  }, []); // No dependencies - uses refs only
 
   const handleTouchMove = useCallback((e: any) => {
-    if (!isPulling) return;
+    if (!isPullingRef.current) return;
     
     try {
       const touch = e.touches?.[0] || e.nativeEvent?.touches?.[0];
       if (touch && scrollPositionRef.current === 0) {
-        const distance = Math.max(0, touch.clientY - pullStartY);
-        setPullDistance(Math.min(distance, PULL_THRESHOLD * 1.5));
+        const distance = Math.max(0, touch.clientY - pullStartYRef.current);
+        const clampedDistance = Math.min(distance, PULL_THRESHOLD * 1.5);
+        pullDistanceRef.current = clampedDistance;
+        
+        // Update UI state
+        if (clampedDistance > 0) {
+          setPullIndicatorVisible(true);
+          setPullIndicatorText(clampedDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull to refresh');
+        }
       }
     } catch (error) {
       console.error('Error in handleTouchMove:', error);
     }
-  }, [isPulling, pullStartY, PULL_THRESHOLD]);
+  }, []); // No dependencies - uses refs only
 
   const handleTouchEnd = useCallback(async () => {
     try {
-      if (isPulling && pullDistance >= PULL_THRESHOLD) {
+      if (isPullingRef.current && pullDistanceRef.current >= PULL_THRESHOLD) {
         await handleRefresh(false);
       }
     } catch (error) {
       console.error('Error in handleTouchEnd:', error);
     } finally {
-      setIsPulling(false);
-      setPullDistance(0);
-      setPullStartY(0);
+      isPullingRef.current = false;
+      pullDistanceRef.current = 0;
+      pullStartYRef.current = 0;
+      setPullIndicatorVisible(false);
     }
-  }, [isPulling, pullDistance, PULL_THRESHOLD]);
+  }, [handleRefresh]); // Only depends on handleRefresh
 
   const toggleActionButtons = () => {
     setShowActionButtons(!showActionButtons);
@@ -461,9 +471,10 @@ export default function HomeScreen() {
       scrollPositionRef.current = contentOffset.y;
       
       // Reset pull state if scrolling
-      if (contentOffset.y > 0 && isPulling) {
-        setIsPulling(false);
-        setPullDistance(0);
+      if (contentOffset.y > 0 && isPullingRef.current) {
+        isPullingRef.current = false;
+        pullDistanceRef.current = 0;
+        setPullIndicatorVisible(false);
       }
       
       // Only load more if not filtering by category
@@ -482,7 +493,7 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Error handling scroll:', error);
     }
-  }, [hasMore, isLoadingMore, loading, loadMoreNotes, selectedCategoryId, isPulling]);
+  }, [hasMore, isLoadingMore, loading, loadMoreNotes, selectedCategoryId]);
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
@@ -504,7 +515,7 @@ export default function HomeScreen() {
   const isLoading = selectedCategoryId ? loadingFiltered : loading;
 
   // Calculate pull indicator opacity and scale
-  const pullProgress = Math.min(pullDistance / PULL_THRESHOLD, 1);
+  const pullProgress = Math.min(pullDistanceRef.current / PULL_THRESHOLD, 1);
   const pullIndicatorOpacity = pullProgress;
   const pullIndicatorScale = 0.5 + (pullProgress * 0.5);
 
@@ -576,7 +587,7 @@ export default function HomeScreen() {
       />
 
       {/* Pull-to-refresh indicator for web */}
-      {isPulling && pullDistance > 0 && (
+      {pullIndicatorVisible && (
         <View 
           style={[
             styles.pullIndicator,
@@ -586,11 +597,7 @@ export default function HomeScreen() {
             }
           ]}
         >
-          {pullDistance >= PULL_THRESHOLD ? (
-            <Text style={styles.pullIndicatorText}>Release to refresh</Text>
-          ) : (
-            <Text style={styles.pullIndicatorText}>Pull to refresh</Text>
-          )}
+          <Text style={styles.pullIndicatorText}>{pullIndicatorText}</Text>
           <ActivityIndicator size="small" color={colors.primary} />
         </View>
       )}
