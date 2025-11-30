@@ -621,13 +621,15 @@ export default function HomeScreen() {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Category Carousel - Only show categories with recollections */}
-        <CategoryCarousel 
-          onCategorySelect={handleCategorySelect}
-          selectedCategoryId={selectedCategoryId}
-          userId={user?.id}
-          refreshTrigger={categoryRefreshTrigger}
-        />
+        {/* Category Carousel - Now scrolls with content */}
+        <View style={styles.categoryCarouselContainer}>
+          <CategoryCarousel 
+            onCategorySelect={handleCategorySelect}
+            selectedCategoryId={selectedCategoryId}
+            userId={user?.id}
+            refreshTrigger={categoryRefreshTrigger}
+          />
+        </View>
 
         {isLoading && !refreshing ? (
           <View style={styles.loadingContainer}>
@@ -826,6 +828,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 100,
   },
+  categoryCarouselContainer: {
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -856,6 +862,7 @@ const styles = StyleSheet.create({
   },
   allNotesSection: {
     paddingHorizontal: 16,
+    paddingTop: 8,
   },
   loadingMoreContainer: {
     flexDirection: 'row',

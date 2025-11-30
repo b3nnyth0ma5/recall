@@ -133,18 +133,29 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
           style={[styles.categoryItem, styles.categoryItemFirst]}
         >
           <View style={[styles.categoryImageContainer, styles.createCategoryContainer]}>
-            <IconSymbol 
-              ios_icon_name="plus.circle.fill" 
-              android_material_icon_name="add_circle" 
-              size={40} 
-              color={colors.primary} 
+            {/* Placeholder image for create category */}
+            <Image
+              source={{ uri: 'https://images.unsplash.com/photo-1557683316-973673baf926?w=200&h=200&fit=crop' }}
+              style={styles.createCategoryImage}
+              resizeMode="cover"
             />
-            {/* Plus badge on bottom left */}
+            {/* Overlay gradient for better icon visibility */}
+            <View style={styles.createCategoryOverlay} />
+            {/* Large plus icon in center */}
+            <View style={styles.createCategoryIconContainer}>
+              <IconSymbol 
+                ios_icon_name="plus.circle.fill" 
+                android_material_icon_name="add_circle" 
+                size={40} 
+                color="#FFFFFF" 
+              />
+            </View>
+            {/* Plus badge on bottom right */}
             <View style={styles.plusBadge}>
               <IconSymbol 
                 ios_icon_name="plus" 
                 android_material_icon_name="add" 
-                size={12} 
+                size={14} 
                 color="#FFFFFF" 
               />
             </View>
@@ -210,7 +221,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   container: {
-    marginBottom: 16,
+    marginBottom: 8,
     paddingTop: 8,
   },
   scrollContent: {
@@ -235,26 +246,52 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     borderWidth: 3,
     borderColor: colors.borderLight,
+    overflow: 'hidden',
   },
   createCategoryContainer: {
     borderColor: colors.primary,
     borderWidth: 3,
-    borderStyle: 'dashed',
-    backgroundColor: 'rgba(255, 107, 122, 0.1)',
+    borderStyle: 'solid',
     position: 'relative',
+  },
+  createCategoryImage: {
+    width: CATEGORY_SIZE,
+    height: CATEGORY_SIZE,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  createCategoryOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: CATEGORY_SIZE,
+    height: CATEGORY_SIZE,
+    backgroundColor: 'rgba(255, 107, 122, 0.7)',
+  },
+  createCategoryIconContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: CATEGORY_SIZE,
+    height: CATEGORY_SIZE,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
   },
   plusBadge: {
     position: 'absolute',
-    bottom: -4,
-    left: -4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    bottom: 2,
+    right: 2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: colors.background,
+    zIndex: 3,
   },
   categoryImageContainerSelected: {
     borderColor: colors.primary,

@@ -12,22 +12,23 @@ const corsHeaders = {
  * This function uses vector embeddings for intelligent category matching:
  * - Uses recalls.recall_embedding for text-based recall matching
  * - Uses recall_images.recall_image_embedding for image-based recall matching
+ * - Uses ONLY category_search_description for generating category embeddings
  * - Combines embeddings using cosine similarity for accurate matching
  * 
  * MODE 1: Match a recall against all categories (recallId provided)
  * 1. Receives a recall ID
  * 2. Fetches recall embedding and image embeddings
  * 3. Fetches all categories with their descriptions
- * 4. Generates category embeddings on-the-fly
+ * 4. Generates category embeddings from category_search_description ONLY
  * 5. Calculates cosine similarity between recall/images and categories
- * 6. Updates recollections table with matches (similarity >= 0.75)
+ * 6. Updates recollections table with matches (similarity >= 0.20, score >= 20)
  * 
  * MODE 2: Match a category against all recalls (categoryId provided)
  * 1. Receives a category ID
- * 2. Generates category embedding from name + description
+ * 2. Generates category embedding from category_search_description ONLY
  * 3. Fetches all recalls with their embeddings
  * 4. Calculates cosine similarity for each recall
- * 5. Updates recollections table with matches (similarity >= 0.75)
+ * 5. Updates recollections table with matches (similarity >= 0.20, score >= 20)
  */
 
 // Helper function to generate embedding using OpenAI
@@ -207,13 +208,18 @@ async function matchRecallAgainstCategories(
   const categories = categoriesData;
   console.log(`Found ${categories.length} categories to match against`);
 
-  // Step 4: Generate embeddings for each category
-  console.log('Generating category embeddings...');
+  // Step 4: Generate embeddings for each category using ONLY category_search_description
+  console.log('Generating category embeddings from category_search_description ONLY...');
   const categoryEmbeddings = await Promise.all(
     categories.map(async (category) => {
       try {
-        const categoryText = `${category.category_name}: ${category.category_search_description}`;
-        console.log(`Generating embedding for category: ${category.category_name}`);
+        // Use ONLY category_search_description for embedding generation
+        const categoryText = category.category_search_description || '';
+        if (!categoryText.trim()) {
+          console.log(`Category ${category.category_name} has empty search description, skipping`);
+          return null;
+        }
+        console.log(`Generating embedding for category: ${category.category_name} using description: "${categoryText}"`);
         const embedding = await generateEmbedding(categoryText, openaiApiKey);
         console.log(`Generated embedding for ${category.category_name}, length: ${embedding.length}`);
         return {
@@ -256,7 +262,7 @@ async function matchRecallAgainstCategories(
         recallData.recall_embedding,
         catEmbed.embedding
       );
-      console.log(`Text similarity for ${catEmbed.categoryName}: ${textSimilarity}`);
+      console.log(`Text similarity for ${catEmbed.categoryName}: ${textSimilarity.toFixed(4)}`);
       if (textSimilarity > maxSimilarity) {
         maxSimilarity = textSimilarity;
         matchSource = 'text';
@@ -267,7 +273,7 @@ async function matchRecallAgainstCategories(
     for (let i = 0; i < imageEmbeddings.length; i++) {
       const imgEmbed = imageEmbeddings[i];
       const imgSimilarity = cosineSimilarity(imgEmbed, catEmbed.embedding);
-      console.log(`Image ${i} similarity for ${catEmbed.categoryName}: ${imgSimilarity}`);
+      console.log(`Image ${i} similarity for ${catEmbed.categoryName}: ${imgSimilarity.toFixed(4)}`);
       if (imgSimilarity > maxSimilarity) {
         maxSimilarity = imgSimilarity;
         matchSource = `image_${i}`;
@@ -277,7 +283,7 @@ async function matchRecallAgainstCategories(
     // Convert similarity (0-1) to score (0-100)
     const score = Math.round(maxSimilarity * 100);
 
-    console.log(`Category ${catEmbed.categoryName}: score=${score}, similarity=${maxSimilarity}, source=${matchSource}`);
+    console.log(`Category ${catEmbed.categoryName}: score=${score}, similarity=${maxSimilarity.toFixed(4)}, source=${matchSource}`);
 
     return {
       categoryId: catEmbed.categoryId,
@@ -290,9 +296,9 @@ async function matchRecallAgainstCategories(
 
   console.log('Category scores:', categoryScores);
 
-  // Step 6: Find matching categories (score >= 75, which is similarity >= 0.75)
-  const matchingCategories = categoryScores.filter((cat) => cat.score >= 75);
-  console.log(`Found ${matchingCategories.length} matching categories (score >= 75):`, 
+  // Step 6: Find matching categories (score >= 20, which is similarity >= 0.20)
+  const matchingCategories = categoryScores.filter((cat) => cat.score >= 20);
+  console.log(`Found ${matchingCategories.length} matching categories (score >= 20):`, 
     matchingCategories.map((m) => `${m.categoryName} (${m.score})`));
 
   // Step 7: Update recollections table
@@ -348,7 +354,7 @@ async function matchRecallAgainstCategories(
 
     console.log('Recollections created successfully');
   } else {
-    console.log('No categories matched with sufficient score (>= 75)');
+    console.log('No categories matched with sufficient score (>= 20)');
     // Delete existing recollections
     const { error: deleteError } = await supabase
       .from('recollections')
@@ -430,12 +436,28 @@ async function matchCategoryAgainstRecalls(
     userId: categoryData.user_id
   });
 
-  // Step 2: Generate category embedding
-  console.log('Generating category embedding...');
-  const categoryText = `${categoryData.category_name}: ${categoryData.category_search_description}`;
+  // Step 2: Generate category embedding from category_search_description ONLY
+  console.log('Generating category embedding from category_search_description ONLY...');
+  const categoryText = categoryData.category_search_description || '';
+  
+  if (!categoryText.trim()) {
+    console.error('Category has empty search description');
+    return new Response(JSON.stringify({
+      error: 'Category search description is empty',
+      details: 'Cannot generate embedding for empty category search description'
+    }), {
+      status: 400,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
+    });
+  }
+
   let categoryEmbedding: number[];
   
   try {
+    console.log(`Generating embedding for category using description: "${categoryText}"`);
     categoryEmbedding = await generateEmbedding(categoryText, openaiApiKey);
     console.log(`Generated category embedding, length: ${categoryEmbedding.length}`);
   } catch (error) {
@@ -500,7 +522,7 @@ async function matchCategoryAgainstRecalls(
       // Compare with recall text embedding
       if (recall.recall_embedding && Array.isArray(recall.recall_embedding)) {
         const textSimilarity = cosineSimilarity(recall.recall_embedding, categoryEmbedding);
-        console.log(`Recall ${recall.id} text similarity: ${textSimilarity}`);
+        console.log(`Recall ${recall.id} text similarity: ${textSimilarity.toFixed(4)}`);
         if (textSimilarity > maxSimilarity) {
           maxSimilarity = textSimilarity;
           matchSource = 'text';
@@ -521,7 +543,7 @@ async function matchCategoryAgainstRecalls(
         for (let i = 0; i < imageEmbeddings.length; i++) {
           const imgEmbed = imageEmbeddings[i];
           const imgSimilarity = cosineSimilarity(imgEmbed, categoryEmbedding);
-          console.log(`Recall ${recall.id} image ${i} similarity: ${imgSimilarity}`);
+          console.log(`Recall ${recall.id} image ${i} similarity: ${imgSimilarity.toFixed(4)}`);
           if (imgSimilarity > maxSimilarity) {
             maxSimilarity = imgSimilarity;
             matchSource = `image_${i}`;
@@ -532,7 +554,7 @@ async function matchCategoryAgainstRecalls(
       // Convert similarity (0-1) to score (0-100)
       const score = Math.round(maxSimilarity * 100);
 
-      console.log(`Recall ${recall.id}: score=${score}, similarity=${maxSimilarity}, source=${matchSource}`);
+      console.log(`Recall ${recall.id}: score=${score}, similarity=${maxSimilarity.toFixed(4)}, source=${matchSource}`);
 
       return {
         recallId: recall.id,
@@ -545,9 +567,9 @@ async function matchCategoryAgainstRecalls(
 
   console.log('Recall scores:', recallScores);
 
-  // Step 5: Find matching recalls (score >= 75)
-  const matchingRecalls = recallScores.filter((recall) => recall.score >= 75);
-  console.log(`Found ${matchingRecalls.length} matching recalls (score >= 75):`, 
+  // Step 5: Find matching recalls (score >= 20)
+  const matchingRecalls = recallScores.filter((recall) => recall.score >= 20);
+  console.log(`Found ${matchingRecalls.length} matching recalls (score >= 20):`, 
     matchingRecalls.map((m) => `${m.recallId} (${m.score})`));
 
   // Step 6: Update recollections table
@@ -603,7 +625,7 @@ async function matchCategoryAgainstRecalls(
 
     console.log('Recollections created successfully');
   } else {
-    console.log('No recalls matched with sufficient score (>= 75)');
+    console.log('No recalls matched with sufficient score (>= 20)');
     // Delete existing recollections
     const { error: deleteError } = await supabase
       .from('recollections')
