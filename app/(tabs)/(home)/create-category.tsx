@@ -216,12 +216,11 @@ export default function CreateCategoryScreen() {
                 </View>
               )}
             </Pressable>
-            <Text style={styles.optionalText}>(Optional)</Text>
           </View>
 
           {/* Category Name */}
           <View style={styles.fieldContainer}>
-            <Text style={styles.label}>Category Name *</Text>
+            <Text style={styles.label}> Name *</Text>
             <Text style={styles.hint}>Keep it short (e.g., &quot;Travel&quot;, &quot;Food&quot;, &quot;Work&quot;)</Text>
             <TextInput
               ref={nameInputRef}
@@ -239,8 +238,8 @@ export default function CreateCategoryScreen() {
 
           {/* Search Description - Now on its own row below image and name */}
           <View style={styles.fieldContainer}>
-            <Text style={styles.label}>Search Description *</Text>
-            <Text style={styles.hint}>Describe what recalls should be in this category. Be as detailed as you want.</Text>
+            <Text style={styles.label}> Description *</Text>
+            <Text style={styles.hint}>Describe what Recalls should be in this category..</Text>
             <TextInput
               ref={descriptionInputRef}
               style={[styles.input, styles.textArea]}

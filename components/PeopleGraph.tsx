@@ -5,8 +5,8 @@ import * as Haptics from 'expo-haptics';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { useRouter } from 'expo-router';
-import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { getMultiplePersonRecallCounts } from '@/utils/recallCounter';
 
 interface Person {
   id: string;
@@ -214,33 +214,13 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
   const [rootPosition, setRootPosition] = useState({ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT / 2 });
   const [recallCounts, setRecallCounts] = useState<{ [personId: string]: number }>({});
 
-  // Load recall counts for each person
+  // Load recall counts for each person using the standalone function
   useEffect(() => {
     const loadRecallCounts = async () => {
       if (!user || people.length === 0) return;
 
       try {
-        const personIds = people.map(p => p.id);
-        
-        // Get recall counts for each person
-        const { data: recallPeopleData, error } = await supabase
-          .from('recall_people')
-          .select('person_id, recall_id')
-          .in('person_id', personIds)
-          .eq('user_id', user.id);
-
-        if (error) {
-          console.error('Error loading recall counts:', error);
-          return;
-        }
-
-        // Count recalls per person
-        const counts: { [personId: string]: number } = {};
-        (recallPeopleData || []).forEach((rp: any) => {
-          counts[rp.person_id] = (counts[rp.person_id] || 0) + 1;
-        });
-
-        console.log('[PeopleGraph] Recall counts:', counts);
+        const counts = await getMultiplePersonRecallCounts(people, user.id);
         setRecallCounts(counts);
       } catch (error) {
         console.error('Error loading recall counts:', error);
@@ -400,8 +380,7 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
             ]}
           >
             <IconSymbol
-              ios_icon_name="person.3.fill"
-              android_material_icon_name="group"
+              name="person.2.fill"
               size={30}
               color="#FFFFFF"
             />

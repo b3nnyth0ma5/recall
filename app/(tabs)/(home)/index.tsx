@@ -288,8 +288,7 @@ export default function HomeScreen() {
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
       <IconSymbol 
-        ios_icon_name="note.text" 
-        android_material_icon_name="note" 
+        name="doc.text" 
         size={80} 
         color={colors.textTertiary} 
       />
@@ -359,8 +358,7 @@ export default function HomeScreen() {
           headerRight: () => (
             <Pressable onPress={handleProfile} style={styles.headerButton}>
               <IconSymbol 
-                ios_icon_name="person.circle.fill" 
-                android_material_icon_name="account_circle" 
+                name="person.circle.fill" 
                 size={32} 
                 color={colors.text} 
               />
@@ -435,10 +433,9 @@ export default function HomeScreen() {
           style={styles.searchFab}
         >
           <IconSymbol 
-            ios_icon_name="magnifyingglass" 
-            android_material_icon_name="search" 
-            size={28} 
-            color="#FFFFFF" 
+            name="magnifyingglass" 
+            size={24} 
+            color={colors.primary} 
           />
         </Pressable>
 
@@ -465,13 +462,12 @@ export default function HomeScreen() {
                 disabled={isNavigating !== null}
               >
                 {isNavigating === 'camera' ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator size="small" color={colors.primary} />
                 ) : (
                   <IconSymbol 
-                    ios_icon_name="camera.fill" 
-                    android_material_icon_name="camera" 
-                    size={22} 
-                    color="#FFFFFF" 
+                    name="camera.fill" 
+                    size={20} 
+                    color={colors.primary} 
                   />
                 )}
               </Pressable>
@@ -499,13 +495,12 @@ export default function HomeScreen() {
                 disabled={isNavigating !== null}
               >
                 {isNavigating === 'text' ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator size="small" color={colors.primary} />
                 ) : (
                   <IconSymbol 
-                    ios_icon_name="text.alignleft" 
-                    android_material_icon_name="text_fields" 
-                    size={22} 
-                    color="#FFFFFF" 
+                    name="doc.text" 
+                    size={20} 
+                    color={colors.primary} 
                   />
                 )}
               </Pressable>
@@ -533,13 +528,12 @@ export default function HomeScreen() {
                 disabled={isNavigating !== null}
               >
                 {isNavigating === 'location' ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator size="small" color={colors.primary} />
                 ) : (
                   <IconSymbol 
-                    ios_icon_name="map.fill" 
-                    android_material_icon_name="map" 
-                    size={22} 
-                    color="#FFFFFF" 
+                    name="location.fill" 
+                    size={20} 
+                    color={colors.primary} 
                   />
                 )}
               </Pressable>
@@ -552,10 +546,9 @@ export default function HomeScreen() {
             style={styles.fab}
           >
             <IconSymbol 
-              ios_icon_name={showActionButtons ? "xmark" : "plus"} 
-              android_material_icon_name={showActionButtons ? "close" : "add"} 
-              size={28} 
-              color="#FFFFFF" 
+              name={showActionButtons ? "xmark" : "plus"} 
+              size={24} 
+              color={colors.primary} 
             />
           </Pressable>
         </View>
@@ -681,14 +674,14 @@ const styles = StyleSheet.create({
     elevation: 100,
   },
   searchFab: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.searchAccent,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(74, 144, 226, 0.4)',
-    elevation: 8,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
   },
   actionButtonsContainer: {
     position: 'relative',
@@ -699,44 +692,44 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   cameraButton: {
-    width: 46.8,
-    height: 46.8,
-    borderRadius: 23.4,
-    backgroundColor: colors.primary,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
-    elevation: 6,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
   },
   textButton: {
-    width: 46.8,
-    height: 46.8,
-    borderRadius: 23.4,
-    backgroundColor: colors.primary,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
-    elevation: 6,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
   },
   locationButton: {
-    width: 46.8,
-    height: 46.8,
-    borderRadius: 23.4,
-    backgroundColor: colors.primary,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
-    elevation: 6,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
   },
   fab: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.primary,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(255, 107, 53, 0.4)',
-    elevation: 8,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
   },
   deletionModalContainer: {
     flex: 1,

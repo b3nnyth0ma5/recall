@@ -3,9 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { PersonAvatar } from './PersonAvatar';
 import { colors } from '@/styles/commonStyles';
-import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'expo-router';
+import { getMultiplePersonRecallCounts } from '@/utils/recallCounter';
 
 interface Person {
   id: string;
@@ -34,27 +34,7 @@ export function PeopleAvatarsRow({
   const loadRecallCounts = async () => {
     if (!user) return;
 
-    const counts: { [personId: string]: number } = {};
-
-    for (const person of people) {
-      try {
-        const { data, error } = await supabase
-          .from('recall_people')
-          .select('recall_id', { count: 'exact', head: true })
-          .eq('person_id', person.id)
-          .eq('user_id', user.id);
-
-        if (!error && data !== null) {
-          counts[person.id] = (data as any).count || 0;
-        } else {
-          counts[person.id] = 0;
-        }
-      } catch (error) {
-        console.error(`Error loading recall count for person ${person.id}:`, error);
-        counts[person.id] = 0;
-      }
-    }
-
+    const counts = await getMultiplePersonRecallCounts(people, user.id);
     setRecallCounts(counts);
   };
 
