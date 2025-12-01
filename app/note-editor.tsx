@@ -1044,7 +1044,7 @@ export default function NoteEditorScreen() {
         console.log('[NoteEditor] New recall created with ID:', recallId);
       }
 
-      // Save people associations - CRITICAL SECTION
+      // Save people associations - CRITICAL SECTION WITH IMPROVED ERROR HANDLING
       try {
         console.log('[NoteEditor] ===== SAVING PEOPLE ASSOCIATIONS =====');
         console.log('[NoteEditor] Recall ID:', recallId);
@@ -1061,11 +1061,13 @@ export default function NoteEditorScreen() {
           .eq('user_id', user.id);
         
         if (deleteError) {
-          console.error('[NoteEditor] ERROR deleting existing people associations:', deleteError);
+          console.error('[NoteEditor] ❌ ERROR deleting existing people associations:', deleteError);
+          console.error('[NoteEditor] Delete error code:', deleteError.code);
+          console.error('[NoteEditor] Delete error message:', deleteError.message);
           console.error('[NoteEditor] Delete error details:', JSON.stringify(deleteError, null, 2));
-          throw deleteError;
+          throw new Error(`Failed to delete existing people: ${deleteError.message}`);
         } else {
-          console.log('[NoteEditor] Successfully deleted existing associations (count:', deleteCount, ')');
+          console.log('[NoteEditor] ✅ Successfully deleted existing associations (count:', deleteCount, ')');
         }
         
         // Step 2: Insert new associations if there are any people selected
@@ -1075,10 +1077,11 @@ export default function NoteEditorScreen() {
           // Validate that all people have valid IDs
           const invalidPeople = people.filter(p => !p.id || typeof p.id !== 'string');
           if (invalidPeople.length > 0) {
-            console.error('[NoteEditor] ERROR: Found people with invalid IDs:', invalidPeople);
+            console.error('[NoteEditor] ❌ ERROR: Found people with invalid IDs:', invalidPeople);
             throw new Error('Some people have invalid IDs');
           }
           
+          // Prepare insert data - one record at a time for better error tracking
           const insertData = people.map(person => ({
             recall_id: recallId,
             person_id: person.id,
@@ -1087,18 +1090,51 @@ export default function NoteEditorScreen() {
           
           console.log('[NoteEditor] Data to insert:', JSON.stringify(insertData, null, 2));
           
+          // Try inserting all at once first
           const { data: insertedData, error: peopleError } = await supabase
             .from('recall_people')
             .insert(insertData)
             .select();
           
           if (peopleError) {
-            console.error('[NoteEditor] ERROR inserting people associations:', peopleError);
+            console.error('[NoteEditor] ❌ ERROR inserting people associations (batch):', peopleError);
+            console.error('[NoteEditor] Error code:', peopleError.code);
+            console.error('[NoteEditor] Error message:', peopleError.message);
+            console.error('[NoteEditor] Error hint:', peopleError.hint);
             console.error('[NoteEditor] Error details:', JSON.stringify(peopleError, null, 2));
             console.error('[NoteEditor] Failed insert data:', JSON.stringify(insertData, null, 2));
-            throw peopleError;
+            
+            // Try inserting one by one to identify which record is failing
+            console.log('[NoteEditor] Attempting individual inserts to identify failing record...');
+            let successCount = 0;
+            let failCount = 0;
+            
+            for (let i = 0; i < insertData.length; i++) {
+              const singleRecord = insertData[i];
+              console.log(`[NoteEditor] Inserting record ${i + 1}/${insertData.length}:`, singleRecord);
+              
+              const { data: singleData, error: singleError } = await supabase
+                .from('recall_people')
+                .insert([singleRecord])
+                .select();
+              
+              if (singleError) {
+                console.error(`[NoteEditor] ❌ Failed to insert record ${i + 1}:`, singleError);
+                console.error(`[NoteEditor] Failed record data:`, singleRecord);
+                failCount++;
+              } else {
+                console.log(`[NoteEditor] ✅ Successfully inserted record ${i + 1}`);
+                successCount++;
+              }
+            }
+            
+            console.log(`[NoteEditor] Individual insert results: ${successCount} succeeded, ${failCount} failed`);
+            
+            if (failCount > 0) {
+              throw new Error(`Failed to insert ${failCount} out of ${people.length} people associations`);
+            }
           } else {
-            console.log('[NoteEditor] ✅ SUCCESS! Inserted', people.length, 'people associations');
+            console.log('[NoteEditor] ✅ SUCCESS! Inserted', people.length, 'people associations (batch)');
             console.log('[NoteEditor] Inserted data:', JSON.stringify(insertedData, null, 2));
           }
         } else {
@@ -1114,7 +1150,7 @@ export default function NoteEditorScreen() {
           .eq('user_id', user.id);
         
         if (verifyError) {
-          console.error('[NoteEditor] ERROR verifying people associations:', verifyError);
+          console.error('[NoteEditor] ❌ ERROR verifying people associations:', verifyError);
         } else {
           console.log('[NoteEditor] Verification: Found', verifyData?.length || 0, 'people associations in database');
           if (verifyData && verifyData.length > 0) {
@@ -1124,8 +1160,12 @@ export default function NoteEditorScreen() {
           
           // Check if the count matches
           if (verifyData && verifyData.length !== people.length) {
-            console.error('[NoteEditor] WARNING: Mismatch in people count!');
+            console.error('[NoteEditor] ⚠️ WARNING: Mismatch in people count!');
             console.error('[NoteEditor] Expected:', people.length, 'Got:', verifyData.length);
+            Alert.alert(
+              'Warning',
+              `Expected to save ${people.length} people but only ${verifyData.length} were saved. Please check the console logs.`
+            );
           } else {
             console.log('[NoteEditor] ✅ People count matches! Expected and got:', people.length);
           }
@@ -1133,9 +1173,13 @@ export default function NoteEditorScreen() {
         
         // Update initial people state to reflect saved state
         setInitialPeople(people);
-      } catch (error) {
-        console.error('[NoteEditor] CRITICAL ERROR managing people associations:', error);
-        Alert.alert('Warning', 'Note saved but there was an error saving people associations. Please try editing the note again.');
+      } catch (error: any) {
+        console.error('[NoteEditor] 🔥 CRITICAL ERROR managing people associations:', error);
+        console.error('[NoteEditor] Error stack:', error.stack);
+        Alert.alert(
+          'Error Saving People',
+          `Note saved but there was an error saving people associations: ${error.message || 'Unknown error'}. Please try editing the note again.`
+        );
       }
 
       let uploadedCount = 0;
@@ -1240,9 +1284,10 @@ export default function NoteEditorScreen() {
           refreshNotes();
         }
       }, 300);
-    } catch (error) {
-      console.error('[NoteEditor] CRITICAL ERROR saving recall:', error);
-      Alert.alert('Error', 'Failed to save recall. Check console logs for details.');
+    } catch (error: any) {
+      console.error('[NoteEditor] 🔥 CRITICAL ERROR saving recall:', error);
+      console.error('[NoteEditor] Error stack:', error.stack);
+      Alert.alert('Error', `Failed to save recall: ${error.message || 'Unknown error'}. Check console logs for details.`);
     } finally {
       setSaving(false);
     }
