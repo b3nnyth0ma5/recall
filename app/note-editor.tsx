@@ -595,7 +595,7 @@ export default function NoteEditorScreen() {
 
       try {
         setLoadingNote(true);
-        console.log('Loading note from database:', params.id);
+        console.log('[NoteEditor] Loading note from database:', params.id);
 
         // Fetch the note data
         const { data: recallData, error: recallError } = await supabase
@@ -606,13 +606,13 @@ export default function NoteEditorScreen() {
           .single();
 
         if (recallError || !recallData) {
-          console.error('Error loading recall:', recallError);
+          console.error('[NoteEditor] Error loading recall:', recallError);
           Alert.alert('Error', 'Failed to load note');
           router.back();
           return;
         }
 
-        console.log('Note loaded from database:', recallData);
+        console.log('[NoteEditor] Note loaded from database:', recallData);
 
         // Set text and location data
         setText(recallData.text || '');
@@ -627,13 +627,14 @@ export default function NoteEditorScreen() {
         }
 
         // Load people for this recall
+        console.log('[NoteEditor] Loading people for recall:', params.id);
         const { data: recallPeopleData, error: recallPeopleError } = await supabase
           .from('recall_people')
           .select('person_id, persons(id, person_name)')
           .eq('recall_id', params.id);
 
         if (recallPeopleError) {
-          console.error('Error loading recall_people:', recallPeopleError);
+          console.error('[NoteEditor] Error loading recall_people:', recallPeopleError);
         } else if (recallPeopleData && recallPeopleData.length > 0) {
           const loadedPeople: Person[] = recallPeopleData
             .filter((rp: any) => rp.persons)
@@ -641,8 +642,12 @@ export default function NoteEditorScreen() {
               id: rp.persons.id,
               person_name: rp.persons.person_name,
             }));
+          console.log('[NoteEditor] Loaded people from database:', loadedPeople);
           setPeople(loadedPeople);
-          console.log(`Loaded ${loadedPeople.length} people for recall`);
+          console.log(`[NoteEditor] Set ${loadedPeople.length} people in state`);
+        } else {
+          console.log('[NoteEditor] No people found for this recall');
+          setPeople([]);
         }
 
         // Load images for this note
@@ -653,9 +658,9 @@ export default function NoteEditorScreen() {
           .order('created_at', { ascending: true });
 
         if (imagesError) {
-          console.error('Error loading images:', imagesError);
+          console.error('[NoteEditor] Error loading images:', imagesError);
         } else if (imagesData && imagesData.length > 0) {
-          console.log(`Loading ${imagesData.length} images for note`);
+          console.log(`[NoteEditor] Loading ${imagesData.length} images for note`);
           
           const loadedImages: ImageData[] = [];
           
@@ -671,12 +676,12 @@ export default function NoteEditorScreen() {
                   uri: dataUrl,
                   contentType: 'image/jpeg',
                 });
-                console.log(`Image ${img.id} loaded successfully`);
+                console.log(`[NoteEditor] Image ${img.id} loaded successfully`);
               } else {
-                console.error(`Failed to load image ${img.id}`);
+                console.error(`[NoteEditor] Failed to load image ${img.id}`);
               }
             } catch (error) {
-              console.error(`Error loading image ${img.id}:`, error);
+              console.error(`[NoteEditor] Error loading image ${img.id}:`, error);
             }
           }
           
@@ -690,10 +695,10 @@ export default function NoteEditorScreen() {
           }
           
           setImages(loadedImages);
-          console.log(`Loaded ${imagesToLoadImmediately.length}/${imagesData.length} images immediately, ${imagesData.length - imagesToLoadImmediately.length} will be lazy loaded`);
+          console.log(`[NoteEditor] Loaded ${imagesToLoadImmediately.length}/${imagesData.length} images immediately, ${imagesData.length - imagesToLoadImmediately.length} will be lazy loaded`);
         }
       } catch (error) {
-        console.error('Error loading note:', error);
+        console.error('[NoteEditor] Error loading note:', error);
         Alert.alert('Error', 'Failed to load note');
         router.back();
       } finally {
@@ -944,9 +949,13 @@ export default function NoteEditorScreen() {
   };
 
   const handlePeopleChange = useCallback((newPeople: Person[]) => {
-    console.log('[NoteEditor] People changed:', newPeople);
+    console.log('[NoteEditor] ===== PEOPLE CHANGED =====');
+    console.log('[NoteEditor] Previous people count:', people.length);
+    console.log('[NoteEditor] New people count:', newPeople.length);
+    console.log('[NoteEditor] New people:', newPeople.map(p => p.person_name).join(', '));
     setPeople(newPeople);
-  }, []);
+    console.log('[NoteEditor] People state updated');
+  }, [people.length]);
 
   const handleSave = async () => {
     if (!canSave) {
@@ -956,6 +965,7 @@ export default function NoteEditorScreen() {
 
     try {
       setSaving(true);
+      console.log('[NoteEditor] ===== STARTING SAVE PROCESS =====');
 
       const noteData = {
         text: text.trim(),
@@ -965,12 +975,14 @@ export default function NoteEditorScreen() {
         location_primary_type: locationPrimaryType || null,
       };
 
-      console.log('[NoteEditor] Saving note with data:', noteData);
+      console.log('[NoteEditor] Note data to save:', noteData);
       console.log('[NoteEditor] Current people state:', people);
+      console.log('[NoteEditor] People count:', people.length);
 
       let recallId: string;
 
       if (isEditing && params.id) {
+        console.log('[NoteEditor] Updating existing recall:', params.id);
         await updateNote(params.id as string, noteData);
         recallId = params.id as string;
 
@@ -988,61 +1000,92 @@ export default function NoteEditorScreen() {
         if (existingImages) {
           for (const img of existingImages) {
             if (!currentImageIds.has(img.id)) {
-              console.log('Deleting removed image:', img.id);
+              console.log('[NoteEditor] Deleting removed image:', img.id);
               await deleteImageRecord(img.id);
             } else {
-              console.log('Keeping existing image:', img.id);
+              console.log('[NoteEditor] Keeping existing image:', img.id);
             }
           }
         }
       } else {
+        console.log('[NoteEditor] Creating new recall');
         recallId = await addNote(noteData);
+        console.log('[NoteEditor] New recall created with ID:', recallId);
       }
 
-      // Save people associations - this is the critical part
+      // Save people associations - CRITICAL SECTION
       if (user) {
         try {
-          console.log(`[NoteEditor] Saving people associations for recall ${recallId}`);
-          console.log(`[NoteEditor] People to save:`, people);
+          console.log('[NoteEditor] ===== SAVING PEOPLE ASSOCIATIONS =====');
+          console.log('[NoteEditor] Recall ID:', recallId);
+          console.log('[NoteEditor] User ID:', user.id);
+          console.log('[NoteEditor] People to save:', people);
+          console.log('[NoteEditor] People count:', people.length);
           
-          // Delete existing associations
-          const { error: deleteError } = await supabase
+          // Step 1: Delete ALL existing associations for this recall
+          console.log('[NoteEditor] Step 1: Deleting existing people associations');
+          const { error: deleteError, count: deleteCount } = await supabase
             .from('recall_people')
             .delete()
             .eq('recall_id', recallId)
             .eq('user_id', user.id);
           
           if (deleteError) {
-            console.error('[NoteEditor] Error deleting existing people associations:', deleteError);
+            console.error('[NoteEditor] ERROR deleting existing people associations:', deleteError);
+            throw deleteError;
           } else {
-            console.log('[NoteEditor] Deleted existing people associations');
+            console.log('[NoteEditor] Successfully deleted existing associations (count:', deleteCount, ')');
           }
           
-          // Insert new associations
+          // Step 2: Insert new associations if there are any people selected
           if (people.length > 0) {
+            console.log('[NoteEditor] Step 2: Inserting new people associations');
             const insertData = people.map(person => ({
               recall_id: recallId,
               person_id: person.id,
               user_id: user.id,
             }));
             
-            console.log('[NoteEditor] Inserting people associations:', insertData);
+            console.log('[NoteEditor] Data to insert:', insertData);
             
-            const { error: peopleError } = await supabase
+            const { data: insertedData, error: peopleError } = await supabase
               .from('recall_people')
-              .insert(insertData);
+              .insert(insertData)
+              .select();
             
             if (peopleError) {
-              console.error('[NoteEditor] Error saving people associations:', peopleError);
+              console.error('[NoteEditor] ERROR inserting people associations:', peopleError);
+              console.error('[NoteEditor] Error details:', JSON.stringify(peopleError, null, 2));
+              throw peopleError;
             } else {
-              console.log(`[NoteEditor] Successfully saved ${people.length} people associations for recall ${recallId}`);
+              console.log('[NoteEditor] ✅ SUCCESS! Inserted', people.length, 'people associations');
+              console.log('[NoteEditor] Inserted data:', insertedData);
             }
           } else {
-            console.log('[NoteEditor] No people to save for this recall');
+            console.log('[NoteEditor] No people to save (empty selection)');
+          }
+          
+          // Step 3: Verify the save by querying back
+          console.log('[NoteEditor] Step 3: Verifying saved people associations');
+          const { data: verifyData, error: verifyError } = await supabase
+            .from('recall_people')
+            .select('person_id, persons(person_name)')
+            .eq('recall_id', recallId);
+          
+          if (verifyError) {
+            console.error('[NoteEditor] ERROR verifying people associations:', verifyError);
+          } else {
+            console.log('[NoteEditor] Verification: Found', verifyData?.length || 0, 'people associations in database');
+            if (verifyData && verifyData.length > 0) {
+              console.log('[NoteEditor] Verified people:', verifyData.map((rp: any) => rp.persons?.person_name).join(', '));
+            }
           }
         } catch (error) {
-          console.error('[NoteEditor] Error managing people associations:', error);
+          console.error('[NoteEditor] CRITICAL ERROR managing people associations:', error);
+          Alert.alert('Warning', 'Note saved but there was an error saving people associations. Please try editing the note again.');
         }
+      } else {
+        console.error('[NoteEditor] ERROR: No user found, cannot save people associations');
       }
 
       let uploadedCount = 0;
@@ -1051,62 +1094,62 @@ export default function NoteEditorScreen() {
 
       for (const image of images) {
         if (image.id) {
-          console.log('Skipping existing image:', image.id);
+          console.log('[NoteEditor] Skipping existing image:', image.id);
           continue;
         }
 
         if (image.localUri || image.uri) {
           const imageUri = image.localUri || image.uri;
-          console.log('Uploading new image to database:', imageUri);
+          console.log('[NoteEditor] Uploading new image to database:', imageUri);
           
           const imageId = await uploadImageToDatabase(imageUri, recallId, image.contentType);
           
           if (imageId) {
             uploadedCount++;
             uploadedImageIds.push(imageId);
-            console.log('Image uploaded successfully to database');
+            console.log('[NoteEditor] Image uploaded successfully to database');
             
-            console.log('Triggering OCR processing for image:', imageId);
+            console.log('[NoteEditor] Triggering OCR processing for image:', imageId);
             triggerOCRProcessing(imageId).then(result => {
               if (result.success) {
-                console.log('OCR processing triggered successfully for image:', imageId);
+                console.log('[NoteEditor] OCR processing triggered successfully for image:', imageId);
               } else {
-                console.error('Failed to trigger OCR processing:', result.error);
+                console.error('[NoteEditor] Failed to trigger OCR processing:', result.error);
               }
             }).catch(error => {
-              console.error('Error triggering OCR processing:', error);
+              console.error('[NoteEditor] Error triggering OCR processing:', error);
             });
           } else {
             failedCount++;
-            console.error('Failed to upload image to database');
+            console.error('[NoteEditor] Failed to upload image to database');
           }
         }
       }
 
-      console.log(`Upload complete: ${uploadedCount} new images uploaded, ${failedCount} failed`);
+      console.log(`[NoteEditor] Upload complete: ${uploadedCount} new images uploaded, ${failedCount} failed`);
 
-      console.log('Processing URLs in note text for recall:', recallId);
+      console.log('[NoteEditor] Processing URLs in note text for recall:', recallId);
       if (user) {
         processRecallUrls(user.id, recallId, noteData.text).then(result => {
           if (result.success) {
-            console.log('URLs processed successfully');
+            console.log('[NoteEditor] URLs processed successfully');
           } else {
-            console.error('Failed to process URLs:', result.error);
+            console.error('[NoteEditor] Failed to process URLs:', result.error);
           }
         }).catch(error => {
-          console.error('Error processing URLs:', error);
+          console.error('[NoteEditor] Error processing URLs:', error);
         });
       }
 
       setTimeout(() => {
         triggerCategoryMatching(recallId).then(result => {
           if (result.success) {
-            console.log('Category matching triggered successfully after note save');
+            console.log('[NoteEditor] Category matching triggered successfully after note save');
           } else {
-            console.error('Failed to trigger category matching:', result.error);
+            console.error('[NoteEditor] Failed to trigger category matching:', result.error);
           }
         }).catch(error => {
-          console.error('Error triggering category matching:', error);
+          console.error('[NoteEditor] Error triggering category matching:', error);
         });
       }, 500);
 
@@ -1118,12 +1161,12 @@ export default function NoteEditorScreen() {
           noteData.location_primary_type || undefined
         ).then(result => {
           if (result.success) {
-            console.log('Embedding generation triggered successfully after note save');
+            console.log('[NoteEditor] Embedding generation triggered successfully after note save');
           } else {
-            console.error('Failed to trigger embedding generation:', result.error);
+            console.error('[NoteEditor] Failed to trigger embedding generation:', result.error);
           }
         }).catch(error => {
-          console.error('Error triggering embedding generation:', error);
+          console.error('[NoteEditor] Error triggering embedding generation:', error);
         });
       }, 500);
 
@@ -1139,6 +1182,7 @@ export default function NoteEditorScreen() {
         );
       }
 
+      console.log('[NoteEditor] ===== SAVE COMPLETE - NAVIGATING BACK =====');
       router.back();
       
       setTimeout(() => {
@@ -1149,7 +1193,7 @@ export default function NoteEditorScreen() {
         }
       }, 300);
     } catch (error) {
-      console.error('Error saving recall:', error);
+      console.error('[NoteEditor] CRITICAL ERROR saving recall:', error);
       Alert.alert('Error', 'Failed to save recall. Check console logs for details.');
     } finally {
       setSaving(false);
@@ -1221,6 +1265,14 @@ export default function NoteEditorScreen() {
 
   // Determine which images to display (lazy loaded or all)
   const displayImages = images.length > 1 ? lazyLoadedImages : images;
+
+  // Log people state changes for debugging
+  useEffect(() => {
+    console.log('[NoteEditor] People state changed. Current count:', people.length);
+    if (people.length > 0) {
+      console.log('[NoteEditor] Current people:', people.map(p => p.person_name).join(', '));
+    }
+  }, [people]);
 
   if (loadingNote) {
     return (

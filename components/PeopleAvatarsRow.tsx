@@ -39,18 +39,31 @@ export function PeopleAvatarsRow({
 
   // Handle selected people coming back from the word cloud screen
   useEffect(() => {
+    console.log('[PeopleAvatarsRow] Params changed:', {
+      hasSelectedPeople: !!params.selectedPeople,
+      hasTimestamp: !!params.peopleUpdatedTimestamp,
+      timestamp: params.peopleUpdatedTimestamp,
+    });
+
     if (params.selectedPeople && params.peopleUpdatedTimestamp) {
       try {
         const selectedPeople = JSON.parse(params.selectedPeople as string);
-        console.log('[PeopleAvatarsRow] Received selected people from word cloud:', selectedPeople);
+        console.log('[PeopleAvatarsRow] ===== RECEIVED PEOPLE FROM WORD CLOUD =====');
+        console.log('[PeopleAvatarsRow] Selected people count:', selectedPeople.length);
+        console.log('[PeopleAvatarsRow] Selected people:', selectedPeople.map((p: Person) => p.person_name).join(', '));
+        console.log('[PeopleAvatarsRow] Full data:', selectedPeople);
         
-        // Always call onPeopleChange to update the parent component's state
+        // Call onPeopleChange to update the parent component's state
         if (onPeopleChange) {
+          console.log('[PeopleAvatarsRow] Calling onPeopleChange with selected people');
           onPeopleChange(selectedPeople);
-          console.log('[PeopleAvatarsRow] Updated parent component with selected people');
+          console.log('[PeopleAvatarsRow] onPeopleChange called successfully');
+        } else {
+          console.warn('[PeopleAvatarsRow] onPeopleChange callback is not defined!');
         }
         
         // Clear the params to prevent re-triggering
+        console.log('[PeopleAvatarsRow] Clearing router params');
         router.setParams({ 
           selectedPeople: undefined,
           peopleUpdatedTimestamp: undefined,
@@ -59,7 +72,7 @@ export function PeopleAvatarsRow({
         console.error('[PeopleAvatarsRow] Error parsing selected people:', error);
       }
     }
-  }, [params.selectedPeople, params.peopleUpdatedTimestamp]);
+  }, [params.selectedPeople, params.peopleUpdatedTimestamp, onPeopleChange, router]);
 
   const loadRecallCounts = async () => {
     if (!user) return;
@@ -74,7 +87,11 @@ export function PeopleAvatarsRow({
   };
 
   const handleAddPeoplePress = () => {
-    console.log('[PeopleAvatarsRow] Add people button clicked - navigating to word cloud');
+    console.log('[PeopleAvatarsRow] ===== ADD PEOPLE BUTTON CLICKED =====');
+    console.log('[PeopleAvatarsRow] Current people count:', people.length);
+    console.log('[PeopleAvatarsRow] Current people:', people.map(p => p.person_name).join(', '));
+    console.log('[PeopleAvatarsRow] Navigating to word cloud with initial selection');
+    
     router.push({
       pathname: '/people-word-cloud',
       params: {
@@ -82,6 +99,8 @@ export function PeopleAvatarsRow({
       },
     });
   };
+
+  console.log('[PeopleAvatarsRow] Rendering with', people.length, 'people');
 
   return (
     <View style={styles.container}>

@@ -119,27 +119,45 @@ export default function PeopleWordCloudScreen() {
     const isSelected = selectedPeople.some(p => p.id === person.id);
     
     if (isSelected) {
-      setSelectedPeople(selectedPeople.filter(p => p.id !== person.id));
+      const newSelection = selectedPeople.filter(p => p.id !== person.id);
+      setSelectedPeople(newSelection);
+      console.log('[PeopleWordCloud] Deselected person:', person.person_name, 'New count:', newSelection.length);
     } else {
-      setSelectedPeople([...selectedPeople, person]);
+      const newSelection = [...selectedPeople, person];
+      setSelectedPeople(newSelection);
+      console.log('[PeopleWordCloud] Selected person:', person.person_name, 'New count:', newSelection.length);
     }
   };
 
   const handleSave = () => {
-    console.log('[PeopleWordCloud] Saving selected people:', selectedPeople);
+    console.log('[PeopleWordCloud] ===== SAVE BUTTON PRESSED =====');
+    console.log('[PeopleWordCloud] Selected people count:', selectedPeople.length);
+    console.log('[PeopleWordCloud] Selected people:', selectedPeople.map(p => p.person_name).join(', '));
     
-    // Pass the selected people back via params
-    router.setParams({
-      selectedPeople: JSON.stringify(selectedPeople),
-      peopleUpdatedTimestamp: Date.now().toString(), // Add timestamp to force update
-    });
+    // Create a clean copy of selected people with only necessary fields
+    const cleanedPeople = selectedPeople.map(p => ({
+      id: p.id,
+      person_name: p.person_name,
+    }));
+    
+    console.log('[PeopleWordCloud] Cleaned people data:', cleanedPeople);
+    
+    // Set params with the selected people
+    const paramsToSet = {
+      selectedPeople: JSON.stringify(cleanedPeople),
+      peopleUpdatedTimestamp: Date.now().toString(),
+    };
+    
+    console.log('[PeopleWordCloud] Setting router params:', paramsToSet);
+    router.setParams(paramsToSet);
     
     // Navigate back
+    console.log('[PeopleWordCloud] Navigating back to note editor');
     router.back();
   };
 
   const handleCancel = () => {
-    console.log('[PeopleWordCloud] Cancelling');
+    console.log('[PeopleWordCloud] Cancelling - navigating back without saving');
     router.back();
   };
 
