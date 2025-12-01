@@ -136,37 +136,42 @@ export default function CategoryViewerScreen() {
       }
 
       // Transform recalls to Note format and add match_score
-      const transformedNotes: Note[] = (recallsData || []).map((recall: any) => ({
-        id: recall.id,
-        text: recall.text || '',
-        created_at: recall.created_at,
-        updated_at: recall.updated_at,
-        location: recall.location,
-        latitude: recall.latitude,
-        longitude: recall.longitude,
-        location_primary_type: recall.location_primary_type,
-        images: recall.recall_images?.map((img: any) => ({
-          id: img.id,
-          cdn_url: img.cdn_url,
-          ocr_text: img.ocr_text,
-          image_explanation: img.image_explanation,
-        })) || [],
-        urls: recall.recall_urls?.map((url: any) => ({
-          id: url.id,
-          url: url.url,
-          url_data: url.url_data,
-        })) || [],
-        people: recall.recall_people?.map((rp: any) => ({
-          id: rp.persons?.id,
-          person_name: rp.persons?.person_name,
-        })) || [],
-        match_score: matchScoreMap.get(recall.id) || 0,
-      }));
+      const transformedNotes: Note[] = (recallsData || []).map((recall: any) => {
+        console.log(`[CategoryViewer] Processing recall ${recall.id}, images:`, recall.recall_images);
+        
+        return {
+          id: recall.id,
+          text: recall.text || '',
+          created_at: recall.created_at,
+          updated_at: recall.updated_at,
+          location: recall.location,
+          latitude: recall.latitude,
+          longitude: recall.longitude,
+          location_primary_type: recall.location_primary_type,
+          // FIX: Extract cdn_url strings directly, not objects
+          images: recall.recall_images?.map((img: any) => img.cdn_url).filter((url: string) => url) || [],
+          imageIds: recall.recall_images?.map((img: any) => img.id) || [],
+          urls: recall.recall_urls?.map((url: any) => ({
+            id: url.id,
+            url: url.url,
+            url_data: url.url_data,
+          })) || [],
+          people: recall.recall_people?.map((rp: any) => ({
+            id: rp.persons?.id,
+            person_name: rp.persons?.person_name,
+          })) || [],
+          match_score: matchScoreMap.get(recall.id) || 0,
+        };
+      });
 
       // Sort by match_score
       transformedNotes.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
 
       console.log(`[CategoryViewer] Loaded ${transformedNotes.length} recalls`);
+      transformedNotes.forEach(note => {
+        console.log(`[CategoryViewer] Note ${note.id}: ${note.images?.length || 0} images`);
+      });
+      
       setNotes(transformedNotes);
     } catch (error) {
       console.error('[CategoryViewer] Error loading data:', error);
@@ -418,7 +423,7 @@ export default function CategoryViewerScreen() {
                   ios_icon_name="chevron.left" 
                   android_material_icon_name="arrow_back" 
                   size={24} 
-                  color={colors.text} 
+                  color={colors.primary} 
                 />
               </Pressable>
             ),
@@ -449,7 +454,7 @@ export default function CategoryViewerScreen() {
                   ios_icon_name="chevron.left" 
                   android_material_icon_name="arrow_back" 
                   size={24} 
-                  color={colors.text} 
+                  color={colors.primary} 
                 />
               </Pressable>
             ),
@@ -483,7 +488,7 @@ export default function CategoryViewerScreen() {
                 ios_icon_name="chevron.left" 
                 android_material_icon_name="arrow_back" 
                 size={24} 
-                color={colors.text} 
+                color={colors.primary} 
               />
             </Pressable>
           ),
@@ -494,7 +499,7 @@ export default function CategoryViewerScreen() {
                   ios_icon_name="pencil" 
                   android_material_icon_name="edit" 
                   size={24} 
-                  color={colors.text} 
+                  color={colors.primary} 
                 />
               </Pressable>
               <Pressable onPress={handleDeletePress} style={styles.headerButton}>
