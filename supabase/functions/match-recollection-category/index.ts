@@ -7,31 +7,23 @@ const corsHeaders = {
 };
 
 /**
- * Match Recollection Category Edge Function (Embedding-Based)
+ * Match Recollection Category Edge Function (Enhanced with OpenAI Analysis)
  * 
- * This function uses vector embeddings for intelligent category matching:
- * - Uses recalls.recall_embedding for text-based recall matching
- * - Uses recall_images.recall_image_embedding for image-based recall matching
- * - Uses ONLY category_search_description for generating category embeddings
- * - Combines embeddings using cosine similarity for accurate matching
+ * This function is triggered when a recall is created or updated.
+ * It uses a two-step matching process similar to new-category-matching:
+ * 1. Embedding-based similarity search (>= 0.20 threshold) to find candidate categories
+ * 2. OpenAI API to identify which candidates are the closest matches
  * 
- * MODE 1: Match a recall against all categories (recallId provided)
- * 1. Receives a recall ID
- * 2. Fetches recall embedding and image embeddings
- * 3. Fetches all categories with their descriptions
- * 4. Generates category embeddings from category_search_description ONLY
- * 5. Calculates cosine similarity between recall/images and categories
- * 6. Updates recollections table with matches (similarity >= 0.20, score >= 20)
- * 
- * MODE 2: Match a category against all recalls (categoryId provided)
- * 1. Receives a category ID
- * 2. Generates category embedding from category_search_description ONLY
- * 3. Fetches all recalls with their embeddings
- * 4. Calculates cosine similarity for each recall
- * 5. Updates recollections table with matches (similarity >= 0.20, score >= 20)
+ * Process:
+ * 1. Receives a recall ID (from database trigger or manual call)
+ * 2. Fetches recall data including text, location, type, images (OCR + explanation), and persons
+ * 3. Generates recall embedding if not exists
+ * 4. Finds all categories with similarity >= 0.20 using embeddings
+ * 5. Uses OpenAI to analyze and rank the candidate categories
+ * 6. Updates recollections table with high-confidence matches (>= 60)
  */
 
-// Helper function to generate embedding using OpenAI
+// Helper function to generate embedding using OpenAI with base64 encoding
 async function generateEmbedding(text: string, openaiApiKey: string): Promise<number[]> {
   if (!text || text.trim().length === 0) {
     throw new Error('Cannot generate embedding for empty text');
@@ -45,7 +37,8 @@ async function generateEmbedding(text: string, openaiApiKey: string): Promise<nu
     },
     body: JSON.stringify({
       model: 'text-embedding-3-small',
-      input: text.trim()
+      input: text.trim(),
+      encoding_format: 'base64'
     })
   });
 
@@ -55,7 +48,20 @@ async function generateEmbedding(text: string, openaiApiKey: string): Promise<nu
   }
 
   const data = await response.json();
-  return data.data[0].embedding;
+  const embeddingBase64 = data.data[0].embedding;
+  
+  // Decode base64 to get the actual embedding array
+  const binaryString = atob(embeddingBase64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  const float32Array = new Float32Array(bytes.buffer);
+  const embedding = Array.from(float32Array);
+  
+  console.log('Decoded embedding array length:', embedding.length);
+  
+  return embedding;
 }
 
 // Helper function to calculate cosine similarity between two vectors
@@ -90,7 +96,46 @@ function cosineSimilarity(vecA: number[], vecB: number[]): number {
   return similarity;
 }
 
-// Helper function to match a recall against all categories using embeddings
+// Helper function to parse stored embeddings (handles both array and string formats)
+function parseStoredEmbedding(storedEmbedding: any): number[] | null {
+  if (!storedEmbedding) return null;
+
+  // If already an array, return it
+  if (Array.isArray(storedEmbedding)) {
+    return storedEmbedding;
+  }
+
+  // If it's a string, try to parse it
+  if (typeof storedEmbedding === 'string') {
+    try {
+      const cleanStr = storedEmbedding.replace(/[\[\]]/g, '');
+      const embeddingArray = cleanStr.split(',').map((s: string) => parseFloat(s.trim()));
+      return embeddingArray;
+    } catch (e) {
+      console.error('Failed to parse embedding string:', e);
+      return null;
+    }
+  }
+
+  return null;
+}
+
+// Helper function to sanitize and truncate text for OpenAI
+function sanitizeText(text: string, maxLength: number = 500): string {
+  if (!text) return '';
+  
+  // Remove excessive whitespace and newlines
+  let sanitized = text.replace(/\s+/g, ' ').trim();
+  
+  // Truncate if too long
+  if (sanitized.length > maxLength) {
+    sanitized = sanitized.substring(0, maxLength) + '...';
+  }
+  
+  return sanitized;
+}
+
+// Helper function to match a recall against all categories using embeddings + OpenAI
 async function matchRecallAgainstCategories(
   recallId: string,
   supabaseUrl: string,
@@ -107,10 +152,10 @@ async function matchRecallAgainstCategories(
   });
 
   // Step 1: Fetch recall data with embedding
-  console.log('Fetching recall data with embedding...');
+  console.log('Step 1: Fetching recall data with embedding...');
   const { data: recallData, error: recallError } = await supabase
     .from('recalls')
-    .select('id, text, recall_embedding, user_id')
+    .select('id, text, recall_embedding, user_id, location, location_primary_type')
     .eq('id', recallId)
     .single();
 
@@ -132,14 +177,16 @@ async function matchRecallAgainstCategories(
     id: recallData.id,
     hasEmbedding: !!recallData.recall_embedding,
     embeddingLength: recallData.recall_embedding?.length,
-    userId: recallData.user_id
+    userId: recallData.user_id,
+    hasLocation: !!recallData.location,
+    locationType: recallData.location_primary_type
   });
 
-  // Step 2: Fetch recall images with embeddings
-  console.log('Fetching recall images with embeddings...');
+  // Step 2: Fetch recall images with embeddings, OCR, and explanations
+  console.log('Step 2: Fetching recall images with embeddings, OCR, and explanations...');
   const { data: imagesData, error: imagesError } = await supabase
     .from('recall_images')
-    .select('id, recall_image_embedding')
+    .select('id, recall_image_embedding, ocr_text, image_explanation')
     .eq('recall_id', recallId);
 
   if (imagesError) {
@@ -147,14 +194,63 @@ async function matchRecallAgainstCategories(
   }
 
   const images = imagesData || [];
-  const imageEmbeddings = images
-    .filter(img => img.recall_image_embedding && Array.isArray(img.recall_image_embedding))
-    .map(img => img.recall_image_embedding);
+  console.log(`Found ${images.length} images`);
+
+  // Step 3: Fetch persons associated with this recall
+  console.log('Step 3: Fetching persons associated with recall...');
+  const { data: recallPeopleData, error: recallPeopleError } = await supabase
+    .from('recall_people')
+    .select('person_id')
+    .eq('recall_id', recallId);
+
+  if (recallPeopleError) {
+    console.error('Error fetching recall people:', recallPeopleError);
+  }
+
+  let personNames: string[] = [];
+  if (recallPeopleData && recallPeopleData.length > 0) {
+    const personIds = recallPeopleData.map(rp => rp.person_id);
+    const { data: personsData, error: personsError } = await supabase
+      .from('persons')
+      .select('person_name')
+      .in('id', personIds);
+
+    if (!personsError && personsData) {
+      personNames = personsData.map(p => p.person_name).filter(name => name);
+      console.log(`Found ${personNames.length} persons:`, personNames);
+    }
+  }
+
+  // Step 4: Generate or fetch recall embedding
+  let recallEmbedding: number[] | null = parseStoredEmbedding(recallData.recall_embedding);
   
-  console.log(`Found ${images.length} images, ${imageEmbeddings.length} with valid embeddings`);
+  if (!recallEmbedding && recallData.text) {
+    console.log('Generating recall embedding from text...');
+    try {
+      recallEmbedding = await generateEmbedding(recallData.text, openaiApiKey);
+      
+      // Update the recall with the new embedding
+      const { error: updateError } = await supabase
+        .from('recalls')
+        .update({ recall_embedding: recallEmbedding })
+        .eq('id', recallId);
+      
+      if (updateError) {
+        console.error('Error updating recall embedding:', updateError);
+      } else {
+        console.log('Recall embedding generated and saved');
+      }
+    } catch (error) {
+      console.error('Error generating recall embedding:', error);
+    }
+  }
 
   // Check if we have any embeddings to work with
-  if (!recallData.recall_embedding && imageEmbeddings.length === 0) {
+  const imageEmbeddings = images
+    .map(img => parseStoredEmbedding(img.recall_image_embedding))
+    .filter(emb => emb !== null);
+
+  if (!recallEmbedding && imageEmbeddings.length === 0) {
     console.log('No embeddings available for recall');
     return new Response(JSON.stringify({
       success: true,
@@ -169,8 +265,8 @@ async function matchRecallAgainstCategories(
     });
   }
 
-  // Step 3: Fetch all categories for this user
-  console.log('Fetching categories for user:', recallData.user_id);
+  // Step 5: Fetch all categories for this user
+  console.log('Step 5: Fetching categories for user:', recallData.user_id);
   const { data: categoriesData, error: categoriesError } = await supabase
     .from('recollection_categories')
     .select('id, category_name, category_search_description')
@@ -208,23 +304,23 @@ async function matchRecallAgainstCategories(
   const categories = categoriesData;
   console.log(`Found ${categories.length} categories to match against`);
 
-  // Step 4: Generate embeddings for each category using ONLY category_search_description
-  console.log('Generating category embeddings from category_search_description ONLY...');
+  // Step 6: Generate embeddings for each category using category_name
+  console.log('Step 6: Generating category embeddings from category_name...');
   const categoryEmbeddings = await Promise.all(
     categories.map(async (category) => {
       try {
-        // Use ONLY category_search_description for embedding generation
-        const categoryText = category.category_search_description || '';
+        const categoryText = category.category_name || '';
         if (!categoryText.trim()) {
-          console.log(`Category ${category.category_name} has empty search description, skipping`);
+          console.log(`Category ${category.id} has empty name, skipping`);
           return null;
         }
-        console.log(`Generating embedding for category: ${category.category_name} using description: "${categoryText}"`);
+        console.log(`Generating embedding for category: ${category.category_name}`);
         const embedding = await generateEmbedding(categoryText, openaiApiKey);
         console.log(`Generated embedding for ${category.category_name}, length: ${embedding.length}`);
         return {
           categoryId: category.id,
           categoryName: category.category_name,
+          categoryDescription: category.category_search_description,
           embedding
         };
       } catch (error) {
@@ -250,18 +346,15 @@ async function matchRecallAgainstCategories(
     });
   }
 
-  // Step 5: Calculate similarity scores
-  console.log('Calculating similarity scores...');
+  // Step 7: Calculate similarity scores
+  console.log('Step 7: Calculating similarity scores...');
   const categoryScores = validCategoryEmbeddings.map((catEmbed) => {
     let maxSimilarity = 0;
     let matchSource = 'none';
 
     // Compare with recall text embedding
-    if (recallData.recall_embedding && Array.isArray(recallData.recall_embedding)) {
-      const textSimilarity = cosineSimilarity(
-        recallData.recall_embedding,
-        catEmbed.embedding
-      );
+    if (recallEmbedding) {
+      const textSimilarity = cosineSimilarity(recallEmbedding, catEmbed.embedding);
       console.log(`Text similarity for ${catEmbed.categoryName}: ${textSimilarity.toFixed(4)}`);
       if (textSimilarity > maxSimilarity) {
         maxSimilarity = textSimilarity;
@@ -272,23 +365,20 @@ async function matchRecallAgainstCategories(
     // Compare with image embeddings
     for (let i = 0; i < imageEmbeddings.length; i++) {
       const imgEmbed = imageEmbeddings[i];
-      const imgSimilarity = cosineSimilarity(imgEmbed, catEmbed.embedding);
-      console.log(`Image ${i} similarity for ${catEmbed.categoryName}: ${imgSimilarity.toFixed(4)}`);
-      if (imgSimilarity > maxSimilarity) {
-        maxSimilarity = imgSimilarity;
-        matchSource = `image_${i}`;
+      if (imgEmbed) {
+        const imgSimilarity = cosineSimilarity(imgEmbed, catEmbed.embedding);
+        console.log(`Image ${i} similarity for ${catEmbed.categoryName}: ${imgSimilarity.toFixed(4)}`);
+        if (imgSimilarity > maxSimilarity) {
+          maxSimilarity = imgSimilarity;
+          matchSource = `image_${i}`;
+        }
       }
     }
-
-    // Convert similarity (0-1) to score (0-100)
-    const score = Math.round(maxSimilarity * 100);
-
-    console.log(`Category ${catEmbed.categoryName}: score=${score}, similarity=${maxSimilarity.toFixed(4)}, source=${matchSource}`);
 
     return {
       categoryId: catEmbed.categoryId,
       categoryName: catEmbed.categoryName,
-      score,
+      categoryDescription: catEmbed.categoryDescription,
       similarity: maxSimilarity,
       matchSource
     };
@@ -296,15 +386,16 @@ async function matchRecallAgainstCategories(
 
   console.log('Category scores:', categoryScores);
 
-  // Step 6: Find matching categories (score >= 20, which is similarity >= 0.20)
-  const matchingCategories = categoryScores.filter((cat) => cat.score >= 20);
-  console.log(`Found ${matchingCategories.length} matching categories (score >= 20):`, 
-    matchingCategories.map((m) => `${m.categoryName} (${m.score})`));
+  // Step 8: Filter categories with similarity >= 0.20
+  const SIMILARITY_THRESHOLD = 0.20;
+  const candidateCategories = categoryScores.filter((cat) => cat.similarity >= SIMILARITY_THRESHOLD);
+  
+  console.log(`Found ${candidateCategories.length} candidate categories with similarity >= ${SIMILARITY_THRESHOLD}`);
 
-  // Step 7: Update recollections table
-  if (matchingCategories.length > 0) {
-    // Delete existing recollections for this recall
-    console.log('Deleting existing recollections for recall:', recallId);
+  if (candidateCategories.length === 0) {
+    console.log('No categories matched with sufficient similarity (>= 0.20)');
+    
+    // Delete any existing recollections for this recall
     const { error: deleteError } = await supabase
       .from('recollections')
       .delete()
@@ -313,58 +404,211 @@ async function matchRecallAgainstCategories(
 
     if (deleteError) {
       console.error('Error deleting existing recollections:', deleteError);
-      return new Response(JSON.stringify({
-        error: 'Failed to delete existing recollections',
-        details: deleteError.message
-      }), {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      });
     }
 
-    // Insert new recollections
-    const recollectionsToInsert = matchingCategories.map((match) => ({
-      recall_id: recallId,
-      user_id: recallData.user_id,
-      category_id: match.categoryId,
-      match_score: match.score
-    }));
+    const processingTime = Date.now() - startTime;
+    return new Response(JSON.stringify({
+      success: true,
+      recallId,
+      matchCount: 0,
+      message: 'No categories matched with sufficient similarity',
+      processingTimeMs: processingTime
+    }), {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
+    });
+  }
 
-    console.log('Inserting new recollections:', recollectionsToInsert.length);
-    const { error: insertError } = await supabase
-      .from('recollections')
-      .insert(recollectionsToInsert);
+  // Sort by similarity (highest first)
+  candidateCategories.sort((a, b) => b.similarity - a.similarity);
 
-    if (insertError) {
-      console.error('Error inserting recollections:', insertError);
-      return new Response(JSON.stringify({
-        error: 'Failed to create recollections',
-        details: insertError.message
-      }), {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      });
+  // Step 9: Use OpenAI to analyze and rank the candidate categories
+  console.log('Step 9: Using OpenAI to analyze and rank candidate categories...');
+
+  // Prepare recall context for OpenAI
+  let recallContext = `Text: ${sanitizeText(recallData.text || 'No text', 300)}`;
+  
+  if (recallData.location) {
+    recallContext += `\nLocation: ${sanitizeText(recallData.location, 100)}`;
+  }
+  
+  if (recallData.location_primary_type) {
+    recallContext += `\nLocation Type: ${recallData.location_primary_type}`;
+  }
+  
+  if (images.length > 0) {
+    const imageInfo = images
+      .map((img: any, idx: number) => {
+        const parts = [];
+        if (img.ocr_text) parts.push(`OCR: ${sanitizeText(img.ocr_text, 150)}`);
+        if (img.image_explanation) parts.push(`Description: ${sanitizeText(img.image_explanation, 150)}`);
+        return parts.length > 0 ? `Image ${idx + 1}: ${parts.join(', ')}` : null;
+      })
+      .filter((info: string | null) => info !== null)
+      .join('\n');
+    
+    if (imageInfo) {
+      recallContext += `\n${imageInfo}`;
     }
+  }
+  
+  if (personNames.length > 0) {
+    recallContext += `\nPeople: ${personNames.join(', ')}`;
+  }
 
-    console.log('Recollections created successfully');
+  // Prepare category context for OpenAI
+  const categoriesContext = candidateCategories.map((cat, idx) => {
+    const categoryId = `CATEGORY_${idx + 1}`;
+    const similarity = Math.round(cat.similarity * 100);
+    
+    let contextText = `${categoryId} (${similarity}% similarity):\nName: ${cat.categoryName}`;
+    
+    if (cat.categoryDescription) {
+      contextText += `\nDescription: ${sanitizeText(cat.categoryDescription, 200)}`;
+    }
+    
+    return {
+      categoryId,
+      actualId: cat.categoryId,
+      similarity: cat.similarity,
+      contextText
+    };
+  });
+
+  const context = categoriesContext.map((c) => c.contextText).join('\n\n');
+
+  const systemPrompt = `You are an expert at matching recalls (notes) to categories. You will be given a recall with its content (text, location, images, people) and a list of candidate categories that have already been filtered by embedding similarity.
+
+Your task is to:
+1. Analyze each category to determine if the recall truly belongs to it
+2. Assign a confidence score (0-100) for each category
+3. Only include categories with confidence >= 60 in your final matches
+
+Be strict in your evaluation. A recall should only match a category if it clearly relates to the category name and description.`;
+
+  const userPrompt = `Recall:
+${recallContext}
+
+Candidate Categories:
+${context}
+
+Analyze each category and provide your response in JSON format:
+{
+  "matches": [
+    {"categoryId": "CATEGORY_1", "confidence": 85, "reason": "brief explanation"},
+    {"categoryId": "CATEGORY_2", "confidence": 70, "reason": "brief explanation"}
+  ]
+}
+
+Only include categories with confidence >= 60. If no categories meet this threshold, return an empty matches array.`;
+
+  const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${openaiApiKey}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 1500,
+      response_format: { type: 'json_object' }
+    })
+  });
+
+  if (!openaiResponse.ok) {
+    const errorText = await openaiResponse.text();
+    console.error('OpenAI API error:', errorText);
+    
+    // Fallback: use all candidates with similarity-based scores
+    console.log('Using fallback matching based on similarity scores');
+    const fallbackMatches = candidateCategories
+      .map((cat) => ({
+        categoryId: cat.categoryId,
+        confidence: Math.round(cat.similarity * 100),
+        similarity: cat.similarity
+      }))
+      .filter((m) => m.confidence >= 60);
+    
+    if (fallbackMatches.length > 0) {
+      await updateRecollections(supabase, recallId, recallData.user_id, fallbackMatches);
+    } else {
+      await deleteRecollections(supabase, recallId, recallData.user_id);
+    }
+    
+    const processingTime = Date.now() - startTime;
+    return new Response(JSON.stringify({
+      success: true,
+      recallId,
+      matchCount: fallbackMatches.length,
+      matches: fallbackMatches,
+      message: 'Used fallback matching due to OpenAI error',
+      processingTimeMs: processingTime
+    }), {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
+    });
+  }
+
+  const openaiData = await openaiResponse.json();
+  const openaiContent = openaiData.choices?.[0]?.message?.content;
+
+  let matches: Array<{ categoryId: string; confidence: number; reason: string }> = [];
+
+  if (openaiContent) {
+    try {
+      const parsed = JSON.parse(openaiContent);
+      matches = parsed.matches || [];
+      console.log(`OpenAI identified ${matches.length} high-confidence matches`);
+    } catch (parseError) {
+      console.error('Failed to parse OpenAI response:', parseError);
+      console.error('OpenAI response content:', openaiContent);
+      
+      // Fallback: use all candidates with similarity-based scores
+      matches = candidateCategories.map((cat, idx) => ({
+        categoryId: `CATEGORY_${idx + 1}`,
+        confidence: Math.round(cat.similarity * 100),
+        reason: 'Fallback: based on embedding similarity'
+      })).filter((m) => m.confidence >= 60);
+      
+      console.log(`Using fallback: ${matches.length} matches based on similarity`);
+    }
+  }
+
+  // Map category IDs back to actual category IDs
+  const finalMatches = matches
+    .map((match) => {
+      const categoryContext = categoriesContext.find((c) => c.categoryId === match.categoryId);
+      if (!categoryContext) return null;
+      
+      return {
+        categoryId: categoryContext.actualId,
+        confidence: match.confidence,
+        similarity: categoryContext.similarity,
+        reason: match.reason
+      };
+    })
+    .filter((m) => m !== null);
+
+  console.log(`Final matches: ${finalMatches.length} categories`);
+
+  // Step 10: Update recollections table
+  if (finalMatches.length > 0) {
+    await updateRecollections(supabase, recallId, recallData.user_id, finalMatches);
+    console.log('Recollections updated successfully');
   } else {
-    console.log('No categories matched with sufficient score (>= 20)');
-    // Delete existing recollections
-    const { error: deleteError } = await supabase
-      .from('recollections')
-      .delete()
-      .eq('recall_id', recallId)
-      .eq('user_id', recallData.user_id);
-
-    if (deleteError) {
-      console.error('Error deleting existing recollections:', deleteError);
-    }
+    console.log('No high-confidence matches found');
+    await deleteRecollections(supabase, recallId, recallData.user_id);
   }
 
   const processingTime = Date.now() - startTime;
@@ -374,14 +618,14 @@ async function matchRecallAgainstCategories(
   return new Response(JSON.stringify({
     success: true,
     recallId,
-    matchCount: matchingCategories.length,
-    matches: matchingCategories.map((m) => ({
-      categoryName: m.categoryName,
-      score: m.score,
-      similarity: m.similarity,
-      matchSource: m.matchSource
+    candidateCount: candidateCategories.length,
+    matchCount: finalMatches.length,
+    matches: finalMatches.map((m) => ({
+      categoryId: m.categoryId,
+      confidence: m.confidence,
+      similarity: Math.round(m.similarity * 100),
+      reason: m.reason
     })),
-    allScores: categoryScores,
     processingTimeMs: processingTime
   }), {
     status: 200,
@@ -392,275 +636,60 @@ async function matchRecallAgainstCategories(
   });
 }
 
-// Helper function to match a category against all recalls using embeddings
-async function matchCategoryAgainstRecalls(
-  categoryId: string,
-  supabaseUrl: string,
-  supabaseServiceKey: string,
-  openaiApiKey: string,
-  corsHeaders: Record<string, string>,
-  startTime: number
-): Promise<Response> {
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  });
+// Helper function to update recollections
+async function updateRecollections(
+  supabase: any,
+  recallId: string,
+  userId: string,
+  matches: Array<{ categoryId: string; confidence: number }>
+): Promise<void> {
+  // Delete existing recollections for this recall
+  console.log('Deleting existing recollections for recall:', recallId);
+  const { error: deleteError } = await supabase
+    .from('recollections')
+    .delete()
+    .eq('recall_id', recallId)
+    .eq('user_id', userId);
 
-  // Step 1: Fetch category data
-  console.log('Fetching category data...');
-  const { data: categoryData, error: categoryError } = await supabase
-    .from('recollection_categories')
-    .select('id, category_name, category_search_description, user_id')
-    .eq('id', categoryId)
-    .single();
-
-  if (categoryError || !categoryData) {
-    console.error('Error fetching category:', categoryError);
-    return new Response(JSON.stringify({
-      error: 'Failed to fetch category data',
-      details: categoryError?.message
-    }), {
-      status: 404,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
-    });
+  if (deleteError) {
+    console.error('Error deleting existing recollections:', deleteError);
+    throw new Error(`Failed to delete existing recollections: ${deleteError.message}`);
   }
 
-  console.log('Category data fetched:', {
-    id: categoryData.id,
-    name: categoryData.category_name,
-    userId: categoryData.user_id
-  });
+  // Insert new recollections
+  const recollectionsToInsert = matches.map((match) => ({
+    recall_id: recallId,
+    user_id: userId,
+    category_id: match.categoryId,
+    match_score: match.confidence
+  }));
 
-  // Step 2: Generate category embedding from category_search_description ONLY
-  console.log('Generating category embedding from category_search_description ONLY...');
-  const categoryText = categoryData.category_search_description || '';
-  
-  if (!categoryText.trim()) {
-    console.error('Category has empty search description');
-    return new Response(JSON.stringify({
-      error: 'Category search description is empty',
-      details: 'Cannot generate embedding for empty category search description'
-    }), {
-      status: 400,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
-    });
+  console.log('Inserting new recollections:', recollectionsToInsert.length);
+  const { error: insertError } = await supabase
+    .from('recollections')
+    .insert(recollectionsToInsert);
+
+  if (insertError) {
+    console.error('Error inserting recollections:', insertError);
+    throw new Error(`Failed to create recollections: ${insertError.message}`);
   }
+}
 
-  let categoryEmbedding: number[];
-  
-  try {
-    console.log(`Generating embedding for category using description: "${categoryText}"`);
-    categoryEmbedding = await generateEmbedding(categoryText, openaiApiKey);
-    console.log(`Generated category embedding, length: ${categoryEmbedding.length}`);
-  } catch (error) {
-    console.error('Error generating category embedding:', error);
-    return new Response(JSON.stringify({
-      error: 'Failed to generate category embedding',
-      details: error.message
-    }), {
-      status: 500,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
-    });
+// Helper function to delete recollections
+async function deleteRecollections(
+  supabase: any,
+  recallId: string,
+  userId: string
+): Promise<void> {
+  const { error: deleteError } = await supabase
+    .from('recollections')
+    .delete()
+    .eq('recall_id', recallId)
+    .eq('user_id', userId);
+
+  if (deleteError) {
+    console.error('Error deleting existing recollections:', deleteError);
   }
-
-  // Step 3: Fetch all recalls for this user with embeddings
-  console.log('Fetching recalls for user:', categoryData.user_id);
-  const { data: recallsData, error: recallsError } = await supabase
-    .from('recalls')
-    .select('id, text, recall_embedding, user_id')
-    .eq('user_id', categoryData.user_id);
-
-  if (recallsError) {
-    console.error('Error fetching recalls:', recallsError);
-    return new Response(JSON.stringify({
-      error: 'Failed to fetch recalls',
-      details: recallsError.message
-    }), {
-      status: 500,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
-    });
-  }
-
-  if (!recallsData || recallsData.length === 0) {
-    console.log('No recalls found for user');
-    return new Response(JSON.stringify({
-      success: true,
-      message: 'No recalls found for user',
-      categoryId
-    }), {
-      status: 200,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
-    });
-  }
-
-  console.log(`Found ${recallsData.length} recalls to match against`);
-
-  // Step 4: For each recall, fetch its images and calculate similarity
-  console.log('Calculating similarity scores for each recall...');
-  const recallScores = await Promise.all(
-    recallsData.map(async (recall) => {
-      let maxSimilarity = 0;
-      let matchSource = 'none';
-
-      // Compare with recall text embedding
-      if (recall.recall_embedding && Array.isArray(recall.recall_embedding)) {
-        const textSimilarity = cosineSimilarity(recall.recall_embedding, categoryEmbedding);
-        console.log(`Recall ${recall.id} text similarity: ${textSimilarity.toFixed(4)}`);
-        if (textSimilarity > maxSimilarity) {
-          maxSimilarity = textSimilarity;
-          matchSource = 'text';
-        }
-      }
-
-      // Fetch and compare with image embeddings
-      const { data: imagesData, error: imagesError } = await supabase
-        .from('recall_images')
-        .select('id, recall_image_embedding')
-        .eq('recall_id', recall.id);
-
-      if (!imagesError && imagesData) {
-        const imageEmbeddings = imagesData
-          .filter(img => img.recall_image_embedding && Array.isArray(img.recall_image_embedding))
-          .map(img => img.recall_image_embedding);
-
-        for (let i = 0; i < imageEmbeddings.length; i++) {
-          const imgEmbed = imageEmbeddings[i];
-          const imgSimilarity = cosineSimilarity(imgEmbed, categoryEmbedding);
-          console.log(`Recall ${recall.id} image ${i} similarity: ${imgSimilarity.toFixed(4)}`);
-          if (imgSimilarity > maxSimilarity) {
-            maxSimilarity = imgSimilarity;
-            matchSource = `image_${i}`;
-          }
-        }
-      }
-
-      // Convert similarity (0-1) to score (0-100)
-      const score = Math.round(maxSimilarity * 100);
-
-      console.log(`Recall ${recall.id}: score=${score}, similarity=${maxSimilarity.toFixed(4)}, source=${matchSource}`);
-
-      return {
-        recallId: recall.id,
-        score,
-        similarity: maxSimilarity,
-        matchSource
-      };
-    })
-  );
-
-  console.log('Recall scores:', recallScores);
-
-  // Step 5: Find matching recalls (score >= 20)
-  const matchingRecalls = recallScores.filter((recall) => recall.score >= 20);
-  console.log(`Found ${matchingRecalls.length} matching recalls (score >= 20):`, 
-    matchingRecalls.map((m) => `${m.recallId} (${m.score})`));
-
-  // Step 6: Update recollections table
-  if (matchingRecalls.length > 0) {
-    // Delete existing recollections for this category
-    console.log('Deleting existing recollections for category:', categoryId);
-    const { error: deleteError } = await supabase
-      .from('recollections')
-      .delete()
-      .eq('category_id', categoryId)
-      .eq('user_id', categoryData.user_id);
-
-    if (deleteError) {
-      console.error('Error deleting existing recollections:', deleteError);
-      return new Response(JSON.stringify({
-        error: 'Failed to delete existing recollections',
-        details: deleteError.message
-      }), {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      });
-    }
-
-    // Insert new recollections
-    const recollectionsToInsert = matchingRecalls.map((match) => ({
-      recall_id: match.recallId,
-      user_id: categoryData.user_id,
-      category_id: categoryId,
-      match_score: match.score
-    }));
-
-    console.log('Inserting new recollections:', recollectionsToInsert.length);
-    const { error: insertError } = await supabase
-      .from('recollections')
-      .insert(recollectionsToInsert);
-
-    if (insertError) {
-      console.error('Error inserting recollections:', insertError);
-      return new Response(JSON.stringify({
-        error: 'Failed to create recollections',
-        details: insertError.message
-      }), {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      });
-    }
-
-    console.log('Recollections created successfully');
-  } else {
-    console.log('No recalls matched with sufficient score (>= 20)');
-    // Delete existing recollections
-    const { error: deleteError } = await supabase
-      .from('recollections')
-      .delete()
-      .eq('category_id', categoryId)
-      .eq('user_id', categoryData.user_id);
-
-    if (deleteError) {
-      console.error('Error deleting existing recollections:', deleteError);
-    }
-  }
-
-  const processingTime = Date.now() - startTime;
-  console.log('=== Category matching completed successfully ===');
-  console.log('Total processing time:', processingTime, 'ms');
-
-  return new Response(JSON.stringify({
-    success: true,
-    categoryId,
-    matchCount: matchingRecalls.length,
-    matches: matchingRecalls.map((m) => ({
-      recallId: m.recallId,
-      score: m.score,
-      similarity: m.similarity,
-      matchSource: m.matchSource
-    })),
-    allScores: recallScores,
-    processingTimeMs: processingTime
-  }), {
-    status: 200,
-    headers: {
-      ...corsHeaders,
-      'Content-Type': 'application/json'
-    }
-  });
 }
 
 Deno.serve(async (req) => {
@@ -674,6 +703,7 @@ Deno.serve(async (req) => {
   try {
     console.log('=== Match Recollection Category Edge Function Started ===');
     console.log('Request method:', req.method);
+    console.log('Timestamp:', new Date().toISOString());
 
     // Get environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -697,13 +727,22 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log('Request body:', body);
 
-    const { recallId, categoryId } = body;
+    const { recallId, type, table, record, old_record } = body;
+
+    // Support both direct recallId and webhook payload formats
+    let actualRecallId = recallId;
+    
+    // Handle webhook payload from database trigger
+    if (!actualRecallId && record?.id) {
+      actualRecallId = record.id;
+      console.log('Extracted recallId from webhook record:', actualRecallId);
+    }
 
     // Validate input
-    if (!recallId && !categoryId) {
-      console.error('Missing required parameter: recallId or categoryId');
+    if (!actualRecallId) {
+      console.error('Missing required parameter: recallId');
       return new Response(JSON.stringify({
-        error: 'Either recallId or categoryId is required'
+        error: 'recallId is required'
       }), {
         status: 400,
         headers: {
@@ -713,46 +752,29 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (recallId && categoryId) {
-      console.error('Both recallId and categoryId provided - only one is allowed');
-      return new Response(JSON.stringify({
-        error: 'Provide either recallId or categoryId, not both'
-      }), {
-        status: 400,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      });
-    }
+    console.log('Processing recall:', actualRecallId);
+    console.log('Trigger type:', type || 'manual');
 
-    // Route to appropriate handler
-    if (recallId) {
-      console.log('Mode: Match recall against categories');
-      return await matchRecallAgainstCategories(
-        recallId,
-        supabaseUrl,
-        supabaseServiceKey,
-        openaiApiKey,
-        corsHeaders,
-        startTime
-      );
-    } else {
-      console.log('Mode: Match category against recalls');
-      return await matchCategoryAgainstRecalls(
-        categoryId,
-        supabaseUrl,
-        supabaseServiceKey,
-        openaiApiKey,
-        corsHeaders,
-        startTime
-      );
-    }
+    return await matchRecallAgainstCategories(
+      actualRecallId,
+      supabaseUrl,
+      supabaseServiceKey,
+      openaiApiKey,
+      corsHeaders,
+      startTime
+    );
   } catch (error) {
-    console.error('Unexpected error:', error);
+    const processingTime = Date.now() - startTime;
+    console.error('=== Error in Match Recollection Category Edge Function ===');
+    console.error('Error type:', error?.constructor?.name);
+    console.error('Error message:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('Processing time before error:', processingTime, 'ms');
+
     return new Response(JSON.stringify({
       error: 'Internal server error',
-      details: error.message
+      details: error instanceof Error ? error.message : 'Unknown error',
+      processingTimeMs: processingTime
     }), {
       status: 500,
       headers: {
