@@ -302,7 +302,13 @@ export default function HomeScreen() {
     }
   }, [selectedCategoryId, refreshNotes]);
 
-  const handleRecallIconPress = async () => {
+  // Use a ref to store the latest handleRefresh to avoid circular dependencies
+  const handleRefreshRef = useRef(handleRefresh);
+  useEffect(() => {
+    handleRefreshRef.current = handleRefresh;
+  }, [handleRefresh]);
+
+  const handleRecallIconPress = useCallback(async () => {
     console.log('[handleRecallIconPress] Recall icon pressed - clearing categories and reloading');
     
     try {
@@ -315,11 +321,12 @@ export default function HomeScreen() {
       }
       
       // Reload landing page data with clearCategory flag set to true
-      await handleRefresh(true);
+      // Use the ref to avoid circular dependency
+      await handleRefreshRef.current(true);
     } catch (error) {
       console.error('Error handling recall icon press:', error);
     }
-  };
+  }, []); // Empty dependency array since we use refs
 
   // Web-specific pull-to-refresh handlers - using refs to prevent infinite re-renders
   const handleTouchStart = useCallback((e: any) => {
@@ -354,12 +361,6 @@ export default function HomeScreen() {
       console.error('Error in handleTouchMove:', error);
     }
   }, []);
-
-  // Store handleRefresh in a ref to avoid dependency issues
-  const handleRefreshRef = useRef(handleRefresh);
-  useEffect(() => {
-    handleRefreshRef.current = handleRefresh;
-  }, [handleRefresh]);
 
   const handleTouchEnd = useCallback(async () => {
     try {
