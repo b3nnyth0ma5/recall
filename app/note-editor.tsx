@@ -943,10 +943,10 @@ export default function NoteEditorScreen() {
     }
   };
 
-  const handlePeopleChange = (newPeople: Person[]) => {
+  const handlePeopleChange = useCallback((newPeople: Person[]) => {
     console.log('[NoteEditor] People changed:', newPeople);
     setPeople(newPeople);
-  };
+  }, []);
 
   const handleSave = async () => {
     if (!canSave) {
@@ -965,7 +965,8 @@ export default function NoteEditorScreen() {
         location_primary_type: locationPrimaryType || null,
       };
 
-      console.log('Saving note with location data:', noteData);
+      console.log('[NoteEditor] Saving note with data:', noteData);
+      console.log('[NoteEditor] Current people state:', people);
 
       let recallId: string;
 
@@ -998,15 +999,24 @@ export default function NoteEditorScreen() {
         recallId = await addNote(noteData);
       }
 
-      // Save people associations
+      // Save people associations - this is the critical part
       if (user) {
         try {
+          console.log(`[NoteEditor] Saving people associations for recall ${recallId}`);
+          console.log(`[NoteEditor] People to save:`, people);
+          
           // Delete existing associations
-          await supabase
+          const { error: deleteError } = await supabase
             .from('recall_people')
             .delete()
             .eq('recall_id', recallId)
             .eq('user_id', user.id);
+          
+          if (deleteError) {
+            console.error('[NoteEditor] Error deleting existing people associations:', deleteError);
+          } else {
+            console.log('[NoteEditor] Deleted existing people associations');
+          }
           
           // Insert new associations
           if (people.length > 0) {
@@ -1016,18 +1026,22 @@ export default function NoteEditorScreen() {
               user_id: user.id,
             }));
             
+            console.log('[NoteEditor] Inserting people associations:', insertData);
+            
             const { error: peopleError } = await supabase
               .from('recall_people')
               .insert(insertData);
             
             if (peopleError) {
-              console.error('Error saving people associations:', peopleError);
+              console.error('[NoteEditor] Error saving people associations:', peopleError);
             } else {
-              console.log(`Saved ${people.length} people associations for recall ${recallId}`);
+              console.log(`[NoteEditor] Successfully saved ${people.length} people associations for recall ${recallId}`);
             }
+          } else {
+            console.log('[NoteEditor] No people to save for this recall');
           }
         } catch (error) {
-          console.error('Error managing people associations:', error);
+          console.error('[NoteEditor] Error managing people associations:', error);
         }
       }
 

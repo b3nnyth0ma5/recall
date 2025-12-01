@@ -128,13 +128,14 @@ export default function PeopleWordCloudScreen() {
   const handleSave = () => {
     console.log('[PeopleWordCloud] Saving selected people:', selectedPeople);
     
-    // Navigate back with the selected people
-    router.back();
-    
-    // Use setParams to pass the data back
+    // Pass the selected people back via params
     router.setParams({
       selectedPeople: JSON.stringify(selectedPeople),
+      peopleUpdatedTimestamp: Date.now().toString(), // Add timestamp to force update
     });
+    
+    // Navigate back
+    router.back();
   };
 
   const handleCancel = () => {

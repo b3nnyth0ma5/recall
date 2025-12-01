@@ -39,69 +39,33 @@ export function PeopleAvatarsRow({
 
   // Handle selected people coming back from the word cloud screen
   useEffect(() => {
-    if (params.selectedPeople) {
+    if (params.selectedPeople && params.peopleUpdatedTimestamp) {
       try {
         const selectedPeople = JSON.parse(params.selectedPeople as string);
         console.log('[PeopleAvatarsRow] Received selected people from word cloud:', selectedPeople);
         
+        // Always call onPeopleChange to update the parent component's state
         if (onPeopleChange) {
           onPeopleChange(selectedPeople);
+          console.log('[PeopleAvatarsRow] Updated parent component with selected people');
         }
         
-        // If we have a recallId, update the recall_people table
-        if (recallId && user) {
-          savePeopleAssociations(selectedPeople);
-        }
-        
-        // Clear the param
-        router.setParams({ selectedPeople: undefined });
+        // Clear the params to prevent re-triggering
+        router.setParams({ 
+          selectedPeople: undefined,
+          peopleUpdatedTimestamp: undefined,
+        });
       } catch (error) {
         console.error('[PeopleAvatarsRow] Error parsing selected people:', error);
       }
     }
-  }, [params.selectedPeople]);
+  }, [params.selectedPeople, params.peopleUpdatedTimestamp]);
 
   const loadRecallCounts = async () => {
     if (!user) return;
 
     const counts = await getMultiplePersonRecallCounts(people, user.id);
     setRecallCounts(counts);
-  };
-
-  const savePeopleAssociations = async (selectedPeople: Person[]) => {
-    if (!recallId || !user) return;
-
-    try {
-      const { supabase } = await import('@/utils/supabase');
-      
-      // Delete existing associations
-      await supabase
-        .from('recall_people')
-        .delete()
-        .eq('recall_id', recallId)
-        .eq('user_id', user.id);
-      
-      // Insert new associations
-      if (selectedPeople.length > 0) {
-        const insertData = selectedPeople.map(person => ({
-          recall_id: recallId,
-          person_id: person.id,
-          user_id: user.id,
-        }));
-        
-        const { error } = await supabase
-          .from('recall_people')
-          .insert(insertData);
-        
-        if (error) {
-          console.error('Error updating recall_people:', error);
-        } else {
-          console.log(`Updated recall_people for recall ${recallId}`);
-        }
-      }
-    } catch (error) {
-      console.error('Error saving people associations:', error);
-    }
   };
 
   const handlePersonPress = (person: Person) => {
