@@ -205,7 +205,7 @@ function RootLayoutNav() {
     const inShareIntentScreen = segments[0] === 'share-intent';
     const inNoteEditor = segments[0] === 'note-editor';
     const inModalScreens = segments[0] === 'modal' || segments[0] === 'formsheet' || segments[0] === 'transparent-modal';
-    const inOtherScreens = segments[0] === 'search' || segments[0] === 'location-search' || segments[0] === 'map-view' || segments[0] === 'shared-recall' || segments[0] === 'person-recalls';
+    const inOtherScreens = segments[0] === 'search' || segments[0] === 'location-search' || segments[0] === 'map-view' || segments[0] === 'shared-recall' || segments[0] === 'person-recalls' || segments[0] === 'people-word-cloud';
 
     console.log('[Routing] Current state:', { 
       user: !!user, 
@@ -299,6 +299,7 @@ function RootLayoutNav() {
         <Stack.Screen name="share-intent" options={{ headerShown: false }} />
         <Stack.Screen name="shared-recall" options={{ headerShown: false }} />
         <Stack.Screen name="person-recalls" options={{ headerShown: false }} />
+        <Stack.Screen name="people-word-cloud" options={{ headerShown: false }} />
         <Stack.Screen
           name="modal"
           options={{

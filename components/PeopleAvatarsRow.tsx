@@ -2,10 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { PersonAvatar } from './PersonAvatar';
-import { PeopleWordCloud } from './PeopleWordCloud';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { getMultiplePersonRecallCounts } from '@/utils/recallCounter';
 import { IconSymbol } from './IconSymbol';
 
@@ -29,14 +28,38 @@ export function PeopleAvatarsRow({
 }: PeopleAvatarsRowProps) {
   const { user } = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [recallCounts, setRecallCounts] = useState<{ [personId: string]: number }>({});
-  const [showWordCloud, setShowWordCloud] = useState(false);
 
   useEffect(() => {
     if (people && people.length > 0 && user) {
       loadRecallCounts();
     }
   }, [people, user]);
+
+  // Handle selected people coming back from the word cloud screen
+  useEffect(() => {
+    if (params.selectedPeople) {
+      try {
+        const selectedPeople = JSON.parse(params.selectedPeople as string);
+        console.log('[PeopleAvatarsRow] Received selected people from word cloud:', selectedPeople);
+        
+        if (onPeopleChange) {
+          onPeopleChange(selectedPeople);
+        }
+        
+        // If we have a recallId, update the recall_people table
+        if (recallId && user) {
+          savePeopleAssociations(selectedPeople);
+        }
+        
+        // Clear the param
+        router.setParams({ selectedPeople: undefined });
+      } catch (error) {
+        console.error('[PeopleAvatarsRow] Error parsing selected people:', error);
+      }
+    }
+  }, [params.selectedPeople]);
 
   const loadRecallCounts = async () => {
     if (!user) return;
@@ -45,57 +68,55 @@ export function PeopleAvatarsRow({
     setRecallCounts(counts);
   };
 
+  const savePeopleAssociations = async (selectedPeople: Person[]) => {
+    if (!recallId || !user) return;
+
+    try {
+      const { supabase } = await import('@/utils/supabase');
+      
+      // Delete existing associations
+      await supabase
+        .from('recall_people')
+        .delete()
+        .eq('recall_id', recallId)
+        .eq('user_id', user.id);
+      
+      // Insert new associations
+      if (selectedPeople.length > 0) {
+        const insertData = selectedPeople.map(person => ({
+          recall_id: recallId,
+          person_id: person.id,
+          user_id: user.id,
+        }));
+        
+        const { error } = await supabase
+          .from('recall_people')
+          .insert(insertData);
+        
+        if (error) {
+          console.error('Error updating recall_people:', error);
+        } else {
+          console.log(`Updated recall_people for recall ${recallId}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error saving people associations:', error);
+    }
+  };
+
   const handlePersonPress = (person: Person) => {
     console.log('[PeopleAvatarsRow] Person avatar clicked:', person.person_name);
     router.push(`/person-recalls?personId=${person.id}`);
   };
 
   const handleAddPeoplePress = () => {
-    console.log('[PeopleAvatarsRow] Add people button clicked');
-    setShowWordCloud(!showWordCloud);
-  };
-
-  const handleSavePeople = async (selectedPeople: Person[]) => {
-    console.log('[PeopleAvatarsRow] Saving selected people:', selectedPeople);
-    
-    if (onPeopleChange) {
-      onPeopleChange(selectedPeople);
-    }
-    
-    // If we have a recallId, update the recall_people table
-    if (recallId && user) {
-      try {
-        const { supabase } = await import('@/utils/supabase');
-        
-        // Delete existing associations
-        await supabase
-          .from('recall_people')
-          .delete()
-          .eq('recall_id', recallId)
-          .eq('user_id', user.id);
-        
-        // Insert new associations
-        if (selectedPeople.length > 0) {
-          const insertData = selectedPeople.map(person => ({
-            recall_id: recallId,
-            person_id: person.id,
-            user_id: user.id,
-          }));
-          
-          const { error } = await supabase
-            .from('recall_people')
-            .insert(insertData);
-          
-          if (error) {
-            console.error('Error updating recall_people:', error);
-          } else {
-            console.log(`Updated recall_people for recall ${recallId}`);
-          }
-        }
-      } catch (error) {
-        console.error('Error saving people associations:', error);
-      }
-    }
+    console.log('[PeopleAvatarsRow] Add people button clicked - navigating to word cloud');
+    router.push({
+      pathname: '/people-word-cloud',
+      params: {
+        initialSelectedPeople: JSON.stringify(people),
+      },
+    });
   };
 
   return (
@@ -114,13 +135,12 @@ export function PeopleAvatarsRow({
         >
           <View style={[
             styles.addPeopleAvatar, 
-            { width: avatarSize, height: avatarSize },
-            showWordCloud && styles.addPeopleAvatarActive
+            { width: avatarSize, height: avatarSize }
           ]}>
             <IconSymbol 
-              name={showWordCloud ? "xmark" : "person.badge.plus"} 
+              name="person.badge.plus" 
               size={avatarSize * 0.5} 
-              color={showWordCloud ? '#FFFFFF' : colors.primary} 
+              color={colors.primary} 
             />
           </View>
         </Pressable>
@@ -147,14 +167,6 @@ export function PeopleAvatarsRow({
           </Pressable>
         ))}
       </ScrollView>
-
-      {/* Inline Word Cloud */}
-      <PeopleWordCloud
-        visible={showWordCloud}
-        onClose={() => setShowWordCloud(false)}
-        onSave={handleSavePeople}
-        initialSelectedPeople={people}
-      />
     </View>
   );
 }
@@ -183,10 +195,6 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  addPeopleAvatarActive: {
-    backgroundColor: colors.primary,
-    borderStyle: 'solid',
   },
   badge: {
     position: 'absolute',
