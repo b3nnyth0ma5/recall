@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { getMultiplePersonRecallCounts } from '@/utils/recallCounter';
 import { IconSymbol } from './IconSymbol';
+import { supabase } from '@/utils/supabase';
 
 interface Person {
   id: string;
@@ -30,6 +31,7 @@ export function PeopleAvatarsRow({
   const router = useRouter();
   const params = useLocalSearchParams();
   const [recallCounts, setRecallCounts] = useState<{ [personId: string]: number }>({});
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     if (people && people.length > 0 && user) {
@@ -43,6 +45,7 @@ export function PeopleAvatarsRow({
       hasSelectedPeople: !!params.selectedPeople,
       hasTimestamp: !!params.peopleUpdatedTimestamp,
       timestamp: params.peopleUpdatedTimestamp,
+      databaseUpdated: params.databaseUpdated,
     });
 
     if (params.selectedPeople && params.peopleUpdatedTimestamp) {
@@ -52,14 +55,21 @@ export function PeopleAvatarsRow({
         console.log('[PeopleAvatarsRow] Selected people count:', selectedPeople.length);
         console.log('[PeopleAvatarsRow] Selected people:', selectedPeople.map((p: Person) => p.person_name).join(', '));
         console.log('[PeopleAvatarsRow] Full data:', selectedPeople);
+        console.log('[PeopleAvatarsRow] Database was updated:', params.databaseUpdated === 'true');
         
-        // Call onPeopleChange to update the parent component's state
-        if (onPeopleChange) {
-          console.log('[PeopleAvatarsRow] Calling onPeopleChange with selected people');
-          onPeopleChange(selectedPeople);
-          console.log('[PeopleAvatarsRow] onPeopleChange called successfully');
+        // If database was updated, fetch fresh data from database
+        if (params.databaseUpdated === 'true' && recallId && user) {
+          console.log('[PeopleAvatarsRow] Fetching fresh data from database for recall:', recallId);
+          refreshPeopleFromDatabase();
         } else {
-          console.warn('[PeopleAvatarsRow] onPeopleChange callback is not defined!');
+          // Otherwise, just update the local state
+          if (onPeopleChange) {
+            console.log('[PeopleAvatarsRow] Calling onPeopleChange with selected people');
+            onPeopleChange(selectedPeople);
+            console.log('[PeopleAvatarsRow] onPeopleChange called successfully');
+          } else {
+            console.warn('[PeopleAvatarsRow] onPeopleChange callback is not defined!');
+          }
         }
         
         // Clear the params to prevent re-triggering
@@ -67,12 +77,67 @@ export function PeopleAvatarsRow({
         router.setParams({ 
           selectedPeople: undefined,
           peopleUpdatedTimestamp: undefined,
+          databaseUpdated: undefined,
         });
       } catch (error) {
         console.error('[PeopleAvatarsRow] Error parsing selected people:', error);
       }
     }
-  }, [params.selectedPeople, params.peopleUpdatedTimestamp, onPeopleChange, router]);
+  }, [params.selectedPeople, params.peopleUpdatedTimestamp, params.databaseUpdated, onPeopleChange, router, recallId, user]);
+
+  const refreshPeopleFromDatabase = async () => {
+    if (!recallId || !user) {
+      console.log('[PeopleAvatarsRow] Cannot refresh - missing recallId or user');
+      return;
+    }
+
+    try {
+      setIsRefreshing(true);
+      console.log('[PeopleAvatarsRow] ===== REFRESHING PEOPLE FROM DATABASE =====');
+      console.log('[PeopleAvatarsRow] Recall ID:', recallId);
+      console.log('[PeopleAvatarsRow] User ID:', user.id);
+
+      const { data: recallPeopleData, error: recallPeopleError } = await supabase
+        .from('recall_people')
+        .select('person_id, persons(id, person_name)')
+        .eq('recall_id', recallId)
+        .eq('user_id', user.id);
+
+      if (recallPeopleError) {
+        console.error('[PeopleAvatarsRow] ❌ ERROR fetching people from database:', recallPeopleError);
+        return;
+      }
+
+      console.log('[PeopleAvatarsRow] Fetched recall_people data:', recallPeopleData);
+
+      if (recallPeopleData && recallPeopleData.length > 0) {
+        const freshPeople: Person[] = recallPeopleData
+          .filter((rp: any) => rp.persons)
+          .map((rp: any) => ({
+            id: rp.persons.id,
+            person_name: rp.persons.person_name,
+          }));
+
+        console.log('[PeopleAvatarsRow] ✅ Fetched', freshPeople.length, 'people from database');
+        console.log('[PeopleAvatarsRow] Fresh people:', freshPeople.map(p => p.person_name).join(', '));
+
+        if (onPeopleChange) {
+          console.log('[PeopleAvatarsRow] Calling onPeopleChange with fresh data');
+          onPeopleChange(freshPeople);
+          console.log('[PeopleAvatarsRow] onPeopleChange called successfully');
+        }
+      } else {
+        console.log('[PeopleAvatarsRow] No people found in database for this recall');
+        if (onPeopleChange) {
+          onPeopleChange([]);
+        }
+      }
+    } catch (error) {
+      console.error('[PeopleAvatarsRow] 🔥 ERROR refreshing people from database:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const loadRecallCounts = async () => {
     if (!user) return;
@@ -90,17 +155,19 @@ export function PeopleAvatarsRow({
     console.log('[PeopleAvatarsRow] ===== ADD PEOPLE BUTTON CLICKED =====');
     console.log('[PeopleAvatarsRow] Current people count:', people.length);
     console.log('[PeopleAvatarsRow] Current people:', people.map(p => p.person_name).join(', '));
+    console.log('[PeopleAvatarsRow] Recall ID:', recallId);
     console.log('[PeopleAvatarsRow] Navigating to word cloud with initial selection');
     
     router.push({
       pathname: '/people-word-cloud',
       params: {
         initialSelectedPeople: JSON.stringify(people),
+        recallId: recallId || undefined,
       },
     });
   };
 
-  console.log('[PeopleAvatarsRow] Rendering with', people.length, 'people');
+  console.log('[PeopleAvatarsRow] Rendering with', people.length, 'people', isRefreshing ? '(refreshing...)' : '');
 
   return (
     <View style={styles.container}>

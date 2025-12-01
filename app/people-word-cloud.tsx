@@ -7,12 +7,15 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import * as Haptics from 'expo-haptics';
+import { Platform } from 'react-native';
 
 interface Person {
   id: string;
@@ -26,7 +29,11 @@ export default function PeopleWordCloudScreen() {
   const { user } = useAuth();
   const [allPeople, setAllPeople] = useState<Person[]>([]);
   const [selectedPeople, setSelectedPeople] = useState<Person[]>([]);
+  const [initialSelectedPeople, setInitialSelectedPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const recallId = params.recallId as string | undefined;
 
   // Parse initial selected people from params
   useEffect(() => {
@@ -34,6 +41,7 @@ export default function PeopleWordCloudScreen() {
       try {
         const parsed = JSON.parse(params.initialSelectedPeople as string);
         setSelectedPeople(parsed);
+        setInitialSelectedPeople(parsed);
         console.log('[PeopleWordCloud] Loaded initial selected people:', parsed);
       } catch (error) {
         console.error('[PeopleWordCloud] Error parsing initial selected people:', error);
@@ -129,31 +137,211 @@ export default function PeopleWordCloudScreen() {
     }
   };
 
-  const handleSave = () => {
+  const hasChanges = () => {
+    if (initialSelectedPeople.length !== selectedPeople.length) {
+      return true;
+    }
+    const initialIds = new Set(initialSelectedPeople.map(p => p.id));
+    const currentIds = new Set(selectedPeople.map(p => p.id));
+    for (const id of currentIds) {
+      if (!initialIds.has(id)) {
+        return true;
+      }
+    }
+    for (const id of initialIds) {
+      if (!currentIds.has(id)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const handleSave = async () => {
     console.log('[PeopleWordCloud] ===== SAVE BUTTON PRESSED =====');
+    console.log('[PeopleWordCloud] Recall ID:', recallId);
     console.log('[PeopleWordCloud] Selected people count:', selectedPeople.length);
     console.log('[PeopleWordCloud] Selected people:', selectedPeople.map(p => p.person_name).join(', '));
     
-    // Create a clean copy of selected people with only necessary fields
-    const cleanedPeople = selectedPeople.map(p => ({
-      id: p.id,
-      person_name: p.person_name,
-    }));
-    
-    console.log('[PeopleWordCloud] Cleaned people data:', cleanedPeople);
-    
-    // Set params with the selected people
-    const paramsToSet = {
-      selectedPeople: JSON.stringify(cleanedPeople),
-      peopleUpdatedTimestamp: Date.now().toString(),
-    };
-    
-    console.log('[PeopleWordCloud] Setting router params:', paramsToSet);
-    router.setParams(paramsToSet);
-    
-    // Navigate back
-    console.log('[PeopleWordCloud] Navigating back to note editor');
-    router.back();
+    // If no recall ID, just pass data back via params (for new notes)
+    if (!recallId) {
+      console.log('[PeopleWordCloud] No recall ID - passing data back via params');
+      const cleanedPeople = selectedPeople.map(p => ({
+        id: p.id,
+        person_name: p.person_name,
+      }));
+      
+      router.setParams({
+        selectedPeople: JSON.stringify(cleanedPeople),
+        peopleUpdatedTimestamp: Date.now().toString(),
+      });
+      
+      router.back();
+      return;
+    }
+
+    // If we have a recall ID, update the database directly
+    if (!user) {
+      console.error('[PeopleWordCloud] ERROR: No user found, cannot save');
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      console.log('[PeopleWordCloud] ===== UPDATING DATABASE DIRECTLY =====');
+      console.log('[PeopleWordCloud] User ID:', user.id);
+      console.log('[PeopleWordCloud] Recall ID:', recallId);
+      
+      // Step 1: Delete ALL existing associations for this recall
+      console.log('[PeopleWordCloud] Step 1: Deleting existing people associations');
+      const { error: deleteError, count: deleteCount } = await supabase
+        .from('recall_people')
+        .delete()
+        .eq('recall_id', recallId)
+        .eq('user_id', user.id);
+      
+      if (deleteError) {
+        console.error('[PeopleWordCloud] ❌ ERROR deleting existing people associations:', deleteError);
+        console.error('[PeopleWordCloud] Delete error code:', deleteError.code);
+        console.error('[PeopleWordCloud] Delete error message:', deleteError.message);
+        console.error('[PeopleWordCloud] Delete error details:', JSON.stringify(deleteError, null, 2));
+        throw new Error(`Failed to delete existing people: ${deleteError.message}`);
+      } else {
+        console.log('[PeopleWordCloud] ✅ Successfully deleted existing associations (count:', deleteCount, ')');
+      }
+      
+      // Step 2: Insert new associations if there are any people selected
+      if (selectedPeople.length > 0) {
+        console.log('[PeopleWordCloud] Step 2: Inserting new people associations');
+        
+        // Validate that all people have valid IDs
+        const invalidPeople = selectedPeople.filter(p => !p.id || typeof p.id !== 'string');
+        if (invalidPeople.length > 0) {
+          console.error('[PeopleWordCloud] ❌ ERROR: Found people with invalid IDs:', invalidPeople);
+          throw new Error('Some people have invalid IDs');
+        }
+        
+        // Prepare insert data
+        const insertData = selectedPeople.map(person => ({
+          recall_id: recallId,
+          person_id: person.id,
+          user_id: user.id,
+        }));
+        
+        console.log('[PeopleWordCloud] Data to insert:', JSON.stringify(insertData, null, 2));
+        
+        // Try inserting all at once first
+        const { data: insertedData, error: peopleError } = await supabase
+          .from('recall_people')
+          .insert(insertData)
+          .select();
+        
+        if (peopleError) {
+          console.error('[PeopleWordCloud] ❌ ERROR inserting people associations (batch):', peopleError);
+          console.error('[PeopleWordCloud] Error code:', peopleError.code);
+          console.error('[PeopleWordCloud] Error message:', peopleError.message);
+          console.error('[PeopleWordCloud] Error hint:', peopleError.hint);
+          console.error('[PeopleWordCloud] Error details:', JSON.stringify(peopleError, null, 2));
+          console.error('[PeopleWordCloud] Failed insert data:', JSON.stringify(insertData, null, 2));
+          
+          // Try inserting one by one to identify which record is failing
+          console.log('[PeopleWordCloud] Attempting individual inserts to identify failing record...');
+          let successCount = 0;
+          let failCount = 0;
+          
+          for (let i = 0; i < insertData.length; i++) {
+            const singleRecord = insertData[i];
+            console.log(`[PeopleWordCloud] Inserting record ${i + 1}/${insertData.length}:`, singleRecord);
+            
+            const { data: singleData, error: singleError } = await supabase
+              .from('recall_people')
+              .insert([singleRecord])
+              .select();
+            
+            if (singleError) {
+              console.error(`[PeopleWordCloud] ❌ Failed to insert record ${i + 1}:`, singleError);
+              console.error(`[PeopleWordCloud] Failed record data:`, singleRecord);
+              failCount++;
+            } else {
+              console.log(`[PeopleWordCloud] ✅ Successfully inserted record ${i + 1}`);
+              successCount++;
+            }
+          }
+          
+          console.log(`[PeopleWordCloud] Individual insert results: ${successCount} succeeded, ${failCount} failed`);
+          
+          if (failCount > 0) {
+            throw new Error(`Failed to insert ${failCount} out of ${selectedPeople.length} people associations`);
+          }
+        } else {
+          console.log('[PeopleWordCloud] ✅ SUCCESS! Inserted', selectedPeople.length, 'people associations (batch)');
+          console.log('[PeopleWordCloud] Inserted data:', JSON.stringify(insertedData, null, 2));
+        }
+      } else {
+        console.log('[PeopleWordCloud] No people to save (empty selection)');
+      }
+      
+      // Step 3: Verify the save by querying back
+      console.log('[PeopleWordCloud] Step 3: Verifying saved people associations');
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('recall_people')
+        .select('id, recall_id, person_id, user_id, persons(id, person_name)')
+        .eq('recall_id', recallId)
+        .eq('user_id', user.id);
+      
+      if (verifyError) {
+        console.error('[PeopleWordCloud] ❌ ERROR verifying people associations:', verifyError);
+      } else {
+        console.log('[PeopleWordCloud] Verification: Found', verifyData?.length || 0, 'people associations in database');
+        if (verifyData && verifyData.length > 0) {
+          console.log('[PeopleWordCloud] Verified people:', verifyData.map((rp: any) => rp.persons?.person_name).join(', '));
+          console.log('[PeopleWordCloud] Full verification data:', JSON.stringify(verifyData, null, 2));
+        }
+        
+        // Check if the count matches
+        if (verifyData && verifyData.length !== selectedPeople.length) {
+          console.error('[PeopleWordCloud] ⚠️ WARNING: Mismatch in people count!');
+          console.error('[PeopleWordCloud] Expected:', selectedPeople.length, 'Got:', verifyData.length);
+          Alert.alert(
+            'Warning',
+            `Expected to save ${selectedPeople.length} people but only ${verifyData.length} were saved.`
+          );
+        } else {
+          console.log('[PeopleWordCloud] ✅ People count matches! Expected and got:', selectedPeople.length);
+        }
+      }
+      
+      // Haptic feedback on success
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      
+      console.log('[PeopleWordCloud] ===== SAVE COMPLETE =====');
+      
+      // Pass updated data back via params to trigger UI refresh
+      const cleanedPeople = selectedPeople.map(p => ({
+        id: p.id,
+        person_name: p.person_name,
+      }));
+      
+      router.setParams({
+        selectedPeople: JSON.stringify(cleanedPeople),
+        peopleUpdatedTimestamp: Date.now().toString(),
+        databaseUpdated: 'true',
+      });
+      
+      // Navigate back
+      router.back();
+    } catch (error: any) {
+      console.error('[PeopleWordCloud] 🔥 CRITICAL ERROR saving people:', error);
+      console.error('[PeopleWordCloud] Error stack:', error.stack);
+      Alert.alert(
+        'Error Saving People',
+        `Failed to save people associations: ${error.message || 'Unknown error'}. Please try again.`
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -186,12 +374,20 @@ export default function PeopleWordCloudScreen() {
           headerRight: () => (
             <Pressable
               onPress={handleSave}
-              style={styles.saveButton}
+              disabled={saving || !hasChanges()}
+              style={[
+                styles.saveButton,
+                (saving || !hasChanges()) && styles.saveButtonDisabled,
+              ]}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <View style={styles.checkmarkContainer}>
-                <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
-              </View>
+              {saving ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <View style={styles.checkmarkContainer}>
+                  <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
+                </View>
+              )}
             </Pressable>
           ),
         }}
@@ -264,6 +460,16 @@ export default function PeopleWordCloudScreen() {
           })}
         </ScrollView>
       )}
+
+      {/* Saving Modal */}
+      {saving && (
+        <View style={styles.savingModalContainer}>
+          <View style={styles.savingModalContent}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.savingModalText}>Saving people...</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -286,6 +492,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
+  },
+  saveButtonDisabled: {
+    opacity: 0.4,
   },
   checkmarkContainer: {
     width: 24,
@@ -387,5 +596,29 @@ const styles = StyleSheet.create({
   },
   mentionCountSelected: {
     color: '#FFFFFF',
+  },
+  savingModalContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2000,
+  },
+  savingModalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    gap: 16,
+    minWidth: 200,
+  },
+  savingModalText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
   },
 });
