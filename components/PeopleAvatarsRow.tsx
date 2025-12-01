@@ -1,8 +1,11 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { PersonAvatarWithTooltip } from './PersonAvatarWithTooltip';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { PersonAvatar } from './PersonAvatar';
 import { colors } from '@/styles/commonStyles';
+import { supabase } from '@/utils/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'expo-router';
 
 interface Person {
   id: string;
@@ -18,6 +21,48 @@ export function PeopleAvatarsRow({
   people, 
   avatarSize = 40,
 }: PeopleAvatarsRowProps) {
+  const { user } = useAuth();
+  const router = useRouter();
+  const [recallCounts, setRecallCounts] = useState<{ [personId: string]: number }>({});
+
+  useEffect(() => {
+    if (people && people.length > 0 && user) {
+      loadRecallCounts();
+    }
+  }, [people, user]);
+
+  const loadRecallCounts = async () => {
+    if (!user) return;
+
+    const counts: { [personId: string]: number } = {};
+
+    for (const person of people) {
+      try {
+        const { data, error } = await supabase
+          .from('recall_people')
+          .select('recall_id', { count: 'exact', head: true })
+          .eq('person_id', person.id)
+          .eq('user_id', user.id);
+
+        if (!error && data !== null) {
+          counts[person.id] = (data as any).count || 0;
+        } else {
+          counts[person.id] = 0;
+        }
+      } catch (error) {
+        console.error(`Error loading recall count for person ${person.id}:`, error);
+        counts[person.id] = 0;
+      }
+    }
+
+    setRecallCounts(counts);
+  };
+
+  const handlePersonPress = (person: Person) => {
+    console.log('[PeopleAvatarsRow] Person avatar clicked:', person.person_name);
+    router.push(`/person-recalls?personId=${person.id}`);
+  };
+
   if (!people || people.length === 0) {
     return null;
   }
@@ -31,15 +76,25 @@ export function PeopleAvatarsRow({
         style={styles.scrollView}
       >
         {people.map((person, index) => (
-          <PersonAvatarWithTooltip
+          <Pressable
             key={person.id}
-            personName={person.person_name}
-            size={avatarSize}
+            onPress={() => handlePersonPress(person)}
             style={[
-              styles.avatar,
+              styles.avatarContainer,
               index > 0 && { marginLeft: 8 }
             ]}
-          />
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <PersonAvatar
+              personName={person.person_name}
+              size={avatarSize}
+            />
+            {recallCounts[person.id] !== undefined && recallCounts[person.id] > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{recallCounts[person.id]}</Text>
+              </View>
+            )}
+          </Pressable>
         ))}
       </ScrollView>
     </View>
@@ -58,7 +113,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  avatar: {
-    // Individual avatar styles handled in PersonAvatar component
+  avatarContainer: {
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    borderWidth: 2,
+    borderColor: colors.background,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

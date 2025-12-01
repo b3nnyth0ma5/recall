@@ -76,7 +76,7 @@ export default function FloatingTabBar({
       edges={['bottom']}
       style={[styles.safeArea, { marginBottom: bottomMargin }]}
     >
-      <BlurView intensity={80} tint="dark" style={[styles.container, { width: containerWidth, borderRadius }]}>
+      <BlurView intensity={80} tint="dark" style={[styles.container, { width: containerWidth, borderRadius, backgroundColor: 'transparent' }]}>
         <Animated.View style={[styles.indicator, indicatorStyle]} />
         {tabs.map((tab, index) => {
           const isActive = pathname.includes(tab.name);
@@ -119,7 +119,6 @@ const styles = StyleSheet.create({
   },
   container: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(42, 42, 42, 0.95)',
     paddingVertical: 12,
     paddingHorizontal: 8,
     boxShadow: '0px 4px 16px rgba(0, 0, 0, 0.5)',

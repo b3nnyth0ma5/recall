@@ -177,13 +177,12 @@ export default function CreateCategoryScreen() {
             fontWeight: 'bold',
           },
           headerLeft: () => (
-            <Pressable onPress={handleBack} style={styles.headerButton}>
-              <IconSymbol 
-                ios_icon_name="chevron.left" 
-                android_material_icon_name="arrow_back" 
-                size={24} 
-                color={colors.text} 
-              />
+            <Pressable 
+              onPress={handleBack} 
+              style={styles.headerButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="chevron.left" size={24} color={colors.text} />
             </Pressable>
           ),
         }}
@@ -292,7 +291,7 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     padding: 8,
-    marginLeft: 8,
+    marginHorizontal: 8,
   },
   imageSection: {
     alignItems: 'center',

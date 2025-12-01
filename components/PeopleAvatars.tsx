@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { PersonAvatar } from './PersonAvatar';
 import { colors } from '@/styles/commonStyles';
 import { usePeopleGraph } from '@/contexts/PeopleGraphContext';
+import { useRouter } from 'expo-router';
 
 interface Person {
   id: string;
@@ -24,6 +25,7 @@ export function PeopleAvatars({
   overlapOffset = 10,
 }: PeopleAvatarsProps) {
   const { openGraph } = usePeopleGraph();
+  const router = useRouter();
   const containerRef = useRef<View>(null);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -36,9 +38,10 @@ export function PeopleAvatars({
   const showRemainingCount = remainingCount > 1;
 
   const handlePress = () => {
-    // Only show graph if there's more than one person
-    if (people.length <= 1) {
-      console.log('Only one person, not showing graph');
+    // If only one person, navigate to person-recalls screen
+    if (people.length === 1) {
+      console.log('[PeopleAvatars] Single person clicked, navigating to person-recalls');
+      router.push(`/person-recalls?personId=${people[0].id}`);
       return;
     }
 

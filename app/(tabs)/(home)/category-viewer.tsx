@@ -447,13 +447,12 @@ export default function CategoryViewerScreen() {
             headerTintColor: colors.text,
             headerTitleAlign: 'center',
             headerLeft: () => (
-              <Pressable onPress={handleBack} style={styles.headerButton}>
-                <IconSymbol 
-                  ios_icon_name="chevron.left" 
-                  android_material_icon_name="arrow_back" 
-                  size={24} 
-                  color={colors.text} 
-                />
+              <Pressable 
+                onPress={handleBack} 
+                style={styles.headerButton}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol name="chevron.left" size={24} color={colors.text} />
               </Pressable>
             ),
           }}
@@ -478,13 +477,12 @@ export default function CategoryViewerScreen() {
             headerTintColor: colors.text,
             headerTitleAlign: 'center',
             headerLeft: () => (
-              <Pressable onPress={handleBack} style={styles.headerButton}>
-                <IconSymbol 
-                  ios_icon_name="chevron.left" 
-                  android_material_icon_name="arrow_back" 
-                  size={24} 
-                  color={colors.text} 
-                />
+              <Pressable 
+                onPress={handleBack} 
+                style={styles.headerButton}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol name="chevron.left" size={24} color={colors.text} />
               </Pressable>
             ),
           }}
@@ -507,6 +505,10 @@ export default function CategoryViewerScreen() {
           },
           headerTintColor: colors.text,
           headerTitleAlign: 'center',
+          headerTitleStyle: {
+            fontSize: 20,
+            fontWeight: 'bold',
+          },
           headerLeft: () => (
             <Pressable 
               onPress={handleBack} 
@@ -543,31 +545,41 @@ export default function CategoryViewerScreen() {
         {/* Category Info - Updated Layout */}
         <View style={styles.categoryInfoContainer}>
           <View style={styles.categoryTopRow}>
-            {/* Category Icon - 20% smaller and on the left */}
-            {category.icon_cdn_url && (
-              <Image
-                source={{ uri: category.icon_cdn_url }}
-                style={styles.categoryIcon}
-                resizeMode="cover"
-              />
-            )}
+            {/* Category Icon - 20% smaller and on the left with edit badge */}
+            <View style={styles.iconContainer}>
+              {category.icon_cdn_url && (
+                <Image
+                  source={{ uri: category.icon_cdn_url }}
+                  style={styles.categoryIcon}
+                  resizeMode="cover"
+                />
+              )}
+              {/* Edit badge on photo */}
+              <Pressable 
+                onPress={handleEditPress} 
+                style={styles.photoEditBadge}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol 
+                  ios_icon_name="pencil.circle.fill" 
+                  android_material_icon_name="edit" 
+                  size={24} 
+                  color={colors.primary} 
+                />
+              </Pressable>
+            </View>
             
             {/* Search Description and Recall Count - Vertically aligned */}
             <View style={styles.categoryTextContainer}>
               <View style={styles.descriptionRow}>
                 <Text style={styles.categoryDescription}>{category.category_search_description}</Text>
-                {/* Small Edit Icon */}
+                {/* Small Edit Text */}
                 <Pressable 
                   onPress={handleEditPress} 
-                  style={styles.editIconButton}
+                  style={styles.editTextButton}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <IconSymbol 
-                    ios_icon_name="pencil.circle.fill" 
-                    android_material_icon_name="edit" 
-                    size={24} 
-                    color={colors.primary} 
-                  />
+                  <Text style={styles.editText}>edit</Text>
                 </Pressable>
               </View>
               <Text style={styles.recallCount}>
@@ -749,10 +761,21 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 16,
   },
+  iconContainer: {
+    position: 'relative',
+  },
   categoryIcon: {
     width: 80,
     height: 80,
     borderRadius: 40,
+  },
+  photoEditBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 2,
   },
   categoryTextContainer: {
     flex: 1,
@@ -771,14 +794,21 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     flex: 1,
   },
-  editIconButton: {
-    padding: 4,
+  editTextButton: {
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  editText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
   },
   recallCount: {
     fontSize: 14,
     color: colors.primary,
     fontWeight: '600',
     alignSelf: 'flex-start',
+    marginTop: 4,
   },
   notesContainer: {
     paddingHorizontal: 16,

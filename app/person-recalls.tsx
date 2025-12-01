@@ -173,21 +173,19 @@ export default function PersonRecallsScreen() {
           headerStyle: {
             backgroundColor: colors.background,
           },
-          headerTintColor: colors.primary,
+          headerTintColor: colors.text,
           headerTitleAlign: 'center',
           headerTitleStyle: {
             fontSize: 20,
             fontWeight: 'bold',
-            color: colors.text,
           },
           headerLeft: () => (
-            <Pressable onPress={handleBack} style={styles.backButton}>
-              <IconSymbol 
-                ios_icon_name="chevron.left" 
-                android_material_icon_name="arrow_back" 
-                size={28} 
-                color={colors.primary} 
-              />
+            <Pressable 
+              onPress={handleBack} 
+              style={styles.headerButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="chevron.left" size={24} color={colors.text} />
             </Pressable>
           ),
         }}
@@ -280,10 +278,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center',
   },
-  backButton: {
+  headerButton: {
     padding: 8,
-    marginLeft: 8,
-    backgroundColor: 'rgba(255, 107, 122, 0.15)',
-    borderRadius: 8,
+    marginHorizontal: 8,
   },
 });
