@@ -108,10 +108,10 @@ export default function HomeScreen() {
 
       try {
         setLoadingFiltered(true);
-        console.log('Filtering notes by category:', selectedCategoryId);
-        console.log('User ID:', user.id);
+        console.log('[filterNotesByCategory] Filtering notes by category:', selectedCategoryId);
+        console.log('[filterNotesByCategory] User ID:', user.id);
 
-        // Fetch recollections using recall_id
+        // Fetch recollections using recall_id and user_id
         const { data: recollections, error: recollectionsError } = await supabase
           .from('recollections')
           .select('recall_id, match_score, category_id')
@@ -120,23 +120,22 @@ export default function HomeScreen() {
           .order('match_score', { ascending: false });
 
         if (recollectionsError) {
-          console.error('Error fetching recollections:', recollectionsError);
+          console.error('[filterNotesByCategory] Error fetching recollections:', recollectionsError);
           setFilteredNotes([]);
           return;
         }
 
         if (!recollections || recollections.length === 0) {
-          console.log('No recollections found for this category');
+          console.log('[filterNotesByCategory] No recollections found for this category');
           setFilteredNotes([]);
           return;
         }
 
-        console.log(`Found ${recollections.length} recollections for category`);
-        console.log('Recollections data:', recollections);
+        console.log(`[filterNotesByCategory] Found ${recollections.length} recollections for category`);
 
         // Extract recall_ids from recollections
         const recallIds = recollections.map(r => r.recall_id);
-        console.log('Recall IDs to fetch:', recallIds);
+        console.log('[filterNotesByCategory] Recall IDs to fetch:', recallIds);
         
         // Fetch the actual recalls using recall_id
         const { data: recalls, error: recallsError } = await supabase
@@ -145,18 +144,18 @@ export default function HomeScreen() {
           .in('id', recallIds);
 
         if (recallsError) {
-          console.error('Error fetching recalls:', recallsError);
+          console.error('[filterNotesByCategory] Error fetching recalls:', recallsError);
           setFilteredNotes([]);
           return;
         }
 
         if (!recalls || recalls.length === 0) {
-          console.log('No recalls found for the recollection recall_ids');
+          console.log('[filterNotesByCategory] No recalls found for the recollection recall_ids');
           setFilteredNotes([]);
           return;
         }
 
-        console.log(`Found ${recalls.length} recalls`);
+        console.log(`[filterNotesByCategory] Found ${recalls.length} recalls`);
 
         // Create a map of recall_id to match_score
         const matchScoreMap = new Map(
@@ -175,7 +174,7 @@ export default function HomeScreen() {
                 .order('created_at', { ascending: true });
 
               if (imagesError) {
-                console.error('Error loading images for recall:', recall.id, imagesError);
+                console.error('[filterNotesByCategory] Error loading images for recall:', recall.id, imagesError);
                 return { 
                   ...recall, 
                   images: [], 
@@ -193,7 +192,7 @@ export default function HomeScreen() {
                     }
                     return { url: dataUrl, id: img.id };
                   } catch (error) {
-                    console.error(`Exception processing image ${img.id}:`, error);
+                    console.error(`[filterNotesByCategory] Exception processing image ${img.id}:`, error);
                     return { url: '', id: img.id };
                   }
                 })
@@ -209,7 +208,7 @@ export default function HomeScreen() {
                 match_score: matchScoreMap.get(recall.id) || 0
               };
             } catch (error) {
-              console.error(`Exception processing recall ${recall.id}:`, error);
+              console.error(`[filterNotesByCategory] Exception processing recall ${recall.id}:`, error);
               return { 
                 ...recall, 
                 images: [], 
@@ -223,10 +222,10 @@ export default function HomeScreen() {
         // Sort by match_score (highest first)
         notesWithImages.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
 
-        console.log(`Filtered ${notesWithImages.length} notes for category (sorted by match_score)`);
+        console.log(`[filterNotesByCategory] Filtered ${notesWithImages.length} notes for category (sorted by match_score)`);
         setFilteredNotes(notesWithImages);
       } catch (error) {
-        console.error('Error filtering notes:', error);
+        console.error('[filterNotesByCategory] Error filtering notes:', error);
         setFilteredNotes([]);
       } finally {
         setLoadingFiltered(false);
@@ -291,6 +290,10 @@ export default function HomeScreen() {
         console.log('[handleRefresh] Refreshing all notes...');
         await refreshNotes();
       }
+      
+      if (clearCategory) {
+        setSelectedCategoryId(null);
+      }
     } catch (error) {
       console.error('[handleRefresh] Error refreshing data:', error);
     } finally {
@@ -329,7 +332,7 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Error in handleTouchStart:', error);
     }
-  }, []); // No dependencies - uses refs only
+  }, []);
 
   const handleTouchMove = useCallback((e: any) => {
     if (!isPullingRef.current) return;
@@ -350,7 +353,7 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Error in handleTouchMove:', error);
     }
-  }, []); // No dependencies - uses refs only
+  }, []);
 
   // Store handleRefresh in a ref to avoid dependency issues
   const handleRefreshRef = useRef(handleRefresh);
@@ -372,7 +375,7 @@ export default function HomeScreen() {
       pullStartYRef.current = 0;
       setPullIndicatorVisible(false);
     }
-  }, []); // No dependencies - uses refs only
+  }, []);
 
   const toggleActionButtons = () => {
     setShowActionButtons(!showActionButtons);
@@ -463,7 +466,7 @@ export default function HomeScreen() {
   };
 
   const handleCategorySelect = (categoryId: string | null) => {
-    console.log('Category selected:', categoryId);
+    console.log('[handleCategorySelect] Category selected:', categoryId);
     setSelectedCategoryId(categoryId);
     // Scroll to top when category changes
     if (scrollViewRef.current) {

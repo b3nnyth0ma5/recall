@@ -27,6 +27,7 @@ export default function HomeScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
+  const [loadingFiltered, setLoadingFiltered] = useState(false);
 
   // Animation values for FAB buttons
   const cameraButtonAnim = useRef(new Animated.Value(0)).current;
@@ -122,23 +123,26 @@ export default function HomeScreen() {
   useEffect(() => {
     const filterNotesByCategory = async () => {
       if (!selectedCategoryId || !user) {
-        setFilteredNotes(notes);
+        setFilteredNotes([]);
         return;
       }
 
       try {
+        setLoadingFiltered(true);
         console.log('[filterNotesByCategory] Filtering notes for category:', selectedCategoryId);
+        console.log('[filterNotesByCategory] User ID:', user.id);
         
-        // Fetch recall IDs that match this category
+        // Fetch recall IDs that match this category from recollections table
         const { data: recollectionsData, error } = await supabase
           .from('recollections')
-          .select('recall_id')
+          .select('recall_id, match_score')
           .eq('category_id', selectedCategoryId)
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+          .order('match_score', { ascending: false });
 
         if (error) {
           console.error('[filterNotesByCategory] Error fetching recollections:', error);
-          setFilteredNotes(notes);
+          setFilteredNotes([]);
           return;
         }
 
@@ -148,14 +152,31 @@ export default function HomeScreen() {
           return;
         }
 
+        console.log(`[filterNotesByCategory] Found ${recollectionsData.length} recollections`);
+
         const recallIds = recollectionsData.map(r => r.recall_id);
-        const filtered = notes.filter(note => recallIds.includes(note.id));
         
-        console.log(`[filterNotesByCategory] Filtered ${filtered.length} notes from ${notes.length} total`);
+        // Create a map of recall_id to match_score for sorting
+        const matchScoreMap = new Map(
+          recollectionsData.map(r => [r.recall_id, r.match_score])
+        );
+
+        // Filter notes that match the recall IDs
+        const filtered = notes
+          .filter(note => recallIds.includes(note.id))
+          .map(note => ({
+            ...note,
+            match_score: matchScoreMap.get(note.id) || 0,
+          }))
+          .sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+        
+        console.log(`[filterNotesByCategory] Filtered ${filtered.length} notes from ${notes.length} total (sorted by match_score)`);
         setFilteredNotes(filtered);
       } catch (error) {
         console.error('[filterNotesByCategory] Error filtering notes:', error);
-        setFilteredNotes(notes);
+        setFilteredNotes([]);
+      } finally {
+        setLoadingFiltered(false);
       }
     };
 
@@ -334,6 +355,11 @@ export default function HomeScreen() {
       // Save scroll position to ref (doesn't trigger re-render)
       scrollPositionRef.current = contentOffset.y;
 
+      // Don't load more when filtering by category
+      if (selectedCategoryId) {
+        return;
+      }
+
       // Load more notes when near bottom
       const paddingToBottom = 20;
       const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
@@ -345,23 +371,26 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Error handling scroll:', error);
     }
-  }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
+  }, [hasMore, isLoadingMore, loading, loadMoreNotes, selectedCategoryId]);
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
       <IconSymbol name="note.text" size={80} color={colors.textTertiary} />
       <Text style={styles.emptyTitle}>
-        No Recalls Yet
+        {selectedCategoryId ? 'No Recalls in This Category' : 'No Recalls Yet'}
       </Text>
       <Text style={styles.emptyText}>
-        Tap the + button to create your first recall
+        {selectedCategoryId 
+          ? 'Create recalls that match this category or select a different category'
+          : 'Tap the + button to create your first recall'
+        }
       </Text>
     </View>
   );
 
   // Determine which notes to display
-  const displayNotes = filteredNotes;
-  const isLoading = loading;
+  const displayNotes = selectedCategoryId ? filteredNotes : notes;
+  const isLoading = selectedCategoryId ? loadingFiltered : loading;
 
   // Calculate button positions with new orientation
   // 10% smaller FABs: 52 * 0.9 = 46.8
@@ -464,19 +493,7 @@ export default function HomeScreen() {
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : displayNotes.length === 0 ? (
-          selectedCategoryId ? (
-            <View style={styles.emptyContainer}>
-              <IconSymbol name="folder" size={80} color={colors.textTertiary} />
-              <Text style={styles.emptyTitle}>
-                No Recalls in This Category
-              </Text>
-              <Text style={styles.emptyText}>
-                Create recalls that match this category or select a different category
-              </Text>
-            </View>
-          ) : (
-            renderEmptyState()
-          )
+          renderEmptyState()
         ) : (
           <View style={styles.notesContainer}>
             {/* Notes section */}

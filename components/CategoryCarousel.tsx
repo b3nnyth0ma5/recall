@@ -65,6 +65,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
     }
   }, [userId]);
 
+  // Load categories on mount and when refreshTrigger changes
   useEffect(() => {
     if (userId) {
       loadAllUserCategories();
@@ -73,6 +74,39 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       setLoading(false);
     }
   }, [userId, refreshTrigger, loadAllUserCategories]);
+
+  // Set up real-time subscription for category changes
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    console.log('[CategoryCarousel] Setting up real-time subscription for categories');
+
+    // Subscribe to changes in recollection_categories table
+    const channel = supabase
+      .channel('category-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'recollection_categories',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          console.log('[CategoryCarousel] Real-time category change detected:', payload);
+          // Reload categories when any change is detected
+          loadAllUserCategories();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('[CategoryCarousel] Cleaning up real-time subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [userId, loadAllUserCategories]);
 
   const handleCategoryPress = (category: Category) => {
     if (!onCategorySelect) {
@@ -150,14 +184,9 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
                 color="#FFFFFF" 
               />
             </View>
-            {/* Plus badge on bottom right */}
+            {/* Plus badge on bottom right - Updated with text "+" */}
             <View style={styles.plusBadge}>
-              <IconSymbol 
-                ios_icon_name="plus" 
-                android_material_icon_name="add" 
-                size={14} 
-                color="#FFFFFF" 
-              />
+              <Text style={styles.plusBadgeText}>+</Text>
             </View>
           </View>
           <Text style={styles.categoryName} numberOfLines={1}>
@@ -283,15 +312,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: -4,
     right: -4,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: colors.background,
     zIndex: 3,
+  },
+  plusBadgeText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    lineHeight: 20,
   },
   categoryImageContainerSelected: {
     borderColor: colors.primary,
