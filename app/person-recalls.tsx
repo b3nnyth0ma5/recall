@@ -178,6 +178,7 @@ export default function PersonRecallsScreen() {
           headerTitleStyle: {
             fontSize: 20,
             fontWeight: 'bold',
+            color: colors.primary,
           },
           headerLeft: () => (
             <Pressable 

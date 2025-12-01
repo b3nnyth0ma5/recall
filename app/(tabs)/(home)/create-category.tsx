@@ -175,6 +175,7 @@ export default function CreateCategoryScreen() {
           headerTitleStyle: {
             fontSize: 20,
             fontWeight: 'bold',
+            color: colors.primary,
           },
           headerLeft: () => (
             <Pressable 

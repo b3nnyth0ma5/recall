@@ -446,6 +446,9 @@ export default function CategoryViewerScreen() {
             },
             headerTintColor: colors.text,
             headerTitleAlign: 'center',
+            headerTitleStyle: {
+              color: colors.primary,
+            },
             headerLeft: () => (
               <Pressable 
                 onPress={handleBack} 
@@ -476,6 +479,9 @@ export default function CategoryViewerScreen() {
             },
             headerTintColor: colors.text,
             headerTitleAlign: 'center',
+            headerTitleStyle: {
+              color: colors.primary,
+            },
             headerLeft: () => (
               <Pressable 
                 onPress={handleBack} 
@@ -508,6 +514,7 @@ export default function CategoryViewerScreen() {
           headerTitleStyle: {
             fontSize: 20,
             fontWeight: 'bold',
+            color: colors.primary,
           },
           headerLeft: () => (
             <Pressable 

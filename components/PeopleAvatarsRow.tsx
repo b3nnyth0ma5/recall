@@ -84,7 +84,8 @@ export function PeopleAvatarsRow({
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 20,
-    paddingVertical: 0,
+    paddingVertical: 8,
+    minHeight: 64,
   },
   scrollView: {
     flexGrow: 0,

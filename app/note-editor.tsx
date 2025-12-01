@@ -1181,6 +1181,9 @@ export default function NoteEditorScreen() {
               backgroundColor: colors.background,
             },
             headerTintColor: colors.text,
+            headerTitleStyle: {
+              color: colors.primary,
+            },
           }}
         />
         <View style={styles.loadingContainer}>
@@ -1201,6 +1204,9 @@ export default function NoteEditorScreen() {
             backgroundColor: colors.background,
           },
           headerTintColor: colors.text,
+          headerTitleStyle: {
+            color: colors.primary,
+          },
           headerLeft: () => (
             <Pressable 
               onPress={() => router.back()} 

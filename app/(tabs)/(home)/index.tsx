@@ -435,7 +435,7 @@ export default function HomeScreen() {
           <IconSymbol 
             name="magnifyingglass" 
             size={24} 
-            color={colors.primary} 
+            color={colors.text}
           />
         </Pressable>
 
@@ -462,12 +462,12 @@ export default function HomeScreen() {
                 disabled={isNavigating !== null}
               >
                 {isNavigating === 'camera' ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
+                  <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <IconSymbol 
                     name="camera.fill" 
                     size={20} 
-                    color={colors.primary} 
+                    color="#FFFFFF" 
                   />
                 )}
               </Pressable>
@@ -495,12 +495,12 @@ export default function HomeScreen() {
                 disabled={isNavigating !== null}
               >
                 {isNavigating === 'text' ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
+                  <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <IconSymbol 
                     name="doc.text" 
                     size={20} 
-                    color={colors.primary} 
+                    color="#FFFFFF" 
                   />
                 )}
               </Pressable>
@@ -528,12 +528,12 @@ export default function HomeScreen() {
                 disabled={isNavigating !== null}
               >
                 {isNavigating === 'location' ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
+                  <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <IconSymbol 
                     name="location.fill" 
                     size={20} 
-                    color={colors.primary} 
+                    color="#FFFFFF" 
                   />
                 )}
               </Pressable>
@@ -548,7 +548,7 @@ export default function HomeScreen() {
             <IconSymbol 
               name={showActionButtons ? "xmark" : "plus"} 
               size={24} 
-              color={colors.primary} 
+              color="#FFFFFF" 
             />
           </Pressable>
         </View>
@@ -677,11 +677,9 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: 'transparent',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: colors.primary,
   },
   actionButtonsContainer: {
     position: 'relative',
@@ -695,41 +693,33 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'transparent',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: colors.primary,
   },
   textButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'transparent',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: colors.primary,
   },
   locationButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'transparent',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: colors.primary,
   },
   fab: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: 'transparent',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: colors.primary,
   },
   deletionModalContainer: {
     flex: 1,
