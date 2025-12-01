@@ -4,11 +4,9 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   Pressable,
   ScrollView,
   ActivityIndicator,
-  Dimensions,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
@@ -27,8 +25,6 @@ interface PeopleWordCloudProps {
   onSave: (selectedPeople: Person[]) => void;
   initialSelectedPeople?: Person[];
 }
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export function PeopleWordCloud({
   visible,
@@ -56,6 +52,8 @@ export function PeopleWordCloud({
 
     setLoading(true);
     try {
+      console.log('[PeopleWordCloud] Loading people for user:', user.id);
+      
       // Fetch all people for this user
       const { data: personsData, error: personsError } = await supabase
         .from('persons')
@@ -64,12 +62,15 @@ export function PeopleWordCloud({
         .order('person_name', { ascending: true });
 
       if (personsError) {
-        console.error('Error loading people:', personsError);
+        console.error('[PeopleWordCloud] Error loading people:', personsError);
         setLoading(false);
         return;
       }
 
+      console.log('[PeopleWordCloud] Fetched persons data:', personsData);
+
       if (!personsData || personsData.length === 0) {
+        console.log('[PeopleWordCloud] No people found');
         setAllPeople([]);
         setLoading(false);
         return;
@@ -82,12 +83,14 @@ export function PeopleWordCloud({
         .eq('user_id', user.id);
 
       if (recallPeopleError) {
-        console.error('Error loading recall_people:', recallPeopleError);
+        console.error('[PeopleWordCloud] Error loading recall_people:', recallPeopleError);
         // Continue without mention counts
         setAllPeople(personsData.map(p => ({ ...p, mention_count: 0 })));
         setLoading(false);
         return;
       }
+
+      console.log('[PeopleWordCloud] Fetched recall_people data:', recallPeopleData);
 
       // Count mentions per person
       const mentionCounts: { [personId: string]: number } = {};
@@ -103,10 +106,10 @@ export function PeopleWordCloud({
 
       peopleWithCounts.sort((a, b) => b.mention_count - a.mention_count);
 
+      console.log(`[PeopleWordCloud] Loaded ${peopleWithCounts.length} people with mention counts`);
       setAllPeople(peopleWithCounts);
-      console.log(`Loaded ${peopleWithCounts.length} people`);
     } catch (error) {
-      console.error('Error loading people:', error);
+      console.error('[PeopleWordCloud] Error loading people:', error);
     } finally {
       setLoading(false);
     }
@@ -123,150 +126,136 @@ export function PeopleWordCloud({
   };
 
   const handleSave = () => {
+    console.log('[PeopleWordCloud] Saving selected people:', selectedPeople);
     onSave(selectedPeople);
     onClose();
   };
 
   const handleCancel = () => {
+    console.log('[PeopleWordCloud] Cancelling, resetting to initial selection');
     setSelectedPeople(initialSelectedPeople);
     onClose();
   };
 
+  if (!visible) {
+    return null;
+  }
+
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={handleCancel}
-    >
-      <View style={styles.modalOverlay}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={handleCancel} />
-        
-        <View style={styles.modalContent}>
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <IconSymbol name="person.2.fill" size={24} color={colors.primary} />
-              <Text style={styles.title}>Select People</Text>
-            </View>
-            <Pressable onPress={handleCancel} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <IconSymbol name="xmark" size={24} color={colors.textSecondary} />
-            </Pressable>
-          </View>
-
-          {selectedPeople.length > 0 && (
-            <View style={styles.selectedCountContainer}>
-              <Text style={styles.selectedCountText}>
-                {selectedPeople.length} {selectedPeople.length === 1 ? 'person' : 'people'} selected
-              </Text>
-            </View>
-          )}
-
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>Loading people...</Text>
-            </View>
-          ) : allPeople.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <IconSymbol name="person.2" size={48} color={colors.textTertiary} />
-              <Text style={styles.emptyText}>No people found</Text>
-              <Text style={styles.emptySubtext}>
-                People will appear here once they&apos;re mentioned in your recalls
-              </Text>
-            </View>
-          ) : (
-            <ScrollView 
-              style={styles.scrollView}
-              contentContainerStyle={styles.wordCloudContainer}
-              showsVerticalScrollIndicator={true}
-            >
-              {allPeople.map((person) => {
-                const isSelected = selectedPeople.some(p => p.id === person.id);
-                
-                return (
-                  <Pressable
-                    key={person.id}
-                    onPress={() => togglePerson(person)}
-                    style={[
-                      styles.personChip,
-                      isSelected && styles.personChipSelected,
-                    ]}
-                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                  >
-                    <Text
-                      style={[
-                        styles.personName,
-                        isSelected && styles.personNameSelected,
-                      ]}
-                    >
-                      {person.person_name}
-                    </Text>
-                    {person.mention_count !== undefined && person.mention_count > 0 && (
-                      <View style={[
-                        styles.mentionBadge,
-                        isSelected && styles.mentionBadgeSelected,
-                      ]}>
-                        <Text style={[
-                          styles.mentionCount,
-                          isSelected && styles.mentionCountSelected,
-                        ]}>
-                          {person.mention_count}
-                        </Text>
-                      </View>
-                    )}
-                    {isSelected && (
-                      <View style={styles.checkmark}>
-                        <IconSymbol name="checkmark" size={14} color="#FFFFFF" />
-                      </View>
-                    )}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          )}
-
-          <View style={styles.footer}>
-            <Pressable
-              onPress={handleCancel}
-              style={styles.cancelButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={handleSave}
-              style={styles.saveButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.saveButtonText}>Save</Text>
-            </Pressable>
-          </View>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <IconSymbol name="person.2.fill" size={24} color={colors.primary} />
+          <Text style={styles.title}>Select People</Text>
         </View>
+        <Pressable onPress={handleCancel} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <IconSymbol name="xmark" size={24} color={colors.textSecondary} />
+        </Pressable>
       </View>
-    </Modal>
+
+      {selectedPeople.length > 0 && (
+        <View style={styles.selectedCountContainer}>
+          <Text style={styles.selectedCountText}>
+            {selectedPeople.length} {selectedPeople.length === 1 ? 'person' : 'people'} selected
+          </Text>
+        </View>
+      )}
+
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading people...</Text>
+        </View>
+      ) : allPeople.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <IconSymbol name="person.2" size={48} color={colors.textTertiary} />
+          <Text style={styles.emptyText}>No people found</Text>
+          <Text style={styles.emptySubtext}>
+            People will appear here once they&apos;re mentioned in your recalls
+          </Text>
+        </View>
+      ) : (
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.wordCloudContainer}
+          showsVerticalScrollIndicator={true}
+        >
+          {allPeople.map((person) => {
+            const isSelected = selectedPeople.some(p => p.id === person.id);
+            
+            return (
+              <Pressable
+                key={person.id}
+                onPress={() => togglePerson(person)}
+                style={[
+                  styles.personChip,
+                  isSelected && styles.personChipSelected,
+                ]}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+              >
+                <Text
+                  style={[
+                    styles.personName,
+                    isSelected && styles.personNameSelected,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {person.person_name}
+                </Text>
+                {person.mention_count !== undefined && person.mention_count > 0 && (
+                  <View style={[
+                    styles.mentionBadge,
+                    isSelected && styles.mentionBadgeSelected,
+                  ]}>
+                    <Text style={[
+                      styles.mentionCount,
+                      isSelected && styles.mentionCountSelected,
+                    ]}>
+                      {person.mention_count}
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      <View style={styles.footer}>
+        <Pressable
+          onPress={handleCancel}
+          style={styles.cancelButton}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.cancelButtonText}>Cancel</Text>
+        </Pressable>
+        <Pressable
+          onPress={handleSave}
+          style={styles.saveButton}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.saveButtonText}>Save</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
+  container: {
     backgroundColor: colors.card,
-    borderRadius: 20,
-    width: Math.min(SCREEN_WIDTH - 40, 500),
-    maxHeight: SCREEN_HEIGHT * 0.8,
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginVertical: 12,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 20,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -276,74 +265,74 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
     color: colors.text,
   },
   selectedCountContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     backgroundColor: colors.background,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   selectedCountText: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.primary,
     fontWeight: '600',
   },
   loadingContainer: {
-    padding: 40,
-    alignItems: 'center',
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-  emptyContainer: {
-    padding: 40,
+    padding: 32,
     alignItems: 'center',
     gap: 12,
   },
+  loadingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  emptyContainer: {
+    padding: 32,
+    alignItems: 'center',
+    gap: 10,
+  },
   emptyText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: colors.text,
     marginTop: 8,
   },
   emptySubtext: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.textSecondary,
     textAlign: 'center',
-    maxWidth: 280,
+    maxWidth: 260,
   },
   scrollView: {
-    flex: 1,
+    maxHeight: 300,
   },
   wordCloudContainer: {
-    padding: 20,
+    padding: 16,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
   },
   personChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
     backgroundColor: colors.background,
     borderWidth: 1.5,
     borderColor: colors.border,
-    gap: 8,
+    gap: 6,
   },
   personChipSelected: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
   personName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '500',
     color: colors.text,
   },
@@ -352,10 +341,10 @@ const styles = StyleSheet.create({
   },
   mentionBadge: {
     backgroundColor: colors.primary,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    paddingHorizontal: 6,
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 5,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -363,49 +352,41 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
   },
   mentionCount: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: '#FFFFFF',
   },
   mentionCountSelected: {
     color: '#FFFFFF',
   },
-  checkmark: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   footer: {
     flexDirection: 'row',
-    padding: 20,
-    gap: 12,
+    padding: 16,
+    gap: 10,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
   cancelButton: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
     backgroundColor: colors.background,
     alignItems: 'center',
   },
   cancelButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: colors.textSecondary,
   },
   saveButton: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
     backgroundColor: colors.primary,
     alignItems: 'center',
   },
   saveButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
   },

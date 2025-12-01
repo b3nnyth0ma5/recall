@@ -52,7 +52,7 @@ export function PeopleAvatarsRow({
 
   const handleAddPeoplePress = () => {
     console.log('[PeopleAvatarsRow] Add people button clicked');
-    setShowWordCloud(true);
+    setShowWordCloud(!showWordCloud);
   };
 
   const handleSavePeople = async (selectedPeople: Person[]) => {
@@ -112,8 +112,16 @@ export function PeopleAvatarsRow({
           style={styles.avatarContainer}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <View style={[styles.addPeopleAvatar, { width: avatarSize, height: avatarSize }]}>
-            <IconSymbol name="person.badge.plus" size={avatarSize * 0.5} color={colors.primary} />
+          <View style={[
+            styles.addPeopleAvatar, 
+            { width: avatarSize, height: avatarSize },
+            showWordCloud && styles.addPeopleAvatarActive
+          ]}>
+            <IconSymbol 
+              name={showWordCloud ? "xmark" : "person.badge.plus"} 
+              size={avatarSize * 0.5} 
+              color={showWordCloud ? '#FFFFFF' : colors.primary} 
+            />
           </View>
         </Pressable>
 
@@ -140,6 +148,7 @@ export function PeopleAvatarsRow({
         ))}
       </ScrollView>
 
+      {/* Inline Word Cloud */}
       <PeopleWordCloud
         visible={showWordCloud}
         onClose={() => setShowWordCloud(false)}
@@ -174,6 +183,10 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  addPeopleAvatarActive: {
+    backgroundColor: colors.primary,
+    borderStyle: 'solid',
   },
   badge: {
     position: 'absolute',
