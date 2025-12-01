@@ -16,7 +16,7 @@ const corsHeaders = {
  * 
  * Process:
  * 1. Receives a category ID
- * 2. Generates category embedding from category_name using base64 encoding
+ * 2. Generates category embedding from category_name + category_search_description using base64 encoding
  * 3. Finds all recalls with similarity >= 0.20 using embeddings
  * 4. Uses OpenAI to analyze and rank the candidate recalls
  * 5. Updates recollections table with high-confidence matches
@@ -217,18 +217,23 @@ Deno.serve(async (req) => {
     console.log('Category data fetched:', {
       id: categoryData.id,
       name: categoryData.category_name,
+      description: categoryData.category_search_description,
       userId: categoryData.user_id
     });
 
-    // Step 2: Generate category embedding from category_search_description using base64
-    console.log('Step 2: Generating category embedding from category_search_description with base64 encoding...');
-    const categoryText = categoryData.category_name || '';
+    // Step 2: Generate category embedding from category_name + category_search_description using base64
+    console.log('Step 2: Generating category embedding from category_name + category_search_description with base64 encoding...');
+    
+    // Combine category_name and category_search_description for embedding
+    const categoryName = categoryData.category_name || '';
+    const categoryDescription = categoryData.category_search_description || '';
+    const categoryText = `${categoryName}. ${categoryDescription}`.trim();
     
     if (!categoryText.trim()) {
-      console.error('Category has empty search description');
+      console.error('Category has empty name and description');
       return new Response(JSON.stringify({
-        error: 'Category search description is empty',
-        details: 'Cannot generate embedding for empty category search description'
+        error: 'Category name and description are empty',
+        details: 'Cannot generate embedding for empty category'
       }), {
         status: 400,
         headers: {
@@ -241,7 +246,7 @@ Deno.serve(async (req) => {
     let categoryEmbedding: number[];
     
     try {
-      console.log(`Generating embedding for category using name: "${categoryText}"`);
+      console.log(`Generating embedding for category using combined text: "${categoryText}"`);
       categoryEmbedding = await generateEmbedding(categoryText, openaiApiKey);
       console.log(`Generated category embedding, length: ${categoryEmbedding.length}`);
     } catch (error) {

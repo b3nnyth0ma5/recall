@@ -157,11 +157,10 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
           style={[styles.categoryItem, styles.categoryItemFirst]}
         >
           <View style={[styles.categoryImageContainer, styles.createCategoryContainer]}>
-            {/* Neutral background with plus icon */}
+            {/* Transparent background with plus icon in primary color */}
             <View style={styles.createCategoryBackground}>
               <IconSymbol 
-                ios_icon_name="plus" 
-                android_material_icon_name="add" 
+                name="plus" 
                 size={48} 
                 color={colors.primary} 
               />
@@ -257,14 +256,14 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     borderWidth: 3,
     borderStyle: 'solid',
-    backgroundColor: colors.cardBackground,
+    backgroundColor: 'transparent',
   },
   createCategoryBackground: {
     width: '100%',
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.cardBackground,
+    backgroundColor: 'transparent',
   },
   categoryImageContainerSelected: {
     borderColor: colors.primary,

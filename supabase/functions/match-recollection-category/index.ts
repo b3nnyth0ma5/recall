@@ -18,7 +18,7 @@ const corsHeaders = {
  * 1. Receives a recall ID (from database trigger or manual call)
  * 2. Fetches recall data including text, location, type, images (OCR + explanation), and persons
  * 3. Generates recall embedding if not exists
- * 4. Finds all categories with similarity >= 0.20 using embeddings
+ * 4. Finds all categories with similarity >= 0.20 using embeddings (using category_name + category_search_description)
  * 5. Uses OpenAI to analyze and rank the candidate categories
  * 6. Updates recollections table with high-confidence matches (>= 60)
  */
@@ -304,17 +304,21 @@ async function matchRecallAgainstCategories(
   const categories = categoriesData;
   console.log(`Found ${categories.length} categories to match against`);
 
-  // Step 6: Generate embeddings for each category using category_name
-  console.log('Step 6: Generating category embeddings from category_name...');
+  // Step 6: Generate embeddings for each category using category_name + category_search_description
+  console.log('Step 6: Generating category embeddings from category_name + category_search_description...');
   const categoryEmbeddings = await Promise.all(
     categories.map(async (category) => {
       try {
-        const categoryText = category.category_name || '';
+        // Combine category_name and category_search_description for embedding
+        const categoryName = category.category_name || '';
+        const categoryDescription = category.category_search_description || '';
+        const categoryText = `${categoryName}. ${categoryDescription}`.trim();
+        
         if (!categoryText.trim()) {
-          console.log(`Category ${category.id} has empty name, skipping`);
+          console.log(`Category ${category.id} has empty name and description, skipping`);
           return null;
         }
-        console.log(`Generating embedding for category: ${category.category_name}`);
+        console.log(`Generating embedding for category: ${category.category_name} with combined text`);
         const embedding = await generateEmbedding(categoryText, openaiApiKey);
         console.log(`Generated embedding for ${category.category_name}, length: ${embedding.length}`);
         return {
