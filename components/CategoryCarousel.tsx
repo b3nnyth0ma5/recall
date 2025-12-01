@@ -109,10 +109,6 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
   }, [userId, loadAllUserCategories]);
 
   const handleCategoryPress = (category: Category) => {
-    if (!onCategorySelect) {
-      return;
-    }
-
     // Haptic feedback
     if (Platform.OS !== 'web') {
       try {
@@ -122,14 +118,8 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       }
     }
 
-    // If already selected, deselect it
-    if (selectedCategoryId === category.id) {
-      console.log('Deselecting category:', category.id);
-      onCategorySelect(null);
-    } else {
-      console.log('Selecting category:', category.id);
-      onCategorySelect(category.id);
-    }
+    // Navigate to category viewer
+    router.push(`/(tabs)/(home)/category-viewer?id=${category.id}`);
   };
 
   const handleCreatePress = () => {
@@ -167,26 +157,14 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
           style={[styles.categoryItem, styles.categoryItemFirst]}
         >
           <View style={[styles.categoryImageContainer, styles.createCategoryContainer]}>
-            {/* Placeholder image for create category */}
-            <Image
-              source={{ uri: 'https://images.unsplash.com/photo-1557683316-973673baf926?w=200&h=200&fit=crop' }}
-              style={styles.createCategoryImage}
-              resizeMode="cover"
-            />
-            {/* Overlay gradient for better icon visibility */}
-            <View style={styles.createCategoryOverlay} />
-            {/* Large plus icon in center */}
-            <View style={styles.createCategoryIconContainer}>
+            {/* Neutral background with plus icon */}
+            <View style={styles.createCategoryBackground}>
               <IconSymbol 
-                ios_icon_name="plus.circle.fill" 
-                android_material_icon_name="add_circle" 
-                size={40} 
-                color="#FFFFFF" 
+                ios_icon_name="plus" 
+                android_material_icon_name="add" 
+                size={48} 
+                color={colors.primary} 
               />
-            </View>
-            {/* Plus badge on bottom right - Updated with text "+" */}
-            <View style={styles.plusBadge}>
-              <Text style={styles.plusBadgeText}>+</Text>
             </View>
           </View>
           <Text style={styles.categoryName} numberOfLines={1}>
@@ -281,52 +259,14 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     borderWidth: 3,
     borderStyle: 'solid',
-    position: 'relative',
+    backgroundColor: colors.cardBackground,
   },
-  createCategoryImage: {
-    width: CATEGORY_SIZE,
-    height: CATEGORY_SIZE,
-    position: 'absolute',
-    top: 0,
-    left: 0,
-  },
-  createCategoryOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: CATEGORY_SIZE,
-    height: CATEGORY_SIZE,
-    backgroundColor: 'rgba(255, 107, 122, 0.7)',
-  },
-  createCategoryIconContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: CATEGORY_SIZE,
-    height: CATEGORY_SIZE,
+  createCategoryBackground: {
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 2,
-  },
-  plusBadge: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: colors.background,
-    zIndex: 3,
-  },
-  plusBadgeText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    lineHeight: 20,
+    backgroundColor: colors.cardBackground,
   },
   categoryImageContainerSelected: {
     borderColor: colors.primary,

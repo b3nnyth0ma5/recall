@@ -7,8 +7,6 @@ import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, getImageDataUrl } from '@/utils/supabase';
-import { Note } from '@/types/Note';
 import * as Haptics from 'expo-haptics';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 
@@ -24,10 +22,7 @@ export default function HomeScreen() {
   const [showActionButtons, setShowActionButtons] = useState(false);
   const [isNavigating, setIsNavigating] = useState<'camera' | 'text' | 'location' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
-  const [loadingFiltered, setLoadingFiltered] = useState(false);
 
   // Animation values for FAB buttons
   const cameraButtonAnim = useRef(new Animated.Value(0)).current;
@@ -119,71 +114,7 @@ export default function HomeScreen() {
     }, [notes.length, refreshNotes])
   );
 
-  // Filter notes when category selection changes
-  useEffect(() => {
-    const filterNotesByCategory = async () => {
-      if (!selectedCategoryId || !user) {
-        setFilteredNotes([]);
-        return;
-      }
-
-      try {
-        setLoadingFiltered(true);
-        console.log('[filterNotesByCategory] Filtering notes for category:', selectedCategoryId);
-        console.log('[filterNotesByCategory] User ID:', user.id);
-        
-        // Fetch recall IDs that match this category from recollections table
-        const { data: recollectionsData, error } = await supabase
-          .from('recollections')
-          .select('recall_id, match_score')
-          .eq('category_id', selectedCategoryId)
-          .eq('user_id', user.id)
-          .order('match_score', { ascending: false });
-
-        if (error) {
-          console.error('[filterNotesByCategory] Error fetching recollections:', error);
-          setFilteredNotes([]);
-          return;
-        }
-
-        if (!recollectionsData || recollectionsData.length === 0) {
-          console.log('[filterNotesByCategory] No recalls found for this category');
-          setFilteredNotes([]);
-          return;
-        }
-
-        console.log(`[filterNotesByCategory] Found ${recollectionsData.length} recollections`);
-
-        const recallIds = recollectionsData.map(r => r.recall_id);
-        
-        // Create a map of recall_id to match_score for sorting
-        const matchScoreMap = new Map(
-          recollectionsData.map(r => [r.recall_id, r.match_score])
-        );
-
-        // Filter notes that match the recall IDs
-        const filtered = notes
-          .filter(note => recallIds.includes(note.id))
-          .map(note => ({
-            ...note,
-            match_score: matchScoreMap.get(note.id) || 0,
-          }))
-          .sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
-        
-        console.log(`[filterNotesByCategory] Filtered ${filtered.length} notes from ${notes.length} total (sorted by match_score)`);
-        setFilteredNotes(filtered);
-      } catch (error) {
-        console.error('[filterNotesByCategory] Error filtering notes:', error);
-        setFilteredNotes([]);
-      } finally {
-        setLoadingFiltered(false);
-      }
-    };
-
-    filterNotesByCategory();
-  }, [selectedCategoryId, notes, user]);
-
-  const handleRefresh = async (clearCategory: boolean = false) => {
+  const handleRefresh = async () => {
     setRefreshing(true);
     console.log('[handleRefresh] Refreshing landing page data from Supabase...');
     
@@ -193,25 +124,11 @@ export default function HomeScreen() {
       
       // Refresh categories
       setCategoryRefreshTrigger(prev => prev + 1);
-      
-      if (clearCategory) {
-        setSelectedCategoryId(null);
-      }
     } catch (error) {
       console.error('[handleRefresh] Error refreshing data:', error);
     } finally {
       setRefreshing(false);
       console.log('[handleRefresh] Refresh complete');
-    }
-  };
-
-  const handleCategorySelect = (categoryId: string | null) => {
-    console.log('[handleCategorySelect] Category selected:', categoryId);
-    setSelectedCategoryId(categoryId);
-    
-    // Scroll to top when category changes
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollTo({ y: 0, animated: true });
     }
   };
 
@@ -224,7 +141,7 @@ export default function HomeScreen() {
     }
     
     // Reload landing page data
-    await handleRefresh(true);
+    await handleRefresh();
   };
 
   const toggleActionButtons = () => {
@@ -355,11 +272,6 @@ export default function HomeScreen() {
       // Save scroll position to ref (doesn't trigger re-render)
       scrollPositionRef.current = contentOffset.y;
 
-      // Don't load more when filtering by category
-      if (selectedCategoryId) {
-        return;
-      }
-
       // Load more notes when near bottom
       const paddingToBottom = 20;
       const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
@@ -371,26 +283,22 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Error handling scroll:', error);
     }
-  }, [hasMore, isLoadingMore, loading, loadMoreNotes, selectedCategoryId]);
+  }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <IconSymbol name="note.text" size={80} color={colors.textTertiary} />
-      <Text style={styles.emptyTitle}>
-        {selectedCategoryId ? 'No Recalls in This Category' : 'No Recalls Yet'}
-      </Text>
+      <IconSymbol 
+        ios_icon_name="note.text" 
+        android_material_icon_name="note" 
+        size={80} 
+        color={colors.textTertiary} 
+      />
+      <Text style={styles.emptyTitle}>No Recalls Yet</Text>
       <Text style={styles.emptyText}>
-        {selectedCategoryId 
-          ? 'Create recalls that match this category or select a different category'
-          : 'Tap the + button to create your first recall'
-        }
+        Tap the + button to create your first recall
       </Text>
     </View>
   );
-
-  // Determine which notes to display
-  const displayNotes = selectedCategoryId ? filteredNotes : notes;
-  const isLoading = selectedCategoryId ? loadingFiltered : loading;
 
   // Calculate button positions with new orientation
   // 10% smaller FABs: 52 * 0.9 = 46.8
@@ -454,7 +362,12 @@ export default function HomeScreen() {
           ),
           headerRight: () => (
             <Pressable onPress={handleProfile} style={styles.headerButton}>
-              <IconSymbol name="person.circle.fill" size={32} color={colors.text} />
+              <IconSymbol 
+                ios_icon_name="person.circle.fill" 
+                android_material_icon_name="account_circle" 
+                size={32} 
+                color={colors.text} 
+              />
             </Pressable>
           ),
         }}
@@ -470,7 +383,7 @@ export default function HomeScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => handleRefresh(false)}
+            onRefresh={handleRefresh}
             tintColor={colors.primary}
             colors={[colors.primary]}
           />
@@ -480,25 +393,23 @@ export default function HomeScreen() {
         {user && (
           <View style={styles.categoryCarouselContainer}>
             <CategoryCarousel
-              onCategorySelect={handleCategorySelect}
-              selectedCategoryId={selectedCategoryId}
               userId={user.id}
               refreshTrigger={categoryRefreshTrigger}
             />
           </View>
         )}
 
-        {isLoading && !refreshing ? (
+        {loading && !refreshing ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ) : displayNotes.length === 0 ? (
+        ) : notes.length === 0 ? (
           renderEmptyState()
         ) : (
           <View style={styles.notesContainer}>
             {/* Notes section */}
             <View style={styles.allNotesSection}>
-              {displayNotes.map((note, index) => (
+              {notes.map((note, index) => (
                 <NoteCard
                   key={`${note.id}-${index}`}
                   note={note}
@@ -507,13 +418,13 @@ export default function HomeScreen() {
               ))}
             </View>
 
-            {isLoadingMore && !selectedCategoryId && (
+            {isLoadingMore && (
               <View style={styles.loadingMoreContainer}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={styles.loadingMoreText}>Loading more...</Text>
               </View>
             )}
-            {!hasMore && displayNotes.length > 0 && !selectedCategoryId && (
+            {!hasMore && notes.length > 0 && (
               <View style={styles.endContainer}>
                 <Text style={styles.endText}>You&apos;ve reached the end</Text>
               </View>
@@ -527,7 +438,12 @@ export default function HomeScreen() {
           onPress={handleSearch}
           style={styles.searchFab}
         >
-          <IconSymbol name="magnifyingglass" size={28} color="#FFFFFF" />
+          <IconSymbol 
+            ios_icon_name="magnifyingglass" 
+            android_material_icon_name="search" 
+            size={28} 
+            color="#FFFFFF" 
+          />
         </Pressable>
 
         {/* Action Buttons Container with new orientation */}
@@ -555,7 +471,12 @@ export default function HomeScreen() {
                 {isNavigating === 'camera' ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <IconSymbol name="camera.fill" size={22} color="#FFFFFF" />
+                  <IconSymbol 
+                    ios_icon_name="camera.fill" 
+                    android_material_icon_name="camera" 
+                    size={22} 
+                    color="#FFFFFF" 
+                  />
                 )}
               </Pressable>
             </Animated.View>
@@ -584,7 +505,12 @@ export default function HomeScreen() {
                 {isNavigating === 'text' ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <IconSymbol name="text.alignleft" size={22} color="#FFFFFF" />
+                  <IconSymbol 
+                    ios_icon_name="text.alignleft" 
+                    android_material_icon_name="text_fields" 
+                    size={22} 
+                    color="#FFFFFF" 
+                  />
                 )}
               </Pressable>
             </Animated.View>
@@ -613,7 +539,12 @@ export default function HomeScreen() {
                 {isNavigating === 'location' ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <IconSymbol name="map.fill" size={22} color="#FFFFFF" />
+                  <IconSymbol 
+                    ios_icon_name="map.fill" 
+                    android_material_icon_name="map" 
+                    size={22} 
+                    color="#FFFFFF" 
+                  />
                 )}
               </Pressable>
             </Animated.View>
@@ -625,7 +556,8 @@ export default function HomeScreen() {
             style={styles.fab}
           >
             <IconSymbol 
-              name={showActionButtons ? "xmark" : "plus"} 
+              ios_icon_name={showActionButtons ? "xmark" : "plus"} 
+              android_material_icon_name={showActionButtons ? "close" : "add"} 
               size={28} 
               color="#FFFFFF" 
             />
