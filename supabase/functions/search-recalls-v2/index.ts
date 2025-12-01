@@ -73,6 +73,97 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Step 0: Use NLP NER to detect people names in the query
+    console.log('Step 0: Detecting people names using NLP NER...');
+    let peopleRecallIds: string[] = [];
+    
+    try {
+      const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openaiApiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a Named Entity Recognition (NER) expert. Extract all person names from the user\'s query. Return only the names as a JSON array of strings. If no names are found, return an empty array.'
+            },
+            {
+              role: 'user',
+              content: `Extract person names from this query: "${query}"`
+            }
+          ],
+          temperature: 0.1,
+          max_tokens: 200,
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      if (nerResponse.ok) {
+        const nerData = await nerResponse.json();
+        const nerContent = nerData.choices?.[0]?.message?.content;
+        
+        if (nerContent) {
+          try {
+            const parsed = JSON.parse(nerContent);
+            const detectedNames = parsed.names || parsed.persons || parsed.people || [];
+            
+            if (Array.isArray(detectedNames) && detectedNames.length > 0) {
+              console.log('Detected person names:', detectedNames);
+              
+              // Search for these people in the Persons table
+              const { data: personsData, error: personsError } = await supabase
+                .from('persons')
+                .select('id, person_name')
+                .eq('user_id', user.id);
+              
+              if (!personsError && personsData && personsData.length > 0) {
+                // Find matching persons (case-insensitive partial match)
+                const matchingPersonIds: string[] = [];
+                
+                for (const detectedName of detectedNames) {
+                  const normalizedDetected = detectedName.toLowerCase().trim();
+                  
+                  for (const person of personsData) {
+                    const normalizedPerson = person.person_name.toLowerCase().trim();
+                    
+                    // Check if either name contains the other (partial match)
+                    if (normalizedPerson.includes(normalizedDetected) || 
+                        normalizedDetected.includes(normalizedPerson)) {
+                      matchingPersonIds.push(person.id);
+                      console.log(`Matched "${detectedName}" to person "${person.person_name}"`);
+                    }
+                  }
+                }
+                
+                if (matchingPersonIds.length > 0) {
+                  // Get recalls mentioning these people
+                  const { data: recallPeopleData, error: recallPeopleError } = await supabase
+                    .from('recall_people')
+                    .select('recall_id')
+                    .in('person_id', matchingPersonIds)
+                    .eq('user_id', user.id);
+                  
+                  if (!recallPeopleError && recallPeopleData && recallPeopleData.length > 0) {
+                    peopleRecallIds = [...new Set(recallPeopleData.map((rp: any) => rp.recall_id))];
+                    console.log(`Found ${peopleRecallIds.length} recalls mentioning detected people`);
+                  }
+                }
+              }
+            }
+          } catch (parseError) {
+            console.error('Failed to parse NER response:', parseError);
+          }
+        }
+      }
+    } catch (nerError) {
+      console.error('Error in NER detection:', nerError);
+      // Continue with normal search even if NER fails
+    }
+
     // Step 1: Convert query to embedding using OpenAI
     console.log('Step 1: Converting query to embedding...');
     const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
@@ -240,8 +331,72 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${filteredMatches.length} matches with >= 20% similarity`);
 
-    if (filteredMatches.length === 0) {
-      console.log('No matches found with >= 20% similarity');
+    // Group matches by recall_id and keep the highest similarity for each recall
+    const recallMatchMap = new Map();
+    for (const match of filteredMatches) {
+      const existing = recallMatchMap.get(match.recall_id);
+      if (!existing || match.similarity > existing.similarity) {
+        recallMatchMap.set(match.recall_id, match);
+      }
+    }
+
+    // Convert back to array and sort by similarity
+    let uniqueRecallMatches = Array.from(recallMatchMap.values()).sort((a: any, b: any) => b.similarity - a.similarity);
+    console.log(`Grouped into ${uniqueRecallMatches.length} unique recalls`);
+
+    // Step 2.5: Add people-related recalls to the final set
+    if (peopleRecallIds.length > 0) {
+      console.log('Step 2.5: Adding people-related recalls to the final set...');
+      
+      // Fetch full recall data for people-related recalls
+      const { data: peopleRecalls, error: peopleRecallsError } = await supabase
+        .from('recalls')
+        .select('id, text, location, location_primary_type')
+        .in('id', peopleRecallIds)
+        .eq('user_id', user.id);
+      
+      if (!peopleRecallsError && peopleRecalls && peopleRecalls.length > 0) {
+        // Add these recalls to the unique matches if not already present
+        const existingRecallIds = new Set(uniqueRecallMatches.map((m: any) => m.recall_id));
+        
+        for (const recall of peopleRecalls) {
+          if (!existingRecallIds.has(recall.id)) {
+            // Add with high similarity to prioritize them
+            uniqueRecallMatches.push({
+              id: recall.id,
+              recall_id: recall.id,
+              text: recall.text || '',
+              location: recall.location || '',
+              location_primary_type: recall.location_primary_type || '',
+              similarity: 0.95, // High similarity to prioritize
+              source: 'recall',
+              fromPeopleSearch: true
+            });
+            console.log(`Added people-related recall: ${recall.id}`);
+          } else {
+            // Mark existing recall as from people search
+            const existingMatch = uniqueRecallMatches.find((m: any) => m.recall_id === recall.id);
+            if (existingMatch) {
+              existingMatch.fromPeopleSearch = true;
+            }
+          }
+        }
+        
+        // Re-sort to prioritize people-related recalls
+        uniqueRecallMatches.sort((a: any, b: any) => {
+          // Prioritize people-related recalls
+          if (a.fromPeopleSearch && !b.fromPeopleSearch) return -1;
+          if (!a.fromPeopleSearch && b.fromPeopleSearch) return 1;
+          // Then sort by similarity
+          return b.similarity - a.similarity;
+        });
+        
+        console.log(`Final set contains ${uniqueRecallMatches.length} unique recalls (${peopleRecalls.length} from people search)`);
+      }
+    }
+
+    if (uniqueRecallMatches.length === 0) {
+      console.log('No matches found');
       return new Response(JSON.stringify({
         answer: null,
         confidence: 0,
@@ -253,38 +408,29 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Group matches by recall_id and keep the highest similarity for each recall
-    const recallMatchMap = new Map();
-    for (const match of filteredMatches) {
-      const existing = recallMatchMap.get(match.recall_id);
-      if (!existing || match.similarity > existing.similarity) {
-        recallMatchMap.set(match.recall_id, match);
-      }
-    }
-
-    // Convert back to array and sort by similarity
-    const uniqueRecallMatches = Array.from(recallMatchMap.values()).sort((a: any, b: any) => b.similarity - a.similarity);
-    console.log(`Grouped into ${uniqueRecallMatches.length} unique recalls`);
-
     // Step 3: Use OpenAI for question answering with source tracking
     console.log('Step 3: Using OpenAI for question answering with source tracking...');
 
     // Prepare context from matches with source IDs
     const contextWithSources = uniqueRecallMatches.map((match: any, idx: number) => {
       const sourceId = `SOURCE_${idx + 1}`;
+      const priorityMarker = match.fromPeopleSearch ? ' [PRIORITY - Contains mentioned person]' : '';
+      
       if (match.source === 'image') {
         return {
           sourceId,
           recallId: match.recall_id,
-          text: `${sourceId} (${Math.round(match.similarity * 100)}% match - from image):\nOCR Text: ${match.ocr_text}\nImage Explanation: ${match.image_explanation}`,
-          similarity: match.similarity
+          text: `${sourceId} (${Math.round(match.similarity * 100)}% match - from image${priorityMarker}):\nOCR Text: ${match.ocr_text}\nImage Explanation: ${match.image_explanation}`,
+          similarity: match.similarity,
+          fromPeopleSearch: match.fromPeopleSearch || false
         };
       } else {
         return {
           sourceId,
           recallId: match.recall_id,
-          text: `${sourceId} (${Math.round(match.similarity * 100)}% match - from recall):\nText: ${match.text}\nLocation: ${match.location}\nLocation Type: ${match.location_primary_type}`,
-          similarity: match.similarity
+          text: `${sourceId} (${Math.round(match.similarity * 100)}% match - from recall${priorityMarker}):\nText: ${match.text}\nLocation: ${match.location}\nLocation Type: ${match.location_primary_type}`,
+          similarity: match.similarity,
+          fromPeopleSearch: match.fromPeopleSearch || false
         };
       }
     });
@@ -297,6 +443,7 @@ Deno.serve(async (req) => {
     If you cannot answer the question with confidence based on the provided information, say so. 
     Also provide a confidence score (0-100) indicating how confident you are in your answer.
     VERY IMPORTANT: The source with the highest match percentage should always be given the most priority when answering.
+    VERY IMPORTANT: Sources marked as [PRIORITY - Contains mentioned person] should be given HIGHEST priority as they contain people's names mentioned in the query.
     IMPORTANT: If the user's question includes the name of a location (or is proximity based) then prioritise the information that's most relevant to the Location and Location Type provided.`;
 
     const qaUserPrompt = `Question: ${query}\n\nRecalls from matches:\n${context}\n\nProvide your answer in JSON format: {"answer": "your answer here", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}`;

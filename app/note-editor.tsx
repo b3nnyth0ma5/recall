@@ -943,6 +943,11 @@ export default function NoteEditorScreen() {
     }
   };
 
+  const handlePeopleChange = (newPeople: Person[]) => {
+    console.log('[NoteEditor] People changed:', newPeople);
+    setPeople(newPeople);
+  };
+
   const handleSave = async () => {
     if (!canSave) {
       Alert.alert('Empty Recall', 'Please add some text or images');
@@ -991,6 +996,39 @@ export default function NoteEditorScreen() {
         }
       } else {
         recallId = await addNote(noteData);
+      }
+
+      // Save people associations
+      if (user) {
+        try {
+          // Delete existing associations
+          await supabase
+            .from('recall_people')
+            .delete()
+            .eq('recall_id', recallId)
+            .eq('user_id', user.id);
+          
+          // Insert new associations
+          if (people.length > 0) {
+            const insertData = people.map(person => ({
+              recall_id: recallId,
+              person_id: person.id,
+              user_id: user.id,
+            }));
+            
+            const { error: peopleError } = await supabase
+              .from('recall_people')
+              .insert(insertData);
+            
+            if (peopleError) {
+              console.error('Error saving people associations:', peopleError);
+            } else {
+              console.log(`Saved ${people.length} people associations for recall ${recallId}`);
+            }
+          }
+        } catch (error) {
+          console.error('Error managing people associations:', error);
+        }
       }
 
       let uploadedCount = 0;
@@ -1298,9 +1336,12 @@ export default function NoteEditorScreen() {
         <View style={styles.spacer} />
       </ScrollView>
 
-      {people.length > 0 && hasImages && (
-        <PeopleAvatarsRow people={people} avatarSize={44} />
-      )}
+      <PeopleAvatarsRow 
+        people={people} 
+        avatarSize={44} 
+        onPeopleChange={handlePeopleChange}
+        recallId={isEditing ? (params.id as string) : undefined}
+      />
 
       {hasImages && (
         <View style={styles.imagesContainer}>
@@ -1360,10 +1401,6 @@ export default function NoteEditorScreen() {
             ))}
           </ScrollView>
         </View>
-      )}
-
-      {people.length > 0 && !hasImages && (
-        <PeopleAvatarsRow people={people} avatarSize={44} />
       )}
 
       {locationName && (
