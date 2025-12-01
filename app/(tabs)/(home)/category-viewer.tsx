@@ -421,16 +421,26 @@ export default function CategoryViewerScreen() {
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <IconSymbol 
-        ios_icon_name="tray" 
-        android_material_icon_name="inbox" 
-        size={80} 
-        color={colors.textTertiary} 
-      />
-      <Text style={styles.emptyTitle}>No Recalls in This Category</Text>
+      <View style={styles.emptyIconContainer}>
+        <IconSymbol 
+          name="tray" 
+          size={64} 
+          color={colors.textTertiary} 
+        />
+      </View>
+      <Text style={styles.emptyTitle}>No Recalls Yet</Text>
       <Text style={styles.emptyText}>
-        Create recalls that match this category&apos;s description, or the matching algorithm will automatically add relevant recalls.
+        Recalls matching this category will appear here automatically
       </Text>
+      <View style={styles.emptyInfoCard}>
+        <View style={styles.emptyInfoHeader}>
+          <IconSymbol name="sparkles" size={20} color={colors.primary} />
+          <Text style={styles.emptyInfoTitle}>Auto-Matching</Text>
+        </View>
+        <Text style={styles.emptyInfoText}>
+          Our AI automatically categorizes your recalls based on the category description. Create recalls and they&apos;ll show up here if they match!
+        </Text>
+      </View>
     </View>
   );
 
@@ -737,22 +747,56 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 100,
+    paddingTop: 60,
     paddingHorizontal: 32,
+  },
+  emptyIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: `${colors.textTertiary}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
   },
   emptyTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
-    marginTop: 16,
     marginBottom: 8,
     textAlign: 'center',
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 15,
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 22,
+    marginBottom: 32,
+    maxWidth: 300,
+  },
+  emptyInfoCard: {
+    width: '100%',
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  emptyInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  emptyInfoTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  emptyInfoText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
   },
   headerButton: {
     padding: 8,

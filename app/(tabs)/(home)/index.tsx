@@ -285,19 +285,19 @@ export default function HomeScreen() {
     }
   }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyContainer}>
-      <IconSymbol 
-        name="doc.text" 
-        size={80} 
-        color={colors.textTertiary} 
+  const renderEmptyState = () => {
+    const { ZeroState } = require('@/components/ZeroState');
+    return (
+      <ZeroState
+        icon="doc.text"
+        title="No Recalls Yet"
+        message="Start capturing your thoughts, memories, and moments"
+        actionText="Create Your First Recall"
+        onActionPress={handleTextPress}
+        animatedIcon={true}
       />
-      <Text style={styles.emptyTitle}>No Recalls Yet</Text>
-      <Text style={styles.emptyText}>
-        Tap the + button to create your first recall
-      </Text>
-    </View>
-  );
+    );
+  };
 
   // Calculate button positions with new orientation
   // Camera: directly to the left (-77px, 0px)

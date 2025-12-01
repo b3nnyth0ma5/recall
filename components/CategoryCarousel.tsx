@@ -144,6 +144,28 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
     );
   }
 
+  // Show zero state if no categories exist
+  if (categories.length === 0) {
+    return (
+      <View style={styles.zeroStateContainer}>
+        <Pressable onPress={handleCreatePress} style={styles.zeroStateCard}>
+          <View style={styles.zeroStateIconContainer}>
+            <IconSymbol name="folder" size={40} color={colors.primary} />
+          </View>
+          <View style={styles.zeroStateTextContainer}>
+            <Text style={styles.zeroStateTitle}>No Categories Yet</Text>
+            <Text style={styles.zeroStateMessage}>
+              Create categories to organize your recalls
+            </Text>
+          </View>
+          <View style={styles.zeroStateArrow}>
+            <IconSymbol name="plus" size={24} color={colors.primary} />
+          </View>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -223,6 +245,51 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  zeroStateContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  zeroStateCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    borderStyle: 'dashed',
+  },
+  zeroStateIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: `${colors.primary}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zeroStateTextContainer: {
+    flex: 1,
+  },
+  zeroStateTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  zeroStateMessage: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  zeroStateArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: `${colors.primary}20`,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   container: {
     marginBottom: 8,

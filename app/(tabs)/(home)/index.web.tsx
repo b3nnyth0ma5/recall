@@ -502,20 +502,22 @@ export default function HomeScreen() {
   // Render Helpers
   // ============================================================================
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyContainer}>
-      <IconSymbol name="house.fill" size={80} color={colors.textTertiary} />
-      <Text style={styles.emptyTitle}>
-        {selectedCategoryId ? 'No Recalls in This Category' : 'No Recalls Yet'}
-      </Text>
-      <Text style={styles.emptyText}>
-        {selectedCategoryId 
-          ? 'Try selecting a different category or create a new recall'
-          : 'Tap the + button to create your first recall'
+  const renderEmptyState = () => {
+    const { ZeroState } = require('@/components/ZeroState');
+    return (
+      <ZeroState
+        icon={selectedCategoryId ? "folder" : "doc.text"}
+        title={selectedCategoryId ? 'No Recalls in This Category' : 'No Recalls Yet'}
+        message={selectedCategoryId 
+          ? 'Create recalls that match this category or wait for automatic matching'
+          : 'Start capturing your thoughts, memories, and moments'
         }
-      </Text>
-    </View>
-  );
+        actionText={selectedCategoryId ? 'Create Recall' : 'Create Your First Recall'}
+        onActionPress={handleTextPress}
+        animatedIcon={true}
+      />
+    );
+  };
 
   // ============================================================================
   // Animation Calculations

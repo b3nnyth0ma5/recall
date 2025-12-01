@@ -267,6 +267,33 @@ export default function SearchScreen() {
               </Pressable>
             ))}
           </Animated.View>
+        ) : showHistory && searchHistory.length === 0 ? (
+          <Animated.View entering={FadeIn.duration(600)} style={styles.emptyHistoryContainer}>
+            <View style={styles.emptyHistoryIconContainer}>
+              <IconSymbol name="clock" size={48} color={colors.textTertiary} />
+            </View>
+            <Text style={styles.emptyHistoryTitle}>No Search History</Text>
+            <Text style={styles.emptyHistoryMessage}>
+              Your recent searches will appear here
+            </Text>
+            <View style={styles.searchTipsContainer}>
+              <Text style={styles.searchTipsTitle}>Try searching for:</Text>
+              <View style={styles.searchTipsList}>
+                <View style={styles.searchTipItem}>
+                  <IconSymbol name="location.fill" size={16} color={colors.primary} />
+                  <Text style={styles.searchTipText}>Places you&apos;ve been</Text>
+                </View>
+                <View style={styles.searchTipItem}>
+                  <IconSymbol name="person.fill" size={16} color={colors.primary} />
+                  <Text style={styles.searchTipText}>People you&apos;ve mentioned</Text>
+                </View>
+                <View style={styles.searchTipItem}>
+                  <IconSymbol name="photo.fill" size={16} color={colors.primary} />
+                  <Text style={styles.searchTipText}>Things in your photos</Text>
+                </View>
+              </View>
+            </View>
+          </Animated.View>
         ) : showProgressIndicator ? (
           <SearchProgressIndicator 
             stage={searchStage} 
@@ -513,6 +540,59 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: colors.text,
+  },
+  emptyHistoryContainer: {
+    flex: 1,
+    alignItems: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 32,
+  },
+  emptyHistoryIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: `${colors.textTertiary}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  emptyHistoryTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  emptyHistoryMessage: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  searchTipsContainer: {
+    width: '100%',
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  searchTipsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  searchTipsList: {
+    gap: 12,
+  },
+  searchTipItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  searchTipText: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   emptyContainer: {
     flex: 1,

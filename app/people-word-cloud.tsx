@@ -408,11 +408,36 @@ export default function PeopleWordCloudScreen() {
         </View>
       ) : allPeople.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <IconSymbol name="person.2" size={48} color={colors.textTertiary} />
-          <Text style={styles.emptyText}>No people found</Text>
-          <Text style={styles.emptySubtext}>
-            People will appear here once they&apos;re mentioned in your recalls
+          <View style={styles.emptyIconContainer}>
+            <IconSymbol name="person.2" size={64} color={colors.textTertiary} />
+          </View>
+          <Text style={styles.emptyTitle}>No People Yet</Text>
+          <Text style={styles.emptyText}>
+            Tag people in your recalls to see them here
           </Text>
+          <View style={styles.emptyTipsContainer}>
+            <Text style={styles.emptyTipsTitle}>How to add people:</Text>
+            <View style={styles.emptyTipsList}>
+              <View style={styles.emptyTipItem}>
+                <View style={styles.emptyTipNumber}>
+                  <Text style={styles.emptyTipNumberText}>1</Text>
+                </View>
+                <Text style={styles.emptyTipText}>Create or edit a recall</Text>
+              </View>
+              <View style={styles.emptyTipItem}>
+                <View style={styles.emptyTipNumber}>
+                  <Text style={styles.emptyTipNumberText}>2</Text>
+                </View>
+                <Text style={styles.emptyTipText}>Tap the people icon</Text>
+              </View>
+              <View style={styles.emptyTipItem}>
+                <View style={styles.emptyTipNumber}>
+                  <Text style={styles.emptyTipNumberText}>3</Text>
+                </View>
+                <Text style={styles.emptyTipText}>Add names of people</Text>
+              </View>
+            </View>
+          </View>
         </View>
       ) : (
         <ScrollView 
@@ -531,19 +556,69 @@ const styles = StyleSheet.create({
     padding: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    paddingTop: 80,
+  },
+  emptyIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: `${colors.textTertiary}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
   },
   emptyText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginTop: 8,
-  },
-  emptySubtext: {
-    fontSize: 13,
+    fontSize: 15,
     color: colors.textSecondary,
     textAlign: 'center',
-    maxWidth: 260,
+    marginBottom: 32,
+    maxWidth: 280,
+  },
+  emptyTipsContainer: {
+    width: '100%',
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  emptyTipsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  emptyTipsList: {
+    gap: 16,
+  },
+  emptyTipItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyTipNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyTipNumberText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  emptyTipText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   scrollView: {
     flex: 1,
