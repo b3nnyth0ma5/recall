@@ -6,6 +6,11 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export type SearchStage = 'idle' | 'detecting' | 'resolving' | 'filtering' | 'searching' | 'complete';
 
+export interface PersonInfo {
+  detectedNames: string[];
+  matchedNames: string[];
+}
+
 export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
@@ -14,6 +19,7 @@ export function useNotes() {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [locationInfo, setLocationInfo] = useState<any>(null);
+  const [personInfo, setPersonInfo] = useState<PersonInfo | null>(null);
   const [isDeletingNote, setIsDeletingNote] = useState(false);
   const [searchAnswer, setSearchAnswer] = useState<string | null>(null);
   const [searchConfidence, setSearchConfidence] = useState<number | undefined>(undefined);
@@ -462,6 +468,7 @@ export function useNotes() {
       setSearchAnswer(null);
       setSearchConfidence(undefined);
       setLocationInfo(null);
+      setPersonInfo(null);
       setSearchStage('idle');
       setSearchLocationName(undefined);
       await refreshNotes();
@@ -534,6 +541,7 @@ export function useNotes() {
           setNotes(notesWithImages);
           setSearchAnswer(null);
           setSearchConfidence(undefined);
+          setPersonInfo(null);
           setSearchStage('complete');
           return;
         }
@@ -542,10 +550,12 @@ export function useNotes() {
         const matchedRecallIds = searchResults?.results?.map((r: any) => r.id) || [];
         const answer = searchResults?.answer || null;
         const confidence = searchResults?.confidence || 0;
+        const personInfoData = searchResults?.personInfo || null;
         
         console.log(`Found ${matchedRecallIds.length} AI-ranked results`);
         console.log('Answer:', answer);
         console.log('Confidence:', confidence);
+        console.log('Person info:', personInfoData);
         
         if (matchedRecallIds.length > 0) {
           const { data: recallsData } = await supabase
@@ -573,10 +583,12 @@ export function useNotes() {
           setNotes(notesWithImages);
           setSearchAnswer(answer);
           setSearchConfidence(confidence);
+          setPersonInfo(personInfoData);
         } else {
           setNotes([]);
           setSearchAnswer(answer);
           setSearchConfidence(confidence);
+          setPersonInfo(personInfoData);
         }
         
         setSearchStage('complete');
@@ -610,6 +622,7 @@ export function useNotes() {
         setNotes(notesWithImages);
         setSearchAnswer(null);
         setSearchConfidence(undefined);
+        setPersonInfo(null);
         setSearchStage('complete');
         return;
       }
@@ -618,10 +631,12 @@ export function useNotes() {
       const matchedRecallIds = searchResults?.results?.map((r: any) => r.id) || [];
       const answer = searchResults?.answer || null;
       const confidence = searchResults?.confidence || 0;
+      const personInfoData = searchResults?.personInfo || null;
       
       console.log(`Found ${matchedRecallIds.length} results`);
       console.log('Answer:', answer);
       console.log('Confidence:', confidence);
+      console.log('Person info:', personInfoData);
       
       if (matchedRecallIds.length > 0) {
         const { data: recallsData } = await supabase
@@ -648,10 +663,12 @@ export function useNotes() {
         setNotes(notesWithImages);
         setSearchAnswer(answer);
         setSearchConfidence(confidence);
+        setPersonInfo(personInfoData);
       } else {
         setNotes([]);
         setSearchAnswer(answer);
         setSearchConfidence(confidence);
+        setPersonInfo(personInfoData);
       }
       
       setSearchStage('complete');
@@ -665,6 +682,7 @@ export function useNotes() {
       setSearchAnswer(null);
       setSearchConfidence(undefined);
       setLocationInfo(null);
+      setPersonInfo(null);
       setSearchStage('idle');
     } finally {
       setLoading(false);
@@ -707,6 +725,7 @@ export function useNotes() {
     isLoadingMore,
     hasMore,
     locationInfo,
+    personInfo,
     isDeletingNote,
     searchAnswer,
     searchConfidence,

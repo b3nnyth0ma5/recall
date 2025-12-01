@@ -31,6 +31,7 @@ export default function SearchScreen() {
     searchAnswer, 
     searchConfidence,
     locationInfo,
+    personInfo,
     searchStage,
     searchLocationName,
   } = useNotes();
@@ -183,7 +184,7 @@ export default function SearchScreen() {
             onChangeText={setSearchQuery}
             onSubmitEditing={handleSearch}
             returnKeyType="search"
-            autoFocus
+            enablesReturnKeyAutomatically={true}
           />
           {searchQuery.length > 0 && (
             <Pressable 
@@ -217,17 +218,35 @@ export default function SearchScreen() {
           </Pressable>
         </View>
 
-        {/* Location Info Badge */}
-        {locationInfo && hasSearched && (
-          <Animated.View entering={FadeIn.duration(400)} style={styles.locationInfoBanner}>
-            <IconSymbol name="mappin.circle.fill" size={20} color={colors.primary} />
-            <View style={styles.locationInfoText}>
-              <Text style={styles.locationInfoTitle}>Location Search</Text>
-              <Text style={styles.locationInfoSubtitle}>
-                Within {locationInfo.proximity}km of {locationInfo.resolvedPlace}
-              </Text>
-            </View>
-          </Animated.View>
+        {/* Intent Badges Container */}
+        {hasSearched && (locationInfo || personInfo) && (
+          <View style={styles.intentBadgesContainer}>
+            {/* Person Info Badge */}
+            {personInfo && personInfo.matchedNames.length > 0 && (
+              <Animated.View entering={FadeIn.duration(400)} style={styles.intentBadge}>
+                <IconSymbol name="person.circle.fill" size={20} color={colors.primary} />
+                <View style={styles.intentBadgeText}>
+                  <Text style={styles.intentBadgeTitle}>Person Search</Text>
+                  <Text style={styles.intentBadgeSubtitle}>
+                    {personInfo.matchedNames.join(', ')}
+                  </Text>
+                </View>
+              </Animated.View>
+            )}
+
+            {/* Location Info Badge */}
+            {locationInfo && (
+              <Animated.View entering={FadeIn.duration(400)} style={styles.intentBadge}>
+                <IconSymbol name="mappin.circle.fill" size={20} color={colors.primary} />
+                <View style={styles.intentBadgeText}>
+                  <Text style={styles.intentBadgeTitle}>Location Search</Text>
+                  <Text style={styles.intentBadgeSubtitle}>
+                    Within {locationInfo.proximity}km of {locationInfo.resolvedPlace}
+                  </Text>
+                </View>
+              </Animated.View>
+            )}
+          </View>
         )}
       </View>
 
@@ -278,6 +297,10 @@ export default function SearchScreen() {
                 </View>
                 <View style={styles.featureItem}>
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+                  <Text style={styles.featureText}>Person name detection</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
                   <Text style={styles.featureText}>OCR text matching</Text>
                 </View>
                 <View style={styles.featureItem}>
@@ -298,6 +321,8 @@ export default function SearchScreen() {
             <Text style={styles.emptyText}>
               {locationInfo 
                 ? `No recalls found within ${locationInfo.proximity}km of ${locationInfo.resolvedPlace}`
+                : personInfo && personInfo.matchedNames.length > 0
+                ? `No recalls found for ${personInfo.matchedNames.join(', ')}`
                 : 'Try a different search term or add more details'
               }
             </Text>
@@ -340,6 +365,7 @@ export default function SearchScreen() {
                 <Text style={styles.resultsText}>
                   {notes.length} {notes.length === 1 ? 'result' : 'results'} found
                   {locationInfo && ` near ${locationInfo.resolvedPlace}`}
+                  {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
                 </Text>
                 {notes.map((note) => (
                   <View key={note.id} style={styles.noteWrapper}>
@@ -349,16 +375,6 @@ export default function SearchScreen() {
                           <View style={styles.answerSourceBadge}>
                             <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
                             <Text style={styles.answerSourceText}>Used for answer</Text>
-                          </View>
-                        )}
-                      </View>
-                      <View style={styles.badgeRowRight}>
-                        {note.relevance_score !== undefined && (
-                          <View style={styles.matchPercentageBadge}>
-                            <IconSymbol name="star.fill" size={12} color={colors.primary} />
-                            <Text style={styles.matchPercentageText}>
-                              {note.relevance_score}%
-                            </Text>
                           </View>
                         )}
                       </View>
@@ -442,7 +458,11 @@ const styles = StyleSheet.create({
   searchIconDisabled: {
     opacity: 0.4,
   },
-  locationInfoBanner: {
+  intentBadgesContainer: {
+    marginTop: 12,
+    gap: 8,
+  },
+  intentBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -450,18 +470,17 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
-    marginTop: 12,
   },
-  locationInfoText: {
+  intentBadgeText: {
     flex: 1,
   },
-  locationInfoTitle: {
+  intentBadgeTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.primary,
     marginBottom: 2,
   },
-  locationInfoSubtitle: {
+  intentBadgeSubtitle: {
     fontSize: 12,
     color: colors.textSecondary,
   },
@@ -608,11 +627,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  badgeRowRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 'auto',
-  },
   answerSourceBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -624,21 +638,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 12,
   },
   answerSourceText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  matchPercentageBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255, 107, 122, 0.15)',
-    paddingVertical: 6 * 1.15,
-    paddingHorizontal: 12 * 1.15,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-  },
-  matchPercentageText: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.primary,

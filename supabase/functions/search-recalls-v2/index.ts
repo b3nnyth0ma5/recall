@@ -76,6 +76,8 @@ Deno.serve(async (req) => {
     // Step 0: Use NLP NER to detect people names in the query
     console.log('Step 0: Detecting people names using NLP NER...');
     let peopleRecallIds: string[] = [];
+    let detectedPersonNames: string[] = [];
+    let matchedPersonNames: string[] = [];
     
     try {
       const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -112,7 +114,8 @@ Deno.serve(async (req) => {
             const detectedNames = parsed.names || parsed.persons || parsed.people || [];
             
             if (Array.isArray(detectedNames) && detectedNames.length > 0) {
-              console.log('Detected person names:', detectedNames);
+              detectedPersonNames = detectedNames;
+              console.log('Detected person names:', detectedPersonNames);
               
               // Search for these people in the Persons table
               const { data: personsData, error: personsError } = await supabase
@@ -134,6 +137,7 @@ Deno.serve(async (req) => {
                     if (normalizedPerson.includes(normalizedDetected) || 
                         normalizedDetected.includes(normalizedPerson)) {
                       matchingPersonIds.push(person.id);
+                      matchedPersonNames.push(person.person_name);
                       console.log(`Matched "${detectedName}" to person "${person.person_name}"`);
                     }
                   }
@@ -401,7 +405,11 @@ Deno.serve(async (req) => {
         answer: null,
         confidence: 0,
         results: [],
-        processingTimeMs: Date.now() - startTime
+        processingTimeMs: Date.now() - startTime,
+        personInfo: matchedPersonNames.length > 0 ? {
+          detectedNames: detectedPersonNames,
+          matchedNames: matchedPersonNames,
+        } : null,
       }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -531,12 +539,16 @@ Deno.serve(async (req) => {
     console.log('=== Search Recalls V2 completed successfully ===');
     console.log('Total processing time:', processingTime, 'ms');
 
-    // Return results with recall_id
+    // Return results with recall_id and person info
     return new Response(JSON.stringify({
       answer,
       confidence,
       results: matchResults,
-      processingTimeMs: processingTime
+      processingTimeMs: processingTime,
+      personInfo: matchedPersonNames.length > 0 ? {
+        detectedNames: detectedPersonNames,
+        matchedNames: matchedPersonNames,
+      } : null,
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
