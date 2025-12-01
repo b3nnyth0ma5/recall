@@ -143,13 +143,26 @@ export function PeopleWordCloud({
 
   return (
     <View style={styles.container}>
+      {/* Header - matching note-editor UI */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <IconSymbol name="person.2.fill" size={24} color={colors.primary} />
-          <Text style={styles.title}>Select People</Text>
-        </View>
-        <Pressable onPress={handleCancel} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <IconSymbol name="xmark" size={24} color={colors.textSecondary} />
+        <Pressable 
+          onPress={handleCancel} 
+          style={styles.headerButton}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <IconSymbol name="chevron.left" size={24} color={colors.text} />
+        </Pressable>
+        
+        <Text style={styles.headerTitle}>Select People</Text>
+        
+        <Pressable
+          onPress={handleSave}
+          style={styles.saveButton}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <View style={styles.checkmarkContainer}>
+            <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
+          </View>
         </Pressable>
       </View>
 
@@ -220,59 +233,57 @@ export function PeopleWordCloud({
           })}
         </ScrollView>
       )}
-
-      <View style={styles.footer}>
-        <Pressable
-          onPress={handleCancel}
-          style={styles.cancelButton}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </Pressable>
-        <Pressable
-          onPress={handleSave}
-          style={styles.saveButton}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={styles.saveButtonText}>Save</Text>
-        </Pressable>
-      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    marginHorizontal: 16,
-    marginVertical: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
+    flex: 1,
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    backgroundColor: colors.background,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  headerButton: {
+    padding: 8,
+    marginHorizontal: 8,
   },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.primary,
+    flex: 1,
+    textAlign: 'center',
+  },
+  saveButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12 * 1.15,
+    paddingVertical: 8 * 1.15,
+    borderRadius: 20,
+    minWidth: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  checkmarkContainer: {
+    width: 24,
+    height: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   selectedCountContainer: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: colors.background,
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -282,8 +293,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   loadingContainer: {
+    flex: 1,
     padding: 32,
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 12,
   },
   loadingText: {
@@ -291,8 +304,10 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   emptyContainer: {
+    flex: 1,
     padding: 32,
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 10,
   },
   emptyText: {
@@ -308,7 +323,7 @@ const styles = StyleSheet.create({
     maxWidth: 260,
   },
   scrollView: {
-    maxHeight: 300,
+    flex: 1,
   },
   wordCloudContainer: {
     padding: 16,
@@ -357,37 +372,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   mentionCountSelected: {
-    color: '#FFFFFF',
-  },
-  footer: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  saveButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
     color: '#FFFFFF',
   },
 });
