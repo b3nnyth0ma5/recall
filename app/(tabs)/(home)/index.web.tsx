@@ -11,45 +11,62 @@ import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { Note } from '@/types/Note';
 
+// Constants
+const PULL_THRESHOLD = 80;
+const FAB_SIZE = 60;
+const ACTION_BUTTON_SIZE = 46.8;
+const BUTTON_SPACING = 77;
+const DIAGONAL_OFFSET = 54.45;
+
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
+  // Hooks
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, isDeletingNote } = useNotes();
   const router = useRouter();
-  const [refreshing, setRefreshing] = useState(false);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const scrollPositionRef = useRef(0);
-  const previousNotesCountRef = useRef(notes.length);
-  const isFirstFocusRef = useRef(true);
   const { user } = useAuth();
+
+  // State - UI
+  const [refreshing, setRefreshing] = useState(false);
+  const [showActionButtons, setShowActionButtons] = useState(false);
+  const [isNavigating, setIsNavigating] = useState<'camera' | 'text' | 'location' | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [pullIndicatorVisible, setPullIndicatorVisible] = useState(false);
+  const [pullIndicatorText, setPullIndicatorText] = useState('Pull to refresh');
+
+  // State - Category filtering
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
   const [loadingFiltered, setLoadingFiltered] = useState(false);
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
-  const [showActionButtons, setShowActionButtons] = useState(false);
-  const [isNavigating, setIsNavigating] = useState<'camera' | 'text' | 'location' | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
 
-  // Animation values for FAB buttons
+  // Refs
+  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollPositionRef = useRef(0);
+  const previousNotesCountRef = useRef(notes.length);
+  const isFirstFocusRef = useRef(true);
+  const handleRefreshRef = useRef<(clearCategory?: boolean) => Promise<void>>();
+  
+  // Pull-to-refresh refs
+  const pullStartYRef = useRef(0);
+  const pullDistanceRef = useRef(0);
+  const isPullingRef = useRef(false);
+
+  // Animation refs
   const cameraButtonAnim = useRef(new Animated.Value(0)).current;
   const textButtonAnim = useRef(new Animated.Value(0)).current;
   const locationButtonAnim = useRef(new Animated.Value(0)).current;
 
-  // Web-specific pull-to-refresh state - using refs to avoid re-renders
-  const pullStartYRef = useRef(0);
-  const pullDistanceRef = useRef(0);
-  const isPullingRef = useRef(false);
-  const [pullIndicatorVisible, setPullIndicatorVisible] = useState(false);
-  const [pullIndicatorText, setPullIndicatorText] = useState('Pull to refresh');
-  const PULL_THRESHOLD = 80;
+  // ============================================================================
+  // Effects
+  // ============================================================================
 
-  // Update the previous notes count whenever notes change
+  // Update previous notes count
   useEffect(() => {
     previousNotesCountRef.current = notes.length;
   }, [notes.length]);
 
-  // Animate FAB buttons when showActionButtons changes
+  // Animate FAB buttons
   useEffect(() => {
     if (showActionButtons) {
-      // Stagger the animations with bounce effect
       Animated.stagger(50, [
         Animated.spring(cameraButtonAnim, {
           toValue: 1,
@@ -71,7 +88,6 @@ export default function HomeScreen() {
         }),
       ]).start();
     } else {
-      // Reset animations
       Animated.parallel([
         Animated.timing(cameraButtonAnim, {
           toValue: 0,
@@ -92,7 +108,7 @@ export default function HomeScreen() {
     }
   }, [showActionButtons, cameraButtonAnim, textButtonAnim, locationButtonAnim]);
 
-  // Filter notes when category is selected
+  // Filter notes by category
   useEffect(() => {
     const filterNotesByCategory = async () => {
       if (!selectedCategoryId) {
@@ -101,7 +117,7 @@ export default function HomeScreen() {
       }
 
       if (!user?.id) {
-        console.error('No user logged in');
+        console.error('[filterNotesByCategory] No user logged in');
         setFilteredNotes([]);
         return;
       }
@@ -109,9 +125,8 @@ export default function HomeScreen() {
       try {
         setLoadingFiltered(true);
         console.log('[filterNotesByCategory] Filtering notes by category:', selectedCategoryId);
-        console.log('[filterNotesByCategory] User ID:', user.id);
 
-        // Fetch recollections using recall_id and user_id
+        // Fetch recollections for this category
         const { data: recollections, error: recollectionsError } = await supabase
           .from('recollections')
           .select('recall_id, match_score, category_id')
@@ -131,13 +146,12 @@ export default function HomeScreen() {
           return;
         }
 
-        console.log(`[filterNotesByCategory] Found ${recollections.length} recollections for category`);
+        console.log(`[filterNotesByCategory] Found ${recollections.length} recollections`);
 
-        // Extract recall_ids from recollections
+        // Extract recall IDs
         const recallIds = recollections.map(r => r.recall_id);
-        console.log('[filterNotesByCategory] Recall IDs to fetch:', recallIds);
         
-        // Fetch the actual recalls using recall_id
+        // Fetch the actual recalls
         const { data: recalls, error: recallsError } = await supabase
           .from('recalls')
           .select('*')
@@ -150,23 +164,23 @@ export default function HomeScreen() {
         }
 
         if (!recalls || recalls.length === 0) {
-          console.log('[filterNotesByCategory] No recalls found for the recollection recall_ids');
+          console.log('[filterNotesByCategory] No recalls found');
           setFilteredNotes([]);
           return;
         }
 
         console.log(`[filterNotesByCategory] Found ${recalls.length} recalls`);
 
-        // Create a map of recall_id to match_score
+        // Create match score map
         const matchScoreMap = new Map(
           recollections.map(r => [r.recall_id, r.match_score])
         );
 
-        // Process the recalls and load their images
+        // Process recalls and load images
         const notesWithImages = await Promise.all(
           recalls.map(async (recall) => {
             try {
-              // Load images for this recall using recall_id
+              // Load images for this recall
               const { data: imagesData, error: imagesError } = await supabase
                 .from('recall_images')
                 .select('id')
@@ -174,7 +188,7 @@ export default function HomeScreen() {
                 .order('created_at', { ascending: true });
 
               if (imagesError) {
-                console.error('[filterNotesByCategory] Error loading images for recall:', recall.id, imagesError);
+                console.error('[filterNotesByCategory] Error loading images:', imagesError);
                 return { 
                   ...recall, 
                   images: [], 
@@ -187,12 +201,9 @@ export default function HomeScreen() {
                 (imagesData || []).map(async (img) => {
                   try {
                     const dataUrl = await getImageDataUrl(img.id);
-                    if (!dataUrl) {
-                      return { url: '', id: img.id };
-                    }
-                    return { url: dataUrl, id: img.id };
+                    return { url: dataUrl || '', id: img.id };
                   } catch (error) {
-                    console.error(`[filterNotesByCategory] Exception processing image ${img.id}:`, error);
+                    console.error(`[filterNotesByCategory] Error processing image ${img.id}:`, error);
                     return { url: '', id: img.id };
                   }
                 })
@@ -219,10 +230,10 @@ export default function HomeScreen() {
           })
         );
 
-        // Sort by match_score (highest first)
+        // Sort by match score
         notesWithImages.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
 
-        console.log(`[filterNotesByCategory] Filtered ${notesWithImages.length} notes for category (sorted by match_score)`);
+        console.log(`[filterNotesByCategory] Filtered ${notesWithImages.length} notes`);
         setFilteredNotes(notesWithImages);
       } catch (error) {
         console.error('[filterNotesByCategory] Error filtering notes:', error);
@@ -235,17 +246,21 @@ export default function HomeScreen() {
     filterNotesByCategory();
   }, [selectedCategoryId, user?.id]);
 
+  // ============================================================================
+  // Focus Effect
+  // ============================================================================
+
   useFocusEffect(
     useCallback(() => {
       console.log('[useFocusEffect] Home screen focused');
       
-      // Skip auto-refresh on first focus (initial load)
+      // Skip auto-refresh on first focus
       if (isFirstFocusRef.current) {
         isFirstFocusRef.current = false;
         return;
       }
       
-      // Check if a new note was created (notes count increased)
+      // Check if a new note was created
       const currentCount = notes.length;
       const previousCount = previousNotesCountRef.current;
       
@@ -254,7 +269,7 @@ export default function HomeScreen() {
         refreshNotes();
       }
       
-      // Restore scroll position after a short delay
+      // Restore scroll position
       const savedScrollPosition = scrollPositionRef.current;
       if (savedScrollPosition > 0 && scrollViewRef.current) {
         setTimeout(() => {
@@ -262,27 +277,28 @@ export default function HomeScreen() {
         }, 100);
       }
       
-      // Cleanup function
       return () => {
         console.log('[useFocusEffect] Home screen unfocused');
       };
     }, [notes.length, refreshNotes])
   );
 
-  // Stable handleRefresh function using useCallback with stable dependencies
+  // ============================================================================
+  // Handlers
+  // ============================================================================
+
   const handleRefresh = useCallback(async (clearCategory: boolean = false) => {
     setRefreshing(true);
-    console.log('[handleRefresh] Refreshing landing page data from Supabase...');
+    console.log('[handleRefresh] Refreshing landing page data...');
     
     try {
-      // Refresh categories by triggering a re-render in CategoryCarousel
+      // Refresh categories
       console.log('[handleRefresh] Triggering category refresh...');
       setCategoryRefreshTrigger(prev => prev + 1);
       
-      // Refresh notes/recalls
+      // Refresh notes
       if (selectedCategoryId && !clearCategory) {
         console.log('[handleRefresh] Refreshing filtered notes for category:', selectedCategoryId);
-        // Trigger re-fetch of filtered notes by temporarily clearing and resetting category
         const currentCategory = selectedCategoryId;
         setSelectedCategoryId(null);
         setTimeout(() => setSelectedCategoryId(currentCategory), 100);
@@ -302,8 +318,7 @@ export default function HomeScreen() {
     }
   }, [selectedCategoryId, refreshNotes]);
 
-  // Use a ref to store the latest handleRefresh to avoid circular dependencies
-  const handleRefreshRef = useRef(handleRefresh);
+  // Store handleRefresh in ref to avoid circular dependencies
   useEffect(() => {
     handleRefreshRef.current = handleRefresh;
   }, [handleRefresh]);
@@ -312,23 +327,18 @@ export default function HomeScreen() {
     console.log('[handleRecallIconPress] Recall icon pressed - clearing categories and reloading');
     
     try {
-      // Clear selected category
       setSelectedCategoryId(null);
       
-      // Scroll to top
       if (scrollViewRef.current) {
         scrollViewRef.current.scrollTo({ y: 0, animated: true });
       }
       
-      // Reload landing page data with clearCategory flag set to true
-      // Use the ref to avoid circular dependency
-      await handleRefreshRef.current(true);
+      await handleRefreshRef.current?.(true);
     } catch (error) {
-      console.error('Error handling recall icon press:', error);
+      console.error('[handleRecallIconPress] Error:', error);
     }
-  }, []); // Empty dependency array since we use refs
+  }, []);
 
-  // Web-specific pull-to-refresh handlers - using refs to prevent infinite re-renders
   const handleTouchStart = useCallback((e: any) => {
     try {
       const touch = e.touches?.[0] || e.nativeEvent?.touches?.[0];
@@ -337,7 +347,7 @@ export default function HomeScreen() {
         isPullingRef.current = true;
       }
     } catch (error) {
-      console.error('Error in handleTouchStart:', error);
+      console.error('[handleTouchStart] Error:', error);
     }
   }, []);
 
@@ -351,25 +361,23 @@ export default function HomeScreen() {
         const clampedDistance = Math.min(distance, PULL_THRESHOLD * 1.5);
         pullDistanceRef.current = clampedDistance;
         
-        // Update UI state
         if (clampedDistance > 0) {
           setPullIndicatorVisible(true);
           setPullIndicatorText(clampedDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull to refresh');
         }
       }
     } catch (error) {
-      console.error('Error in handleTouchMove:', error);
+      console.error('[handleTouchMove] Error:', error);
     }
   }, []);
 
   const handleTouchEnd = useCallback(async () => {
     try {
       if (isPullingRef.current && pullDistanceRef.current >= PULL_THRESHOLD) {
-        // Call handleRefresh through ref to avoid dependency
-        await handleRefreshRef.current(false);
+        await handleRefreshRef.current?.(false);
       }
     } catch (error) {
-      console.error('Error in handleTouchEnd:', error);
+      console.error('[handleTouchEnd] Error:', error);
     } finally {
       isPullingRef.current = false;
       pullDistanceRef.current = 0;
@@ -378,123 +386,106 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const toggleActionButtons = () => {
+  const toggleActionButtons = useCallback(() => {
     setShowActionButtons(!showActionButtons);
-  };
+  }, [showActionButtons]);
 
-  const handleCameraPress = () => {
+  const handleCameraPress = useCallback(() => {
     if (isNavigating) return;
     console.log('[handleCameraPress] Camera button pressed');
     setIsNavigating('camera');
-    
-    // Close action buttons
     setShowActionButtons(false);
     
-    // Navigate to note editor with camera flag
     setTimeout(() => {
       try {
         router.push('/note-editor?openCamera=true');
       } catch (error) {
-        console.error('Error navigating to note editor with camera:', error);
+        console.error('[handleCameraPress] Error navigating:', error);
       }
-      // Reset navigation state after a delay
       setTimeout(() => setIsNavigating(null), 1000);
     }, 200);
-  };
+  }, [isNavigating, router]);
 
-  const handleTextPress = () => {
+  const handleTextPress = useCallback(() => {
     if (isNavigating) return;
     console.log('[handleTextPress] Text button pressed');
     setIsNavigating('text');
-    
-    // Close action buttons
     setShowActionButtons(false);
     
-    // Navigate to note editor normally
     setTimeout(() => {
       try {
         router.push('/note-editor');
       } catch (error) {
-        console.error('Error navigating to note editor:', error);
+        console.error('[handleTextPress] Error navigating:', error);
       }
-      // Reset navigation state after a delay
       setTimeout(() => setIsNavigating(null), 1000);
     }, 200);
-  };
+  }, [isNavigating, router]);
 
-  const handleLocationPress = () => {
+  const handleLocationPress = useCallback(() => {
     if (isNavigating) return;
     console.log('[handleLocationPress] Location button pressed');
     setIsNavigating('location');
-    
-    // Close action buttons
     setShowActionButtons(false);
     
-    // Navigate to note editor with location flag to immediately open location selection
     setTimeout(() => {
       try {
         router.push('/note-editor?openLocation=true');
       } catch (error) {
-        console.error('Error navigating to note editor with location:', error);
+        console.error('[handleLocationPress] Error navigating:', error);
       }
-      // Reset navigation state after a delay
       setTimeout(() => setIsNavigating(null), 1000);
     }, 200);
-  };
+  }, [isNavigating, router]);
 
-  const handleNotePress = (noteId: string) => {
+  const handleNotePress = useCallback((noteId: string) => {
     try {
       router.push(`/note-editor?id=${noteId}`);
     } catch (error) {
-      console.error('Error navigating to note editor:', error);
+      console.error('[handleNotePress] Error navigating:', error);
     }
-  };
+  }, [router]);
 
-  const handleSearch = () => {
+  const handleSearch = useCallback(() => {
     try {
       router.push('/search');
     } catch (error) {
-      console.error('Error navigating to search:', error);
+      console.error('[handleSearch] Error navigating:', error);
     }
-  };
+  }, [router]);
 
-  const handleProfile = () => {
+  const handleProfile = useCallback(() => {
     try {
       router.push('/(tabs)/profile');
     } catch (error) {
-      console.error('Error navigating to profile:', error);
+      console.error('[handleProfile] Error navigating:', error);
     }
-  };
+  }, [router]);
 
-  const handleCategorySelect = (categoryId: string | null) => {
+  const handleCategorySelect = useCallback((categoryId: string | null) => {
     console.log('[handleCategorySelect] Category selected:', categoryId);
     setSelectedCategoryId(categoryId);
-    // Scroll to top when category changes
     if (scrollViewRef.current) {
       scrollViewRef.current.scrollTo({ y: 0, animated: true });
     }
-  };
+  }, []);
 
   const handleScroll = useCallback((event: any) => {
     try {
       const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
       
-      // Save scroll position to ref (doesn't trigger re-render)
       scrollPositionRef.current = contentOffset.y;
       
-      // Reset pull state if scrolling
       if (contentOffset.y > 0 && isPullingRef.current) {
         isPullingRef.current = false;
         pullDistanceRef.current = 0;
         setPullIndicatorVisible(false);
       }
       
-      // Only load more if not filtering by category
       if (selectedCategoryId) {
         return;
       }
 
-      // Load more notes when near bottom
       const paddingToBottom = 20;
       const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
 
@@ -503,9 +494,13 @@ export default function HomeScreen() {
         loadMoreNotes();
       }
     } catch (error) {
-      console.error('Error handling scroll:', error);
+      console.error('[handleScroll] Error:', error);
     }
   }, [hasMore, isLoadingMore, loading, loadMoreNotes, selectedCategoryId]);
+
+  // ============================================================================
+  // Render Helpers
+  // ============================================================================
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
@@ -522,49 +517,50 @@ export default function HomeScreen() {
     </View>
   );
 
-  // Determine which notes to display
-  const displayNotes = selectedCategoryId ? filteredNotes : notes;
-  const isLoading = selectedCategoryId ? loadingFiltered : loading;
+  // ============================================================================
+  // Animation Calculations
+  // ============================================================================
 
-  // Calculate pull indicator opacity and scale
   const pullProgress = Math.min(pullDistanceRef.current / PULL_THRESHOLD, 1);
   const pullIndicatorOpacity = pullProgress;
   const pullIndicatorScale = 0.5 + (pullProgress * 0.5);
 
-  // Calculate button positions with new orientation
-  // 10% smaller FABs: 52 * 0.9 = 46.8
-  // 10% increased spacing between FABs: 70 * 1.1 = 77
-  // 10% increased distance from main FAB: multiply base distances by 1.1
-  
-  // Camera: directly to the left (-77px, 0px)
+  // Camera button - directly to the left
   const cameraTranslateX = cameraButtonAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -77],
+    outputRange: [0, -BUTTON_SPACING],
   });
   const cameraTranslateY = cameraButtonAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 0],
   });
 
-  // Text: at 45 degree angle (-54.45px, -54.45px)
+  // Text button - at 45 degree angle
   const textTranslateX = textButtonAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -54.45],
+    outputRange: [0, -DIAGONAL_OFFSET],
   });
   const textTranslateY = textButtonAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -54.45],
+    outputRange: [0, -DIAGONAL_OFFSET],
   });
 
-  // Location: directly above (0px, -77px)
+  // Location button - directly above
   const locationTranslateX = locationButtonAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 0],
   });
   const locationTranslateY = locationButtonAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -77],
+    outputRange: [0, -BUTTON_SPACING],
   });
+
+  // ============================================================================
+  // Render
+  // ============================================================================
+
+  const displayNotes = selectedCategoryId ? filteredNotes : notes;
+  const isLoading = selectedCategoryId ? loadingFiltered : loading;
 
   return (
     <View style={styles.container}>
@@ -598,7 +594,7 @@ export default function HomeScreen() {
         }}
       />
 
-      {/* Pull-to-refresh indicator for web */}
+      {/* Pull-to-refresh indicator */}
       {pullIndicatorVisible && (
         <View 
           style={[
@@ -614,7 +610,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Main Content ScrollView */}
+      {/* Main Content */}
       <ScrollView
         ref={scrollViewRef}
         style={styles.scrollView}
@@ -625,7 +621,7 @@ export default function HomeScreen() {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Category Carousel - Now scrolls with content */}
+        {/* Category Carousel */}
         <View style={styles.categoryCarouselContainer}>
           <CategoryCarousel 
             onCategorySelect={handleCategorySelect}
@@ -635,6 +631,7 @@ export default function HomeScreen() {
           />
         </View>
 
+        {/* Content */}
         {isLoading && !refreshing ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -643,7 +640,6 @@ export default function HomeScreen() {
           renderEmptyState()
         ) : (
           <View style={styles.notesContainer}>
-            {/* Notes section */}
             <View style={styles.allNotesSection}>
               {displayNotes.map((note, index) => (
                 <NoteCard
@@ -669,17 +665,16 @@ export default function HomeScreen() {
         )}
       </ScrollView>
 
+      {/* Bottom Actions */}
       <View style={styles.bottomActions}>
-        <Pressable
-          onPress={handleSearch}
-          style={styles.searchFab}
-        >
+        {/* Search FAB */}
+        <Pressable onPress={handleSearch} style={styles.searchFab}>
           <IconSymbol name="magnifyingglass" size={28} color="#FFFFFF" />
         </Pressable>
 
-        {/* Action Buttons Container with new orientation */}
+        {/* Action Buttons Container */}
         <View style={styles.actionButtonsContainer}>
-          {/* Camera Button - Directly to the left */}
+          {/* Camera Button */}
           {showActionButtons && (
             <Animated.View 
               style={[
@@ -708,7 +703,7 @@ export default function HomeScreen() {
             </Animated.View>
           )}
 
-          {/* Text Button - At 45 degree angle */}
+          {/* Text Button */}
           {showActionButtons && (
             <Animated.View 
               style={[
@@ -737,7 +732,7 @@ export default function HomeScreen() {
             </Animated.View>
           )}
 
-          {/* Location Button - Directly above */}
+          {/* Location Button */}
           {showActionButtons && (
             <Animated.View 
               style={[
@@ -767,10 +762,7 @@ export default function HomeScreen() {
           )}
 
           {/* Main FAB */}
-          <Pressable
-            onPress={toggleActionButtons}
-            style={styles.fab}
-          >
+          <Pressable onPress={toggleActionButtons} style={styles.fab}>
             <IconSymbol 
               name={showActionButtons ? "xmark" : "plus"} 
               size={28} 
@@ -780,35 +772,27 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Deletion Indicator Modal */}
-      <Modal
-        visible={isDeletingNote}
-        transparent={true}
-        animationType="fade"
-      >
-        <View style={styles.deletionModalContainer}>
-          <View style={styles.deletionModalContent}>
+      {/* Deletion Modal */}
+      <Modal visible={isDeletingNote} transparent={true} animationType="fade">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.deletionModalText}>Deleting note...</Text>
+            <Text style={styles.modalText}>Deleting note...</Text>
           </View>
         </View>
       </Modal>
 
-      {/* Saving Indicator Modal */}
-      <Modal
-        visible={isSaving}
-        transparent={true}
-        animationType="fade"
-      >
-        <View style={styles.deletionModalContainer}>
-          <View style={styles.deletionModalContent}>
+      {/* Saving Modal */}
+      <Modal visible={isSaving} transparent={true} animationType="fade">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.deletionModalText}>Saving note...</Text>
+            <Text style={styles.modalText}>Saving note...</Text>
           </View>
         </View>
       </Modal>
 
-      {/* Refreshing Overlay for web */}
+      {/* Refreshing Overlay */}
       {refreshing && (
         <View style={styles.refreshingOverlay}>
           <View style={styles.refreshingContent}>
@@ -820,6 +804,10 @@ export default function HomeScreen() {
     </View>
   );
 }
+
+// ============================================================================
+// Styles
+// ============================================================================
 
 const styles = StyleSheet.create({
   container: {
@@ -908,9 +896,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   searchFab: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
     backgroundColor: colors.searchAccent,
     justifyContent: 'center',
     alignItems: 'center',
@@ -929,9 +917,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   cameraButton: {
-    width: 46.8,
-    height: 46.8,
-    borderRadius: 23.4,
+    width: ACTION_BUTTON_SIZE,
+    height: ACTION_BUTTON_SIZE,
+    borderRadius: ACTION_BUTTON_SIZE / 2,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
@@ -942,9 +930,9 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   textButton: {
-    width: 46.8,
-    height: 46.8,
-    borderRadius: 23.4,
+    width: ACTION_BUTTON_SIZE,
+    height: ACTION_BUTTON_SIZE,
+    borderRadius: ACTION_BUTTON_SIZE / 2,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
@@ -955,9 +943,9 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   locationButton: {
-    width: 46.8,
-    height: 46.8,
-    borderRadius: 23.4,
+    width: ACTION_BUTTON_SIZE,
+    height: ACTION_BUTTON_SIZE,
+    borderRadius: ACTION_BUTTON_SIZE / 2,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
@@ -968,9 +956,9 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   fab: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
@@ -980,13 +968,13 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
-  deletionModalContainer: {
+  modalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  deletionModalContent: {
+  modalContent: {
     backgroundColor: colors.card,
     borderRadius: 16,
     padding: 32,
@@ -994,7 +982,7 @@ const styles = StyleSheet.create({
     gap: 16,
     minWidth: 200,
   },
-  deletionModalText: {
+  modalText: {
     fontSize: 16,
     color: colors.text,
     fontWeight: '600',
