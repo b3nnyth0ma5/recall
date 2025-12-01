@@ -83,6 +83,8 @@ export default function NoteEditorScreen() {
   const [showCameraDrawer, setShowCameraDrawer] = useState(false);
   const [cameraLaunched, setCameraLaunched] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
+  const [initialPeople, setInitialPeople] = useState<Person[]>([]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
@@ -102,7 +104,28 @@ export default function NoteEditorScreen() {
   const fromShare = params.fromShare === 'true';
   const openCamera = params.openCamera === 'true';
   const openLocation = params.openLocation === 'true';
-  const canSave = text.trim().length > 0 || images.length > 0;
+  
+  // Check if people have changed
+  const peopleChanged = useCallback(() => {
+    if (initialPeople.length !== people.length) {
+      return true;
+    }
+    const initialIds = new Set(initialPeople.map(p => p.id));
+    const currentIds = new Set(people.map(p => p.id));
+    for (const id of currentIds) {
+      if (!initialIds.has(id)) {
+        return true;
+      }
+    }
+    for (const id of initialIds) {
+      if (!currentIds.has(id)) {
+        return true;
+      }
+    }
+    return false;
+  }, [initialPeople, people]);
+
+  const canSave = text.trim().length > 0 || images.length > 0 || peopleChanged();
   const hasImages = images.length > 0;
   const textHasUrl = hasUrl(text);
   
@@ -644,10 +667,12 @@ export default function NoteEditorScreen() {
             }));
           console.log('[NoteEditor] Loaded people from database:', loadedPeople);
           setPeople(loadedPeople);
+          setInitialPeople(loadedPeople);
           console.log(`[NoteEditor] Set ${loadedPeople.length} people in state`);
         } else {
           console.log('[NoteEditor] No people found for this recall');
           setPeople([]);
+          setInitialPeople([]);
         }
 
         // Load images for this note
@@ -963,6 +988,12 @@ export default function NoteEditorScreen() {
       return;
     }
 
+    if (!user) {
+      console.error('[NoteEditor] ERROR: No user found, cannot save');
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
+
     try {
       setSaving(true);
       console.log('[NoteEditor] ===== STARTING SAVE PROCESS =====');
@@ -1014,78 +1045,97 @@ export default function NoteEditorScreen() {
       }
 
       // Save people associations - CRITICAL SECTION
-      if (user) {
-        try {
-          console.log('[NoteEditor] ===== SAVING PEOPLE ASSOCIATIONS =====');
-          console.log('[NoteEditor] Recall ID:', recallId);
-          console.log('[NoteEditor] User ID:', user.id);
-          console.log('[NoteEditor] People to save:', people);
-          console.log('[NoteEditor] People count:', people.length);
-          
-          // Step 1: Delete ALL existing associations for this recall
-          console.log('[NoteEditor] Step 1: Deleting existing people associations');
-          const { error: deleteError, count: deleteCount } = await supabase
-            .from('recall_people')
-            .delete()
-            .eq('recall_id', recallId)
-            .eq('user_id', user.id);
-          
-          if (deleteError) {
-            console.error('[NoteEditor] ERROR deleting existing people associations:', deleteError);
-            throw deleteError;
-          } else {
-            console.log('[NoteEditor] Successfully deleted existing associations (count:', deleteCount, ')');
-          }
-          
-          // Step 2: Insert new associations if there are any people selected
-          if (people.length > 0) {
-            console.log('[NoteEditor] Step 2: Inserting new people associations');
-            const insertData = people.map(person => ({
-              recall_id: recallId,
-              person_id: person.id,
-              user_id: user.id,
-            }));
-            
-            console.log('[NoteEditor] Data to insert:', insertData);
-            
-            const { data: insertedData, error: peopleError } = await supabase
-              .from('recall_people')
-              .insert(insertData)
-              .select();
-            
-            if (peopleError) {
-              console.error('[NoteEditor] ERROR inserting people associations:', peopleError);
-              console.error('[NoteEditor] Error details:', JSON.stringify(peopleError, null, 2));
-              throw peopleError;
-            } else {
-              console.log('[NoteEditor] ✅ SUCCESS! Inserted', people.length, 'people associations');
-              console.log('[NoteEditor] Inserted data:', insertedData);
-            }
-          } else {
-            console.log('[NoteEditor] No people to save (empty selection)');
-          }
-          
-          // Step 3: Verify the save by querying back
-          console.log('[NoteEditor] Step 3: Verifying saved people associations');
-          const { data: verifyData, error: verifyError } = await supabase
-            .from('recall_people')
-            .select('person_id, persons(person_name)')
-            .eq('recall_id', recallId);
-          
-          if (verifyError) {
-            console.error('[NoteEditor] ERROR verifying people associations:', verifyError);
-          } else {
-            console.log('[NoteEditor] Verification: Found', verifyData?.length || 0, 'people associations in database');
-            if (verifyData && verifyData.length > 0) {
-              console.log('[NoteEditor] Verified people:', verifyData.map((rp: any) => rp.persons?.person_name).join(', '));
-            }
-          }
-        } catch (error) {
-          console.error('[NoteEditor] CRITICAL ERROR managing people associations:', error);
-          Alert.alert('Warning', 'Note saved but there was an error saving people associations. Please try editing the note again.');
+      try {
+        console.log('[NoteEditor] ===== SAVING PEOPLE ASSOCIATIONS =====');
+        console.log('[NoteEditor] Recall ID:', recallId);
+        console.log('[NoteEditor] User ID:', user.id);
+        console.log('[NoteEditor] People to save:', people);
+        console.log('[NoteEditor] People count:', people.length);
+        
+        // Step 1: Delete ALL existing associations for this recall
+        console.log('[NoteEditor] Step 1: Deleting existing people associations');
+        const { error: deleteError, count: deleteCount } = await supabase
+          .from('recall_people')
+          .delete()
+          .eq('recall_id', recallId)
+          .eq('user_id', user.id);
+        
+        if (deleteError) {
+          console.error('[NoteEditor] ERROR deleting existing people associations:', deleteError);
+          console.error('[NoteEditor] Delete error details:', JSON.stringify(deleteError, null, 2));
+          throw deleteError;
+        } else {
+          console.log('[NoteEditor] Successfully deleted existing associations (count:', deleteCount, ')');
         }
-      } else {
-        console.error('[NoteEditor] ERROR: No user found, cannot save people associations');
+        
+        // Step 2: Insert new associations if there are any people selected
+        if (people.length > 0) {
+          console.log('[NoteEditor] Step 2: Inserting new people associations');
+          
+          // Validate that all people have valid IDs
+          const invalidPeople = people.filter(p => !p.id || typeof p.id !== 'string');
+          if (invalidPeople.length > 0) {
+            console.error('[NoteEditor] ERROR: Found people with invalid IDs:', invalidPeople);
+            throw new Error('Some people have invalid IDs');
+          }
+          
+          const insertData = people.map(person => ({
+            recall_id: recallId,
+            person_id: person.id,
+            user_id: user.id,
+          }));
+          
+          console.log('[NoteEditor] Data to insert:', JSON.stringify(insertData, null, 2));
+          
+          const { data: insertedData, error: peopleError } = await supabase
+            .from('recall_people')
+            .insert(insertData)
+            .select();
+          
+          if (peopleError) {
+            console.error('[NoteEditor] ERROR inserting people associations:', peopleError);
+            console.error('[NoteEditor] Error details:', JSON.stringify(peopleError, null, 2));
+            console.error('[NoteEditor] Failed insert data:', JSON.stringify(insertData, null, 2));
+            throw peopleError;
+          } else {
+            console.log('[NoteEditor] ✅ SUCCESS! Inserted', people.length, 'people associations');
+            console.log('[NoteEditor] Inserted data:', JSON.stringify(insertedData, null, 2));
+          }
+        } else {
+          console.log('[NoteEditor] No people to save (empty selection)');
+        }
+        
+        // Step 3: Verify the save by querying back
+        console.log('[NoteEditor] Step 3: Verifying saved people associations');
+        const { data: verifyData, error: verifyError } = await supabase
+          .from('recall_people')
+          .select('id, recall_id, person_id, user_id, persons(id, person_name)')
+          .eq('recall_id', recallId)
+          .eq('user_id', user.id);
+        
+        if (verifyError) {
+          console.error('[NoteEditor] ERROR verifying people associations:', verifyError);
+        } else {
+          console.log('[NoteEditor] Verification: Found', verifyData?.length || 0, 'people associations in database');
+          if (verifyData && verifyData.length > 0) {
+            console.log('[NoteEditor] Verified people:', verifyData.map((rp: any) => rp.persons?.person_name).join(', '));
+            console.log('[NoteEditor] Full verification data:', JSON.stringify(verifyData, null, 2));
+          }
+          
+          // Check if the count matches
+          if (verifyData && verifyData.length !== people.length) {
+            console.error('[NoteEditor] WARNING: Mismatch in people count!');
+            console.error('[NoteEditor] Expected:', people.length, 'Got:', verifyData.length);
+          } else {
+            console.log('[NoteEditor] ✅ People count matches! Expected and got:', people.length);
+          }
+        }
+        
+        // Update initial people state to reflect saved state
+        setInitialPeople(people);
+      } catch (error) {
+        console.error('[NoteEditor] CRITICAL ERROR managing people associations:', error);
+        Alert.alert('Warning', 'Note saved but there was an error saving people associations. Please try editing the note again.');
       }
 
       let uploadedCount = 0;
@@ -1129,17 +1179,15 @@ export default function NoteEditorScreen() {
       console.log(`[NoteEditor] Upload complete: ${uploadedCount} new images uploaded, ${failedCount} failed`);
 
       console.log('[NoteEditor] Processing URLs in note text for recall:', recallId);
-      if (user) {
-        processRecallUrls(user.id, recallId, noteData.text).then(result => {
-          if (result.success) {
-            console.log('[NoteEditor] URLs processed successfully');
-          } else {
-            console.error('[NoteEditor] Failed to process URLs:', result.error);
-          }
-        }).catch(error => {
-          console.error('[NoteEditor] Error processing URLs:', error);
-        });
-      }
+      processRecallUrls(user.id, recallId, noteData.text).then(result => {
+        if (result.success) {
+          console.log('[NoteEditor] URLs processed successfully');
+        } else {
+          console.error('[NoteEditor] Failed to process URLs:', result.error);
+        }
+      }).catch(error => {
+        console.error('[NoteEditor] Error processing URLs:', error);
+      });
 
       setTimeout(() => {
         triggerCategoryMatching(recallId).then(result => {
