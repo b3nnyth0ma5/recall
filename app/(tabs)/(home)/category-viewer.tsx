@@ -148,7 +148,6 @@ export default function CategoryViewerScreen() {
           latitude: recall.latitude,
           longitude: recall.longitude,
           location_primary_type: recall.location_primary_type,
-          // FIX: Extract cdn_url strings directly, not objects
           images: recall.recall_images?.map((img: any) => img.cdn_url).filter((url: string) => url) || [],
           imageIds: recall.recall_images?.map((img: any) => img.id) || [],
           urls: recall.recall_urls?.map((url: any) => ({
@@ -262,6 +261,10 @@ export default function CategoryViewerScreen() {
     try {
       setIsSaving(true);
 
+      // Check if name or description changed
+      const nameChanged = editName.trim() !== category.category_name;
+      const descriptionChanged = editDescription.trim() !== category.category_search_description;
+
       // Upload new image if changed
       let iconUrl = category.icon_cdn_url;
       if (editImage && editImage !== category.icon_cdn_url) {
@@ -299,6 +302,12 @@ export default function CategoryViewerScreen() {
 
       console.log('Category updated successfully');
 
+      // Trigger new-category-matching edge function if name or description changed
+      if (nameChanged || descriptionChanged) {
+        console.log('Category name or description changed, triggering new-category-matching...');
+        triggerCategoryMatching(category.id);
+      }
+
       // Haptic feedback
       if (Platform.OS !== 'web') {
         try {
@@ -316,6 +325,26 @@ export default function CategoryViewerScreen() {
       Alert.alert('Error', 'Failed to update category');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const triggerCategoryMatching = async (categoryId: string) => {
+    try {
+      console.log('Triggering category matching for updated category:', categoryId);
+      
+      const { data, error } = await supabase.functions.invoke('new-category-matching', {
+        body: { 
+          categoryId: categoryId
+        },
+      });
+
+      if (error) {
+        console.error('Error invoking category matching:', error);
+      } else {
+        console.log('Category matching triggered successfully:', data);
+      }
+    } catch (error) {
+      console.error('Exception in triggerCategoryMatching:', error);
     }
   };
 
@@ -423,7 +452,7 @@ export default function CategoryViewerScreen() {
                   ios_icon_name="chevron.left" 
                   android_material_icon_name="arrow_back" 
                   size={24} 
-                  color={colors.primary} 
+                  color={colors.text} 
                 />
               </Pressable>
             ),
@@ -454,7 +483,7 @@ export default function CategoryViewerScreen() {
                   ios_icon_name="chevron.left" 
                   android_material_icon_name="arrow_back" 
                   size={24} 
-                  color={colors.primary} 
+                  color={colors.text} 
                 />
               </Pressable>
             ),
@@ -478,39 +507,23 @@ export default function CategoryViewerScreen() {
           },
           headerTintColor: colors.text,
           headerTitleAlign: 'center',
-          headerTitleStyle: {
-            fontSize: 20,
-            fontWeight: 'bold',
-          },
           headerLeft: () => (
-            <Pressable onPress={handleBack} style={styles.headerButton}>
-              <IconSymbol 
-                ios_icon_name="chevron.left" 
-                android_material_icon_name="arrow_back" 
-                size={24} 
-                color={colors.primary} 
-              />
+            <Pressable 
+              onPress={handleBack} 
+              style={styles.headerButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="chevron.left" size={24} color={colors.text} />
             </Pressable>
           ),
           headerRight: () => (
-            <View style={styles.headerRightContainer}>
-              <Pressable onPress={handleEditPress} style={styles.headerButton}>
-                <IconSymbol 
-                  ios_icon_name="pencil" 
-                  android_material_icon_name="edit" 
-                  size={24} 
-                  color={colors.primary} 
-                />
-              </Pressable>
-              <Pressable onPress={handleDeletePress} style={styles.headerButton}>
-                <IconSymbol 
-                  ios_icon_name="trash" 
-                  android_material_icon_name="delete" 
-                  size={24} 
-                  color={colors.error} 
-                />
-              </Pressable>
-            </View>
+            <Pressable 
+              onPress={handleDeletePress} 
+              style={styles.headerButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="trash" size={24} color={colors.error} />
+            </Pressable>
           ),
         }}
       />
@@ -527,19 +540,41 @@ export default function CategoryViewerScreen() {
           />
         }
       >
-        {/* Category Info */}
+        {/* Category Info - Updated Layout */}
         <View style={styles.categoryInfoContainer}>
-          {category.icon_cdn_url && (
-            <Image
-              source={{ uri: category.icon_cdn_url }}
-              style={styles.categoryIcon}
-              resizeMode="cover"
-            />
-          )}
-          <Text style={styles.categoryDescription}>{category.category_search_description}</Text>
-          <Text style={styles.recallCount}>
-            {notes.length} {notes.length === 1 ? 'Recall' : 'Recalls'}
-          </Text>
+          <View style={styles.categoryTopRow}>
+            {/* Category Icon - 20% smaller and on the left */}
+            {category.icon_cdn_url && (
+              <Image
+                source={{ uri: category.icon_cdn_url }}
+                style={styles.categoryIcon}
+                resizeMode="cover"
+              />
+            )}
+            
+            {/* Search Description and Recall Count - Vertically aligned */}
+            <View style={styles.categoryTextContainer}>
+              <View style={styles.descriptionRow}>
+                <Text style={styles.categoryDescription}>{category.category_search_description}</Text>
+                {/* Small Edit Icon */}
+                <Pressable 
+                  onPress={handleEditPress} 
+                  style={styles.editIconButton}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <IconSymbol 
+                    ios_icon_name="pencil.circle.fill" 
+                    android_material_icon_name="edit" 
+                    size={24} 
+                    color={colors.primary} 
+                  />
+                </Pressable>
+              </View>
+              <Text style={styles.recallCount}>
+                {notes.length} {notes.length === 1 ? 'Recall' : 'Recalls'}
+              </Text>
+            </View>
+          </View>
         </View>
 
         {/* Recalls */}
@@ -702,35 +737,48 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     padding: 8,
-    marginHorizontal: 4,
-  },
-  headerRightContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginHorizontal: 8,
   },
   categoryInfoContainer: {
     padding: 24,
-    alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  categoryTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
   categoryIcon: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    marginBottom: 16,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+  },
+  categoryTextContainer: {
+    flex: 1,
+    justifyContent: 'space-between',
+    minHeight: 80,
+  },
+  descriptionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    flex: 1,
   },
   categoryDescription: {
     fontSize: 16,
     color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 12,
     lineHeight: 22,
+    flex: 1,
+  },
+  editIconButton: {
+    padding: 4,
   },
   recallCount: {
     fontSize: 14,
     color: colors.primary,
     fontWeight: '600',
+    alignSelf: 'flex-start',
   },
   notesContainer: {
     paddingHorizontal: 16,

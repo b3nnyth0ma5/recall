@@ -12,7 +12,7 @@ interface Category {
   category_name: string;
   icon_cdn_url: string | null;
   recollection_count?: number;
-  is_matching?: boolean;
+  created_at: string;
 }
 
 interface CategoryCarouselProps {
@@ -42,12 +42,12 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       setLoading(true);
       console.log('[CategoryCarousel] Loading all user categories from Supabase for user:', userId);
       
-      // Fetch all categories for this user
+      // Fetch all categories for this user, sorted by most recent first
       const { data: categoriesData, error: categoriesError } = await supabase
         .from('recollection_categories')
-        .select('id, category_name, icon_cdn_url, is_matching')
+        .select('id, category_name, icon_cdn_url, created_at')
         .eq('user_id', userId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false });
 
       if (categoriesError) {
         console.error('[CategoryCarousel] Error loading categories:', categoriesError);
@@ -172,7 +172,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
           </Text>
         </Pressable>
 
-        {/* User Categories */}
+        {/* User Categories - Most recent first (already sorted by created_at desc) */}
         {categories.map((category) => {
           const isSelected = selectedCategoryId === category.id;
           
@@ -188,9 +188,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
                   isSelected && styles.categoryImageContainerSelected,
                 ]}
               >
-                {category.is_matching ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : category.icon_cdn_url ? (
+                {category.icon_cdn_url ? (
                   <Image
                     source={{ uri: category.icon_cdn_url }}
                     style={styles.categoryImage}

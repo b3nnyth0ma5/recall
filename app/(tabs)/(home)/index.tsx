@@ -301,10 +301,6 @@ export default function HomeScreen() {
   );
 
   // Calculate button positions with new orientation
-  // 10% smaller FABs: 52 * 0.9 = 46.8
-  // 10% increased spacing between FABs: 70 * 1.1 = 77
-  // 10% increased distance from main FAB: multiply base distances by 1.1
-  
   // Camera: directly to the left (-77px, 0px)
   const cameraTranslateX = cameraButtonAnim.interpolate({
     inputRange: [0, 1],
@@ -315,7 +311,7 @@ export default function HomeScreen() {
     outputRange: [0, 0],
   });
 
-  // Text: at 45 degree angle (-54.45px, -54.45px) - 50 * 1.1 * sqrt(2)/2 ≈ 54.45
+  // Text: at 45 degree angle (-54.45px, -54.45px)
   const textTranslateX = textButtonAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0, -54.45],
@@ -349,7 +345,7 @@ export default function HomeScreen() {
           headerTitleStyle: {
             fontSize: 32,
             fontWeight: 'bold',
-						fontColor: colors.primary,
+            color: colors.primary,
           },
           headerLeft: () => (
             <Pressable onPress={handleRecallIconPress} style={styles.headerButton}>
