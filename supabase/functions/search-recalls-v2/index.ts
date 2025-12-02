@@ -416,8 +416,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Step 3: Use OpenAI o1-mini for question answering with source tracking
-    console.log('Step 3: Using OpenAI o1-mini for question answering with source tracking...');
+    // Step 3: Use OpenAI gpt-5-mini for question answering with source tracking
+    console.log('Step 3: Using OpenAI gpt-5-mini for question answering with source tracking...');
 
     // Prepare context from matches with source IDs
     const contextWithSources = uniqueRecallMatches.map((match: any, idx: number) => {
@@ -445,9 +445,7 @@ Deno.serve(async (req) => {
 
     const context = contextWithSources.map((c: any) => c.text).join('\n\n');
 
-    // For o1-mini, we need to combine system instructions with the user prompt
-    // since o1 models don't support system messages
-    const combinedPrompt = `You are an accurate search assistant that understands the intent of the user's question and provides answers based on the provided information. Provide exact answer in under 120 words, based only on the information provided to you. 
+    const qaPrompt = `You are an accurate search assistant that understands the intent of the user's question and provides answers based on the provided information. Provide exact answer in under 120 words, based only on the information provided to you. 
 Use bullet points when listing things.
 You're also a NER expert that identifies calendar/date/time entities and names of people; and uses this to provide more relevant answers.
 If you cannot answer the question with confidence based on the provided information, say so. 
@@ -463,7 +461,7 @@ ${context}
 
 Provide your answer in JSON format: {"answer": "your answer here", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}`;
 
-    console.log('Making request to OpenAI o1-mini with reasoning parameters...');
+    console.log('Making request to OpenAI gpt-5-mini with reasoning effort: medium and verbosity: low...');
     const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -471,15 +469,20 @@ Provide your answer in JSON format: {"answer": "your answer here", "confidence":
         'Authorization': `Bearer ${openaiApiKey}`
       },
       body: JSON.stringify({
-        model: 'o1-mini',
+        model: 'gpt-5-mini',
         messages: [
           { 
             role: 'user', 
-            content: combinedPrompt 
+            content: qaPrompt 
           }
         ],
-        reasoning_effort: 'low',
-        max_completion_tokens: 800
+        reasoning: {
+          effort: 'medium'
+        },
+        text: {
+          verbosity: 'low'
+        },
+        response_format: { type: 'json_object' }
       })
     });
 
@@ -504,20 +507,11 @@ Provide your answer in JSON format: {"answer": "your answer here", "confidence":
 
     if (qaContent) {
       try {
-        // o1 models may include reasoning in the response, so we need to extract JSON
-        // Try to find JSON in the response
-        const jsonMatch = qaContent.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          answer = parsed.answer || null;
-          confidence = parsed.confidence || 0;
-          sourcesUsed = parsed.sources || [];
-          console.log('Sources used by AI:', sourcesUsed);
-        } else {
-          console.error('No JSON found in response, using raw content');
-          answer = qaContent;
-          confidence = 50; // Default confidence when parsing fails
-        }
+        const parsed = JSON.parse(qaContent);
+        answer = parsed.answer || null;
+        confidence = parsed.confidence || 0;
+        sourcesUsed = parsed.sources || [];
+        console.log('Sources used by AI:', sourcesUsed);
       } catch (parseError) {
         console.error('Failed to parse QA response:', parseError);
         console.error('Raw content:', qaContent);
