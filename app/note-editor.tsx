@@ -79,7 +79,6 @@ export default function NoteEditorScreen() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
-  const [showLocationDrawer, setShowLocationDrawer] = useState(false);
   const [showCameraDrawer, setShowCameraDrawer] = useState(false);
   const [cameraLaunched, setCameraLaunched] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
@@ -93,9 +92,7 @@ export default function NoteEditorScreen() {
   const [lazyLoadedImages, setLazyLoadedImages] = useState<ImageData[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
 
-  // Animated values for drawers
-  const drawerTranslateY = useSharedValue(SCREEN_HEIGHT);
-  const drawerOpacity = useSharedValue(0);
+  // Animated values for camera drawer
   const cameraDrawerTranslateY = useSharedValue(SCREEN_HEIGHT);
   const cameraDrawerOpacity = useSharedValue(0);
 
@@ -195,19 +192,6 @@ export default function NoteEditorScreen() {
     }
   };
 
-  // Animated styles for location drawer
-  const drawerAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateY: drawerTranslateY.value }],
-    };
-  });
-
-  const overlayAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      opacity: drawerOpacity.value,
-    };
-  });
-
   // Animated styles for camera drawer
   const cameraDrawerAnimatedStyle = useAnimatedStyle(() => {
     return {
@@ -220,29 +204,6 @@ export default function NoteEditorScreen() {
       opacity: cameraDrawerOpacity.value,
     };
   });
-
-  // Open location drawer with bounce effect
-  const openLocationDrawer = () => {
-    setShowLocationDrawer(true);
-    drawerOpacity.value = withTiming(1, { duration: 300 });
-    drawerTranslateY.value = withSpring(0, {
-      damping: 15,
-      stiffness: 150,
-      mass: 0.8,
-    });
-  };
-
-  // Close location drawer with bounce effect
-  const closeLocationDrawer = () => {
-    drawerOpacity.value = withTiming(0, { duration: 200 });
-    drawerTranslateY.value = withSpring(SCREEN_HEIGHT, {
-      damping: 20,
-      stiffness: 200,
-      mass: 0.5,
-    }, () => {
-      runOnJS(setShowLocationDrawer)(false);
-    });
-  };
 
   // Open camera drawer with bounce effect
   const openCameraDrawer = () => {
@@ -927,50 +888,9 @@ export default function NoteEditorScreen() {
       return;
     }
 
-    openLocationDrawer();
-  };
-
-  const handleUpdateLocation = () => {
-    closeLocationDrawer();
-    setTimeout(() => {
-      router.push('/location-search');
-    }, 300);
-  };
-
-  const handleOpenMaps = async () => {
-    closeLocationDrawer();
-    
-    if (!location) {
-      console.log('No location available');
-      return;
-    }
-
-    const { latitude, longitude } = location;
-    const formattedLocationName = locationName || '';
-    
-    try {
-      let universalUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
-      
-      if (formattedLocationName) {
-        const encodedLocationName = encodeURIComponent(formattedLocationName);
-        universalUrl = `https://www.google.com/maps/search/?api=1&query=${encodedLocationName}+${latitude},${longitude}`;
-      }
-      
-      console.log('Opening maps with URL:', universalUrl);
-      
-      const canOpen = await Linking.canOpenURL(universalUrl);
-      
-      if (canOpen) {
-        await Linking.openURL(universalUrl);
-        console.log('Successfully opened maps with location:', formattedLocationName);
-      } else {
-        console.error('Cannot open maps URL');
-        Alert.alert('Error', 'Unable to open maps on this device');
-      }
-    } catch (error) {
-      console.error('Error opening maps:', error);
-      Alert.alert('Error', 'Could not open maps application. Please ensure you have a maps app installed.');
-    }
+    // Navigate directly to location search screen
+    console.log('Navigating to location search screen');
+    router.push('/location-search');
   };
 
   const handlePeopleChange = useCallback((newPeople: Person[]) => {
@@ -1347,7 +1267,11 @@ export default function NoteEditorScreen() {
         keyboardShouldPersistTaps="handled"
         scrollEnabled={true}
       >
-        <View style={[styles.textInputContainer, { height: textInputHeight }]}>
+        {/* Larger touch area wrapper for text input */}
+        <Pressable 
+          onPress={handleRichTextPress}
+          style={[styles.textInputContainer, { height: textInputHeight }]}
+        >
           {textHasUrl ? (
             <View style={styles.richTextContainer}>
               <ScrollView 
@@ -1393,11 +1317,12 @@ export default function NoteEditorScreen() {
               />
             </ScrollView>
           )}
-        </View>
+        </Pressable>
 
         <View style={styles.spacer} />
       </ScrollView>
 
+      {/* Always show people avatars row */}
       <PeopleAvatarsRow 
         people={people} 
         avatarSize={44} 
@@ -1530,67 +1455,6 @@ export default function NoteEditorScreen() {
           </Pressable>
         )}
       </View>
-
-      {/* Location Drawer */}
-      {showLocationDrawer && (
-        <View style={styles.drawerContainer}>
-          <Animated.View style={[styles.drawerOverlay, overlayAnimatedStyle]}>
-            <Pressable 
-              style={StyleSheet.absoluteFill}
-              onPress={closeLocationDrawer}
-            />
-          </Animated.View>
-          
-          <Animated.View style={[styles.drawerContent, drawerAnimatedStyle]}>
-            <View style={styles.drawerHandle} />
-            
-            <View style={styles.drawerHeader}>
-              <IconSymbol name="location.fill" size={24} color={colors.primary} />
-              <Text style={styles.drawerTitle}>Location Options</Text>
-            </View>
-            
-            <Pressable
-              onPress={handleUpdateLocation}
-              style={styles.drawerOption}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <View style={styles.drawerOptionIcon}>
-                <IconSymbol name="pencil" size={20} color={colors.primary} />
-              </View>
-              <View style={styles.drawerOptionText}>
-                <Text style={styles.drawerOptionTitle}>Update Location</Text>
-                <Text style={styles.drawerOptionSubtitle}>Change the location for this recall</Text>
-              </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
-            </Pressable>
-
-            <View style={styles.drawerDivider} />
-
-            <Pressable
-              onPress={handleOpenMaps}
-              style={styles.drawerOption}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <View style={styles.drawerOptionIcon}>
-                <IconSymbol name="map.fill" size={20} color={colors.primary} />
-              </View>
-              <View style={styles.drawerOptionText}>
-                <Text style={styles.drawerOptionTitle}>Open in Maps</Text>
-                <Text style={styles.drawerOptionSubtitle}>View location in maps app</Text>
-              </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
-            </Pressable>
-
-            <Pressable
-              onPress={closeLocationDrawer}
-              style={styles.drawerCancelButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.drawerCancelText}>Cancel</Text>
-            </Pressable>
-          </Animated.View>
-        </View>
-      )}
 
       {/* Camera Drawer */}
       {showCameraDrawer && (
