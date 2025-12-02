@@ -199,9 +199,9 @@ export default function OnboardingScreen() {
             <View style={styles.iconContainer}>
               <IconSymbol name="magnifyingglass" size={80} color={colors.primary} />
             </View>
-            <Text style={styles.title}>Start Recalling!</Text>
+            <Text style={styles.title}>Recall Anything!</Text>
             <Text style={styles.description}>
-              Recall anything. Just ask and let Recall do the work.
+              Just ask and let Recall do the work.
             </Text>
             
             <View style={styles.benefitsContainer}>
@@ -220,6 +220,10 @@ export default function OnboardingScreen() {
 							<View style={styles.benefitRow}>
                 <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
                 <Text style={styles.benefitText}>Where did I take a picture of that lemon tree?</Text>
+              </View>
+							<View style={styles.benefitRow}>
+                <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
+                <Text style={styles.benefitText}>All my recalls that mention Elly</Text>
               </View>
             </View>
           </View>

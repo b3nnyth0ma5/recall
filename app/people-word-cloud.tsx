@@ -413,28 +413,27 @@ export default function PeopleWordCloudScreen() {
           </View>
           <Text style={styles.emptyTitle}>No People Yet</Text>
           <Text style={styles.emptyText}>
-            Tag people in your recalls to see them here
+            People from your recalls will show up here
           </Text>
           <View style={styles.emptyTipsContainer}>
-            <Text style={styles.emptyTipsTitle}>How to add people:</Text>
+            <Text style={styles.emptyTipsTitle}>Smart people finder:</Text>
             <View style={styles.emptyTipsList}>
               <View style={styles.emptyTipItem}>
                 <View style={styles.emptyTipNumber}>
                   <Text style={styles.emptyTipNumberText}>1</Text>
                 </View>
-                <Text style={styles.emptyTipText}>Create or edit a recall</Text>
+                <Text style={styles.emptyTipText}>Mention a name in a Recall</Text>
               </View>
+
+							<View style={styles.emptyTipItem}>
+                <Text style={styles.emptyTipText}>OR</Text>
+              </View>
+							
               <View style={styles.emptyTipItem}>
                 <View style={styles.emptyTipNumber}>
                   <Text style={styles.emptyTipNumberText}>2</Text>
                 </View>
-                <Text style={styles.emptyTipText}>Tap the people icon</Text>
-              </View>
-              <View style={styles.emptyTipItem}>
-                <View style={styles.emptyTipNumber}>
-                  <Text style={styles.emptyTipNumberText}>3</Text>
-                </View>
-                <Text style={styles.emptyTipText}>Add names of people</Text>
+                <Text style={styles.emptyTipText}>Add images that have names in it</Text>
               </View>
             </View>
           </View>

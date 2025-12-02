@@ -178,7 +178,7 @@ export default function SearchScreen() {
           <TextInput
             ref={searchInputRef}
             style={styles.searchInput}
-            placeholder="Search recalls with AI..."
+            placeholder="Do a smart search..."
             placeholderTextColor={colors.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -307,36 +307,40 @@ export default function SearchScreen() {
               color={colors.textTertiary} 
             />
             <Text style={styles.emptyTitle}>
-              AI-Powered Search
+              Smart Searching
             </Text>
             <Text style={styles.emptyText}>
-              Search your recalls using advanced AI and location-based filtering
+              Search your Recalls like you're talking to a friend
             </Text>
             <View style={styles.featureList}>
               <React.Fragment>
                 <View style={styles.featureItem}>
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>Image embedding similarity</Text>
+                  <Text style={styles.featureText}>What's coming up next month?</Text>
                 </View>
                 <View style={styles.featureItem}>
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>Location-based filtering</Text>
+                  <Text style={styles.featureText}>Restaurants in Collingwood that are on my wishlist </Text>
                 </View>
                 <View style={styles.featureItem}>
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>Person name detection</Text>
+                  <Text style={styles.featureText}>Any Recalls that mention Elly</Text>
                 </View>
                 <View style={styles.featureItem}>
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>OCR text matching</Text>
+                  <Text style={styles.featureText}>What wines did I have at Bistro Marigold?</Text>
                 </View>
                 <View style={styles.featureItem}>
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>Visual content analysis</Text>
+                  <Text style={styles.featureText}>What vaccinations has Kiki had and when is it due?</Text>
                 </View>
                 <View style={styles.featureItem}>
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>Question answering</Text>
+                  <Text style={styles.featureText}>My cocktail recipes that use lime, ginger and agave</Text>
+                </View>
+								<View style={styles.featureItem}>
+                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+                  <Text style={styles.featureText}>Steak night specials on Thursdays</Text>
                 </View>
               </React.Fragment>
             </View>

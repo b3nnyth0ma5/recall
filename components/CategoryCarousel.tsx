@@ -155,7 +155,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
           <View style={styles.zeroStateTextContainer}>
             <Text style={styles.zeroStateTitle}>No Categories Yet</Text>
             <Text style={styles.zeroStateMessage}>
-              Create categories to organize your recalls
+              Create smart categories for your recalls
             </Text>
           </View>
           <View style={styles.zeroStateArrow}>
