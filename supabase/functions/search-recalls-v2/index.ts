@@ -461,7 +461,7 @@ ${context}
 
 Provide your answer in JSON format: {"answer": "your answer here", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}`;
 
-    console.log('Making request to OpenAI gpt-5-mini with reasoning effort: medium and verbosity: low...');
+    console.log('Making request to OpenAI gpt-5-mini...');
     const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -476,12 +476,8 @@ Provide your answer in JSON format: {"answer": "your answer here", "confidence":
             content: qaPrompt 
           }
         ],
-        reasoning: {
-          effort: 'medium'
-        },
-        text: {
-          verbosity: 'low'
-        },
+        temperature: 0.3,
+        max_tokens: 500,
         response_format: { type: 'json_object' }
       })
     });
