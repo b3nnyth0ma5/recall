@@ -416,8 +416,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Step 3: Use OpenAI for question answering with source tracking
-    console.log('Step 3: Using OpenAI for question answering with source tracking...');
+    // Step 3: Use OpenAI o1-mini for question answering with source tracking
+    console.log('Step 3: Using OpenAI o1-mini for question answering with source tracking...');
 
     // Prepare context from matches with source IDs
     const contextWithSources = uniqueRecallMatches.map((match: any, idx: number) => {
@@ -445,17 +445,25 @@ Deno.serve(async (req) => {
 
     const context = contextWithSources.map((c: any) => c.text).join('\n\n');
 
-    const qaSystemPrompt = `You are an accurate search assistant that understands the intent of the user's question and provides answers based on the provided information. Provide exact answer in under 120 words, based only on the information provided to you. 
-    Use bullet points when listing things.
-    You're also a NER expert that identifies calendar/date/time entities and names of people; and uses this to provide more relevant answers.
-    If you cannot answer the question with confidence based on the provided information, say so. 
-    Also provide a confidence score (0-100) indicating how confident you are in your answer.
-    VERY IMPORTANT: The source with the highest match percentage should always be given the most priority when answering.
-    VERY IMPORTANT: Sources marked as [PRIORITY - Contains mentioned person] should be given HIGHEST priority as they contain people's names mentioned in the query.
-    IMPORTANT: If the user's question includes the name of a location (or is proximity based) then prioritise the information that's most relevant to the Location and Location Type provided.`;
+    // For o1-mini, we need to combine system instructions with the user prompt
+    // since o1 models don't support system messages
+    const combinedPrompt = `You are an accurate search assistant that understands the intent of the user's question and provides answers based on the provided information. Provide exact answer in under 120 words, based only on the information provided to you. 
+Use bullet points when listing things.
+You're also a NER expert that identifies calendar/date/time entities and names of people; and uses this to provide more relevant answers.
+If you cannot answer the question with confidence based on the provided information, say so. 
+Also provide a confidence score (0-100) indicating how confident you are in your answer.
+VERY IMPORTANT: The source with the highest match percentage should always be given the most priority when answering.
+VERY IMPORTANT: Sources marked as [PRIORITY - Contains mentioned person] should be given HIGHEST priority as they contain people's names mentioned in the query.
+IMPORTANT: If the user's question includes the name of a location (or is proximity based) then prioritise the information that's most relevant to the Location and Location Type provided.
 
-    const qaUserPrompt = `Question: ${query}\n\nRecalls from matches:\n${context}\n\nProvide your answer in JSON format: {"answer": "your answer here", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}`;
+Question: ${query}
 
+Recalls from matches:
+${context}
+
+Provide your answer in JSON format: {"answer": "your answer here", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}`;
+
+    console.log('Making request to OpenAI o1-mini with reasoning parameters...');
     const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -463,20 +471,23 @@ Deno.serve(async (req) => {
         'Authorization': `Bearer ${openaiApiKey}`
       },
       body: JSON.stringify({
-        model: 'gpt-5-mini',
+        model: 'o1-mini',
         messages: [
-          { role: 'system', content: qaSystemPrompt },
-          { role: 'user', content: qaUserPrompt }
+          { 
+            role: 'user', 
+            content: combinedPrompt 
+          }
         ],
-        temperature: 0.3,
-        max_tokens: 800,
-        response_format: { type: 'json_object' }
+        reasoning_effort: 'low',
+        max_completion_tokens: 800
       })
     });
 
     if (!qaResponse.ok) {
       const errorText = await qaResponse.text();
       console.error('OpenAI QA API error:', errorText);
+      console.error('Response status:', qaResponse.status);
+      console.error('Response headers:', JSON.stringify(Object.fromEntries(qaResponse.headers.entries())));
       return new Response(JSON.stringify({ error: 'Failed to generate answer', details: errorText }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -484,6 +495,7 @@ Deno.serve(async (req) => {
     }
 
     const qaData = await qaResponse.json();
+    console.log('OpenAI response received:', JSON.stringify(qaData, null, 2));
     const qaContent = qaData.choices?.[0]?.message?.content;
 
     let answer = null;
@@ -492,13 +504,26 @@ Deno.serve(async (req) => {
 
     if (qaContent) {
       try {
-        const parsed = JSON.parse(qaContent);
-        answer = parsed.answer || null;
-        confidence = parsed.confidence || 0;
-        sourcesUsed = parsed.sources || [];
-        console.log('Sources used by AI:', sourcesUsed);
+        // o1 models may include reasoning in the response, so we need to extract JSON
+        // Try to find JSON in the response
+        const jsonMatch = qaContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          answer = parsed.answer || null;
+          confidence = parsed.confidence || 0;
+          sourcesUsed = parsed.sources || [];
+          console.log('Sources used by AI:', sourcesUsed);
+        } else {
+          console.error('No JSON found in response, using raw content');
+          answer = qaContent;
+          confidence = 50; // Default confidence when parsing fails
+        }
       } catch (parseError) {
         console.error('Failed to parse QA response:', parseError);
+        console.error('Raw content:', qaContent);
+        // Fallback: use the raw content as answer
+        answer = qaContent;
+        confidence = 50;
       }
     }
 
