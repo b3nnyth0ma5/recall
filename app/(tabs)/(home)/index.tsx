@@ -9,6 +9,8 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
+import { ZeroState } from '@/components/ZeroState';
+import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
@@ -164,7 +166,6 @@ export default function HomeScreen() {
   }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
 
   const renderEmptyState = () => {
-    const { ZeroState } = require('@/components/ZeroState');
     return (
       <ZeroState
         icon="doc.text"
@@ -176,6 +177,8 @@ export default function HomeScreen() {
       />
     );
   };
+
+  const recallIconSource = require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png');
 
   return (
     <View style={styles.container}>
@@ -196,7 +199,7 @@ export default function HomeScreen() {
           headerLeft: () => (
             <Pressable onPress={handleRecallIconPress} style={styles.headerButton}>
               <Image
-                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+                source={recallIconSource}
                 style={styles.headerIcon}
                 resizeMode="contain"
               />
@@ -244,16 +247,13 @@ export default function HomeScreen() {
           <View style={styles.notesContainer}>
             <View style={styles.allNotesSection}>
               {/* Show skeleton loaders while loading */}
-              {[1, 2, 3].map((index) => {
-                const { NoteCardSkeleton } = require('@/components/NoteCardSkeleton');
-                return (
-                  <NoteCardSkeleton 
-                    key={`skeleton-${index}`}
-                    showImage={index % 2 === 0}
-                    showPeople={index % 3 === 0}
-                  />
-                );
-              })}
+              {[1, 2, 3].map((index) => (
+                <NoteCardSkeleton 
+                  key={`skeleton-${index}`}
+                  showImage={index % 2 === 0}
+                  showPeople={index % 3 === 0}
+                />
+              ))}
             </View>
           </View>
         ) : notes.length === 0 ? (

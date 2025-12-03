@@ -37,7 +37,7 @@ export async function getPersonRecallCount(
  * @returns Object mapping person IDs to their recall counts
  */
 export async function getMultiplePersonRecallCounts(
-  people: Array<{ id: string }>,
+  people: { id: string }[],
   userId: string
 ): Promise<{ [personId: string]: number }> {
   if (!people || people.length === 0) {

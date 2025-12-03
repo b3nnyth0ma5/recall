@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -26,13 +26,7 @@ export default function PersonRecallsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
   }, []);
 
-  useEffect(() => {
-    if (personId && user) {
-      loadRecallsForPerson();
-    }
-  }, [personId, user]);
-
-  const loadRecallsForPerson = async () => {
+  const loadRecallsForPerson = useCallback(async () => {
     try {
       setLoading(true);
       console.log('[PersonRecalls] Loading recalls for person:', personId);
@@ -150,7 +144,13 @@ export default function PersonRecallsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [personId, user]);
+
+  useEffect(() => {
+    if (personId && user) {
+      loadRecallsForPerson();
+    }
+  }, [personId, user, loadRecallsForPerson]);
 
   const handleNotePress = (noteId: string) => {
     try {

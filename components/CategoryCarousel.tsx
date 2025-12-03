@@ -6,6 +6,7 @@ import { supabase } from '@/utils/supabase';
 import { IconSymbol } from './IconSymbol';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
+import { CategoryCarouselSkeleton } from './CategoryCarouselSkeleton';
 
 interface Category {
   id: string;
@@ -137,7 +138,6 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
   };
 
   if (loading) {
-    const { CategoryCarouselSkeleton } = require('./CategoryCarouselSkeleton');
     return <CategoryCarouselSkeleton />;
   }
 

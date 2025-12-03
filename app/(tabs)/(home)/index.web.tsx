@@ -10,6 +10,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { Note } from '@/types/Note';
+import { ZeroState } from '@/components/ZeroState';
+import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 
 // Constants
 const PULL_THRESHOLD = 80;
@@ -503,7 +505,6 @@ export default function HomeScreen() {
   // ============================================================================
 
   const renderEmptyState = () => {
-    const { ZeroState } = require('@/components/ZeroState');
     return (
       <ZeroState
         icon={selectedCategoryId ? "folder" : "doc.text"}
@@ -564,6 +565,8 @@ export default function HomeScreen() {
   const displayNotes = selectedCategoryId ? filteredNotes : notes;
   const isLoading = selectedCategoryId ? loadingFiltered : loading;
 
+  const recallIconSource = require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png');
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -582,7 +585,7 @@ export default function HomeScreen() {
           headerLeft: () => (
             <Pressable onPress={handleRecallIconPress} style={styles.headerButton}>
               <Image
-                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+                source={recallIconSource}
                 style={styles.headerIcon}
                 resizeMode="contain"
               />
@@ -638,16 +641,13 @@ export default function HomeScreen() {
           <View style={styles.notesContainer}>
             <View style={styles.allNotesSection}>
               {/* Show skeleton loaders while loading */}
-              {[1, 2, 3].map((index) => {
-                const { NoteCardSkeleton } = require('@/components/NoteCardSkeleton');
-                return (
-                  <NoteCardSkeleton 
-                    key={`skeleton-${index}`}
-                    showImage={index % 2 === 0}
-                    showPeople={index % 3 === 0}
-                  />
-                );
-              })}
+              {[1, 2, 3].map((index) => (
+                <NoteCardSkeleton 
+                  key={`skeleton-${index}`}
+                  showImage={index % 2 === 0}
+                  showPeople={index % 3 === 0}
+                />
+              ))}
             </View>
           </View>
         ) : displayNotes.length === 0 ? (

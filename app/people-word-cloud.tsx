@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -49,13 +49,7 @@ export default function PeopleWordCloudScreen() {
     }
   }, [params.initialSelectedPeople]);
 
-  useEffect(() => {
-    if (user) {
-      loadPeople();
-    }
-  }, [user]);
-
-  const loadPeople = async () => {
+  const loadPeople = useCallback(async () => {
     if (!user) return;
 
     setLoading(true);
@@ -121,7 +115,13 @@ export default function PeopleWordCloudScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      loadPeople();
+    }
+  }, [user, loadPeople]);
 
   const togglePerson = (person: Person) => {
     const isSelected = selectedPeople.some(p => p.id === person.id);
