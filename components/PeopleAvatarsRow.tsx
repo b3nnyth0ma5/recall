@@ -226,16 +226,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 8,
     minHeight: 70,
+    zIndex: 1000,
+    elevation: 1000,
   },
   scrollView: {
     flexGrow: 0,
+    zIndex: 1000,
+    elevation: 1000,
   },
   avatarsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    zIndex: 1000,
+    elevation: 1000,
   },
   avatarContainer: {
     position: 'relative',
+    zIndex: 1000,
+    elevation: 1000,
   },
   addPeopleAvatar: {
     borderRadius: 100,
@@ -259,6 +267,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     borderWidth: 2,
     borderColor: colors.background,
+    zIndex: 2000,
+    elevation: 2000,
   },
   badgeText: {
     color: '#FFFFFF',

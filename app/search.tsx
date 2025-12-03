@@ -226,7 +226,7 @@ export default function SearchScreen() {
               <Animated.View entering={FadeIn.duration(400)} style={styles.intentBadge}>
                 <IconSymbol name="person.circle.fill" size={20} color={colors.primary} />
                 <View style={styles.intentBadgeText}>
-                  <Text style={styles.intentBadgeTitle}>Person Search</Text>
+                  <Text style={styles.intentBadgeTitle}>People detected in Search</Text>
                   <Text style={styles.intentBadgeSubtitle}>
                     {personInfo.matchedNames.join(', ')}
                   </Text>
@@ -239,7 +239,7 @@ export default function SearchScreen() {
               <Animated.View entering={FadeIn.duration(400)} style={styles.intentBadge}>
                 <IconSymbol name="mappin.circle.fill" size={20} color={colors.primary} />
                 <View style={styles.intentBadgeText}>
-                  <Text style={styles.intentBadgeTitle}>Location Search</Text>
+                  <Text style={styles.intentBadgeTitle}>Location detected in Search</Text>
                   <Text style={styles.intentBadgeSubtitle}>
                     Within {locationInfo.proximity}km of {locationInfo.resolvedPlace}
                   </Text>

@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
@@ -19,66 +19,13 @@ export default function HomeScreen() {
   const previousNotesCountRef = useRef(notes.length);
   const isFirstFocusRef = useRef(true);
   const { user } = useAuth();
-  const [showActionButtons, setShowActionButtons] = useState(false);
-  const [isNavigating, setIsNavigating] = useState<'camera' | 'text' | 'location' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
-
-  // Animation values for FAB buttons
-  const cameraButtonAnim = useRef(new Animated.Value(0)).current;
-  const textButtonAnim = useRef(new Animated.Value(0)).current;
-  const locationButtonAnim = useRef(new Animated.Value(0)).current;
 
   // Update the previous notes count whenever notes change
   useEffect(() => {
     previousNotesCountRef.current = notes.length;
   }, [notes.length]);
-
-  // Animate FAB buttons when showActionButtons changes
-  useEffect(() => {
-    if (showActionButtons) {
-      // Stagger the animations with bounce effect
-      Animated.stagger(50, [
-        Animated.spring(cameraButtonAnim, {
-          toValue: 1,
-          useNativeDriver: true,
-          tension: 100,
-          friction: 7,
-        }),
-        Animated.spring(textButtonAnim, {
-          toValue: 1,
-          useNativeDriver: true,
-          tension: 100,
-          friction: 7,
-        }),
-        Animated.spring(locationButtonAnim, {
-          toValue: 1,
-          useNativeDriver: true,
-          tension: 100,
-          friction: 7,
-        }),
-      ]).start();
-    } else {
-      // Reset animations
-      Animated.parallel([
-        Animated.timing(cameraButtonAnim, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.timing(textButtonAnim, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.timing(locationButtonAnim, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [showActionButtons, cameraButtonAnim, textButtonAnim, locationButtonAnim]);
 
   useFocusEffect(
     useCallback(() => {
@@ -144,26 +91,10 @@ export default function HomeScreen() {
     await handleRefresh();
   };
 
-  const toggleActionButtons = () => {
-    const newState = !showActionButtons;
-    setShowActionButtons(newState);
-
-    // Haptic feedback when add note icon is clicked
-    if (Platform.OS !== 'web') {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
-  };
-
-  const handleCameraPress = () => {
-    if (isNavigating) return;
-    console.log('[handleCameraPress] Camera button pressed');
-    setIsNavigating('camera');
+  const handleAddRecallPress = () => {
+    console.log('[handleAddRecallPress] Add recall button pressed');
     
-    // Haptic feedback when camera icon is clicked
+    // Haptic feedback when add recall icon is clicked
     if (Platform.OS !== 'web') {
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -172,65 +103,8 @@ export default function HomeScreen() {
       }
     }
     
-    // Close action buttons
-    setShowActionButtons(false);
-    
-    // Navigate to note editor with camera flag
-    setTimeout(() => {
-      router.push('/note-editor?openCamera=true');
-      // Reset navigation state after a delay
-      setTimeout(() => setIsNavigating(null), 1000);
-    }, 200);
-  };
-
-  const handleTextPress = () => {
-    if (isNavigating) return;
-    console.log('[handleTextPress] Text button pressed');
-    setIsNavigating('text');
-    
-    // Haptic feedback when text icon is clicked
-    if (Platform.OS !== 'web') {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
-    
-    // Close action buttons
-    setShowActionButtons(false);
-    
-    // Navigate to note editor normally
-    setTimeout(() => {
-      router.push('/note-editor');
-      // Reset navigation state after a delay
-      setTimeout(() => setIsNavigating(null), 1000);
-    }, 200);
-  };
-
-  const handleLocationPress = () => {
-    if (isNavigating) return;
-    console.log('[handleLocationPress] Location button pressed');
-    setIsNavigating('location');
-    
-    // Haptic feedback when location icon is clicked
-    if (Platform.OS !== 'web') {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
-    
-    // Close action buttons
-    setShowActionButtons(false);
-    
-    // Navigate to note editor with location flag to immediately open location selection
-    setTimeout(() => {
-      router.push('/note-editor?openLocation=true');
-      // Reset navigation state after a delay
-      setTimeout(() => setIsNavigating(null), 1000);
-    }, 200);
+    // Navigate directly to note editor
+    router.push('/note-editor');
   };
 
   const handleNotePress = (noteId: string) => {
@@ -293,42 +167,11 @@ export default function HomeScreen() {
         title="No Recalls Yet"
         message="Start capturing your thoughts, memories, and moments"
         actionText="Create Your First Recall"
-        onActionPress={handleTextPress}
+        onActionPress={handleAddRecallPress}
         animatedIcon={true}
       />
     );
   };
-
-  // Calculate button positions with new orientation
-  // Camera: directly to the left (-77px, 0px)
-  const cameraTranslateX = cameraButtonAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -77],
-  });
-  const cameraTranslateY = cameraButtonAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 0],
-  });
-
-  // Text: at 45 degree angle (-54.45px, -54.45px)
-  const textTranslateX = textButtonAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -54.45],
-  });
-  const textTranslateY = textButtonAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -54.45],
-  });
-
-  // Location: directly above (0px, -77px)
-  const locationTranslateX = locationButtonAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 0],
-  });
-  const locationTranslateY = locationButtonAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -77],
-  });
 
   return (
     <View style={styles.container}>
@@ -439,119 +282,17 @@ export default function HomeScreen() {
           />
         </Pressable>
 
-        {/* Action Buttons Container with new orientation */}
-        <View style={styles.actionButtonsContainer}>
-          {/* Camera Button - Directly to the left */}
-          {showActionButtons && (
-            <Animated.View 
-              style={[
-                styles.actionButton,
-                {
-                  transform: [
-                    { translateX: cameraTranslateX },
-                    { translateY: cameraTranslateY },
-                    { scale: cameraButtonAnim },
-                  ],
-                  opacity: cameraButtonAnim,
-                }
-              ]}
-            >
-              <Pressable
-                onPress={handleCameraPress}
-                style={styles.cameraButton}
-                disabled={isNavigating !== null}
-              >
-                {isNavigating === 'camera' ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <IconSymbol 
-                    name="camera.fill" 
-                    size={20} 
-                    color="#FFFFFF" 
-                  />
-                )}
-              </Pressable>
-            </Animated.View>
-          )}
-
-          {/* Text Button - At 45 degree angle */}
-          {showActionButtons && (
-            <Animated.View 
-              style={[
-                styles.actionButton,
-                {
-                  transform: [
-                    { translateX: textTranslateX },
-                    { translateY: textTranslateY },
-                    { scale: textButtonAnim },
-                  ],
-                  opacity: textButtonAnim,
-                }
-              ]}
-            >
-              <Pressable
-                onPress={handleTextPress}
-                style={styles.textButton}
-                disabled={isNavigating !== null}
-              >
-                {isNavigating === 'text' ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <IconSymbol 
-                    name="doc.text" 
-                    size={20} 
-                    color="#FFFFFF" 
-                  />
-                )}
-              </Pressable>
-            </Animated.View>
-          )}
-
-          {/* Location Button - Directly above */}
-          {showActionButtons && (
-            <Animated.View 
-              style={[
-                styles.actionButton,
-                {
-                  transform: [
-                    { translateX: locationTranslateX },
-                    { translateY: locationTranslateY },
-                    { scale: locationButtonAnim },
-                  ],
-                  opacity: locationButtonAnim,
-                }
-              ]}
-            >
-              <Pressable
-                onPress={handleLocationPress}
-                style={styles.locationButton}
-                disabled={isNavigating !== null}
-              >
-                {isNavigating === 'location' ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <IconSymbol 
-                    name="location.fill" 
-                    size={20} 
-                    color="#FFFFFF" 
-                  />
-                )}
-              </Pressable>
-            </Animated.View>
-          )}
-
-          {/* Main FAB */}
-          <Pressable
-            onPress={toggleActionButtons}
-            style={styles.fab}
-          >
-            <IconSymbol 
-              name={showActionButtons ? "xmark" : "plus"} 
-              size={24} 
-              color="#FFFFFF" 
-            />
-          </Pressable>
-        </View>
+        {/* Main Add Recall FAB - navigates directly to note editor */}
+        <Pressable
+          onPress={handleAddRecallPress}
+          style={styles.fab}
+        >
+          <IconSymbol 
+            name="plus" 
+            size={24} 
+            color="#FFFFFF" 
+          />
+        </Pressable>
       </View>
 
       {/* Deletion Indicator Modal */}
@@ -677,38 +418,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionButtonsContainer: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionButton: {
-    position: 'absolute',
-  },
-  cameraButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  textButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  locationButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
