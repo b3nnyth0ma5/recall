@@ -241,8 +241,20 @@ export default function HomeScreen() {
         )}
 
         {loading && !refreshing ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
+          <View style={styles.notesContainer}>
+            <View style={styles.allNotesSection}>
+              {/* Show skeleton loaders while loading */}
+              {[1, 2, 3].map((index) => {
+                const { NoteCardSkeleton } = require('@/components/NoteCardSkeleton');
+                return (
+                  <NoteCardSkeleton 
+                    key={`skeleton-${index}`}
+                    showImage={index % 2 === 0}
+                    showPeople={index % 3 === 0}
+                  />
+                );
+              })}
+            </View>
           </View>
         ) : notes.length === 0 ? (
           renderEmptyState()

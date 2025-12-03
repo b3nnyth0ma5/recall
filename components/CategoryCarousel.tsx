@@ -137,11 +137,8 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
   };
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color={colors.primary} />
-      </View>
-    );
+    const { CategoryCarouselSkeleton } = require('./CategoryCarouselSkeleton');
+    return <CategoryCarouselSkeleton />;
   }
 
   // Show zero state if no categories exist
