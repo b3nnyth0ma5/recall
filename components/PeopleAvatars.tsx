@@ -16,7 +16,6 @@ interface PeopleAvatarsProps {
   maxVisible?: number;
   avatarSize?: number;
   overlapOffset?: number;
-  loading?: boolean;
 }
 
 export function PeopleAvatars({ 
@@ -24,34 +23,11 @@ export function PeopleAvatars({
   maxVisible = 5, 
   avatarSize = 40,
   overlapOffset = 10,
-  loading = false,
 }: PeopleAvatarsProps) {
   const { openGraph } = usePeopleGraph();
   const router = useRouter();
   const containerRef = useRef<View>(null);
   const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  // Show skeleton loader if loading
-  if (loading) {
-    const { SkeletonLoader } = require('./SkeletonLoader');
-    return (
-      <View style={styles.container}>
-        <SkeletonLoader width={avatarSize} height={avatarSize} borderRadius={avatarSize / 2} />
-        <SkeletonLoader 
-          width={avatarSize} 
-          height={avatarSize} 
-          borderRadius={avatarSize / 2} 
-          style={{ marginLeft: -overlapOffset }}
-        />
-        <SkeletonLoader 
-          width={avatarSize} 
-          height={avatarSize} 
-          borderRadius={avatarSize / 2} 
-          style={{ marginLeft: -overlapOffset }}
-        />
-      </View>
-    );
-  }
 
   if (!people || people.length === 0) {
     return null;

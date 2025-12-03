@@ -6,7 +6,6 @@ import { supabase } from '@/utils/supabase';
 import { IconSymbol } from './IconSymbol';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { CategoryCarouselSkeleton } from './CategoryCarouselSkeleton';
 
 interface Category {
   id: string;
@@ -138,7 +137,11 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
   };
 
   if (loading) {
-    return <CategoryCarouselSkeleton />;
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="small" color={colors.primary} />
+      </View>
+    );
   }
 
   // Show zero state if no categories exist

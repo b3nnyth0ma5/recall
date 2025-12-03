@@ -14,7 +14,6 @@ interface NoteCardProps {
   note: Note;
   onPress: () => void;
   onImagePress?: () => void;
-  loading?: boolean;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -29,14 +28,8 @@ const hasUrl = (text: string): boolean => {
   return urlRegex.test(text);
 };
 
-export function NoteCard({ note, onPress, onImagePress, loading = false }: NoteCardProps) {
+export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-
-  // Show skeleton loader if loading
-  if (loading) {
-    const { NoteCardSkeleton } = require('./NoteCardSkeleton');
-    return <NoteCardSkeleton showImage={true} showPeople={true} />;
-  }
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
   const [imageLoadingStates, setImageLoadingStates] = useState<{ [key: number]: boolean }>({});
