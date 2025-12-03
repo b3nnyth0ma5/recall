@@ -326,7 +326,7 @@ Deno.serve(async (req) => {
     // Combine all matches
     const allMatches = [...imageMatches, ...recallMatches];
 
-    // Filter by >= 40% similarity (0.40 cosine similarity)
+    // Filter by >= 20% similarity (0.40 cosine similarity)
     const SIMILARITY_THRESHOLD = 0.40;
     const filteredMatches = allMatches.filter((match: any) => match.similarity >= SIMILARITY_THRESHOLD);
 
@@ -446,6 +446,7 @@ Deno.serve(async (req) => {
     const context = contextWithSources.map((c: any) => c.text).join('\n\n');
 
     const qaPrompt = `You are an accurate search assistant that understands the intent of the user's question and provides answers based on the provided information.
+Use bullet points when listing things.
 You're also a NER expert that identifies calendar/date/time entities and uses this to provide more relevant answers.
 If you cannot answer the question with confidence based on the provided information, say so. 
 Also provide a confidence score (0-100) indicating how confident you are in your answer.
@@ -454,14 +455,13 @@ If the user's question includes the name of a location (or is proximity based) t
 
 IMPORTANT: The source with the highest confidence should always be given the most priority.
 VERY IMPORTANT: Sources marked as [PRIORITY - Contains mentioned person] should be given HIGHEST priority as they contain people mentioned in the query.
-Keep your answer focussed on the context of the question and to the point. Avoid unnecessary extra information.
 Question: ${query}
 
 Recalls from matches:
 ${context}
 
 Provide your answer in JSON format: {"answer": "your answer here", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
-Sort by highest confidence first. Don't mention sources within your "answer".`;
+Sort by highest confidence first.`;
 
     console.log('Making request to OpenAI gpt-5-mini...');
     const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {

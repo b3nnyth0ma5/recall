@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, ScrollView, ActivityIndicator, Platform, Animated } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Pressable, Image, ScrollView, ActivityIndicator, Platform } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/utils/supabase';
 import { IconSymbol } from './IconSymbol';
@@ -22,18 +22,13 @@ interface CategoryCarouselProps {
   refreshTrigger?: number;
 }
 
-const CATEGORY_SIZE = 90;
-const CATEGORY_SPACING = 12;
+const CATEGORY_SIZE = 80;
+const CATEGORY_SPACING = 20;
 
 export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId, refreshTrigger }: CategoryCarouselProps) {
   const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const previousCategoryCountRef = useRef(0);
-  
-  // Animation values for each category
-  const categoryAnimsRef = useRef<Map<string, Animated.Value>>(new Map());
 
   const loadAllUserCategories = useCallback(async () => {
     if (!userId) {
@@ -61,56 +56,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       }
 
       console.log(`[CategoryCarousel] Loaded ${categoriesData?.length || 0} categories from Supabase`);
-      
-      const newCategories = categoriesData || [];
-      const previousCount = previousCategoryCountRef.current;
-      
-      // Check if a new category was added
-      if (newCategories.length > previousCount && previousCount > 0) {
-        console.log('[CategoryCarousel] New category detected! Animating...');
-        
-        // The new category is the first one (most recent)
-        const newCategory = newCategories[0];
-        
-        // Initialize animation value for the new category
-        const animValue = new Animated.Value(0);
-        categoryAnimsRef.current.set(newCategory.id, animValue);
-        
-        // Set categories immediately
-        setCategories(newCategories);
-        
-        // Scroll to show the new category (after the "Create" button)
-        setTimeout(() => {
-          if (scrollViewRef.current) {
-            // Scroll to position that shows both Create button and new category
-            scrollViewRef.current.scrollTo({ x: 0, animated: true });
-          }
-        }, 100);
-        
-        // Animate the new category in with a smooth spring animation
-        setTimeout(() => {
-          Animated.spring(animValue, {
-            toValue: 1,
-            useNativeDriver: true,
-            tension: 80,
-            friction: 8,
-            delay: 150, // Small delay to let scroll complete
-          }).start();
-        }, 200);
-      } else {
-        // No new category, just update normally
-        setCategories(newCategories);
-        
-        // Initialize animation values for all categories (already visible)
-        newCategories.forEach(cat => {
-          if (!categoryAnimsRef.current.has(cat.id)) {
-            const animValue = new Animated.Value(1);
-            categoryAnimsRef.current.set(cat.id, animValue);
-          }
-        });
-      }
-      
-      previousCategoryCountRef.current = newCategories.length;
+      setCategories(categoriesData || []);
     } catch (error) {
       console.error('[CategoryCarousel] Error loading categories:', error);
       setCategories([]);
@@ -223,7 +169,6 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
   return (
     <View style={styles.container}>
       <ScrollView
-        ref={scrollViewRef}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -249,75 +194,45 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
         </Pressable>
 
         {/* User Categories - Most recent first (already sorted by created_at desc) */}
-        {categories.map((category, index) => {
+        {categories.map((category) => {
           const isSelected = selectedCategoryId === category.id;
           
-          // Get or create animation value for this category
-          let animValue = categoryAnimsRef.current.get(category.id);
-          if (!animValue) {
-            animValue = new Animated.Value(1);
-            categoryAnimsRef.current.set(category.id, animValue);
-          }
-          
-          // Animation styles
-          const animatedStyle = {
-            opacity: animValue,
-            transform: [
-              {
-                scale: animValue.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.3, 1],
-                }),
-              },
-              {
-                translateX: animValue.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [-30, 0],
-                }),
-              },
-            ],
-          };
-          
           return (
-            <Animated.View
+            <Pressable
               key={category.id}
-              style={[animatedStyle]}
+              onPress={() => handleCategoryPress(category)}
+              style={styles.categoryItem}
             >
-              <Pressable
-                onPress={() => handleCategoryPress(category)}
-                style={styles.categoryItem}
+              <View
+                style={[
+                  styles.categoryImageContainer,
+                  isSelected && styles.categoryImageContainerSelected,
+                ]}
               >
-                <View
-                  style={[
-                    styles.categoryImageContainer,
-                    isSelected && styles.categoryImageContainerSelected,
-                  ]}
-                >
-                  {category.icon_cdn_url ? (
-                    <Image
-                      source={{ uri: category.icon_cdn_url }}
-                      style={styles.categoryImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={styles.categoryPlaceholder}>
-                      <Text style={styles.categoryPlaceholderText}>
-                        {category.category_name.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                <Text
-                  style={[
-                    styles.categoryName,
-                    isSelected && styles.categoryNameSelected,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {category.category_name}
-                </Text>
-              </Pressable>
-            </Animated.View>
+                {category.icon_cdn_url ? (
+                  <Image
+                    source={{ uri: category.icon_cdn_url }}
+                    style={styles.categoryImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.categoryPlaceholder}>
+                    <Text style={styles.categoryPlaceholderText}>
+                      {category.category_name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text
+                style={[
+                  styles.categoryName,
+                  isSelected && styles.categoryNameSelected,
+                ]}
+                numberOfLines={1}
+              >
+                {category.category_name}
+              </Text>
+            </Pressable>
           );
         })}
       </ScrollView>
