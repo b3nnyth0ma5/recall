@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,7 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
+import { getImageDataUrl } from '@/utils/supabase';
 
 interface FullScreenImageProps {
   visible: boolean;
@@ -57,6 +58,7 @@ const DISMISS_THRESHOLD = 100;
  * - Image counter and pagination dots
  * - OCR modal for viewing image analysis
  * - Reusable across NoteCard and note-editor
+ * - Loads all images from imageIds when opened
  */
 export function FullScreenImage({
   visible,
@@ -69,20 +71,59 @@ export function FullScreenImage({
   const [showOCRModal, setShowOCRModal] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [loadedImages, setLoadedImages] = useState<string[]>([]);
+  const [isLoadingImages, setIsLoadingImages] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Animated values for swipe-to-dismiss gesture
   const translateY = useSharedValue(0);
   const contextY = useSharedValue(0);
 
-  // Reset to initial index when modal opens
-  React.useEffect(() => {
+  // Load all images when modal opens
+  useEffect(() => {
     if (visible) {
       setCurrentImageIndex(initialIndex);
       setIsClosing(false);
       // Reset animation values immediately
       translateY.value = 0;
       contextY.value = 0;
+      
+      // Load all images from imageIds if available
+      const loadAllImages = async () => {
+        if (imageIds && imageIds.length > 0) {
+          console.log('[FullScreenImage] Loading all images from imageIds');
+          setIsLoadingImages(true);
+          
+          try {
+            const imagePromises = imageIds.map(async (imageId, index) => {
+              try {
+                const imageUrl = await getImageDataUrl(imageId);
+                return imageUrl || images[index] || '';
+              } catch (error) {
+                console.error(`[FullScreenImage] Error loading image ${index}:`, error);
+                return images[index] || '';
+              }
+            });
+            
+            const allImages = await Promise.all(imagePromises);
+            setLoadedImages(allImages);
+            console.log('[FullScreenImage] Successfully loaded all images');
+          } catch (error) {
+            console.error('[FullScreenImage] Error loading images:', error);
+            // Fallback to original images array
+            setLoadedImages(images);
+          } finally {
+            setIsLoadingImages(false);
+          }
+        } else {
+          // No imageIds, use images array directly
+          console.log('[FullScreenImage] Using images array directly');
+          setLoadedImages(images);
+        }
+      };
+      
+      loadAllImages();
+      
       // Scroll to initial index after a short delay to ensure layout is ready
       setTimeout(() => {
         scrollViewRef.current?.scrollTo({
@@ -92,12 +133,12 @@ export function FullScreenImage({
         });
       }, 100);
     }
-  }, [visible, initialIndex]);
+  }, [visible, initialIndex, images, imageIds]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / SCREEN_WIDTH);
-    if (index !== currentImageIndex && index >= 0 && index < images.length) {
+    if (index !== currentImageIndex && index >= 0 && index < loadedImages.length) {
       setCurrentImageIndex(index);
     }
   };
@@ -150,7 +191,7 @@ export function FullScreenImage({
       console.log('Sharing is available');
       
       // Get current image URL
-      const currentImageUrl = images[currentImageIndex];
+      const currentImageUrl = loadedImages[currentImageIndex];
       console.log('Sharing image:', currentImageUrl);
 
       // Trigger haptic feedback
@@ -299,6 +340,9 @@ export function FullScreenImage({
     };
   });
 
+  // Use loaded images or show loading state
+  const displayImages = loadedImages.length > 0 ? loadedImages : images;
+
   return (
     <Modal
       visible={visible}
@@ -324,6 +368,14 @@ export function FullScreenImage({
               </View>
             </Pressable>
 
+            {/* Loading Indicator */}
+            {isLoadingImages && (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="large" color="#FFFFFF" />
+                <Text style={styles.loadingText}>Loading images...</Text>
+              </View>
+            )}
+
             {/* Image Carousel */}
             <ScrollView
               ref={scrollViewRef}
@@ -336,13 +388,20 @@ export function FullScreenImage({
               decelerationRate="fast"
               style={styles.scrollView}
             >
-              {images.map((imageUrl, index) => (
+              {displayImages.map((imageUrl, index) => (
                 <View key={`fullscreen-${index}`} style={styles.imageWrapper}>
-                  <Image
-                    source={{ uri: imageUrl }}
-                    style={styles.image}
-                    resizeMode="contain"
-                  />
+                  {imageUrl ? (
+                    <Image
+                      source={{ uri: imageUrl }}
+                      style={styles.image}
+                      resizeMode="contain"
+                    />
+                  ) : (
+                    <View style={styles.imageLoadingContainer}>
+                      <ActivityIndicator size="large" color="#FFFFFF" />
+                      <Text style={styles.imageLoadingText}>Loading...</Text>
+                    </View>
+                  )}
                 </View>
               ))}
             </ScrollView>
@@ -381,9 +440,9 @@ export function FullScreenImage({
             </Pressable>
 
             {/* Pagination Dots - Bottom Center */}
-            {images.length > 1 && (
+            {displayImages.length > 1 && (
               <View style={styles.paginationContainer}>
-                {images.map((_, index) => (
+                {displayImages.map((_, index) => (
                   <View
                     key={index}
                     style={[
@@ -396,10 +455,10 @@ export function FullScreenImage({
             )}
 
             {/* Counter Badge - Top Left */}
-            {images.length > 1 && (
+            {displayImages.length > 1 && (
               <View style={styles.counterBadge}>
                 <Text style={styles.counterText}>
-                  {currentImageIndex + 1} / {images.length}
+                  {currentImageIndex + 1} / {displayImages.length}
                 </Text>
               </View>
             )}
@@ -479,6 +538,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 500,
+  },
+  loadingText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    marginTop: 12,
+    fontWeight: '500',
+  },
   scrollView: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
@@ -492,6 +567,17 @@ const styles = StyleSheet.create({
   image: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
+  },
+  imageLoadingContainer: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageLoadingText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    marginTop: 8,
   },
   shareButton: {
     position: 'absolute',

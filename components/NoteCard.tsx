@@ -50,6 +50,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress }: 
     if (note.images && note.images.length > 0) {
       // Only load first image immediately
       setLazyLoadedImages([note.images[0]]);
+      // Initialize currentImageIndex to 0 to show counter immediately
+      setCurrentImageIndex(0);
       console.log(`[NoteCard] Initialized with first image for note ${note.id}`);
     }
   }, [note.id, note.images]);
@@ -305,10 +307,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress }: 
                 </Pressable>
               ))}
             </ScrollView>
-            {displayImages.length > 1 && (
+            {/* Fixed: Check note.images.length instead of displayImages.length */}
+            {note.images && note.images.length > 1 && (
               <View style={styles.imageCounter}>
                 <Text style={styles.imageCounterText}>
-                  {currentImageIndex + 1} / {note.images?.length || displayImages.length}
+                  {currentImageIndex + 1} / {note.images.length}
                 </Text>
               </View>
             )}
@@ -367,7 +370,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress }: 
         </View>
       </Pressable>
 
-      {/* Full Screen Image Component */}
+      {/* Full Screen Image Component - Pass original images array, not lazy loaded */}
       {note.images && note.images.length > 0 && (
         <FullScreenImage
           visible={showFullScreenImage}
