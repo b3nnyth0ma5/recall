@@ -29,7 +29,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { supabase } from '@/utils/supabase';
-import { useNotes } from '@/hooks/useNotes';
 
 interface CombinedSearchAddProps {
   onCreateRecall: (data: {
@@ -43,7 +42,6 @@ interface CombinedSearchAddProps {
 export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { searchNotes } = useNotes();
   const [text, setText] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
@@ -156,6 +154,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     const searchQuery = text.trim();
     
     // Dismiss keyboard first before navigation
+    console.log('[CombinedSearchAdd] Dismissing keyboard');
     Keyboard.dismiss();
     
     if (Platform.OS !== 'web') {
@@ -169,18 +168,18 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       return;
     }
 
-    console.log('[CombinedSearchAdd] Search button pressed with query:', searchQuery);
+    console.log('[CombinedSearchAdd] Search icon pressed with query:', searchQuery);
 
-    // Fire off the search query FIRST before navigating
-    console.log('[CombinedSearchAdd] Firing search query directly:', searchQuery);
-    searchNotes(searchQuery, true);
-
-    // Navigate to search screen immediately with query parameter and reset flag
+    // Navigate to search screen with the query text
+    // The search screen will handle executing the search
     const encodedQuery = encodeURIComponent(searchQuery);
-    const searchRoute = `/search?q=${encodedQuery}&reset=true&searching=true`;
+    const searchRoute = `/search?q=${encodedQuery}&autoSearch=true`;
     
-    console.log('[CombinedSearchAdd] Navigating immediately to:', searchRoute);
+    console.log('[CombinedSearchAdd] Navigating to search screen:', searchRoute);
     router.push(searchRoute);
+
+    // Clear the text input after navigation
+    setText('');
 
     // Save search history asynchronously (don't wait for it)
     try {

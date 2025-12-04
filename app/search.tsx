@@ -44,7 +44,9 @@ export default function SearchScreen() {
   const [hasSearched, setHasSearched] = useState(false);
   const [isAnswerExpanded, setIsAnswerExpanded] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
+  const hasAutoSearchedRef = useRef(false);
 
   const loadSearchHistory = useCallback(async () => {
     setIsLoadingHistory(true);
@@ -69,60 +71,44 @@ export default function SearchScreen() {
     };
   }, [loadSearchHistory]);
 
-  // Handle query parameter from URL (using 'q' parameter)
+  // Handle auto-search from CombinedSearchAdd
   useEffect(() => {
     const queryParam = params.q;
-    const resetParam = params.reset;
-    const searchingParam = params.searching;
+    const autoSearchParam = params.autoSearch;
     
-    if (queryParam && typeof queryParam === 'string') {
+    if (queryParam && typeof queryParam === 'string' && autoSearchParam === 'true' && !hasAutoSearchedRef.current) {
       const decodedQuery = decodeURIComponent(queryParam);
       
-      console.log('[SearchScreen] Query parameter detected:', decodedQuery);
-      console.log('[SearchScreen] Reset parameter:', resetParam);
-      console.log('[SearchScreen] Searching parameter:', searchingParam);
+      console.log('[SearchScreen] Auto-search triggered with query:', decodedQuery);
       
-      // If reset flag is present, clear previous search results first
-      if (resetParam === 'true') {
-        console.log('[SearchScreen] Resetting search state before new search');
-        // Clear previous results immediately
-        setSearchQuery('');
-        setShowHistory(false);
-        setHasSearched(false);
-        setIsAnswerExpanded(false);
-        
-        // Use a small delay to ensure state is cleared before starting new search
-        setTimeout(() => {
-          setSearchQuery(decodedQuery);
-          setShowHistory(false);
-          setHasSearched(true);
-          setIsAnswerExpanded(false);
-          
-          // Only execute the search if it wasn't already fired from CombinedSearchAdd
-          if (searchingParam !== 'true') {
-            console.log('[SearchScreen] Executing search with query:', decodedQuery);
-            searchNotes(decodedQuery, true);
-          } else {
-            console.log('[SearchScreen] Search already fired from CombinedSearchAdd, skipping duplicate search');
-          }
-        }, 50);
-      } else {
-        // Normal search without reset
-        setSearchQuery(decodedQuery);
-        setShowHistory(false);
-        setHasSearched(true);
-        setIsAnswerExpanded(false);
-        
-        // Only execute the search if it wasn't already fired from CombinedSearchAdd
-        if (searchingParam !== 'true') {
-          console.log('[SearchScreen] Executing search with query:', decodedQuery);
-          searchNotes(decodedQuery, true);
-        } else {
-          console.log('[SearchScreen] Search already fired from CombinedSearchAdd, skipping duplicate search');
-        }
-      }
+      // Set the search query in the input
+      setSearchQuery(decodedQuery);
+      setShowHistory(false);
+      setHasSearched(true);
+      setIsAnswerExpanded(false);
+      setIsSearching(true);
+      
+      // Mark that we've auto-searched to prevent duplicate searches
+      hasAutoSearchedRef.current = true;
+      
+      // Trigger the search programmatically
+      console.log('[SearchScreen] Executing search...');
+      searchNotes(decodedQuery, true).finally(() => {
+        console.log('[SearchScreen] Search completed');
+        setIsSearching(false);
+      });
+      
+      // Clear the autoSearch parameter to prevent re-triggering
+      router.setParams({ autoSearch: undefined });
     }
-  }, [params.q, params.reset, params.searching]);
+  }, [params.q, params.autoSearch, searchNotes, router]);
+
+  // Reset the auto-search flag when query changes
+  useEffect(() => {
+    if (!params.q) {
+      hasAutoSearchedRef.current = false;
+    }
+  }, [params.q]);
 
   // Show history when not searching and history is loaded
   useEffect(() => {
@@ -142,11 +128,17 @@ export default function SearchScreen() {
       setShowHistory(false);
       setHasSearched(true);
       setIsAnswerExpanded(false);
-      searchNotes(searchQuery, true);
+      setIsSearching(true);
       
-      setTimeout(() => {
-        loadSearchHistory();
-      }, 500);
+      searchNotes(searchQuery, true).finally(() => {
+        console.log('[SearchScreen] Manual search completed');
+        setIsSearching(false);
+        
+        // Reload search history after search completes
+        setTimeout(() => {
+          loadSearchHistory();
+        }, 500);
+      });
     }
   };
 
@@ -156,7 +148,12 @@ export default function SearchScreen() {
     setShowHistory(false);
     setHasSearched(true);
     setIsAnswerExpanded(false);
-    searchNotes(searchText, true);
+    setIsSearching(true);
+    
+    searchNotes(searchText, true).finally(() => {
+      console.log('[SearchScreen] History search completed');
+      setIsSearching(false);
+    });
   };
 
   const handleNotePress = (noteId: string) => {
@@ -168,6 +165,7 @@ export default function SearchScreen() {
     setShowHistory(true);
     setHasSearched(false);
     setIsAnswerExpanded(false);
+    setIsSearching(false);
     searchNotes('');
   };
 
@@ -179,6 +177,7 @@ export default function SearchScreen() {
     setShowHistory(true);
     setHasSearched(false);
     setIsAnswerExpanded(false);
+    setIsSearching(false);
     searchNotes('');
     
     // Navigate back
@@ -205,12 +204,6 @@ export default function SearchScreen() {
     const lines = answer.split('\n');
     return lines.length > 3;
   };
-
-  // Determine if we're actively searching
-  // Show searching state when:
-  // 1. loading AND hasSearched (normal search in progress)
-  // 2. reset=true AND searching=true (search fired from CombinedSearchAdd)
-  const isSearching = (loading && hasSearched) || (params.reset === 'true' && params.searching === 'true');
 
   // Render skeleton loaders before user searches (initial state)
   const renderInitialSkeletons = () => {
@@ -284,14 +277,14 @@ export default function SearchScreen() {
           <Pressable 
             onPress={handleSearch} 
             style={styles.searchIconButton}
-            disabled={!searchQuery.trim() || isLoadingHistory}
+            disabled={!searchQuery.trim() || isLoadingHistory || isSearching}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <View style={[
               styles.searchIconContainer,
-              (!searchQuery.trim() || isLoadingHistory) && styles.searchIconDisabled
+              (!searchQuery.trim() || isLoadingHistory || isSearching) && styles.searchIconDisabled
             ]}>
-              {isLoadingHistory ? (
+              {(isLoadingHistory || isSearching) ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <IconSymbol 
@@ -384,7 +377,7 @@ export default function SearchScreen() {
         ) : showHistory && isLoadingHistory ? (
           renderInitialSkeletons()
         ) : isSearching ? (
-          // ALWAYS show progress indicator when search is running
+          // Show progress indicator when search is running
           <SearchProgressIndicator 
             stage={searchStage} 
             locationName={searchLocationName}
