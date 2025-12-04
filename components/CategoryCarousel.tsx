@@ -23,8 +23,8 @@ interface CategoryCarouselProps {
   refreshTrigger?: number;
 }
 
-const CATEGORY_SIZE = 78;
-const CATEGORY_SPACING = 11;
+const CATEGORY_SIZE = 82;
+const CATEGORY_SPACING = 10;
 
 export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId, refreshTrigger }: CategoryCarouselProps) {
   const router = useRouter();
@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   categoryName: {
-    fontSize: 13,
+    fontSize: 14,
      color: colors.text,
 		//color: colors.textSecondary,
     textAlign: 'center',

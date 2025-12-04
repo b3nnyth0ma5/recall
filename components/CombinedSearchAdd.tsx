@@ -333,7 +333,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
               <TextInput
                 ref={textInputRef}
                 style={styles.textInput}
-                placeholder="Recall or search..."
+                placeholder="What do you want to Recall..."
                 placeholderTextColor={colors.textTertiary}
                 value={text}
                 onChangeText={setText}
@@ -450,7 +450,8 @@ const styles = StyleSheet.create({
   },
   containerWrapper: {
     position: 'relative',
-    marginHorizontal: 16, // Match SearchBar's paddingHorizontal (16 * 1.15 ≈ 18, but using 16 for consistency)
+    marginHorizontal: 26, // Increased from 20 to reduce width by ~5%
+    marginBottom: 20,
   },
   borderBlur: {
     position: 'absolute',
@@ -467,18 +468,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   searchTextContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#323232', // Lighter than colors.card (#2A2A2A)
+    backgroundColor: colors.card,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    marginBottom: 8, // Reduced from 10 by 20% (10 * 0.8 = 8)
+    marginBottom: 10,
     marginHorizontal: 16,
     borderWidth: 1,
     borderColor: colors.primary,
@@ -495,12 +496,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   inputContainer: {
-    backgroundColor: '#323232', // Lighter than colors.card (#2A2A2A)
+    backgroundColor: colors.card,
     borderRadius: 20,
-    paddingTop: 10,
-    paddingHorizontal: 12,
-    paddingBottom: 4, 
-    gap: 6,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 14.4, // Reduced from 16 by 10% (16 * 0.9 = 14.4)
+    gap: 12,
     minHeight: 108, // Reduced from 120 by 10% (120 * 0.9 = 108)
   },
   locationChip: {
@@ -587,7 +588,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#323232', // Lighter than colors.card (#2A2A2A)
+    backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
