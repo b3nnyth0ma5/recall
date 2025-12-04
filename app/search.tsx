@@ -172,19 +172,8 @@ export default function SearchScreen() {
     return lines.length > 3;
   };
 
+  // Determine if we're actively searching
   const isSearching = loading && hasSearched;
-  const showProgressIndicator = isSearching && searchStage !== 'idle' && searchStage !== 'complete';
-
-  // Render skeleton loaders during search
-  const renderSkeletonLoaders = () => {
-    return (
-      <View style={styles.notesContainer}>
-        {[...Array(3)].map((_, index) => (
-          <NoteCardSkeleton key={`skeleton-${index}`} />
-        ))}
-      </View>
-    );
-  };
 
   // Render skeleton loaders before user searches (initial state)
   const renderInitialSkeletons = () => {
@@ -279,7 +268,7 @@ export default function SearchScreen() {
         </View>
 
         {/* Intent Badges Container */}
-        {hasSearched && (locationInfo || personInfo) && (
+        {hasSearched && !isSearching && (locationInfo || personInfo) && (
           <View style={styles.intentBadgesContainer}>
             {/* Person Info Badge */}
             {personInfo && personInfo.matchedNames.length > 0 && (
@@ -311,6 +300,7 @@ export default function SearchScreen() {
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {/* Show history when not searching and no search has been performed */}
         {showHistory && searchHistory.length > 0 ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
             <Text style={styles.historyTitle}>Recent Searches</Text>
@@ -356,7 +346,8 @@ export default function SearchScreen() {
           </Animated.View>
         ) : showHistory && isLoadingHistory ? (
           renderInitialSkeletons()
-        ) : showProgressIndicator ? (
+        ) : isSearching ? (
+          // ALWAYS show progress indicator when search is running
           <SearchProgressIndicator 
             stage={searchStage} 
             locationName={searchLocationName}
@@ -407,9 +398,8 @@ export default function SearchScreen() {
               </React.Fragment>
             </View>
           </Animated.View>
-        ) : isSearching ? (
-          renderSkeletonLoaders()
         ) : notes.length === 0 && !searchAnswer ? (
+          // Show empty state only when search is complete and no results
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
             <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
             <Text style={styles.emptyTitle}>No Results Found</Text>
@@ -423,6 +413,7 @@ export default function SearchScreen() {
             </Text>
           </Animated.View>
         ) : (
+          // Show results only when search is complete
           <View style={styles.notesContainer}>
             {/* Answer Section */}
             {searchAnswer && searchConfidence !== undefined && (
