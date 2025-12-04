@@ -14,7 +14,7 @@ import {
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
@@ -42,6 +42,7 @@ interface CombinedSearchAddProps {
 
 export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [text, setText] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
@@ -118,23 +119,28 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
   // Listen for location selection from location-search screen
   useEffect(() => {
-    const handleLocationUpdate = (params: any) => {
-      if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
-        setLocation({
-          latitude: parseFloat(params.selectedLatitude),
-          longitude: parseFloat(params.selectedLongitude),
-          name: params.selectedLocationName,
-        });
-        setShowDrawer(false);
-      }
-    };
-
-    // This would be called when returning from location-search
-    // In a real implementation, you'd use a proper event listener or navigation params
-    return () => {
-      // Cleanup
-    };
-  }, []);
+    if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
+      const selectedLocation = {
+        latitude: parseFloat(params.selectedLatitude as string),
+        longitude: parseFloat(params.selectedLongitude as string),
+        name: params.selectedLocationName as string,
+      };
+      
+      console.log('Location selected from location-search:', selectedLocation);
+      setLocation(selectedLocation);
+      setShowDrawer(false);
+      
+      // Clear the params after processing
+      router.setParams({
+        selectedLatitude: undefined,
+        selectedLongitude: undefined,
+        selectedLocationName: undefined,
+        selectedDisplayName: undefined,
+        selectedFullAddress: undefined,
+        selectedPrimaryType: undefined,
+      });
+    }
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName]);
 
   const handlePlusPress = () => {
     if (Platform.OS !== 'web') {
@@ -294,7 +300,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
             <View style={styles.inputContainer}>
               {/* Location Display - Above Images */}
               {location && (
-                <View style={styles.locationChip}>
+                <Animated.View entering={FadeIn.duration(300)} style={styles.locationChip}>
                   <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
                   <Text style={styles.locationText} numberOfLines={1}>
                     {location.name}
@@ -302,7 +308,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   <Pressable onPress={handleRemoveLocation} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <IconSymbol name="xmark.circle.fill" size={16} color={colors.textSecondary} />
                   </Pressable>
-                </View>
+                </Animated.View>
               )}
 
               {/* Images Display */}
@@ -444,8 +450,8 @@ const styles = StyleSheet.create({
   },
   containerWrapper: {
     position: 'relative',
-    marginHorizontal: 16,
-    marginBottom: 24,
+    marginHorizontal: 26, // Increased from 20 to reduce width by ~5%
+    marginBottom: 20,
   },
   borderBlur: {
     position: 'absolute',
@@ -453,14 +459,14 @@ const styles = StyleSheet.create({
     left: -2,
     right: -2,
     bottom: -2,
-    borderRadius: 22,
+    borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
   },
   container: {
     backgroundColor: colors.background,
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
@@ -472,8 +478,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
     marginHorizontal: 16,
     borderWidth: 1,
     borderColor: colors.primary,
@@ -492,9 +498,11 @@ const styles = StyleSheet.create({
   inputContainer: {
     backgroundColor: colors.card,
     borderRadius: 20,
-    padding: 16,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 14.4, // Reduced from 16 by 10% (16 * 0.9 = 14.4)
     gap: 12,
-    minHeight: 138, // Increased by 15% from ~120
+    minHeight: 108, // Reduced from 120 by 10% (120 * 0.9 = 108)
   },
   locationChip: {
     flexDirection: 'row',
@@ -554,7 +562,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   submitButton: {
-    padding: 4,
+    padding: 8,
   },
   submitButtonDisabled: {
     opacity: 0.4,
