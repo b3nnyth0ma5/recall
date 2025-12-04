@@ -73,12 +73,14 @@ export default function SearchScreen() {
   useEffect(() => {
     const queryParam = params.q;
     const resetParam = params.reset;
+    const searchingParam = params.searching;
     
     if (queryParam && typeof queryParam === 'string') {
       const decodedQuery = decodeURIComponent(queryParam);
       
       console.log('[SearchScreen] Query parameter detected:', decodedQuery);
       console.log('[SearchScreen] Reset parameter:', resetParam);
+      console.log('[SearchScreen] Searching parameter:', searchingParam);
       
       // If reset flag is present, clear previous search results first
       if (resetParam === 'true') {
@@ -96,9 +98,13 @@ export default function SearchScreen() {
           setHasSearched(true);
           setIsAnswerExpanded(false);
           
-          // Execute the search
-          console.log('[SearchScreen] Executing search with query:', decodedQuery);
-          searchNotes(decodedQuery, true);
+          // Only execute the search if it wasn't already fired from CombinedSearchAdd
+          if (searchingParam !== 'true') {
+            console.log('[SearchScreen] Executing search with query:', decodedQuery);
+            searchNotes(decodedQuery, true);
+          } else {
+            console.log('[SearchScreen] Search already fired from CombinedSearchAdd, skipping duplicate search');
+          }
         }, 50);
       } else {
         // Normal search without reset
@@ -107,12 +113,16 @@ export default function SearchScreen() {
         setHasSearched(true);
         setIsAnswerExpanded(false);
         
-        // Execute the search
-        console.log('[SearchScreen] Executing search with query:', decodedQuery);
-        searchNotes(decodedQuery, true);
+        // Only execute the search if it wasn't already fired from CombinedSearchAdd
+        if (searchingParam !== 'true') {
+          console.log('[SearchScreen] Executing search with query:', decodedQuery);
+          searchNotes(decodedQuery, true);
+        } else {
+          console.log('[SearchScreen] Search already fired from CombinedSearchAdd, skipping duplicate search');
+        }
       }
     }
-  }, [params.q, params.reset]);
+  }, [params.q, params.reset, params.searching]);
 
   // Show history when not searching and history is loaded
   useEffect(() => {
@@ -197,8 +207,10 @@ export default function SearchScreen() {
   };
 
   // Determine if we're actively searching
-  // Show searching state when loading AND hasSearched, OR when we just reset (to show progress immediately)
-  const isSearching = (loading && hasSearched) || (params.reset === 'true' && !hasSearched);
+  // Show searching state when:
+  // 1. loading AND hasSearched (normal search in progress)
+  // 2. reset=true AND searching=true (search fired from CombinedSearchAdd)
+  const isSearching = (loading && hasSearched) || (params.reset === 'true' && params.searching === 'true');
 
   // Render skeleton loaders before user searches (initial state)
   const renderInitialSkeletons = () => {

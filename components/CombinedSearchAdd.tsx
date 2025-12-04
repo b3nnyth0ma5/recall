@@ -29,6 +29,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { supabase } from '@/utils/supabase';
+import { useNotes } from '@/hooks/useNotes';
 
 interface CombinedSearchAddProps {
   onCreateRecall: (data: {
@@ -42,6 +43,7 @@ interface CombinedSearchAddProps {
 export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { searchNotes } = useNotes();
   const [text, setText] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
@@ -167,9 +169,13 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
+    // Fire off the search query FIRST before navigating
+    console.log('[CombinedSearchAdd] Firing search query directly:', searchQuery);
+    searchNotes(searchQuery, true);
+
     // Navigate to search screen immediately with query parameter and reset flag
     const encodedQuery = encodeURIComponent(searchQuery);
-    const searchRoute = `/search?q=${encodedQuery}&reset=true`;
+    const searchRoute = `/search?q=${encodedQuery}&reset=true&searching=true`;
     
     console.log('[CombinedSearchAdd] Navigating immediately to:', searchRoute);
     router.push(searchRoute);
@@ -332,7 +338,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
               <TextInput
                 ref={textInputRef}
                 style={styles.textInput}
-                placeholder="Recall or search..."
+                placeholder="Create a Recall or Search..."
                 placeholderTextColor={colors.textTertiary}
                 value={text}
                 onChangeText={handleTextChange}
