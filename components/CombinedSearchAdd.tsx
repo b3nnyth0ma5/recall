@@ -155,19 +155,21 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const handleSearchPress = async () => {
     const searchQuery = text.trim();
     
-    if (!searchQuery) {
-      console.log('[CombinedSearchAdd] Empty search query - ignoring');
-      return;
-    }
-
-    console.log('[CombinedSearchAdd] Search button pressed with query:', searchQuery);
-    
     // Dismiss keyboard first before navigation
     Keyboard.dismiss();
     
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
+
+    // If there's no search query, just navigate to search screen to show history
+    if (!searchQuery) {
+      console.log('[CombinedSearchAdd] Empty search query - navigating to search screen to show history');
+      router.push('/search');
+      return;
+    }
+
+    console.log('[CombinedSearchAdd] Search button pressed with query:', searchQuery);
 
     // Fire off the search query FIRST before navigating
     console.log('[CombinedSearchAdd] Firing search query directly:', searchQuery);
@@ -364,13 +366,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 <Pressable
                   style={styles.searchButton}
                   onPress={handleSearchPress}
-                  disabled={!text.trim()}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <IconSymbol
                     name="magnifyingglass"
                     size={24}
-                    color={text.trim() ? colors.text : colors.textTertiary}
+                    color={colors.text}
                   />
                 </Pressable>
 
