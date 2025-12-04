@@ -519,6 +519,22 @@ export default function HomeScreen() {
     );
   };
 
+  // Render skeleton loaders during initial load
+  const renderSkeletonLoaders = () => {
+    return (
+      <View style={styles.allNotesSection}>
+        {[...Array(3)].map((_, index) => (
+          <NoteCard
+            key={`skeleton-${index}`}
+            note={{} as any}
+            onPress={() => {}}
+            loading={true}
+          />
+        ))}
+      </View>
+    );
+  };
+
   // ============================================================================
   // Animation Calculations
   // ============================================================================
@@ -635,9 +651,7 @@ export default function HomeScreen() {
 
         {/* Content */}
         {isLoading && !refreshing ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
+          renderSkeletonLoaders()
         ) : displayNotes.length === 0 ? (
           renderEmptyState()
         ) : (
@@ -648,6 +662,7 @@ export default function HomeScreen() {
                   key={`${note.id}-${index}`}
                   note={note}
                   onPress={() => handleNotePress(note.id)}
+                  loading={false}
                 />
               ))}
             </View>
@@ -964,7 +979,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#FF6B35',
+    shadowColor: '#FF6035',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 16,

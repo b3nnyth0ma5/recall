@@ -10,11 +10,13 @@ import { shareRecall } from '@/utils/shareRecall';
 import { getImageDataUrl } from '@/utils/supabase';
 import { PeopleAvatars } from './PeopleAvatars';
 import * as Haptics from 'expo-haptics';
+import { NoteCardSkeleton } from './NoteCardSkeleton';
 
 interface NoteCardProps {
   note: Note;
   onPress: () => void;
   onImagePress?: () => void;
+  loading?: boolean;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -30,7 +32,7 @@ const hasUrl = (text: string): boolean => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, loading = false }: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -44,6 +46,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress }: 
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
   const loadingQueueRef = useRef<Set<number>>(new Set());
+
+  // Show skeleton if loading
+  if (loading) {
+    return <NoteCardSkeleton />;
+  }
 
   // Initialize with first TWO images for better performance
   useEffect(() => {
@@ -385,12 +392,13 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress }: 
   );
 }, (prevProps, nextProps) => {
   // Custom comparison function for memo
-  // Only re-render if note data actually changed
+  // Only re-render if note data actually changed or loading state changed
   return (
     prevProps.note.id === nextProps.note.id &&
     prevProps.note.updated_at === nextProps.note.updated_at &&
     prevProps.note.images?.length === nextProps.note.images?.length &&
-    prevProps.note.people?.length === nextProps.note.people?.length
+    prevProps.note.people?.length === nextProps.note.people?.length &&
+    prevProps.loading === nextProps.loading
   );
 });
 

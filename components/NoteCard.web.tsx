@@ -9,11 +9,13 @@ import { TimeAgo } from './TimeAgo';
 import { shareRecall } from '@/utils/shareRecall';
 import { getImageDataUrl } from '@/utils/supabase';
 import { PeopleAvatars } from './PeopleAvatars';
+import { NoteCardSkeleton } from './NoteCardSkeleton';
 
 interface NoteCardProps {
   note: Note;
   onPress: () => void;
   onImagePress?: () => void;
+  loading?: boolean;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -28,7 +30,7 @@ const hasUrl = (text: string): boolean => {
   return urlRegex.test(text);
 };
 
-export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
+export function NoteCard({ note, onPress, onImagePress, loading = false }: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -41,6 +43,11 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   // Lazy loading state for images
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
+
+  // Show skeleton if loading
+  if (loading) {
+    return <NoteCardSkeleton />;
+  }
 
   // Initialize with first 2 images if note has more than 1 image
   useEffect(() => {

@@ -137,6 +137,22 @@ export default function SearchScreen() {
   const isSearching = loading && hasSearched;
   const showProgressIndicator = isSearching && searchStage !== 'idle' && searchStage !== 'complete';
 
+  // Render skeleton loaders during search
+  const renderSkeletonLoaders = () => {
+    return (
+      <View style={styles.notesContainer}>
+        {[...Array(3)].map((_, index) => (
+          <NoteCard
+            key={`skeleton-${index}`}
+            note={{} as any}
+            onPress={() => {}}
+            loading={true}
+          />
+        ))}
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -345,6 +361,8 @@ export default function SearchScreen() {
               </React.Fragment>
             </View>
           </Animated.View>
+        ) : isSearching ? (
+          renderSkeletonLoaders()
         ) : notes.length === 0 && !searchAnswer ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
             <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
@@ -414,6 +432,7 @@ export default function SearchScreen() {
                       <NoteCard
                         note={note}
                         onPress={() => handleNotePress(note.id)}
+                        loading={false}
                       />
                     </View>
                   </View>

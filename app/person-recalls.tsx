@@ -361,6 +361,22 @@ export default function PersonRecallsScreen() {
     router.back();
   }, [router]);
 
+  // Render skeleton loaders during initial load
+  const renderSkeletonLoaders = () => {
+    return (
+      <View style={styles.recallsContainer}>
+        {[...Array(3)].map((_, index) => (
+          <NoteCard
+            key={`skeleton-${index}`}
+            note={{} as any}
+            onPress={() => {}}
+            loading={true}
+          />
+        ))}
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -396,9 +412,7 @@ export default function PersonRecallsScreen() {
         scrollEventThrottle={400}
       >
         {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
+          renderSkeletonLoaders()
         ) : recalls.length === 0 ? (
           <View style={styles.emptyContainer}>
             <IconSymbol 
@@ -422,6 +436,7 @@ export default function PersonRecallsScreen() {
                 key={`${recall.id}-${index}`}
                 note={recall}
                 onPress={() => handleNotePress(recall.id)}
+                loading={false}
               />
             ))}
             

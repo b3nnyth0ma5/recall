@@ -177,6 +177,22 @@ export default function HomeScreen() {
     );
   };
 
+  // Render skeleton loaders for initial load
+  const renderSkeletons = () => {
+    return (
+      <View style={styles.allNotesSection}>
+        {[...Array(3)].map((_, index) => (
+          <NoteCard
+            key={`skeleton-${index}`}
+            note={{} as any}
+            onPress={() => {}}
+            loading={true}
+          />
+        ))}
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -241,9 +257,7 @@ export default function HomeScreen() {
         )}
 
         {loading && !refreshing ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
+          renderSkeletons()
         ) : notes.length === 0 ? (
           renderEmptyState()
         ) : (
@@ -255,6 +269,7 @@ export default function HomeScreen() {
                   key={`${note.id}-${index}`}
                   note={note}
                   onPress={() => handleNotePress(note.id)}
+                  loading={false}
                 />
               ))}
             </View>
