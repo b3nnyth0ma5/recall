@@ -285,9 +285,13 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
         {/* Main Input Container with Blur Border */}
         <View style={styles.containerWrapper}>
-          {/* Search Text Display - Shows when typing */}
+          {/* Search Text Display - Shows when typing - NOW WITH PROPER Z-INDEX */}
           {text.trim().length > 0 && (
-            <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(300)}>
+            <Animated.View 
+              entering={FadeIn.duration(300)} 
+              exiting={FadeOut.duration(300)}
+              style={styles.searchTextWrapper}
+            >
               <Pressable
                 style={styles.searchTextContainer}
                 onPress={() => handleSearchPress()}
@@ -461,10 +465,16 @@ const styles = StyleSheet.create({
     left: 5,
     right: 5,
     zIndex: 1000,
+    elevation: 1000,
   },
   containerWrapper: {
     position: 'relative',
     marginHorizontal: 16,
+  },
+  searchTextWrapper: {
+    zIndex: 2000,
+    elevation: 2000,
+    position: 'relative',
   },
   borderBlur: {
     position: 'absolute',
@@ -476,6 +486,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
+    zIndex: 1,
   },
   container: {
     backgroundColor: colors.background,
@@ -483,6 +494,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primary,
     overflow: 'hidden',
+    zIndex: 2,
   },
   searchTextContainer: {
     flexDirection: 'row',
@@ -495,6 +507,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderWidth: 1,
     borderColor: colors.primary,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   searchTextContent: {
     flexDirection: 'row',
@@ -506,6 +526,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     flex: 1,
+    fontWeight: '500',
   },
   inputContainer: {
     backgroundColor: '#333333',
