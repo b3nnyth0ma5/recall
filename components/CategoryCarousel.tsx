@@ -181,7 +181,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
             <View style={styles.createCategoryBackground}>
               <IconSymbol 
                 name="plus" 
-                size={48} 
+                size={38} 
                 color={colors.primary} 
               />
             </View>

@@ -30,7 +30,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase, saveSearchHistory } from '@/utils/supabase';
 
 interface CombinedSearchAddProps {
   onCreateRecall: (data: {
@@ -41,8 +41,12 @@ interface CombinedSearchAddProps {
   userId: string;
 }
 
-const SEARCH_HISTORY_KEY = '@search_history';
-const MAX_SEARCH_HISTORY = 10;
+interface SearchHistoryItem {
+  id: string;
+  search_text: string;
+  created_at: string;
+  updated_at: string;
+}
 
 export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
   const router = useRouter();
@@ -55,7 +59,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const [isCreating, setIsCreating] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
   const [showSearchHistory, setShowSearchHistory] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const translateY = useSharedValue(0);
@@ -100,45 +104,41 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
   const loadSearchHistory = async () => {
     try {
-      const history = await AsyncStorage.getItem(SEARCH_HISTORY_KEY);
-      if (history) {
-        setSearchHistory(JSON.parse(history));
+      console.log('Loading search history from database for user:', userId);
+      
+      const { data, error } = await supabase
+        .from('search_history')
+        .select('*')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error('Error loading search history:', error);
+        return;
       }
+
+      console.log('Search history loaded:', data?.length || 0, 'items');
+      setSearchHistory(data || []);
     } catch (error) {
       console.error('Error loading search history:', error);
     }
   };
 
-  const saveSearchHistory = async (query: string) => {
-    try {
-      const trimmedQuery = query.trim();
-      if (!trimmedQuery) return;
-
-      // Load current history
-      const history = await AsyncStorage.getItem(SEARCH_HISTORY_KEY);
-      let historyArray: string[] = history ? JSON.parse(history) : [];
-
-      // Remove duplicate if exists
-      historyArray = historyArray.filter(item => item !== trimmedQuery);
-
-      // Add new query at the beginning
-      historyArray.unshift(trimmedQuery);
-
-      // Keep only the last MAX_SEARCH_HISTORY items
-      historyArray = historyArray.slice(0, MAX_SEARCH_HISTORY);
-
-      // Save back to storage
-      await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(historyArray));
-      setSearchHistory(historyArray);
-    } catch (error) {
-      console.error('Error saving search history:', error);
-    }
-  };
-
   const clearSearchHistory = async () => {
     try {
-      await AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
+      const { error } = await supabase
+        .from('search_history')
+        .delete()
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error clearing search history:', error);
+        return;
+      }
+
       setSearchHistory([]);
+      console.log('Search history cleared');
     } catch (error) {
       console.error('Error clearing search history:', error);
     }
@@ -210,7 +210,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
-      await saveSearchHistory(searchQuery);
+      await saveSearchHistory(userId, searchQuery);
+      // Reload search history after saving
+      await loadSearchHistory();
       router.push(`/search?query=${encodeURIComponent(searchQuery)}`);
     }
   };
@@ -366,14 +368,14 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
             <ScrollView style={styles.searchHistoryScroll} showsVerticalScrollIndicator={false}>
               {searchHistory.map((item, index) => (
                 <Pressable
-                  key={index}
+                  key={item.id}
                   style={styles.searchHistoryItem}
-                  onPress={() => handleHistoryItemPress(item)}
+                  onPress={() => handleHistoryItemPress(item.search_text)}
                   hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
                 >
                   <IconSymbol name="clock.fill" size={16} color={colors.textSecondary} />
                   <Text style={styles.searchHistoryItemText} numberOfLines={1}>
-                    {item}
+                    {item.search_text}
                   </Text>
                   <IconSymbol name="arrow.up.left" size={14} color={colors.textTertiary} />
                 </Pressable>
@@ -582,7 +584,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   searchHistoryContainer: {
-    backgroundColor: '#2A2A2A',
+    backgroundColor: colors.card,
     borderRadius: 12,
     marginBottom: 8,
     marginHorizontal: 16,
@@ -599,11 +601,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.card,
   },
   searchHistoryTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: colors.text,
   },
   clearHistoryText: {
     fontSize: 14,
@@ -621,6 +624,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.card,
   },
   searchHistoryItemText: {
     flex: 1,
@@ -631,7 +635,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#323232',
+    backgroundColor: colors.card,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 10,
