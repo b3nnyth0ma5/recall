@@ -9,6 +9,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { fetchNotesWithImagesForReels } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { StoryReelsSkeleton } from './StoryReelsSkeleton';
 
 interface StoryReelsProps {
   onNotePress: (noteId: string) => void;
@@ -122,13 +123,9 @@ export function StoryReels({ onNotePress, refreshTrigger }: StoryReelsProps) {
     }
   };
 
-  // Show loading state
+  // Show loading state with skeleton
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color={colors.primary} />
-      </View>
-    );
+    return <StoryReelsSkeleton />;
   }
 
   // Don't render anything if there are no reels
@@ -273,11 +270,6 @@ export function StoryReels({ onNotePress, refreshTrigger }: StoryReelsProps) {
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: {
-    paddingVertical: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   container: {
     marginBottom: 20,
   },

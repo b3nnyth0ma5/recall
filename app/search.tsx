@@ -20,6 +20,7 @@ import { SearchHistory } from '@/types/Note';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
+import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -142,14 +143,20 @@ export default function SearchScreen() {
     return (
       <View style={styles.notesContainer}>
         {[...Array(3)].map((_, index) => (
-          <NoteCard
-            key={`skeleton-${index}`}
-            note={{} as any}
-            onPress={() => {}}
-            loading={true}
-          />
+          <NoteCardSkeleton key={`skeleton-${index}`} />
         ))}
       </View>
+    );
+  };
+
+  // Render skeleton loaders before user searches (initial state)
+  const renderInitialSkeletons = () => {
+    return (
+      <Animated.View entering={FadeIn.duration(600)} style={styles.notesContainer}>
+        {[...Array(3)].map((_, index) => (
+          <NoteCardSkeleton key={`initial-skeleton-${index}`} />
+        ))}
+      </Animated.View>
     );
   };
 
@@ -283,7 +290,7 @@ export default function SearchScreen() {
               </Pressable>
             ))}
           </Animated.View>
-        ) : showHistory && searchHistory.length === 0 ? (
+        ) : showHistory && searchHistory.length === 0 && !isLoadingHistory ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyHistoryContainer}>
             <View style={styles.emptyHistoryIconContainer}>
               <IconSymbol name="clock" size={48} color={colors.textTertiary} />
@@ -310,6 +317,8 @@ export default function SearchScreen() {
               </View>
             </View>
           </Animated.View>
+        ) : showHistory && isLoadingHistory ? (
+          renderInitialSkeletons()
         ) : showProgressIndicator ? (
           <SearchProgressIndicator 
             stage={searchStage} 
