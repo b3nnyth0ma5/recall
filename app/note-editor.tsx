@@ -63,7 +63,7 @@ export default function NoteEditorScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { user } = useAuth();
-  const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote } = useNotes();
+  const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote, getCachedNote } = useNotes();
 
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageData[]>([]);
@@ -570,22 +570,157 @@ export default function NoteEditorScreen() {
     }
   }, [isSharedRecall, params.sharedText, params.sharedImages, params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType]);
 
-  // Load note data directly from Supabase when editing
+  // OPTIMIZED: Load note data with cache-first strategy
   useEffect(() => {
-    const loadNoteFromDatabase = async () => {
+    const loadNoteFromCacheOrDatabase = async () => {
       if (!isEditing || !params.id || !user || fromShare) {
         return;
       }
 
       try {
-        setLoadingNote(true);
-        console.log('[NoteEditor] Loading note from database:', params.id);
+        const noteId = params.id as string;
+        console.log('[NoteEditor] ===== OPTIMIZED LOADING =====');
+        console.log('[NoteEditor] Loading note:', noteId);
 
-        // Fetch the note data
+        // STEP 1: Try to load from cache first (instant)
+        const cachedNote = getCachedNote(noteId);
+        
+        if (cachedNote) {
+          console.log('[NoteEditor] ✅ Using CACHED data for instant load');
+          
+          // Set data from cache immediately
+          setText(cachedNote.text || '');
+          setLocationName(cachedNote.location || '');
+          setLocationPrimaryType(cachedNote.location_primary_type || '');
+          
+          if (cachedNote.latitude && cachedNote.longitude) {
+            setLocation({
+              latitude: cachedNote.latitude,
+              longitude: cachedNote.longitude,
+            });
+          }
+
+          // Set people from cache
+          if (cachedNote.people && cachedNote.people.length > 0) {
+            console.log('[NoteEditor] Loaded people from cache:', cachedNote.people);
+            setPeople(cachedNote.people);
+            setInitialPeople(cachedNote.people);
+          } else {
+            setPeople([]);
+            setInitialPeople([]);
+          }
+
+          // Set images from cache
+          if (cachedNote.images && cachedNote.images.length > 0) {
+            const cachedImages: ImageData[] = cachedNote.images.map((url, index) => ({
+              id: cachedNote.imageIds?.[index],
+              uri: url,
+              contentType: 'image/jpeg',
+            }));
+            setImages(cachedImages);
+            console.log(`[NoteEditor] Loaded ${cachedImages.length} images from cache`);
+          }
+
+          // STEP 2: Optionally refresh in background for latest data
+          // This ensures we have the most up-to-date data without blocking the UI
+          console.log('[NoteEditor] Refreshing data in background...');
+          
+          // Don't show loading indicator for background refresh
+          const { data: recallData, error: recallError } = await supabase
+            .from('recalls')
+            .select('*')
+            .eq('id', noteId)
+            .eq('user_id', user.id)
+            .single();
+
+          if (!recallError && recallData) {
+            // Only update if data has changed
+            if (recallData.updated_at !== cachedNote.updated_at) {
+              console.log('[NoteEditor] Data changed, updating from database');
+              
+              setText(recallData.text || '');
+              setLocationName(recallData.location || '');
+              setLocationPrimaryType(recallData.location_primary_type || '');
+              
+              if (recallData.latitude && recallData.longitude) {
+                setLocation({
+                  latitude: recallData.latitude,
+                  longitude: recallData.longitude,
+                });
+              }
+
+              // Refresh people
+              const { data: recallPeopleData } = await supabase
+                .from('recall_people')
+                .select('person_id, persons(id, person_name)')
+                .eq('recall_id', noteId);
+
+              if (recallPeopleData && recallPeopleData.length > 0) {
+                const loadedPeople: Person[] = recallPeopleData
+                  .filter((rp: any) => rp.persons)
+                  .map((rp: any) => ({
+                    id: rp.persons.id,
+                    person_name: rp.persons.person_name,
+                  }));
+                setPeople(loadedPeople);
+                setInitialPeople(loadedPeople);
+              }
+
+              // Refresh images
+              const { data: imagesData } = await supabase
+                .from('recall_images')
+                .select('id')
+                .eq('recall_id', noteId)
+                .order('created_at', { ascending: true });
+
+              if (imagesData && imagesData.length > 0) {
+                const loadedImages: ImageData[] = [];
+                
+                // Load first 2 images immediately
+                const imagesToLoadImmediately = imagesData.slice(0, 2);
+                
+                for (const img of imagesToLoadImmediately) {
+                  try {
+                    const dataUrl = await getImageDataUrl(img.id);
+                    if (dataUrl) {
+                      loadedImages.push({
+                        id: img.id,
+                        uri: dataUrl,
+                        contentType: 'image/jpeg',
+                      });
+                    }
+                  } catch (error) {
+                    console.error(`[NoteEditor] Error loading image ${img.id}:`, error);
+                  }
+                }
+                
+                // Add placeholders for remaining images
+                for (let i = 2; i < imagesData.length; i++) {
+                  loadedImages.push({
+                    id: imagesData[i].id,
+                    uri: '', // Will be lazy loaded
+                    contentType: 'image/jpeg',
+                  });
+                }
+                
+                setImages(loadedImages);
+              }
+            } else {
+              console.log('[NoteEditor] Data unchanged, using cache');
+            }
+          }
+          
+          return;
+        }
+
+        // STEP 3: No cache available, load from database (fallback)
+        console.log('[NoteEditor] ⚠️ No cache available, loading from database');
+        setLoadingNote(true);
+
         const { data: recallData, error: recallError } = await supabase
           .from('recalls')
           .select('*')
-          .eq('id', params.id)
+          .eq('id', noteId)
           .eq('user_id', user.id)
           .single();
 
@@ -611,11 +746,11 @@ export default function NoteEditorScreen() {
         }
 
         // Load people for this recall
-        console.log('[NoteEditor] Loading people for recall:', params.id);
+        console.log('[NoteEditor] Loading people for recall:', noteId);
         const { data: recallPeopleData, error: recallPeopleError } = await supabase
           .from('recall_people')
           .select('person_id, persons(id, person_name)')
-          .eq('recall_id', params.id);
+          .eq('recall_id', noteId);
 
         if (recallPeopleError) {
           console.error('[NoteEditor] Error loading recall_people:', recallPeopleError);
@@ -640,7 +775,7 @@ export default function NoteEditorScreen() {
         const { data: imagesData, error: imagesError } = await supabase
           .from('recall_images')
           .select('id')
-          .eq('recall_id', params.id)
+          .eq('recall_id', noteId)
           .order('created_at', { ascending: true });
 
         if (imagesError) {
@@ -692,8 +827,8 @@ export default function NoteEditorScreen() {
       }
     };
 
-    loadNoteFromDatabase();
-  }, [params.id, isEditing, user, router, fromShare]);
+    loadNoteFromCacheOrDatabase();
+  }, [params.id, isEditing, user, router, fromShare, getCachedNote]);
 
   // Request location permission only for new notes (not editing, not shared recalls, not from share)
   useEffect(() => {

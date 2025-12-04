@@ -33,6 +33,25 @@ export function useNotes() {
   const peopleCache = useRef<Map<string, any[]>>(new Map());
   // Cache for image data to avoid redundant queries
   const imageCache = useRef<Map<string, string>>(new Map());
+  // NEW: Cache for full note data to optimize note editor loading
+  const noteCache = useRef<Map<string, Note>>(new Map());
+
+  // NEW: Function to get cached note data
+  const getCachedNote = useCallback((noteId: string): Note | null => {
+    const cached = noteCache.current.get(noteId);
+    if (cached) {
+      console.log(`[useNotes] Cache HIT for note ${noteId}`);
+      return cached;
+    }
+    console.log(`[useNotes] Cache MISS for note ${noteId}`);
+    return null;
+  }, []);
+
+  // NEW: Function to update note cache
+  const updateNoteCache = useCallback((note: Note) => {
+    noteCache.current.set(note.id, note);
+    console.log(`[useNotes] Updated cache for note ${note.id}`);
+  }, []);
 
   // Optimized helper function to load people for recalls in batch
   const loadPeopleForRecalls = useCallback(async (recallIds: string[]) => {
@@ -129,7 +148,7 @@ export function useNotes() {
     });
 
     // Process recalls with their images
-    return await Promise.all(
+    const processedNotes = await Promise.all(
       recalls.map(async (recall) => {
         try {
           const recallImages = imagesByRecallId.get(recall.id) || [];
@@ -172,12 +191,17 @@ export function useNotes() {
           const validImageUrls = imageResults.map(result => result.url);
           const imageIds = imageResults.map(result => result.id);
           
-          return { 
+          const processedNote = { 
             ...recall, 
             images: validImageUrls, 
             imageIds: imageIds,
             people: peopleByRecallId[recall.id] || [],
           };
+
+          // Update note cache with processed note
+          updateNoteCache(processedNote);
+
+          return processedNote;
         } catch (error) {
           console.error(`Exception processing recall ${recall.id}:`, error);
           return { 
@@ -189,7 +213,9 @@ export function useNotes() {
         }
       })
     );
-  }, [loadPeopleForRecalls]);
+
+    return processedNotes;
+  }, [loadPeopleForRecalls, updateNoteCache]);
 
   const loadNotes = useCallback(async (pageNum: number = 1, append: boolean = false) => {
     if (!user) {
@@ -277,6 +303,7 @@ export function useNotes() {
     // Clear caches on refresh
     peopleCache.current.clear();
     imageCache.current.clear();
+    noteCache.current.clear();
     setPage(1);
     setHasMore(true);
     await loadNotes(1, false);
@@ -386,6 +413,9 @@ export function useNotes() {
 
       console.log('Recall updated successfully with location_primary_type');
       
+      // Clear cache for this note
+      noteCache.current.delete(noteId);
+      
       // Refresh only the single note that was updated
       await refreshSingleNote(noteId);
     } catch (error) {
@@ -406,6 +436,7 @@ export function useNotes() {
       
       // Clear caches for this recall
       peopleCache.current.delete(noteId);
+      noteCache.current.delete(noteId);
       
       // Get all images for this recall
       const { data: imagesData } = await supabase
@@ -729,5 +760,6 @@ export function useNotes() {
     loadMoreNotes,
     refreshSingleNote,
     getSearchHistory,
+    getCachedNote,
   };
 }
