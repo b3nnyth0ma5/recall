@@ -31,6 +31,8 @@ export function useNotes() {
   
   // Cache for people data to avoid redundant queries
   const peopleCache = useRef<Map<string, any[]>>(new Map());
+  // Cache for image data to avoid redundant queries
+  const imageCache = useRef<Map<string, string>>(new Map());
 
   // Optimized helper function to load people for recalls in batch
   const loadPeopleForRecalls = useCallback(async (recallIds: string[]) => {
@@ -52,6 +54,7 @@ export function useNotes() {
       }
 
       // Fetch only uncached data with optimized query using composite index
+      // Uses new idx_recall_people_person_user index
       const { data: recallPeopleData, error: recallPeopleError } = await supabase
         .from('recall_people')
         .select('recall_id, person_id, persons!inner(id, person_name)')
@@ -98,16 +101,17 @@ export function useNotes() {
     }
   }, []);
 
-  // Optimized image loading with better error handling
+  // Optimized image loading with better error handling and caching
   const loadImagesForRecalls = useCallback(async (recalls: any[]) => {
     // First, load people for all recalls in one batch
     const recallIds = recalls.map(r => r.id);
     const peopleByRecallId = await loadPeopleForRecalls(recallIds);
 
     // Batch fetch all images for all recalls in one query
+    // Uses idx_recall_images_user_recall index
     const { data: allImagesData, error: allImagesError } = await supabase
       .from('recall_images')
-      .select('id, recall_id')
+      .select('id, recall_id, cdn_url')
       .in('recall_id', recallIds)
       .order('created_at', { ascending: true });
 
@@ -130,17 +134,30 @@ export function useNotes() {
         try {
           const recallImages = imagesByRecallId.get(recall.id) || [];
           
-          // Only load first image immediately for better performance
+          // Load first TWO images immediately for better UX (as per recent requirement)
           const imageResults = await Promise.all(
             recallImages.map(async (img, index) => {
               try {
-                // Load only first image, others will be lazy loaded
-                if (index === 0) {
-                  const dataUrl = await getImageDataUrl(img.id);
-                  if (!dataUrl) {
-                    return { url: '', id: img.id };
+                // Load first two images, others will be lazy loaded
+                if (index < 2) {
+                  // Check cache first
+                  if (imageCache.current.has(img.id)) {
+                    return { url: imageCache.current.get(img.id)!, id: img.id };
                   }
-                  return { url: dataUrl, id: img.id };
+                  
+                  // Prefer CDN URL if available (much faster)
+                  if (img.cdn_url) {
+                    imageCache.current.set(img.id, img.cdn_url);
+                    return { url: img.cdn_url, id: img.id };
+                  }
+                  
+                  // Fallback to base64 data
+                  const dataUrl = await getImageDataUrl(img.id);
+                  if (dataUrl) {
+                    imageCache.current.set(img.id, dataUrl);
+                    return { url: dataUrl, id: img.id };
+                  }
+                  return { url: '', id: img.id };
                 } else {
                   // Return placeholder for lazy loading
                   return { url: '', id: img.id };
@@ -193,7 +210,7 @@ export function useNotes() {
       const from = (pageNum - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
-      // Optimized query using composite index
+      // Optimized query using idx_recalls_user_created composite index
       const { data: recallsData, error: recallsError } = await supabase
         .from('recalls')
         .select('*')
@@ -257,8 +274,9 @@ export function useNotes() {
   }, [page, hasMore, isLoadingMore, loading, loadNotes]);
 
   const refreshNotes = useCallback(async () => {
-    // Clear cache on refresh
+    // Clear caches on refresh
     peopleCache.current.clear();
+    imageCache.current.clear();
     setPage(1);
     setHasMore(true);
     await loadNotes(1, false);
@@ -386,16 +404,19 @@ export function useNotes() {
       console.log('Deleting recall from Supabase:', noteId);
       setIsDeletingNote(true);
       
-      // Clear cache for this recall
+      // Clear caches for this recall
       peopleCache.current.delete(noteId);
       
+      // Get all images for this recall
       const { data: imagesData } = await supabase
         .from('recall_images')
         .select('id')
         .eq('recall_id', noteId);
 
+      // Clear image cache
       if (imagesData && imagesData.length > 0) {
         for (const img of imagesData) {
+          imageCache.current.delete(img.id);
           await deleteImageRecord(img.id);
         }
       }
@@ -450,7 +471,7 @@ export function useNotes() {
       setSearchStage('detecting');
       setSearchLocationName(undefined);
       
-      // Save search history
+      // Save search history (uses idx_search_history_user_updated index)
       await saveSearchHistory(user.id, query);
       
       // Get current session
@@ -667,6 +688,7 @@ export function useNotes() {
     }
 
     try {
+      // Uses idx_search_history_user_updated index
       const { data, error } = await supabase
         .from('search_history')
         .select('*')
