@@ -4,8 +4,8 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { SkeletonLoader } from './SkeletonLoader';
 
-const CATEGORY_SIZE = 80;
-const CATEGORY_SPACING = 20;
+const CATEGORY_SIZE = 82;
+const CATEGORY_SPACING = 10;
 
 export function CategoryCarouselSkeleton() {
   return (
@@ -21,13 +21,15 @@ export function CategoryCarouselSkeleton() {
           <SkeletonLoader 
             width={CATEGORY_SIZE} 
             height={CATEGORY_SIZE} 
-            borderRadius={CATEGORY_SIZE / 2} 
+            borderRadius={CATEGORY_SIZE / 2}
+            variant="wave"
           />
           <SkeletonLoader 
             width={60} 
             height={12} 
             borderRadius={4} 
-            style={styles.categoryNameSkeleton} 
+            style={styles.categoryNameSkeleton}
+            variant="wave"
           />
         </View>
 
@@ -37,13 +39,15 @@ export function CategoryCarouselSkeleton() {
             <SkeletonLoader 
               width={CATEGORY_SIZE} 
               height={CATEGORY_SIZE} 
-              borderRadius={CATEGORY_SIZE / 2} 
+              borderRadius={CATEGORY_SIZE / 2}
+              variant="wave"
             />
             <SkeletonLoader 
               width={60} 
               height={12} 
               borderRadius={4} 
-              style={styles.categoryNameSkeleton} 
+              style={styles.categoryNameSkeleton}
+              variant="wave"
             />
           </View>
         ))}

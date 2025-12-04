@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, ScrollView, Platform } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/utils/supabase';
 import { IconSymbol } from './IconSymbol';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
+import { CategoryCarouselSkeleton } from './CategoryCarouselSkeleton';
 
 interface Category {
   id: string;
@@ -136,12 +137,9 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
     router.push('/(tabs)/(home)/create-category');
   };
 
+  // Show skeleton loader while loading
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color={colors.primary} />
-      </View>
-    );
+    return <CategoryCarouselSkeleton />;
   }
 
   // Show zero state if no categories exist
@@ -241,11 +239,6 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: {
-    paddingVertical: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   zeroStateContainer: {
     paddingHorizontal: 16,
     paddingVertical: 12,
