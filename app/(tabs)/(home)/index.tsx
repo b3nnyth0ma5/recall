@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform, Alert, Keyboard } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
@@ -185,6 +185,9 @@ export default function HomeScreen() {
       // Save scroll position to ref (doesn't trigger re-render)
       scrollPositionRef.current = contentOffset.y;
 
+      // Dismiss keyboard when scrolling
+      Keyboard.dismiss();
+
       // Load more notes when near bottom
       const paddingToBottom = 20;
       const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
@@ -322,19 +325,14 @@ export default function HomeScreen() {
         }}
       />
 
-      {/* Combined Search/Add Component - Only show if feature is enabled */}
-      {combinedAddSearchEnabled && user && !loadingPreferences && (
-        <CombinedSearchAdd
-          onCreateRecall={handleCreateRecallFromCombined}
-          userId={user.id}
-        />
-      )}
-
       {/* Main Content ScrollView - Category Carousel is now inside and scrolls with content */}
       <ScrollView
         ref={scrollViewRef}
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          combinedAddSearchEnabled && styles.scrollContentWithCombined,
+        ]}
         onScroll={handleScroll}
         scrollEventThrottle={400}
         refreshControl={
@@ -388,6 +386,14 @@ export default function HomeScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Combined Search/Add Component - Now at bottom of screen */}
+      {combinedAddSearchEnabled && user && !loadingPreferences && (
+        <CombinedSearchAdd
+          onCreateRecall={handleCreateRecallFromCombined}
+          userId={user.id}
+        />
+      )}
 
       {/* Only show FABs if combined add/search is disabled */}
       {!combinedAddSearchEnabled && (
@@ -458,6 +464,9 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 100,
+  },
+  scrollContentWithCombined: {
+    paddingBottom: 200,
   },
   categoryCarouselContainer: {
     paddingTop: 8,

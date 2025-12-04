@@ -11,11 +11,13 @@ import {
   Platform,
   Keyboard,
   Alert,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 
@@ -36,7 +38,41 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const [showDrawer, setShowDrawer] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
   const textInputRef = useRef<TextInput>(null);
+
+  // Get current location on mount
+  useEffect(() => {
+    getCurrentLocation();
+  }, []);
+
+  const getCurrentLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('Location permission not granted');
+        return;
+      }
+
+      const currentPosition = await Location.getCurrentPositionAsync({});
+      const { latitude, longitude } = currentPosition.coords;
+
+      // Reverse geocode to get location name
+      const { reverseGeocode } = await import('@/utils/supabase');
+      const locationName = await reverseGeocode(latitude, longitude);
+
+      const locationData = {
+        latitude,
+        longitude,
+        name: locationName,
+      };
+
+      setCurrentLocation(locationData);
+      console.log('Current location obtained:', locationData);
+    } catch (error) {
+      console.error('Error getting current location:', error);
+    }
+  };
 
   // Listen for location selection from location-search screen
   useEffect(() => {
@@ -150,10 +186,14 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
     try {
       setIsCreating(true);
+      
+      // Use manually selected location if available, otherwise use current location
+      const locationToSave = location || currentLocation;
+      
       await onCreateRecall({
         text: text.trim(),
         images,
-        location: location || undefined,
+        location: locationToSave || undefined,
       });
 
       // Reset form
@@ -177,178 +217,187 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     setLocation(null);
   };
 
+  const dismissKeyboard = () => {
+    Keyboard.dismiss();
+  };
+
   return (
-    <View style={styles.container}>
-      {/* Search Text Display - Shows above the input when typing */}
-      {text.trim().length > 0 && (
-        <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(300)}>
-          <Pressable
-            style={styles.searchTextContainer}
-            onPress={handleSearchPress}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <View style={styles.searchTextContent}>
-              <IconSymbol name="magnifyingglass" size={18} color={colors.primary} />
-              <Text style={styles.searchText} numberOfLines={1}>
-                {text.trim()}
-              </Text>
-            </View>
-            <IconSymbol name="arrow.right.circle.fill" size={24} color={colors.primary} />
-          </Pressable>
-        </Animated.View>
-      )}
-
-      {/* Main Input Container */}
-      <View style={styles.inputContainer}>
-        {/* Location Display */}
-        {location && (
-          <View style={styles.locationChip}>
-            <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
-            <Text style={styles.locationText} numberOfLines={1}>
-              {location.name}
-            </Text>
-            <Pressable onPress={handleRemoveLocation} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <IconSymbol name="xmark.circle.fill" size={16} color={colors.textSecondary} />
-            </Pressable>
-          </View>
-        )}
-
-        {/* Images Display */}
-        {images.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
-            {images.map((uri, index) => (
-              <View key={index} style={styles.imageContainer}>
-                <Image source={{ uri }} style={styles.image} />
-                <Pressable
-                  style={styles.removeImageButton}
-                  onPress={() => handleRemoveImage(index)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
-                </Pressable>
-              </View>
-            ))}
-          </ScrollView>
-        )}
-
-        {/* Text Input Row */}
-        <View style={styles.inputRow}>
-          <Pressable
-            style={styles.plusButton}
-            onPress={handlePlusPress}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <IconSymbol name="plus.circle.fill" size={32} color={colors.text} />
-          </Pressable>
-
-          <Pressable
-            style={styles.searchButton}
-            onPress={handleSearchPress}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <IconSymbol name="magnifyingglass.circle.fill" size={32} color={colors.text} />
-          </Pressable>
-
-          <TextInput
-            ref={textInputRef}
-            style={styles.textInput}
-            placeholder="Ask anything..."
-            placeholderTextColor={colors.textTertiary}
-            value={text}
-            onChangeText={setText}
-            multiline
-            maxLength={1000}
-          />
-
-          <Pressable
-            style={styles.micButton}
-            onPress={handleMicrophonePress}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <IconSymbol
-              name={isRecording ? "waveform" : "mic.fill"}
-              size={24}
-              color={colors.text}
-            />
-          </Pressable>
-
-          <Pressable
-            style={[styles.submitButton, (!text.trim() && images.length === 0) && styles.submitButtonDisabled]}
-            onPress={handleCreateRecall}
-            disabled={(!text.trim() && images.length === 0) || isCreating}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <IconSymbol name="arrow.up.circle.fill" size={32} color={colors.primary} />
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Slide-up Drawer */}
-      {showDrawer && (
-        <Animated.View
-          entering={SlideInDown.duration(300)}
-          exiting={SlideOutDown.duration(300)}
-          style={styles.drawerOverlay}
-        >
-          <Pressable style={styles.drawerBackdrop} onPress={() => setShowDrawer(false)} />
-          <View style={styles.drawer}>
-            <View style={styles.drawerHandle} />
-            <Text style={styles.drawerTitle}>Sources</Text>
-
-            <View style={styles.drawerOptions}>
-              <Pressable
-                style={styles.drawerOption}
-                onPress={handleImagePick}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <View style={styles.drawerOptionIcon}>
-                  <IconSymbol name="photo.fill" size={32} color={colors.primary} />
-                </View>
-                <Text style={styles.drawerOptionText}>Image</Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.drawerOption}
-                onPress={handleCameraPress}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <View style={styles.drawerOptionIcon}>
-                  <IconSymbol name="camera.fill" size={32} color={colors.primary} />
-                </View>
-                <Text style={styles.drawerOptionText}>Camera</Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.drawerOption}
-                onPress={handleLocationPress}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <View style={styles.drawerOptionIcon}>
-                  <IconSymbol name="mappin.circle.fill" size={32} color={colors.primary} />
-                </View>
-                <Text style={styles.drawerOptionText}>Location</Text>
-              </Pressable>
-            </View>
-
+    <TouchableWithoutFeedback onPress={dismissKeyboard}>
+      <View style={styles.container}>
+        {/* Search Text Display - Shows above the component when typing */}
+        {text.trim().length > 0 && (
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(300)}>
             <Pressable
-              style={styles.drawerCloseButton}
-              onPress={() => setShowDrawer(false)}
+              style={styles.searchTextContainer}
+              onPress={handleSearchPress}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="xmark.circle.fill" size={28} color={colors.textSecondary} />
+              <View style={styles.searchTextContent}>
+                <IconSymbol name="magnifyingglass" size={18} color={colors.primary} />
+                <Text style={styles.searchText} numberOfLines={1}>
+                  {text.trim()}
+                </Text>
+              </View>
+              <IconSymbol name="arrow.right.circle.fill" size={24} color={colors.primary} />
+            </Pressable>
+          </Animated.View>
+        )}
+
+        {/* Main Input Container */}
+        <View style={styles.inputContainer}>
+          {/* Location Display */}
+          {location && (
+            <View style={styles.locationChip}>
+              <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
+              <Text style={styles.locationText} numberOfLines={1}>
+                {location.name}
+              </Text>
+              <Pressable onPress={handleRemoveLocation} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <IconSymbol name="xmark.circle.fill" size={16} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+          )}
+
+          {/* Images Display */}
+          {images.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
+              {images.map((uri, index) => (
+                <View key={index} style={styles.imageContainer}>
+                  <Image source={{ uri }} style={styles.image} />
+                  <Pressable
+                    style={styles.removeImageButton}
+                    onPress={() => handleRemoveImage(index)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+
+          {/* Ask Anything Text - Now above the input row */}
+          <Text style={styles.askAnythingText}>Ask anything...</Text>
+
+          {/* Text Input Row */}
+          <View style={styles.inputRow}>
+            <Pressable
+              style={styles.plusButton}
+              onPress={handlePlusPress}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="plus.circle.fill" size={32} color={colors.text} />
+            </Pressable>
+
+            <TextInput
+              ref={textInputRef}
+              style={styles.textInput}
+              placeholder=""
+              placeholderTextColor={colors.textTertiary}
+              value={text}
+              onChangeText={setText}
+              multiline
+              maxLength={1000}
+            />
+
+            <Pressable
+              style={styles.micButton}
+              onPress={handleMicrophonePress}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol
+                name={isRecording ? "waveform" : "mic.fill"}
+                size={24}
+                color={colors.text}
+              />
+            </Pressable>
+
+            <Pressable
+              style={[styles.submitButton, (!text.trim() && images.length === 0) && styles.submitButtonDisabled]}
+              onPress={handleCreateRecall}
+              disabled={(!text.trim() && images.length === 0) || isCreating}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="arrow.up.circle.fill" size={32} color={colors.primary} />
             </Pressable>
           </View>
-        </Animated.View>
-      )}
-    </View>
+        </View>
+
+        {/* Slide-up Drawer */}
+        {showDrawer && (
+          <Animated.View
+            entering={SlideInDown.duration(300)}
+            exiting={SlideOutDown.duration(300)}
+            style={styles.drawerOverlay}
+          >
+            <Pressable style={styles.drawerBackdrop} onPress={() => setShowDrawer(false)} />
+            <View style={styles.drawer}>
+              <View style={styles.drawerHandle} />
+              <Text style={styles.drawerTitle}>Sources</Text>
+
+              <View style={styles.drawerOptions}>
+                <Pressable
+                  style={styles.drawerOption}
+                  onPress={handleImagePick}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <View style={styles.drawerOptionIcon}>
+                    <IconSymbol name="photo.fill" size={32} color={colors.primary} />
+                  </View>
+                  <Text style={styles.drawerOptionText}>Image</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.drawerOption}
+                  onPress={handleCameraPress}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <View style={styles.drawerOptionIcon}>
+                    <IconSymbol name="camera.fill" size={32} color={colors.primary} />
+                  </View>
+                  <Text style={styles.drawerOptionText}>Camera</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.drawerOption}
+                  onPress={handleLocationPress}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <View style={styles.drawerOptionIcon}>
+                    <IconSymbol name="mappin.circle.fill" size={32} color={colors.primary} />
+                  </View>
+                  <Text style={styles.drawerOptionText}>Location</Text>
+                </Pressable>
+              </View>
+
+              <Pressable
+                style={styles.drawerCloseButton}
+                onPress={() => setShowDrawer(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol name="xmark.circle.fill" size={28} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+          </Animated.View>
+        )}
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     paddingHorizontal: 16,
     paddingVertical: 12,
+    paddingBottom: 24,
     backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    zIndex: 1000,
   },
   searchTextContainer: {
     flexDirection: 'row',
@@ -414,15 +463,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     borderRadius: 10,
   },
+  askAnythingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
+    paddingHorizontal: 4,
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
   plusButton: {
-    padding: 4,
-  },
-  searchButton: {
     padding: 4,
   },
   textInput: {
