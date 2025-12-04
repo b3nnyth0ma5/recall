@@ -72,23 +72,47 @@ export default function SearchScreen() {
   // Handle query parameter from URL (using 'q' parameter)
   useEffect(() => {
     const queryParam = params.q;
+    const resetParam = params.reset;
     
     if (queryParam && typeof queryParam === 'string') {
       const decodedQuery = decodeURIComponent(queryParam);
       
       console.log('[SearchScreen] Query parameter detected:', decodedQuery);
+      console.log('[SearchScreen] Reset parameter:', resetParam);
       
-      // Set the search query in the input
-      setSearchQuery(decodedQuery);
-      setShowHistory(false);
-      setHasSearched(true);
-      setIsAnswerExpanded(false);
-      
-      // Execute the search
-      console.log('[SearchScreen] Executing search with query:', decodedQuery);
-      searchNotes(decodedQuery, true);
+      // If reset flag is present, clear previous search results first
+      if (resetParam === 'true') {
+        console.log('[SearchScreen] Resetting search state before new search');
+        // Clear previous results immediately
+        setSearchQuery('');
+        setShowHistory(false);
+        setHasSearched(false);
+        setIsAnswerExpanded(false);
+        
+        // Use a small delay to ensure state is cleared before starting new search
+        setTimeout(() => {
+          setSearchQuery(decodedQuery);
+          setShowHistory(false);
+          setHasSearched(true);
+          setIsAnswerExpanded(false);
+          
+          // Execute the search
+          console.log('[SearchScreen] Executing search with query:', decodedQuery);
+          searchNotes(decodedQuery, true);
+        }, 50);
+      } else {
+        // Normal search without reset
+        setSearchQuery(decodedQuery);
+        setShowHistory(false);
+        setHasSearched(true);
+        setIsAnswerExpanded(false);
+        
+        // Execute the search
+        console.log('[SearchScreen] Executing search with query:', decodedQuery);
+        searchNotes(decodedQuery, true);
+      }
     }
-  }, [params.q]);
+  }, [params.q, params.reset]);
 
   // Show history when not searching and history is loaded
   useEffect(() => {
@@ -173,7 +197,8 @@ export default function SearchScreen() {
   };
 
   // Determine if we're actively searching
-  const isSearching = loading && hasSearched;
+  // Show searching state when loading AND hasSearched, OR when we just reset (to show progress immediately)
+  const isSearching = (loading && hasSearched) || (params.reset === 'true' && !hasSearched);
 
   // Render skeleton loaders before user searches (initial state)
   const renderInitialSkeletons = () => {

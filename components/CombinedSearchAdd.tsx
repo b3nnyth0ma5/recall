@@ -167,7 +167,14 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    // Save search history
+    // Navigate to search screen immediately with query parameter and reset flag
+    const encodedQuery = encodeURIComponent(searchQuery);
+    const searchRoute = `/search?q=${encodedQuery}&reset=true`;
+    
+    console.log('[CombinedSearchAdd] Navigating immediately to:', searchRoute);
+    router.push(searchRoute);
+
+    // Save search history asynchronously (don't wait for it)
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -178,13 +185,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     } catch (error) {
       console.error('[CombinedSearchAdd] Error saving search history:', error);
     }
-
-    // Navigate to search screen with query parameter
-    const encodedQuery = encodeURIComponent(searchQuery);
-    const searchRoute = `/search?q=${encodedQuery}`;
-    
-    console.log('[CombinedSearchAdd] Navigating to:', searchRoute);
-    router.push(searchRoute);
   };
 
   const handleTextChange = (newText: string) => {
