@@ -445,7 +445,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 const styles = StyleSheet.create({
   outerContainer: {
     position: 'absolute',
-    bottom: 0,
+    bottom: 10,
     left: 0,
     right: 0,
     zIndex: 1000,
@@ -504,7 +504,7 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     gap: 6,
     // Reduced by 15%: 108 * 0.85 = 91.8
-    minHeight: 92,
+    minHeight: 90,
   },
   locationChip: {
     flexDirection: 'row',
