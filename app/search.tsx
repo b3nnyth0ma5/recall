@@ -45,6 +45,7 @@ export default function SearchScreen() {
   const [isAnswerExpanded, setIsAnswerExpanded] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
+  const hasProcessedQueryRef = useRef<string | null>(null);
 
   const loadSearchHistory = useCallback(async () => {
     setIsLoadingHistory(true);
@@ -73,13 +74,21 @@ export default function SearchScreen() {
   useEffect(() => {
     if (params.query && typeof params.query === 'string') {
       const queryText = decodeURIComponent(params.query);
-      setSearchQuery(queryText);
-      setShowHistory(false);
-      setHasSearched(true);
-      setIsAnswerExpanded(false);
-      searchNotes(queryText, true);
+      
+      // Only process if this is a new query we haven't processed yet
+      if (hasProcessedQueryRef.current !== queryText) {
+        console.log('Processing search query from params:', queryText);
+        hasProcessedQueryRef.current = queryText;
+        setSearchQuery(queryText);
+        setShowHistory(false);
+        setHasSearched(true);
+        setIsAnswerExpanded(false);
+        
+        // Trigger the search with the query text
+        searchNotes(queryText, true);
+      }
     }
-  }, [params.query, searchNotes]);
+  }, [params.query]);
 
   // Show history when not searching and history is loaded
   useEffect(() => {
@@ -95,6 +104,8 @@ export default function SearchScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
       
+      console.log('Executing search with query:', searchQuery);
+      hasProcessedQueryRef.current = searchQuery;
       setShowHistory(false);
       setHasSearched(true);
       setIsAnswerExpanded(false);
@@ -107,6 +118,8 @@ export default function SearchScreen() {
   };
 
   const handleHistoryItemPress = (searchText: string) => {
+    console.log('Executing search from history:', searchText);
+    hasProcessedQueryRef.current = searchText;
     setSearchQuery(searchText);
     setShowHistory(false);
     setHasSearched(true);
@@ -124,6 +137,7 @@ export default function SearchScreen() {
     setShowHistory(true);
     setHasSearched(false);
     setIsAnswerExpanded(false);
+    hasProcessedQueryRef.current = null;
     searchNotes('');
   };
 
