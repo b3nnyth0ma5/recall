@@ -11,7 +11,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
@@ -24,6 +24,7 @@ import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 
 export default function SearchScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { 
     notes, 
     loading, 
@@ -67,6 +68,18 @@ export default function SearchScreen() {
       keyboardDidShowListener.remove();
     };
   }, [loadSearchHistory]);
+
+  // Handle query parameter from combined search/add component
+  useEffect(() => {
+    if (params.query && typeof params.query === 'string') {
+      const queryText = decodeURIComponent(params.query);
+      setSearchQuery(queryText);
+      setShowHistory(false);
+      setHasSearched(true);
+      setIsAnswerExpanded(false);
+      searchNotes(queryText, true);
+    }
+  }, [params.query, searchNotes]);
 
   // Show history when not searching and history is loaded
   useEffect(() => {

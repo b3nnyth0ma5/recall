@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform, Alert } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
@@ -9,6 +9,9 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
+import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
+import { supabase } from '@/utils/supabase';
+import { uploadImageToDatabase } from '@/utils/supabase';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
@@ -21,6 +24,38 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
+  const [combinedAddSearchEnabled, setCombinedAddSearchEnabled] = useState(false);
+  const [loadingPreferences, setLoadingPreferences] = useState(true);
+
+  // Load user preferences
+  useEffect(() => {
+    const loadUserPreferences = async () => {
+      if (!user) {
+        setLoadingPreferences(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('user_preferences')
+          .select('combined_add_search_enabled')
+          .eq('user_id', user.id)
+          .single();
+
+        if (error && error.code !== 'PGRST116') {
+          console.error('Error loading user preferences:', error);
+        } else if (data) {
+          setCombinedAddSearchEnabled(data.combined_add_search_enabled || false);
+        }
+      } catch (error) {
+        console.error('Exception loading user preferences:', error);
+      } finally {
+        setLoadingPreferences(false);
+      }
+    };
+
+    loadUserPreferences();
+  }, [user]);
 
   // Update the previous notes count whenever notes change
   useEffect(() => {
@@ -163,6 +198,63 @@ export default function HomeScreen() {
     }
   }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
 
+  const handleCreateRecallFromCombined = async (data: {
+    text: string;
+    images: string[];
+    location?: { latitude: number; longitude: number; name: string };
+  }) => {
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to create a recall');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+
+      // Create the recall
+      const { data: recallData, error: recallError } = await supabase
+        .from('recalls')
+        .insert({
+          text: data.text,
+          user_id: user.id,
+          latitude: data.location?.latitude,
+          longitude: data.location?.longitude,
+          location: data.location?.name,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (recallError) {
+        console.error('Error creating recall:', recallError);
+        Alert.alert('Error', 'Failed to create recall');
+        return;
+      }
+
+      // Upload images if any
+      if (data.images.length > 0) {
+        const uploadPromises = data.images.map(uri =>
+          uploadImageToDatabase(uri, recallData.id, 'image/jpeg')
+        );
+        await Promise.all(uploadPromises);
+      }
+
+      // Refresh the notes list
+      await refreshNotes();
+
+      // Show success message
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.error('Error creating recall:', error);
+      Alert.alert('Error', 'Failed to create recall');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const renderEmptyState = () => {
     const { ZeroState } = require('@/components/ZeroState');
     return (
@@ -230,6 +322,14 @@ export default function HomeScreen() {
         }}
       />
 
+      {/* Combined Search/Add Component - Only show if feature is enabled */}
+      {combinedAddSearchEnabled && user && !loadingPreferences && (
+        <CombinedSearchAdd
+          onCreateRecall={handleCreateRecallFromCombined}
+          userId={user.id}
+        />
+      )}
+
       {/* Main Content ScrollView - Category Carousel is now inside and scrolls with content */}
       <ScrollView
         ref={scrollViewRef}
@@ -289,30 +389,33 @@ export default function HomeScreen() {
         )}
       </ScrollView>
 
-      <View style={styles.bottomActions}>
-        <Pressable
-          onPress={handleSearch}
-          style={styles.searchFab}
-        >
-          <IconSymbol 
-            name="magnifyingglass" 
-            size={24} 
-            color={colors.text}
-          />
-        </Pressable>
+      {/* Only show FABs if combined add/search is disabled */}
+      {!combinedAddSearchEnabled && (
+        <View style={styles.bottomActions}>
+          <Pressable
+            onPress={handleSearch}
+            style={styles.searchFab}
+          >
+            <IconSymbol 
+              name="magnifyingglass" 
+              size={24} 
+              color={colors.text}
+            />
+          </Pressable>
 
-        {/* Main Add Recall FAB - Now navigates directly to note editor */}
-        <Pressable
-          onPress={handleAddRecall}
-          style={styles.fab}
-        >
-          <IconSymbol 
-            name="plus" 
-            size={24} 
-            color="#FFFFFF" 
-          />
-        </Pressable>
-      </View>
+          {/* Main Add Recall FAB - Now navigates directly to note editor */}
+          <Pressable
+            onPress={handleAddRecall}
+            style={styles.fab}
+          >
+            <IconSymbol 
+              name="plus" 
+              size={24} 
+              color="#FFFFFF" 
+            />
+          </Pressable>
+        </View>
+      )}
 
       {/* Deletion Indicator Modal */}
       <Modal
