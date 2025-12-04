@@ -4,8 +4,8 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { SkeletonLoader } from './SkeletonLoader';
 
-const CATEGORY_SIZE = 82;
-const CATEGORY_SPACING = 10;
+const CATEGORY_SIZE = 76;
+const CATEGORY_SPACING = 11;
 
 export function CategoryCarouselSkeleton() {
   return (

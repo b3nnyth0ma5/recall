@@ -30,6 +30,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface CombinedSearchAddProps {
   onCreateRecall: (data: {
@@ -39,6 +40,9 @@ interface CombinedSearchAddProps {
   }) => Promise<void>;
   userId: string;
 }
+
+const SEARCH_HISTORY_KEY = '@search_history';
+const MAX_SEARCH_HISTORY = 10;
 
 export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
   const router = useRouter();
@@ -51,12 +55,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const [isCreating, setIsCreating] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [showSearchHistory, setShowSearchHistory] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const translateY = useSharedValue(0);
 
   // Get current location on mount
   useEffect(() => {
     getCurrentLocation();
+    loadSearchHistory();
   }, []);
 
   // Handle keyboard show/hide
@@ -65,9 +72,8 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
         setKeyboardHeight(e.endCoordinates.height);
-        // Adjust translateY to ensure component is fully visible above keyboard
-        // Add extra 20px padding to ensure nothing is cut off
-        translateY.value = withTiming(-(e.endCoordinates.height + 20), { duration: 250 });
+        // Reduced offset to bring component closer to keyboard (from 20 to 10)
+        translateY.value = withTiming(-(e.endCoordinates.height + 10), { duration: 250 });
       }
     );
 
@@ -76,6 +82,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       () => {
         setKeyboardHeight(0);
         translateY.value = withTiming(0, { duration: 250 });
+        setShowSearchHistory(false);
       }
     );
 
@@ -90,6 +97,52 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       transform: [{ translateY: translateY.value }],
     };
   });
+
+  const loadSearchHistory = async () => {
+    try {
+      const history = await AsyncStorage.getItem(SEARCH_HISTORY_KEY);
+      if (history) {
+        setSearchHistory(JSON.parse(history));
+      }
+    } catch (error) {
+      console.error('Error loading search history:', error);
+    }
+  };
+
+  const saveSearchHistory = async (query: string) => {
+    try {
+      const trimmedQuery = query.trim();
+      if (!trimmedQuery) return;
+
+      // Load current history
+      const history = await AsyncStorage.getItem(SEARCH_HISTORY_KEY);
+      let historyArray: string[] = history ? JSON.parse(history) : [];
+
+      // Remove duplicate if exists
+      historyArray = historyArray.filter(item => item !== trimmedQuery);
+
+      // Add new query at the beginning
+      historyArray.unshift(trimmedQuery);
+
+      // Keep only the last MAX_SEARCH_HISTORY items
+      historyArray = historyArray.slice(0, MAX_SEARCH_HISTORY);
+
+      // Save back to storage
+      await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(historyArray));
+      setSearchHistory(historyArray);
+    } catch (error) {
+      console.error('Error saving search history:', error);
+    }
+  };
+
+  const clearSearchHistory = async () => {
+    try {
+      await AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
+      setSearchHistory([]);
+    } catch (error) {
+      console.error('Error clearing search history:', error);
+    }
+  };
 
   const getCurrentLocation = async () => {
     try {
@@ -151,12 +204,35 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     setShowDrawer(true);
   };
 
-  const handleSearchPress = () => {
-    if (text.trim()) {
+  const handleSearchPress = async (query?: string) => {
+    const searchQuery = query || text.trim();
+    if (searchQuery) {
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
-      router.push(`/search?query=${encodeURIComponent(text.trim())}`);
+      await saveSearchHistory(searchQuery);
+      router.push(`/search?query=${encodeURIComponent(searchQuery)}`);
+    }
+  };
+
+  const handleHistoryItemPress = (query: string) => {
+    setText(query);
+    setShowSearchHistory(false);
+    handleSearchPress(query);
+  };
+
+  const handleTextInputFocus = () => {
+    if (searchHistory.length > 0 && text.trim().length > 0) {
+      setShowSearchHistory(true);
+    }
+  };
+
+  const handleTextChange = (newText: string) => {
+    setText(newText);
+    if (newText.trim().length > 0 && searchHistory.length > 0) {
+      setShowSearchHistory(true);
+    } else {
+      setShowSearchHistory(false);
     }
   };
 
@@ -274,12 +350,44 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
+        {/* Search History - Shows above search text when typing */}
+        {showSearchHistory && searchHistory.length > 0 && text.trim().length > 0 && (
+          <Animated.View 
+            entering={FadeIn.duration(200)} 
+            exiting={FadeOut.duration(200)}
+            style={styles.searchHistoryContainer}
+          >
+            <View style={styles.searchHistoryHeader}>
+              <Text style={styles.searchHistoryTitle}>Recent Searches</Text>
+              <Pressable onPress={clearSearchHistory} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.clearHistoryText}>Clear</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={styles.searchHistoryScroll} showsVerticalScrollIndicator={false}>
+              {searchHistory.map((item, index) => (
+                <Pressable
+                  key={index}
+                  style={styles.searchHistoryItem}
+                  onPress={() => handleHistoryItemPress(item)}
+                  hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+                >
+                  <IconSymbol name="clock.fill" size={16} color={colors.textSecondary} />
+                  <Text style={styles.searchHistoryItemText} numberOfLines={1}>
+                    {item}
+                  </Text>
+                  <IconSymbol name="arrow.up.left" size={14} color={colors.textTertiary} />
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Animated.View>
+        )}
+
         {/* Search Text Display - Shows above the component when typing */}
         {text.trim().length > 0 && (
           <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(300)}>
             <Pressable
               style={styles.searchTextContainer}
-              onPress={handleSearchPress}
+              onPress={() => handleSearchPress()}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <View style={styles.searchTextContent}>
@@ -338,7 +446,8 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 placeholder="Recall or search..."
                 placeholderTextColor={colors.textTertiary}
                 value={text}
-                onChangeText={setText}
+                onChangeText={handleTextChange}
+                onFocus={handleTextInputFocus}
                 multiline
                 maxLength={1000}
               />
@@ -445,9 +554,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 const styles = StyleSheet.create({
   outerContainer: {
     position: 'absolute',
-    bottom: 10,
-    left: 0,
-    right: 0,
+    bottom: 30,
+    left: 5,
+    right: 5,
     zIndex: 1000,
   },
   containerWrapper: {
@@ -471,6 +580,52 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primary,
     overflow: 'hidden',
+  },
+  searchHistoryContainer: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    marginBottom: 8,
+    marginHorizontal: 16,
+    maxHeight: 200,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  searchHistoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  searchHistoryTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  clearHistoryText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  searchHistoryScroll: {
+    maxHeight: 150,
+  },
+  searchHistoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  searchHistoryItemText: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
   },
   searchTextContainer: {
     flexDirection: 'row',
@@ -504,7 +659,7 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     gap: 6,
     // Reduced by 15%: 108 * 0.85 = 91.8
-    minHeight: 90,
+    minHeight: 80,
   },
   locationChip: {
     flexDirection: 'row',
@@ -572,27 +727,27 @@ const styles = StyleSheet.create({
   drawerOverlay: {
     position: 'absolute',
     top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    left: 10,
+    right: 10,
+    bottom: -2,
     zIndex: 1000,
   },
   drawerBackdrop: {
     position: 'absolute',
     top: 0,
-    left: 0,
-    right: 0,
+    left: 5,
+    right: 5,
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   drawer: {
     position: 'absolute',
     bottom: 0,
-    left: 0,
-    right: 0,
+    left: 5,
+    right: 5,
     backgroundColor: '#323232',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderRadius: 24,
+    //borderTopRightRadius: 24,
     padding: 24,
     paddingBottom: 40,
   },
