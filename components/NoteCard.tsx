@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, memo } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Alert, Platform } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
@@ -29,7 +29,8 @@ const hasUrl = (text: string): boolean => {
   return urlRegex.test(text);
 };
 
-export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
+// Memoized component for better performance
+export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -39,59 +40,63 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const imageScrollRef = useRef<ScrollView>(null);
   
-  // Lazy loading state for images
+  // Optimized lazy loading state for images
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
+  const loadingQueueRef = useRef<Set<number>>(new Set());
 
-  // Initialize with first 2 images if note has more than 1 image
+  // Initialize with first image only for better performance
   useEffect(() => {
-    if (note.images && note.images.length > 1) {
-      // Set first 2 images immediately
-      const initialImages = note.images.slice(0, 2);
-      setLazyLoadedImages(initialImages);
-      console.log(`[NoteCard] Initialized with first ${initialImages.length} images for note ${note.id}`);
-    } else if (note.images && note.images.length === 1) {
-      // If only 1 image, load it immediately
-      setLazyLoadedImages(note.images);
+    if (note.images && note.images.length > 0) {
+      // Only load first image immediately
+      setLazyLoadedImages([note.images[0]]);
+      console.log(`[NoteCard] Initialized with first image for note ${note.id}`);
     }
   }, [note.id, note.images]);
 
-  // Lazy load remaining images when user swipes to them
-  const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+  // Optimized lazy load with queue management
+  const lazyLoadImage = async (index: number) => {
+    if (!note.images || index >= note.images.length) return;
+    if (lazyLoadedImages[index]) return; // Already loaded
+    if (loadingQueueRef.current.has(index)) return; // Already in queue
+    
+    loadingQueueRef.current.add(index);
+    setIsLazyLoading(true);
+    
+    try {
+      const imageIdToLoad = note.imageIds?.[index];
+      if (imageIdToLoad) {
+        const imageUrl = await getImageDataUrl(imageIdToLoad);
+        if (imageUrl) {
+          setLazyLoadedImages(prev => {
+            const newImages = [...prev];
+            newImages[index] = imageUrl;
+            return newImages;
+          });
+          console.log(`[NoteCard] Successfully lazy loaded image at index ${index}`);
+        }
+      }
+    } catch (error) {
+      console.error(`[NoteCard] Error lazy loading image at index ${index}:`, error);
+    } finally {
+      loadingQueueRef.current.delete(index);
+      setIsLazyLoading(false);
+    }
+  };
+
+  // Optimized image scroll handler with prefetching
+  const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
     
     if (index >= 0 && index < (note.images?.length || 0)) {
       setCurrentImageIndex(index);
       
-      // If we're approaching an image that hasn't been loaded yet, load it
-      if (note.images && note.images.length > 2 && index >= 1 && !isLazyLoading) {
+      // Prefetch next image
+      if (note.images && note.images.length > 1) {
         const nextIndex = index + 1;
-        
-        // Check if the next image needs to be loaded
-        if (nextIndex < note.images.length && nextIndex >= lazyLoadedImages.length) {
-          setIsLazyLoading(true);
-          console.log(`[NoteCard] Lazy loading image at index ${nextIndex} for note ${note.id}`);
-          
-          try {
-            // Load the next image
-            const imageIdToLoad = note.imageIds?.[nextIndex];
-            if (imageIdToLoad) {
-              const imageUrl = await getImageDataUrl(imageIdToLoad);
-              if (imageUrl) {
-                setLazyLoadedImages(prev => {
-                  const newImages = [...prev];
-                  newImages[nextIndex] = imageUrl;
-                  return newImages;
-                });
-                console.log(`[NoteCard] Successfully lazy loaded image at index ${nextIndex}`);
-              }
-            }
-          } catch (error) {
-            console.error(`[NoteCard] Error lazy loading image at index ${nextIndex}:`, error);
-          } finally {
-            setIsLazyLoading(false);
-          }
+        if (nextIndex < note.images.length && !lazyLoadedImages[nextIndex]) {
+          lazyLoadImage(nextIndex);
         }
       }
     }
@@ -148,13 +153,11 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const handleImageLoadStart = (index: number) => {
     // Only set loading state if the image hasn't been loaded before
     if (!imageLoadedStates[index]) {
-      console.log('Image load started at index:', index);
       setImageLoadingStates(prev => ({ ...prev, [index]: true }));
     }
   };
 
   const handleImageLoad = (index: number) => {
-    console.log('Image loaded successfully at index:', index);
     // Mark as loaded and stop showing loading indicator
     setImageLoadingStates(prev => ({ ...prev, [index]: false }));
     setImageLoadedStates(prev => ({ ...prev, [index]: true }));
@@ -176,7 +179,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
   const handleToggleExpand = (e: any) => {
     // Stop propagation to prevent opening the note editor
     e.stopPropagation();
-    console.log('Toggle expand clicked, current state:', isExpanded);
     setIsExpanded(!isExpanded);
   };
 
@@ -190,7 +192,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
     if (Platform.OS !== 'web') {
       try {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        console.log('Heavy haptic feedback triggered');
       } catch (error) {
         console.error('Error triggering haptic feedback:', error);
       }
@@ -209,15 +210,10 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
         universalUrl = `https://www.google.com/maps/search/?api=1&query=${encodedLocationName}+${latitude},${longitude}`;
       }
       
-      console.log('Opening maps with URL:', universalUrl);
-      console.log('Location name:', locationName);
-      console.log('Coordinates:', { latitude, longitude });
-      
       const canOpen = await Linking.canOpenURL(universalUrl);
       
       if (canOpen) {
         await Linking.openURL(universalUrl);
-        console.log('Successfully opened maps with location:', locationName);
       } else {
         console.error('Cannot open maps URL');
       }
@@ -228,8 +224,6 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
 
   const handleSharePress = async () => {
     try {
-      console.log('Share button pressed for note:', note.id);
-      console.log('Current image index:', currentImageIndex);
       await shareRecall(note, currentImageIndex);
     } catch (error) {
       console.error('Error sharing recall:', error);
@@ -385,7 +379,16 @@ export function NoteCard({ note, onPress, onImagePress }: NoteCardProps) {
       )}
     </View>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison function for memo
+  // Only re-render if note data actually changed
+  return (
+    prevProps.note.id === nextProps.note.id &&
+    prevProps.note.updated_at === nextProps.note.updated_at &&
+    prevProps.note.images?.length === nextProps.note.images?.length &&
+    prevProps.note.people?.length === nextProps.note.people?.length
+  );
+});
 
 const styles = StyleSheet.create({
   card: {

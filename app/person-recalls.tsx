@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -26,13 +26,8 @@ export default function PersonRecallsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
   }, []);
 
-  useEffect(() => {
-    if (personId && user) {
-      loadRecallsForPerson();
-    }
-  }, [personId, user]);
-
-  const loadRecallsForPerson = async () => {
+  // Optimized recall loading with batch queries
+  const loadRecallsForPerson = useCallback(async () => {
     try {
       setLoading(true);
       console.log('[PersonRecalls] Loading recalls for person:', personId);
@@ -52,7 +47,7 @@ export default function PersonRecallsScreen() {
 
       setPersonName(personData.person_name);
 
-      // Get all recall IDs for this person
+      // Get all recall IDs for this person using optimized index
       const { data: recallPeopleData, error: recallPeopleError } = await supabase
         .from('recall_people')
         .select('recall_id')
@@ -71,7 +66,7 @@ export default function PersonRecallsScreen() {
         return;
       }
 
-      // Load the recalls
+      // Load the recalls with optimized query
       const { data: recallsData, error: recallsError } = await supabase
         .from('recalls')
         .select('*')
@@ -84,24 +79,71 @@ export default function PersonRecallsScreen() {
         return;
       }
 
-      // Load images for each recall
+      // Batch load all images for all recalls
+      const { data: allImagesData, error: allImagesError } = await supabase
+        .from('recall_images')
+        .select('id, recall_id')
+        .in('recall_id', recallIds)
+        .order('created_at', { ascending: true });
+
+      if (allImagesError) {
+        console.error('Error loading images:', allImagesError);
+      }
+
+      // Group images by recall_id
+      const imagesByRecallId = new Map<string, any[]>();
+      (allImagesData || []).forEach(img => {
+        if (!imagesByRecallId.has(img.recall_id)) {
+          imagesByRecallId.set(img.recall_id, []);
+        }
+        imagesByRecallId.get(img.recall_id)!.push(img);
+      });
+
+      // Batch load all people for all recalls
+      const { data: allRecallPeopleData, error: allRecallPeopleError } = await supabase
+        .from('recall_people')
+        .select('recall_id, person_id, persons!inner(id, person_name)')
+        .in('recall_id', recallIds);
+
+      if (allRecallPeopleError) {
+        console.error('Error loading recall people:', allRecallPeopleError);
+      }
+
+      // Group people by recall_id
+      const peopleByRecallId = new Map<string, any[]>();
+      (allRecallPeopleData || []).forEach((rp: any) => {
+        if (!peopleByRecallId.has(rp.recall_id)) {
+          peopleByRecallId.set(rp.recall_id, []);
+        }
+        if (rp.persons) {
+          peopleByRecallId.get(rp.recall_id)!.push({
+            id: rp.persons.id,
+            person_name: rp.persons.person_name,
+          });
+        }
+      });
+
+      // Process recalls with images and people
       const recallsWithImages = await Promise.all(
         (recallsData || []).map(async (recall) => {
           try {
-            const { data: imagesData } = await supabase
-              .from('recall_images')
-              .select('id')
-              .eq('recall_id', recall.id)
-              .order('created_at', { ascending: true });
-
+            const recallImages = imagesByRecallId.get(recall.id) || [];
+            
+            // Only load first image immediately for better performance
             const imageResults = await Promise.all(
-              (imagesData || []).map(async (img) => {
+              recallImages.map(async (img, index) => {
                 try {
-                  const dataUrl = await getImageDataUrl(img.id);
-                  if (!dataUrl) {
+                  // Load only first image, others will be lazy loaded
+                  if (index === 0) {
+                    const dataUrl = await getImageDataUrl(img.id);
+                    if (!dataUrl) {
+                      return { url: '', id: img.id };
+                    }
+                    return { url: dataUrl, id: img.id };
+                  } else {
+                    // Return placeholder for lazy loading
                     return { url: '', id: img.id };
                   }
-                  return { url: dataUrl, id: img.id };
                 } catch (error) {
                   console.error(`Error processing image ${img.id}:`, error);
                   return { url: '', id: img.id };
@@ -109,21 +151,9 @@ export default function PersonRecallsScreen() {
               })
             );
 
-            const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
+            const validImageUrls = imageResults.map(result => result.url);
             const imageIds = imageResults.map(result => result.id);
-
-            // Load people for this recall
-            const { data: recallPeopleData } = await supabase
-              .from('recall_people')
-              .select('person_id, persons(id, person_name)')
-              .eq('recall_id', recall.id);
-
-            const people = (recallPeopleData || [])
-              .filter((rp: any) => rp.persons)
-              .map((rp: any) => ({
-                id: rp.persons.id,
-                person_name: rp.persons.person_name,
-              }));
+            const people = peopleByRecallId.get(recall.id) || [];
 
             return {
               ...recall,
@@ -150,19 +180,25 @@ export default function PersonRecallsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [personId, user]);
 
-  const handleNotePress = (noteId: string) => {
+  useEffect(() => {
+    if (personId && user) {
+      loadRecallsForPerson();
+    }
+  }, [personId, user, loadRecallsForPerson]);
+
+  const handleNotePress = useCallback((noteId: string) => {
     try {
       router.push(`/note-editor?id=${noteId}`);
     } catch (error) {
       console.error('Error navigating to note editor:', error);
     }
-  };
+  }, [router]);
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     router.back();
-  };
+  }, [router]);
 
   return (
     <View style={styles.container}>

@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Note } from '@/types/Note';
 import { supabase, getImageDataUrl, deleteImageRecord, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,19 +28,34 @@ export function useNotes() {
   const { user } = useAuth();
 
   const ITEMS_PER_PAGE = 10;
+  
+  // Cache for people data to avoid redundant queries
+  const peopleCache = useRef<Map<string, any[]>>(new Map());
 
-  // Helper function to load people for recalls
+  // Optimized helper function to load people for recalls in batch
   const loadPeopleForRecalls = useCallback(async (recallIds: string[]) => {
     if (!recallIds || recallIds.length === 0) {
       return {};
     }
 
     try {
-      // Fetch all recall_people entries for these recalls in one query
+      // Check cache first
+      const uncachedIds = recallIds.filter(id => !peopleCache.current.has(id));
+      
+      if (uncachedIds.length === 0) {
+        // All data is cached
+        const result: { [key: string]: any[] } = {};
+        recallIds.forEach(id => {
+          result[id] = peopleCache.current.get(id) || [];
+        });
+        return result;
+      }
+
+      // Fetch only uncached data with optimized query using composite index
       const { data: recallPeopleData, error: recallPeopleError } = await supabase
         .from('recall_people')
-        .select('recall_id, person_id, persons(id, person_name)')
-        .in('recall_id', recallIds);
+        .select('recall_id, person_id, persons!inner(id, person_name)')
+        .in('recall_id', uncachedIds);
 
       if (recallPeopleError) {
         console.error('Error loading recall_people:', recallPeopleError);
@@ -64,37 +79,72 @@ export function useNotes() {
         }
       });
 
-      console.log(`Loaded people for ${Object.keys(peopleByRecallId).length} recalls`);
-      return peopleByRecallId;
+      // Update cache
+      uncachedIds.forEach(id => {
+        peopleCache.current.set(id, peopleByRecallId[id] || []);
+      });
+
+      // Merge cached and new data
+      const result: { [key: string]: any[] } = {};
+      recallIds.forEach(id => {
+        result[id] = peopleCache.current.get(id) || [];
+      });
+
+      console.log(`Loaded people for ${Object.keys(peopleByRecallId).length} recalls (${uncachedIds.length} from DB, ${recallIds.length - uncachedIds.length} from cache)`);
+      return result;
     } catch (error) {
       console.error('Error loading people for recalls:', error);
       return {};
     }
   }, []);
 
-  // Define loadImagesForRecalls FIRST before it's used
+  // Optimized image loading with better error handling
   const loadImagesForRecalls = useCallback(async (recalls: any[]) => {
     // First, load people for all recalls in one batch
     const recallIds = recalls.map(r => r.id);
     const peopleByRecallId = await loadPeopleForRecalls(recallIds);
 
+    // Batch fetch all images for all recalls in one query
+    const { data: allImagesData, error: allImagesError } = await supabase
+      .from('recall_images')
+      .select('id, recall_id')
+      .in('recall_id', recallIds)
+      .order('created_at', { ascending: true });
+
+    if (allImagesError) {
+      console.error('Error fetching images:', allImagesError);
+    }
+
+    // Group images by recall_id
+    const imagesByRecallId = new Map<string, any[]>();
+    (allImagesData || []).forEach(img => {
+      if (!imagesByRecallId.has(img.recall_id)) {
+        imagesByRecallId.set(img.recall_id, []);
+      }
+      imagesByRecallId.get(img.recall_id)!.push(img);
+    });
+
+    // Process recalls with their images
     return await Promise.all(
       recalls.map(async (recall) => {
         try {
-          const { data: imagesData } = await supabase
-            .from('recall_images')
-            .select('id')
-            .eq('recall_id', recall.id)
-            .order('created_at', { ascending: true });
-
+          const recallImages = imagesByRecallId.get(recall.id) || [];
+          
+          // Only load first image immediately for better performance
           const imageResults = await Promise.all(
-            (imagesData || []).map(async (img) => {
+            recallImages.map(async (img, index) => {
               try {
-                const dataUrl = await getImageDataUrl(img.id);
-                if (!dataUrl) {
+                // Load only first image, others will be lazy loaded
+                if (index === 0) {
+                  const dataUrl = await getImageDataUrl(img.id);
+                  if (!dataUrl) {
+                    return { url: '', id: img.id };
+                  }
+                  return { url: dataUrl, id: img.id };
+                } else {
+                  // Return placeholder for lazy loading
                   return { url: '', id: img.id };
                 }
-                return { url: dataUrl, id: img.id };
               } catch (error) {
                 console.error(`Exception processing image ${img.id}:`, error);
                 return { url: '', id: img.id };
@@ -102,7 +152,7 @@ export function useNotes() {
             })
           );
 
-          const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
+          const validImageUrls = imageResults.map(result => result.url);
           const imageIds = imageResults.map(result => result.id);
           
           return { 
@@ -143,6 +193,7 @@ export function useNotes() {
       const from = (pageNum - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
+      // Optimized query using composite index
       const { data: recallsData, error: recallsError } = await supabase
         .from('recalls')
         .select('*')
@@ -167,88 +218,29 @@ export function useNotes() {
         setHasMore(false);
       }
 
-      const notesWithImages = await Promise.all(
-        (recallsData || []).map(async (recall) => {
-          try {
-            const { data: imagesData, error: imagesError } = await supabase
-              .from('recall_images')
-              .select('id')
-              .eq('recall_id', recall.id)
-              .order('created_at', { ascending: true });
-
-            if (imagesError) {
-              console.error('Error loading images for recall:', recall.id, imagesError);
-              return { ...recall, images: [], imageIds: [], people: [] };
-            }
-
-            console.log(`Loaded ${imagesData?.length || 0} image records for recall ${recall.id}`);
-
-            const imageResults = await Promise.all(
-              (imagesData || []).map(async (img, index) => {
-                try {
-                  console.log(`Processing image ${index + 1}/${imagesData?.length || 0} (ID: ${img.id}) for recall ${recall.id}`);
-                  const dataUrl = await getImageDataUrl(img.id);
-                  if (!dataUrl) {
-                    console.error(`Failed to get data URL for image ${img.id} (index ${index})`);
-                    return { url: '', id: img.id };
-                  }
-                  console.log(`Successfully got data URL for image ${img.id}`);
-                  return { url: dataUrl, id: img.id };
-                } catch (error) {
-                  console.error(`Exception processing image ${img.id}:`, error);
-                  return { url: '', id: img.id };
-                }
-              })
-            );
-
-            const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
-            const imageIds = imageResults.map(result => result.id);
-            
-            console.log(`Recall ${recall.id} has ${validImageUrls.length}/${imageResults.length} valid images`);
-            
-            return { 
-              ...recall, 
-              images: validImageUrls, 
-              imageIds: imageIds,
-              people: [], // Will be populated in batch below
-            };
-          } catch (error) {
-            console.error(`Exception processing recall ${recall.id}:`, error);
-            return { ...recall, images: [], imageIds: [], people: [] };
-          }
-        })
-      );
-
-      // Load people for all recalls in one batch
-      const recallIds = notesWithImages.map(note => note.id);
-      const peopleByRecallId = await loadPeopleForRecalls(recallIds);
-
-      // Attach people to each note
-      const notesWithPeople = notesWithImages.map(note => ({
-        ...note,
-        people: peopleByRecallId[note.id] || [],
-      }));
+      // Optimized image and people loading
+      const notesWithImagesAndPeople = await loadImagesForRecalls(recallsData);
 
       if (append) {
         // Prevent duplicates by filtering out notes that already exist
         setNotes(prevNotes => {
           const existingIds = new Set(prevNotes.map(note => note.id));
-          const newUniqueNotes = notesWithPeople.filter(note => !existingIds.has(note.id));
-          console.log(`Adding ${newUniqueNotes.length} new unique notes (filtered ${notesWithPeople.length - newUniqueNotes.length} duplicates)`);
+          const newUniqueNotes = notesWithImagesAndPeople.filter(note => !existingIds.has(note.id));
+          console.log(`Adding ${newUniqueNotes.length} new unique notes (filtered ${notesWithImagesAndPeople.length - newUniqueNotes.length} duplicates)`);
           return [...prevNotes, ...newUniqueNotes];
         });
       } else {
-        setNotes(notesWithPeople);
+        setNotes(notesWithImagesAndPeople);
       }
       
-      console.log(`Loaded ${notesWithPeople.length} notes for page ${pageNum}`);
+      console.log(`Loaded ${notesWithImagesAndPeople.length} notes for page ${pageNum}`);
     } catch (error) {
       console.error('Error loading notes:', error);
     } finally {
       setLoading(false);
       setIsLoadingMore(false);
     }
-  }, [user, loadPeopleForRecalls]);
+  }, [user, loadImagesForRecalls]);
 
   useEffect(() => {
     loadNotes(1, false);
@@ -265,6 +257,8 @@ export function useNotes() {
   }, [page, hasMore, isLoadingMore, loading, loadNotes]);
 
   const refreshNotes = useCallback(async () => {
+    // Clear cache on refresh
+    peopleCache.current.clear();
     setPage(1);
     setHasMore(true);
     await loadNotes(1, false);
@@ -291,40 +285,11 @@ export function useNotes() {
         return;
       }
 
-      // Load images for this recall
-      const { data: imagesData } = await supabase
-        .from('recall_images')
-        .select('id')
-        .eq('recall_id', recallData.id)
-        .order('created_at', { ascending: true });
+      // Clear cache for this recall
+      peopleCache.current.delete(noteId);
 
-      const imageResults = await Promise.all(
-        (imagesData || []).map(async (img) => {
-          try {
-            const dataUrl = await getImageDataUrl(img.id);
-            if (!dataUrl) {
-              return { url: '', id: img.id };
-            }
-            return { url: dataUrl, id: img.id };
-          } catch (error) {
-            console.error(`Exception processing image ${img.id}:`, error);
-            return { url: '', id: img.id };
-          }
-        })
-      );
-
-      const validImageUrls = imageResults.filter(result => result.url !== '').map(result => result.url);
-      const imageIds = imageResults.map(result => result.id);
-
-      // Load people for this recall
-      const peopleByRecallId = await loadPeopleForRecalls([recallData.id]);
-      
-      const updatedNote = { 
-        ...recallData, 
-        images: validImageUrls, 
-        imageIds: imageIds,
-        people: peopleByRecallId[recallData.id] || [],
-      };
+      // Load images and people for this recall
+      const [updatedNote] = await loadImagesForRecalls([recallData]);
 
       // Update the note in the list
       setNotes(prevNotes => 
@@ -335,7 +300,7 @@ export function useNotes() {
     } catch (error) {
       console.error('Error refreshing single note:', error);
     }
-  }, [user, loadPeopleForRecalls]);
+  }, [user, loadImagesForRecalls]);
 
   const addNote = useCallback(async (note: Omit<Note, 'id' | 'created_at' | 'updated_at'>) => {
     if (!user) {
@@ -420,6 +385,9 @@ export function useNotes() {
     try {
       console.log('Deleting recall from Supabase:', noteId);
       setIsDeletingNote(true);
+      
+      // Clear cache for this recall
+      peopleCache.current.delete(noteId);
       
       const { data: imagesData } = await supabase
         .from('recall_images')

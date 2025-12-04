@@ -10,6 +10,7 @@ import { supabase } from '@/utils/supabase';
 import { Note } from '@/types/Note';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import { getImageDataUrl } from '@/utils/supabase';
 
 interface Category {
   id: string;
@@ -37,6 +38,7 @@ export default function CategoryViewerScreen() {
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
 
+  // Optimized category and recalls loading with batch queries
   const loadCategoryAndRecalls = useCallback(async () => {
     if (!id || !user) {
       console.log('[CategoryViewer] No category ID or user');
@@ -65,7 +67,7 @@ export default function CategoryViewerScreen() {
       setCategory(categoryData);
       console.log('[CategoryViewer] Category loaded:', categoryData.category_name);
 
-      // Fetch recall IDs that match this category from recollections table
+      // Fetch recall IDs that match this category using optimized composite index
       const { data: recollectionsData, error: recollectionsError } = await supabase
         .from('recollections')
         .select('recall_id, match_score')
@@ -97,35 +99,7 @@ export default function CategoryViewerScreen() {
       // Fetch the actual recalls
       const { data: recallsData, error: recallsError } = await supabase
         .from('recalls')
-        .select(`
-          id,
-          text,
-          created_at,
-          updated_at,
-          location,
-          latitude,
-          longitude,
-          location_primary_type,
-          recall_images (
-            id,
-            cdn_url,
-            ocr_text,
-            image_explanation
-          ),
-          recall_urls (
-            id,
-            url,
-            url_data
-          ),
-          recall_people (
-            id,
-            person_id,
-            persons (
-              id,
-              person_name
-            )
-          )
-        `)
+        .select('*')
         .in('id', recallIds)
         .eq('user_id', user.id);
 
@@ -135,41 +109,102 @@ export default function CategoryViewerScreen() {
         return;
       }
 
-      // Transform recalls to Note format and add match_score
-      const transformedNotes: Note[] = (recallsData || []).map((recall: any) => {
-        console.log(`[CategoryViewer] Processing recall ${recall.id}, images:`, recall.recall_images);
-        
-        return {
-          id: recall.id,
-          text: recall.text || '',
-          created_at: recall.created_at,
-          updated_at: recall.updated_at,
-          location: recall.location,
-          latitude: recall.latitude,
-          longitude: recall.longitude,
-          location_primary_type: recall.location_primary_type,
-          images: recall.recall_images?.map((img: any) => img.cdn_url).filter((url: string) => url) || [],
-          imageIds: recall.recall_images?.map((img: any) => img.id) || [],
-          urls: recall.recall_urls?.map((url: any) => ({
-            id: url.id,
-            url: url.url,
-            url_data: url.url_data,
-          })) || [],
-          people: recall.recall_people?.map((rp: any) => ({
-            id: rp.persons?.id,
-            person_name: rp.persons?.person_name,
-          })) || [],
-          match_score: matchScoreMap.get(recall.id) || 0,
-        };
+      // Batch load all images for all recalls
+      const { data: allImagesData, error: allImagesError } = await supabase
+        .from('recall_images')
+        .select('id, recall_id, cdn_url, ocr_text, image_explanation')
+        .in('recall_id', recallIds)
+        .order('created_at', { ascending: true });
+
+      if (allImagesError) {
+        console.error('[CategoryViewer] Error loading images:', allImagesError);
+      }
+
+      // Group images by recall_id
+      const imagesByRecallId = new Map<string, any[]>();
+      (allImagesData || []).forEach(img => {
+        if (!imagesByRecallId.has(img.recall_id)) {
+          imagesByRecallId.set(img.recall_id, []);
+        }
+        imagesByRecallId.get(img.recall_id)!.push(img);
       });
+
+      // Batch load all people for all recalls
+      const { data: allRecallPeopleData, error: allRecallPeopleError } = await supabase
+        .from('recall_people')
+        .select('recall_id, person_id, persons!inner(id, person_name)')
+        .in('recall_id', recallIds);
+
+      if (allRecallPeopleError) {
+        console.error('[CategoryViewer] Error loading recall people:', allRecallPeopleError);
+      }
+
+      // Group people by recall_id
+      const peopleByRecallId = new Map<string, any[]>();
+      (allRecallPeopleData || []).forEach((rp: any) => {
+        if (!peopleByRecallId.has(rp.recall_id)) {
+          peopleByRecallId.set(rp.recall_id, []);
+        }
+        if (rp.persons) {
+          peopleByRecallId.get(rp.recall_id)!.push({
+            id: rp.persons.id,
+            person_name: rp.persons.person_name,
+          });
+        }
+      });
+
+      // Transform recalls to Note format with optimized image loading
+      const transformedNotes: Note[] = await Promise.all(
+        (recallsData || []).map(async (recall: any) => {
+          const recallImages = imagesByRecallId.get(recall.id) || [];
+          
+          // Only load first image immediately for better performance
+          const imageResults = await Promise.all(
+            recallImages.map(async (img: any, index: number) => {
+              try {
+                // Load only first image, others will be lazy loaded
+                if (index === 0 && img.cdn_url) {
+                  return { url: img.cdn_url, id: img.id };
+                } else if (index === 0) {
+                  const dataUrl = await getImageDataUrl(img.id);
+                  return { url: dataUrl || '', id: img.id };
+                } else {
+                  // Return placeholder for lazy loading
+                  return { url: '', id: img.id };
+                }
+              } catch (error) {
+                console.error(`Error processing image ${img.id}:`, error);
+                return { url: '', id: img.id };
+              }
+            })
+          );
+
+          const validImageUrls = imageResults.map(result => result.url);
+          const imageIds = imageResults.map(result => result.id);
+          const people = peopleByRecallId.get(recall.id) || [];
+          
+          return {
+            id: recall.id,
+            text: recall.text || '',
+            created_at: recall.created_at,
+            updated_at: recall.updated_at,
+            location: recall.location,
+            latitude: recall.latitude,
+            longitude: recall.longitude,
+            location_primary_type: recall.location_primary_type,
+            images: validImageUrls,
+            imageIds: imageIds,
+            urls: [],
+            people: people,
+            match_score: matchScoreMap.get(recall.id) || 0,
+          };
+        })
+      );
 
       // Sort by match_score
       transformedNotes.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
 
       console.log(`[CategoryViewer] Loaded ${transformedNotes.length} recalls`);
-      transformedNotes.forEach(note => {
-        console.log(`[CategoryViewer] Note ${note.id}: ${note.images?.length || 0} images`);
-      });
       
       setNotes(transformedNotes);
     } catch (error) {
@@ -190,17 +225,17 @@ export default function CategoryViewerScreen() {
     setRefreshing(false);
   };
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     router.back();
-  };
+  }, [router]);
 
-  const handleNotePress = (noteId: string) => {
+  const handleNotePress = useCallback((noteId: string) => {
     try {
       router.push(`/note-editor?id=${noteId}`);
     } catch (error) {
       console.error('Error navigating to note editor:', error);
     }
-  };
+  }, [router]);
 
   const handleEditPress = () => {
     if (!category) return;
