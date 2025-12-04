@@ -70,19 +70,6 @@ export default function SearchScreen() {
     };
   }, [loadSearchHistory]);
 
-  // Separate function to execute search after state is set
-  const executeSearchWithQuery = useCallback((queryText: string) => {
-    console.log('Executing search with query:', queryText);
-    setShowHistory(false);
-    setHasSearched(true);
-    setIsAnswerExpanded(false);
-    
-    // Use setTimeout to ensure state updates are processed first
-    setTimeout(() => {
-      searchNotes(queryText, true);
-    }, 0);
-  }, [searchNotes]);
-
   // Handle query parameter from combined search/add component
   useEffect(() => {
     if (params.query && typeof params.query === 'string') {
@@ -90,17 +77,21 @@ export default function SearchScreen() {
       
       // Only process if this is a new query we haven't processed yet
       if (hasProcessedQueryRef.current !== queryText) {
-        console.log('Processing search query from params:', queryText);
+        console.log('[SearchScreen] Processing search query from params:', queryText);
         hasProcessedQueryRef.current = queryText;
         
-        // Set the search query first
+        // Set the search query state
         setSearchQuery(queryText);
+        setShowHistory(false);
+        setHasSearched(true);
+        setIsAnswerExpanded(false);
         
-        // Then execute the search after state is set
-        executeSearchWithQuery(queryText);
+        // Execute search immediately - no need for setTimeout
+        console.log('[SearchScreen] Triggering searchNotes with query:', queryText);
+        searchNotes(queryText, true);
       }
     }
-  }, [params.query, executeSearchWithQuery]);
+  }, [params.query, searchNotes]);
 
   // Show history when not searching and history is loaded
   useEffect(() => {
@@ -116,8 +107,13 @@ export default function SearchScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
       
+      console.log('[SearchScreen] Manual search triggered with query:', searchQuery);
       hasProcessedQueryRef.current = searchQuery;
-      executeSearchWithQuery(searchQuery);
+      setShowHistory(false);
+      setHasSearched(true);
+      setIsAnswerExpanded(false);
+      searchNotes(searchQuery, true);
+      
       setTimeout(() => {
         loadSearchHistory();
       }, 500);
@@ -125,10 +121,13 @@ export default function SearchScreen() {
   };
 
   const handleHistoryItemPress = (searchText: string) => {
-    console.log('Executing search from history:', searchText);
+    console.log('[SearchScreen] Executing search from history:', searchText);
     hasProcessedQueryRef.current = searchText;
     setSearchQuery(searchText);
-    executeSearchWithQuery(searchText);
+    setShowHistory(false);
+    setHasSearched(true);
+    setIsAnswerExpanded(false);
+    searchNotes(searchText, true);
   };
 
   const handleNotePress = (noteId: string) => {
