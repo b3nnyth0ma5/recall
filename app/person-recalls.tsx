@@ -9,16 +9,23 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Note } from '@/types/Note';
+import { peopleCache, imageCache, CostCalculator } from '@/utils/memoryCache';
+import { useNotes } from '@/hooks/useNotes';
 
 export default function PersonRecallsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { user } = useAuth();
+  const { getCachedNote } = useNotes();
   const [recalls, setRecalls] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [personName, setPersonName] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const personId = params.personId as string;
+  const ITEMS_PER_PAGE = 10;
 
   // Trigger heavy haptic feedback when screen loads
   useEffect(() => {
@@ -26,167 +33,321 @@ export default function PersonRecallsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
   }, []);
 
-  // Optimized recall loading with batch queries
-  const loadRecallsForPerson = useCallback(async () => {
+  // Optimized helper function to load people for recalls in batch with caching
+  const loadPeopleForRecalls = useCallback(async (recallIds: string[]) => {
+    if (!recallIds || recallIds.length === 0) {
+      return {};
+    }
+
     try {
-      setLoading(true);
-      console.log('[PersonRecalls] Loading recalls for person:', personId);
-
-      // First, get the person's name
-      const { data: personData, error: personError } = await supabase
-        .from('persons')
-        .select('person_name')
-        .eq('id', personId)
-        .eq('user_id', user?.id)
-        .single();
-
-      if (personError) {
-        console.error('Error loading person:', personError);
-        return;
+      // Check MemoryCache first
+      const uncachedIds: string[] = [];
+      const result: { [key: string]: any[] } = {};
+      
+      recallIds.forEach(id => {
+        const cached = peopleCache.get(id);
+        if (cached) {
+          result[id] = cached;
+        } else {
+          uncachedIds.push(id);
+        }
+      });
+      
+      if (uncachedIds.length === 0) {
+        // All data is cached
+        console.log(`[PersonRecalls] All people data cached for ${recallIds.length} recalls`);
+        return result;
       }
 
-      setPersonName(personData.person_name);
-
-      // Get all recall IDs for this person using optimized index
+      // Fetch only uncached data with optimized query using composite index
       const { data: recallPeopleData, error: recallPeopleError } = await supabase
         .from('recall_people')
-        .select('recall_id')
-        .eq('person_id', personId)
-        .eq('user_id', user?.id);
+        .select('recall_id, person_id, persons!inner(id, person_name)')
+        .in('recall_id', uncachedIds);
 
       if (recallPeopleError) {
-        console.error('Error loading recall_people:', recallPeopleError);
-        return;
-      }
-
-      const recallIds = recallPeopleData.map(rp => rp.recall_id);
-
-      if (recallIds.length === 0) {
-        setRecalls([]);
-        return;
-      }
-
-      // Load the recalls with optimized query
-      const { data: recallsData, error: recallsError } = await supabase
-        .from('recalls')
-        .select('*')
-        .in('id', recallIds)
-        .eq('user_id', user?.id)
-        .order('created_at', { ascending: false });
-
-      if (recallsError) {
-        console.error('Error loading recalls:', recallsError);
-        return;
-      }
-
-      // Batch load all images for all recalls
-      const { data: allImagesData, error: allImagesError } = await supabase
-        .from('recall_images')
-        .select('id, recall_id')
-        .in('recall_id', recallIds)
-        .order('created_at', { ascending: true });
-
-      if (allImagesError) {
-        console.error('Error loading images:', allImagesError);
-      }
-
-      // Group images by recall_id
-      const imagesByRecallId = new Map<string, any[]>();
-      (allImagesData || []).forEach(img => {
-        if (!imagesByRecallId.has(img.recall_id)) {
-          imagesByRecallId.set(img.recall_id, []);
-        }
-        imagesByRecallId.get(img.recall_id)!.push(img);
-      });
-
-      // Batch load all people for all recalls
-      const { data: allRecallPeopleData, error: allRecallPeopleError } = await supabase
-        .from('recall_people')
-        .select('recall_id, person_id, persons!inner(id, person_name)')
-        .in('recall_id', recallIds);
-
-      if (allRecallPeopleError) {
-        console.error('Error loading recall people:', allRecallPeopleError);
+        console.error('[PersonRecalls] Error loading recall_people:', recallPeopleError);
+        return result;
       }
 
       // Group people by recall_id
-      const peopleByRecallId = new Map<string, any[]>();
-      (allRecallPeopleData || []).forEach((rp: any) => {
-        if (!peopleByRecallId.has(rp.recall_id)) {
-          peopleByRecallId.set(rp.recall_id, []);
+      const peopleByRecallId: { [key: string]: any[] } = {};
+      
+      (recallPeopleData || []).forEach((rp: any) => {
+        if (!peopleByRecallId[rp.recall_id]) {
+          peopleByRecallId[rp.recall_id] = [];
         }
+        
         if (rp.persons) {
-          peopleByRecallId.get(rp.recall_id)!.push({
+          peopleByRecallId[rp.recall_id].push({
             id: rp.persons.id,
             person_name: rp.persons.person_name,
           });
         }
       });
 
-      // Process recalls with images and people
-      const recallsWithImages = await Promise.all(
-        (recallsData || []).map(async (recall) => {
-          try {
-            const recallImages = imagesByRecallId.get(recall.id) || [];
-            
-            // Only load first image immediately for better performance
-            const imageResults = await Promise.all(
-              recallImages.map(async (img, index) => {
-                try {
-                  // Load only first image, others will be lazy loaded
-                  if (index === 0) {
-                    const dataUrl = await getImageDataUrl(img.id);
-                    if (!dataUrl) {
-                      return { url: '', id: img.id };
-                    }
-                    return { url: dataUrl, id: img.id };
-                  } else {
-                    // Return placeholder for lazy loading
-                    return { url: '', id: img.id };
+      // Update MemoryCache with cost calculation
+      uncachedIds.forEach(id => {
+        const people = peopleByRecallId[id] || [];
+        const cost = CostCalculator.forPeople(people);
+        peopleCache.set(id, people, cost);
+        result[id] = people;
+      });
+
+      console.log(`[PersonRecalls] Loaded people for ${Object.keys(peopleByRecallId).length} recalls (${uncachedIds.length} from DB, ${recallIds.length - uncachedIds.length} from cache)`);
+      return result;
+    } catch (error) {
+      console.error('[PersonRecalls] Error loading people for recalls:', error);
+      return {};
+    }
+  }, []);
+
+  // Optimized image loading with lazy loading and caching
+  const loadImagesForRecalls = useCallback(async (recalls: any[]) => {
+    // First, load people for all recalls in one batch
+    const recallIds = recalls.map(r => r.id);
+    const peopleByRecallId = await loadPeopleForRecalls(recallIds);
+
+    // Batch fetch all images for all recalls in one query
+    const { data: allImagesData, error: allImagesError } = await supabase
+      .from('recall_images')
+      .select('id, recall_id, cdn_url')
+      .in('recall_id', recallIds)
+      .order('created_at', { ascending: true });
+
+    if (allImagesError) {
+      console.error('[PersonRecalls] Error fetching images:', allImagesError);
+    }
+
+    // Group images by recall_id
+    const imagesByRecallId = new Map<string, any[]>();
+    (allImagesData || []).forEach(img => {
+      if (!imagesByRecallId.has(img.recall_id)) {
+        imagesByRecallId.set(img.recall_id, []);
+      }
+      imagesByRecallId.get(img.recall_id)!.push(img);
+    });
+
+    // Process recalls with their images
+    const processedNotes = await Promise.all(
+      recalls.map(async (recall) => {
+        try {
+          const recallImages = imagesByRecallId.get(recall.id) || [];
+          
+          // Load first TWO images immediately for better UX (same as landing page)
+          const imageResults = await Promise.all(
+            recallImages.map(async (img, index) => {
+              try {
+                // Load first two images, others will be lazy loaded
+                if (index < 2) {
+                  // Check MemoryCache first
+                  const cachedImage = imageCache.get(img.id);
+                  if (cachedImage) {
+                    return { url: cachedImage, id: img.id };
                   }
-                } catch (error) {
-                  console.error(`Error processing image ${img.id}:`, error);
+                  
+                  // Prefer CDN URL if available (much faster)
+                  if (img.cdn_url) {
+                    const cost = CostCalculator.forImage(img.cdn_url);
+                    imageCache.set(img.id, img.cdn_url, cost);
+                    return { url: img.cdn_url, id: img.id };
+                  }
+                  
+                  // Fallback to base64 data
+                  const dataUrl = await getImageDataUrl(img.id);
+                  if (dataUrl) {
+                    const cost = CostCalculator.forImage(dataUrl);
+                    imageCache.set(img.id, dataUrl, cost);
+                    return { url: dataUrl, id: img.id };
+                  }
+                  return { url: '', id: img.id };
+                } else {
+                  // Return placeholder for lazy loading
                   return { url: '', id: img.id };
                 }
-              })
-            );
+              } catch (error) {
+                console.error(`[PersonRecalls] Exception processing image ${img.id}:`, error);
+                return { url: '', id: img.id };
+              }
+            })
+          );
 
-            const validImageUrls = imageResults.map(result => result.url);
-            const imageIds = imageResults.map(result => result.id);
-            const people = peopleByRecallId.get(recall.id) || [];
+          const validImageUrls = imageResults.map(result => result.url);
+          const imageIds = imageResults.map(result => result.id);
+          const people = peopleByRecallId[recall.id] || [];
 
-            return {
-              ...recall,
-              images: validImageUrls,
-              imageIds: imageIds,
-              people: people,
-            };
-          } catch (error) {
-            console.error(`Error processing recall ${recall.id}:`, error);
-            return {
-              ...recall,
-              images: [],
-              imageIds: [],
-              people: [],
-            };
-          }
-        })
-      );
+          return {
+            ...recall,
+            images: validImageUrls,
+            imageIds: imageIds,
+            people: people,
+          };
+        } catch (error) {
+          console.error(`[PersonRecalls] Error processing recall ${recall.id}:`, error);
+          return {
+            ...recall,
+            images: [],
+            imageIds: [],
+            people: [],
+          };
+        }
+      })
+    );
 
-      setRecalls(recallsWithImages);
-      console.log(`[PersonRecalls] Loaded ${recallsWithImages.length} recalls for ${personData.person_name}`);
+    return processedNotes;
+  }, [loadPeopleForRecalls]);
+
+  // Optimized recall loading with batch queries, pagination, and cache usage
+  const loadRecallsForPerson = useCallback(async (pageNum: number = 1, append: boolean = false) => {
+    try {
+      if (!append) {
+        setLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
+      
+      console.log(`[PersonRecalls] Loading recalls page ${pageNum} for person:`, personId);
+
+      // First, get the person's name (only on first load)
+      if (pageNum === 1) {
+        const { data: personData, error: personError } = await supabase
+          .from('persons')
+          .select('person_name')
+          .eq('id', personId)
+          .eq('user_id', user?.id)
+          .single();
+
+        if (personError) {
+          console.error('[PersonRecalls] Error loading person:', personError);
+          return;
+        }
+
+        setPersonName(personData.person_name);
+      }
+
+      // Get recall IDs for this person using optimized index with pagination
+      const from = (pageNum - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
+      const { data: recallPeopleData, error: recallPeopleError } = await supabase
+        .from('recall_people')
+        .select('recall_id')
+        .eq('person_id', personId)
+        .eq('user_id', user?.id)
+        .range(from, to);
+
+      if (recallPeopleError) {
+        console.error('[PersonRecalls] Error loading recall_people:', recallPeopleError);
+        return;
+      }
+
+      if (!recallPeopleData || recallPeopleData.length === 0) {
+        console.log('[PersonRecalls] No recalls found for this page');
+        setHasMore(false);
+        if (!append) {
+          setRecalls([]);
+        }
+        return;
+      }
+
+      if (recallPeopleData.length < ITEMS_PER_PAGE) {
+        setHasMore(false);
+      }
+
+      const recallIds = recallPeopleData.map(rp => rp.recall_id);
+
+      // Check cache first for recalls (from landing page)
+      const cachedNotes: Note[] = [];
+      const uncachedRecallIds: string[] = [];
+
+      recallIds.forEach(recallId => {
+        const cachedNote = getCachedNote(recallId);
+        if (cachedNote) {
+          console.log(`[PersonRecalls] Using cached note for ${recallId}`);
+          cachedNotes.push(cachedNote);
+        } else {
+          uncachedRecallIds.push(recallId);
+        }
+      });
+
+      let transformedNotes: Note[] = [...cachedNotes];
+
+      // Fetch only uncached recalls
+      if (uncachedRecallIds.length > 0) {
+        console.log(`[PersonRecalls] Fetching ${uncachedRecallIds.length} uncached recalls from DB`);
+        
+        const { data: recallsData, error: recallsError } = await supabase
+          .from('recalls')
+          .select('*')
+          .in('id', uncachedRecallIds)
+          .eq('user_id', user?.id)
+          .order('created_at', { ascending: false });
+
+        if (recallsError) {
+          console.error('[PersonRecalls] Error loading recalls:', recallsError);
+        } else if (recallsData) {
+          // Optimized image and people loading with lazy loading
+          const processedNotes = await loadImagesForRecalls(recallsData);
+          transformedNotes = [...transformedNotes, ...processedNotes];
+        }
+      }
+
+      // Sort by created_at
+      transformedNotes.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      console.log(`[PersonRecalls] Loaded ${transformedNotes.length} recalls (${cachedNotes.length} from cache, ${uncachedRecallIds.length} from DB)`);
+      
+      if (append) {
+        // Prevent duplicates by filtering out notes that already exist
+        setRecalls(prevRecalls => {
+          const existingIds = new Set(prevRecalls.map(recall => recall.id));
+          const newUniqueRecalls = transformedNotes.filter(recall => !existingIds.has(recall.id));
+          console.log(`[PersonRecalls] Adding ${newUniqueRecalls.length} new unique recalls (filtered ${transformedNotes.length - newUniqueRecalls.length} duplicates)`);
+          return [...prevRecalls, ...newUniqueRecalls];
+        });
+      } else {
+        setRecalls(transformedNotes);
+      }
     } catch (error) {
-      console.error('Error loading recalls for person:', error);
+      console.error('[PersonRecalls] Error loading recalls for person:', error);
     } finally {
       setLoading(false);
+      setIsLoadingMore(false);
     }
-  }, [personId, user]);
+  }, [personId, user, getCachedNote, loadImagesForRecalls]);
 
   useEffect(() => {
     if (personId && user) {
-      loadRecallsForPerson();
+      loadRecallsForPerson(1, false);
+      setPage(1);
+      setHasMore(true);
     }
   }, [personId, user, loadRecallsForPerson]);
+
+  const loadMoreRecalls = useCallback(() => {
+    if (!isLoadingMore && hasMore && !loading) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      loadRecallsForPerson(nextPage, true);
+    }
+  }, [page, hasMore, isLoadingMore, loading, loadRecallsForPerson]);
+
+  const handleScroll = useCallback((event: any) => {
+    try {
+      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+
+      // Load more recalls when near bottom
+      const paddingToBottom = 20;
+      const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+
+      if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
+        console.log('[PersonRecalls] Loading more recalls...');
+        loadMoreRecalls();
+      }
+    } catch (error) {
+      console.error('[PersonRecalls] Error handling scroll:', error);
+    }
+  }, [hasMore, isLoadingMore, loading, loadMoreRecalls]);
 
   const handleNotePress = useCallback((noteId: string) => {
     try {
@@ -231,6 +392,8 @@ export default function PersonRecallsScreen() {
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
+        onScroll={handleScroll}
+        scrollEventThrottle={400}
       >
         {loading ? (
           <View style={styles.loadingContainer}>
@@ -261,6 +424,19 @@ export default function PersonRecallsScreen() {
                 onPress={() => handleNotePress(recall.id)}
               />
             ))}
+            
+            {isLoadingMore && (
+              <View style={styles.loadingMoreContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.loadingMoreText}>Loading more...</Text>
+              </View>
+            )}
+            
+            {!hasMore && recalls.length > 0 && (
+              <View style={styles.endContainer}>
+                <Text style={styles.endText}>You&apos;ve reached the end</Text>
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
@@ -318,5 +494,25 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     marginHorizontal: 8,
+  },
+  loadingMoreContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 20,
+    gap: 12,
+  },
+  loadingMoreText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  endContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  endText: {
+    fontSize: 14,
+    color: colors.textTertiary,
+    fontStyle: 'italic',
   },
 });
