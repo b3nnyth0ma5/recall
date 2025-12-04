@@ -45,14 +45,15 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress }: 
   const [isLazyLoading, setIsLazyLoading] = useState(false);
   const loadingQueueRef = useRef<Set<number>>(new Set());
 
-  // Initialize with first image only for better performance
+  // Initialize with first TWO images for better performance
   useEffect(() => {
     if (note.images && note.images.length > 0) {
-      // Only load first image immediately
-      setLazyLoadedImages([note.images[0]]);
+      // Load first two images immediately if available
+      const imagesToLoad = note.images.length > 1 ? note.images.slice(0, 2) : [note.images[0]];
+      setLazyLoadedImages(imagesToLoad);
       // Initialize currentImageIndex to 0 to show counter immediately
       setCurrentImageIndex(0);
-      console.log(`[NoteCard] Initialized with first image for note ${note.id}`);
+      console.log(`[NoteCard] Initialized with first ${imagesToLoad.length} image(s) for note ${note.id}`);
     }
   }, [note.id, note.images]);
 
@@ -95,7 +96,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress }: 
       setCurrentImageIndex(index);
       
       // Prefetch next image
-      if (note.images && note.images.length > 1) {
+      if (note.images && note.images.length > 2) {
         const nextIndex = index + 1;
         if (nextIndex < note.images.length && !lazyLoadedImages[nextIndex]) {
           lazyLoadImage(nextIndex);
