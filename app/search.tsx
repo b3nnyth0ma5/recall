@@ -137,6 +137,20 @@ export default function SearchScreen() {
     searchNotes('');
   };
 
+  const handleBack = () => {
+    console.log('[SearchScreen] Back button pressed - clearing search results');
+    
+    // Clear search results
+    setSearchQuery('');
+    setShowHistory(true);
+    setHasSearched(false);
+    setIsAnswerExpanded(false);
+    searchNotes('');
+    
+    // Navigate back
+    router.back();
+  };
+
   const toggleKeyboard = () => {
     if (keyboardVisible) {
       Keyboard.dismiss();
@@ -195,7 +209,7 @@ export default function SearchScreen() {
           headerTintColor: colors.text,
           headerLeft: () => (
             <Pressable 
-              onPress={() => router.back()} 
+              onPress={handleBack} 
               style={styles.headerButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
