@@ -45,7 +45,6 @@ export default function SearchScreen() {
   const [isAnswerExpanded, setIsAnswerExpanded] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
-  const hasProcessedQueryRef = useRef<string | null>(null);
 
   const loadSearchHistory = useCallback(async () => {
     setIsLoadingHistory(true);
@@ -70,28 +69,26 @@ export default function SearchScreen() {
     };
   }, [loadSearchHistory]);
 
-  // Handle query parameter from combined search/add component
+  // Handle query parameter from URL (using 'q' parameter)
   useEffect(() => {
-    if (params.query && typeof params.query === 'string') {
-      const queryText = decodeURIComponent(params.query);
+    const queryParam = params.q;
+    
+    if (queryParam && typeof queryParam === 'string') {
+      const decodedQuery = decodeURIComponent(queryParam);
       
-      // Only process if this is a new query we haven't processed yet
-      if (hasProcessedQueryRef.current !== queryText) {
-        console.log('[SearchScreen] Processing search query from params:', queryText);
-        hasProcessedQueryRef.current = queryText;
-        
-        // Set the search query state
-        setSearchQuery(queryText);
-        setShowHistory(false);
-        setHasSearched(true);
-        setIsAnswerExpanded(false);
-        
-        // Execute search immediately - no need for setTimeout
-        console.log('[SearchScreen] Triggering searchNotes with query:', queryText);
-        searchNotes(queryText, true);
-      }
+      console.log('[SearchScreen] Query parameter detected:', decodedQuery);
+      
+      // Set the search query in the input
+      setSearchQuery(decodedQuery);
+      setShowHistory(false);
+      setHasSearched(true);
+      setIsAnswerExpanded(false);
+      
+      // Execute the search
+      console.log('[SearchScreen] Executing search with query:', decodedQuery);
+      searchNotes(decodedQuery, true);
     }
-  }, [params.query, searchNotes]);
+  }, [params.q]);
 
   // Show history when not searching and history is loaded
   useEffect(() => {
@@ -108,7 +105,6 @@ export default function SearchScreen() {
       }
       
       console.log('[SearchScreen] Manual search triggered with query:', searchQuery);
-      hasProcessedQueryRef.current = searchQuery;
       setShowHistory(false);
       setHasSearched(true);
       setIsAnswerExpanded(false);
@@ -122,7 +118,6 @@ export default function SearchScreen() {
 
   const handleHistoryItemPress = (searchText: string) => {
     console.log('[SearchScreen] Executing search from history:', searchText);
-    hasProcessedQueryRef.current = searchText;
     setSearchQuery(searchText);
     setShowHistory(false);
     setHasSearched(true);
@@ -139,7 +134,6 @@ export default function SearchScreen() {
     setShowHistory(true);
     setHasSearched(false);
     setIsAnswerExpanded(false);
-    hasProcessedQueryRef.current = null;
     searchNotes('');
   };
 
@@ -364,13 +358,13 @@ export default function SearchScreen() {
               Smart Searching
             </Text>
             <Text style={styles.emptyText}>
-              Search your Recalls like you're talking to a friend
+              Search your Recalls like you&apos;re talking to a friend
             </Text>
             <View style={styles.featureList}>
               <React.Fragment>
                 <View style={styles.featureItem}>
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>What's coming up next month?</Text>
+                  <Text style={styles.featureText}>What&apos;s coming up next month?</Text>
                 </View>
                 <View style={styles.featureItem}>
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
@@ -392,7 +386,7 @@ export default function SearchScreen() {
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
                   <Text style={styles.featureText}>My cocktail recipes that use lime, ginger and agave</Text>
                 </View>
-								<View style={styles.featureItem}>
+                <View style={styles.featureItem}>
                   <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
                   <Text style={styles.featureText}>Steak night specials on Thursdays</Text>
                 </View>

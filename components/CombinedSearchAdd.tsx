@@ -12,7 +12,6 @@ import {
   Keyboard,
   Alert,
   TouchableWithoutFeedback,
-  KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -22,7 +21,6 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import Animated, { 
   FadeIn, 
-  FadeOut, 
   SlideInDown, 
   SlideOutDown,
   useAnimatedStyle,
@@ -30,7 +28,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
-import { supabase, saveSearchHistory } from '@/utils/supabase';
+import { supabase } from '@/utils/supabase';
 
 interface CombinedSearchAddProps {
   onCreateRecall: (data: {
@@ -48,7 +46,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const [images, setImages] = useState<string[]>([]);
   const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
   const [showDrawer, setShowDrawer] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -68,7 +65,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       (e) => {
         setKeyboardHeight(e.endCoordinates.height);
         setIsKeyboardVisible(true);
-        // Reduced offset to bring component closer to keyboard
         translateY.value = withTiming(-(e.endCoordinates.height + 10), { duration: 250 });
       }
     );
@@ -156,13 +152,36 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
   const handleSearchPress = async () => {
     const searchQuery = text.trim();
-    if (searchQuery) {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
-      await saveSearchHistory(userId, searchQuery);
-      router.push(`/search?query=${encodeURIComponent(searchQuery)}`);
+    
+    if (!searchQuery) {
+      console.log('[CombinedSearchAdd] Empty search query - ignoring');
+      return;
     }
+
+    console.log('[CombinedSearchAdd] Search button pressed with query:', searchQuery);
+    
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    // Save search history
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { saveSearchHistory } = await import('@/utils/supabase');
+        await saveSearchHistory(user.id, searchQuery);
+        console.log('[CombinedSearchAdd] Search history saved');
+      }
+    } catch (error) {
+      console.error('[CombinedSearchAdd] Error saving search history:', error);
+    }
+
+    // Navigate to search screen with query parameter
+    const encodedQuery = encodeURIComponent(searchQuery);
+    const searchRoute = `/search?q=${encodedQuery}`;
+    
+    console.log('[CombinedSearchAdd] Navigating to:', searchRoute);
+    router.push(searchRoute);
   };
 
   const handleTextChange = (newText: string) => {
