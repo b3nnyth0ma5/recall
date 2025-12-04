@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Note } from '@/types/Note';
 import { supabase, getImageDataUrl, deleteImageRecord, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
 
 export type SearchStage = 'idle' | 'detecting' | 'resolving' | 'filtering' | 'searching' | 'complete';
 
@@ -28,17 +29,10 @@ export function useNotes() {
   const { user } = useAuth();
 
   const ITEMS_PER_PAGE = 7;
-  
-  // Cache for people data to avoid redundant queries
-  const peopleCache = useRef<Map<string, any[]>>(new Map());
-  // Cache for image data to avoid redundant queries
-  const imageCache = useRef<Map<string, string>>(new Map());
-  // NEW: Cache for full note data to optimize note editor loading
-  const noteCache = useRef<Map<string, Note>>(new Map());
 
-  // NEW: Function to get cached note data
+  // NEW: Function to get cached note data using MemoryCache
   const getCachedNote = useCallback((noteId: string): Note | null => {
-    const cached = noteCache.current.get(noteId);
+    const cached = noteCache.get(noteId);
     if (cached) {
       console.log(`[useNotes] Cache HIT for note ${noteId}`);
       return cached;
@@ -47,10 +41,11 @@ export function useNotes() {
     return null;
   }, []);
 
-  // NEW: Function to update note cache
+  // NEW: Function to update note cache using MemoryCache
   const updateNoteCache = useCallback((note: Note) => {
-    noteCache.current.set(note.id, note);
-    console.log(`[useNotes] Updated cache for note ${note.id}`);
+    const cost = CostCalculator.forNote(note);
+    noteCache.set(note.id, note, cost);
+    console.log(`[useNotes] Updated cache for note ${note.id} (cost: ${(cost / 1024).toFixed(2)} KB)`);
   }, []);
 
   // Optimized helper function to load people for recalls in batch
@@ -60,15 +55,22 @@ export function useNotes() {
     }
 
     try {
-      // Check cache first
-      const uncachedIds = recallIds.filter(id => !peopleCache.current.has(id));
+      // Check cache first using MemoryCache
+      const uncachedIds: string[] = [];
+      const result: { [key: string]: any[] } = {};
+      
+      recallIds.forEach(id => {
+        const cached = peopleCache.get(id);
+        if (cached) {
+          result[id] = cached;
+        } else {
+          uncachedIds.push(id);
+        }
+      });
       
       if (uncachedIds.length === 0) {
         // All data is cached
-        const result: { [key: string]: any[] } = {};
-        recallIds.forEach(id => {
-          result[id] = peopleCache.current.get(id) || [];
-        });
+        console.log(`[useNotes] All people data cached for ${recallIds.length} recalls`);
         return result;
       }
 
@@ -81,7 +83,7 @@ export function useNotes() {
 
       if (recallPeopleError) {
         console.error('Error loading recall_people:', recallPeopleError);
-        return {};
+        return result;
       }
 
       // Group people by recall_id
@@ -101,15 +103,12 @@ export function useNotes() {
         }
       });
 
-      // Update cache
+      // Update cache with cost calculation
       uncachedIds.forEach(id => {
-        peopleCache.current.set(id, peopleByRecallId[id] || []);
-      });
-
-      // Merge cached and new data
-      const result: { [key: string]: any[] } = {};
-      recallIds.forEach(id => {
-        result[id] = peopleCache.current.get(id) || [];
+        const people = peopleByRecallId[id] || [];
+        const cost = CostCalculator.forPeople(people);
+        peopleCache.set(id, people, cost);
+        result[id] = people;
       });
 
       console.log(`Loaded people for ${Object.keys(peopleByRecallId).length} recalls (${uncachedIds.length} from DB, ${recallIds.length - uncachedIds.length} from cache)`);
@@ -159,21 +158,24 @@ export function useNotes() {
               try {
                 // Load first two images, others will be lazy loaded
                 if (index < 2) {
-                  // Check cache first
-                  if (imageCache.current.has(img.id)) {
-                    return { url: imageCache.current.get(img.id)!, id: img.id };
+                  // Check MemoryCache first
+                  const cachedImage = imageCache.get(img.id);
+                  if (cachedImage) {
+                    return { url: cachedImage, id: img.id };
                   }
                   
                   // Prefer CDN URL if available (much faster)
                   if (img.cdn_url) {
-                    imageCache.current.set(img.id, img.cdn_url);
+                    const cost = CostCalculator.forImage(img.cdn_url);
+                    imageCache.set(img.id, img.cdn_url, cost);
                     return { url: img.cdn_url, id: img.id };
                   }
                   
                   // Fallback to base64 data
                   const dataUrl = await getImageDataUrl(img.id);
                   if (dataUrl) {
-                    imageCache.current.set(img.id, dataUrl);
+                    const cost = CostCalculator.forImage(dataUrl);
+                    imageCache.set(img.id, dataUrl, cost);
                     return { url: dataUrl, id: img.id };
                   }
                   return { url: '', id: img.id };
@@ -300,10 +302,12 @@ export function useNotes() {
   }, [page, hasMore, isLoadingMore, loading, loadNotes]);
 
   const refreshNotes = useCallback(async () => {
-    // Clear caches on refresh
-    peopleCache.current.clear();
-    imageCache.current.clear();
-    noteCache.current.clear();
+    // Clear MemoryCache instances on refresh
+    console.log('[useNotes] Clearing all caches on refresh');
+    peopleCache.clear();
+    imageCache.clear();
+    noteCache.clear();
+    
     setPage(1);
     setHasMore(true);
     await loadNotes(1, false);
@@ -331,7 +335,8 @@ export function useNotes() {
       }
 
       // Clear cache for this recall
-      peopleCache.current.delete(noteId);
+      peopleCache.remove(noteId);
+      noteCache.remove(noteId);
 
       // Load images and people for this recall
       const [updatedNote] = await loadImagesForRecalls([recallData]);
@@ -414,7 +419,7 @@ export function useNotes() {
       console.log('Recall updated successfully with location_primary_type');
       
       // Clear cache for this note
-      noteCache.current.delete(noteId);
+      noteCache.remove(noteId);
       
       // Refresh only the single note that was updated
       await refreshSingleNote(noteId);
@@ -435,8 +440,8 @@ export function useNotes() {
       setIsDeletingNote(true);
       
       // Clear caches for this recall
-      peopleCache.current.delete(noteId);
-      noteCache.current.delete(noteId);
+      peopleCache.remove(noteId);
+      noteCache.remove(noteId);
       
       // Get all images for this recall
       const { data: imagesData } = await supabase
@@ -447,7 +452,7 @@ export function useNotes() {
       // Clear image cache
       if (imagesData && imagesData.length > 0) {
         for (const img of imagesData) {
-          imageCache.current.delete(img.id);
+          imageCache.remove(img.id);
           await deleteImageRecord(img.id);
         }
       }

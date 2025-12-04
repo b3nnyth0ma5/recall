@@ -1,16 +1,32 @@
 
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Switch, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/utils/supabase';
-import { IconSymbol } from '@/components/IconSymbol';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
+import { useAuth } from '@/contexts/AuthContext';
+import { IconSymbol } from '@/components/IconSymbol';
+import { CacheManager } from '@/utils/memoryCache';
+import * as Haptics from 'expo-haptics';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const [cacheStats, setCacheStats] = useState<any[]>([]);
+
+  // Load cache statistics
+  useEffect(() => {
+    const loadCacheStats = () => {
+      const stats = CacheManager.getAllStats();
+      setCacheStats(stats);
+    };
+
+    loadCacheStats();
+    
+    // Refresh stats every 5 seconds
+    const interval = setInterval(loadCacheStats, 5000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSignOut = async () => {
     Alert.alert(
@@ -25,61 +41,233 @@ export default function ProfileScreen() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
-            await signOut();
-            router.replace('/login');
+            try {
+              await signOut();
+              router.replace('/login');
+            } catch (error) {
+              console.error('Error signing out:', error);
+              Alert.alert('Error', 'Failed to sign out');
+            }
           },
         },
       ]
     );
   };
 
+  const handleClearCache = () => {
+    Alert.alert(
+      'Clear Cache',
+      'This will clear all cached data. The app will reload data from the server as needed.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => {
+            CacheManager.clearAll();
+            
+            // Haptic feedback
+            if (Platform.OS !== 'web') {
+              try {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              } catch (error) {
+                console.error('Error triggering haptic feedback:', error);
+              }
+            }
+            
+            Alert.alert('Success', 'Cache cleared successfully');
+            
+            // Reload stats
+            const stats = CacheManager.getAllStats();
+            setCacheStats(stats);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleLogCacheStats = () => {
+    CacheManager.logStats();
+    
+    // Haptic feedback
+    if (Platform.OS !== 'web') {
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
+    }
+    
+    Alert.alert('Cache Stats', 'Check the console for detailed cache statistics');
+  };
+
+  const getCacheIcon = (cacheName: string) => {
+    switch (cacheName) {
+      case 'ImageCache':
+        return 'photo';
+      case 'NoteCache':
+        return 'doc.text';
+      case 'CategoryCache':
+        return 'folder';
+      case 'PeopleCache':
+        return 'person.2';
+      default:
+        return 'square.stack.3d.up';
+    }
+  };
+
+  const getCacheColor = (utilizationPercent: number) => {
+    if (utilizationPercent < 50) {
+      return '#4CAF50'; // Green
+    } else if (utilizationPercent < 80) {
+      return '#FF9800'; // Orange
+    } else {
+      return '#F44336'; // Red
+    }
+  };
+
   return (
-    <>
+    <View style={styles.container}>
       <Stack.Screen
         options={{
           headerShown: true,
-          title: 'Profile',
+          headerTitle: 'Profile',
           headerStyle: {
             backgroundColor: colors.background,
           },
           headerTintColor: colors.text,
-          headerLeft: () => (
-            <Pressable onPress={() => router.back()} style={styles.headerButton}>
-              <IconSymbol name="chevron.left" size={24} color={colors.text} />
-            </Pressable>
-          ),
+          headerTitleAlign: 'center',
+          headerTitleStyle: {
+            fontSize: 20,
+            fontWeight: 'bold',
+            color: colors.primary,
+          },
         }}
       />
-      <ScrollView style={styles.container}>
-        <Animated.View entering={FadeIn} style={styles.content}>
-          {/* User Info Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Account Information</Text>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Email</Text>
-              <Text style={styles.infoValue}>{user?.email || 'Not available'}</Text>
+
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {/* User Info Section */}
+        <View style={styles.section}>
+          <View style={styles.userInfoContainer}>
+            <View style={styles.avatarContainer}>
+              <IconSymbol name="person.circle.fill" size={80} color={colors.primary} />
             </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>User ID</Text>
-              <Text style={styles.infoValue} numberOfLines={1} ellipsizeMode="middle">
-                {user?.id || 'Not available'}
-              </Text>
-            </View>
+            <Text style={styles.userEmail}>{user?.email || 'Not signed in'}</Text>
+          </View>
+        </View>
+
+        {/* Cache Statistics Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <IconSymbol name="square.stack.3d.up" size={24} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Memory Cache (iOS NSCache-style)</Text>
+          </View>
+          
+          <Text style={styles.sectionDescription}>
+            Intelligent memory management with automatic eviction based on cost and usage patterns
+          </Text>
+
+          {cacheStats.map((stats, index) => {
+            const cacheName = ['ImageCache', 'NoteCache', 'CategoryCache', 'PeopleCache'][index];
+            const utilizationColor = getCacheColor(stats.utilizationPercent);
+            
+            return (
+              <View key={index} style={styles.cacheCard}>
+                <View style={styles.cacheHeader}>
+                  <View style={styles.cacheHeaderLeft}>
+                    <IconSymbol 
+                      name={getCacheIcon(cacheName)} 
+                      size={20} 
+                      color={colors.primary} 
+                    />
+                    <Text style={styles.cacheName}>{cacheName}</Text>
+                  </View>
+                  <View style={[styles.utilizationBadge, { backgroundColor: `${utilizationColor}20` }]}>
+                    <Text style={[styles.utilizationText, { color: utilizationColor }]}>
+                      {stats.utilizationPercent.toFixed(0)}%
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.cacheStats}>
+                  <View style={styles.cacheStatRow}>
+                    <Text style={styles.cacheStatLabel}>Items:</Text>
+                    <Text style={styles.cacheStatValue}>
+                      {stats.itemCount} / {stats.countLimit}
+                    </Text>
+                  </View>
+                  <View style={styles.cacheStatRow}>
+                    <Text style={styles.cacheStatLabel}>Memory:</Text>
+                    <Text style={styles.cacheStatValue}>
+                      {stats.totalCostMB.toFixed(2)} MB / {stats.totalCostLimitMB.toFixed(2)} MB
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Progress Bar */}
+                <View style={styles.progressBarContainer}>
+                  <View 
+                    style={[
+                      styles.progressBar, 
+                      { 
+                        width: `${Math.min(stats.utilizationPercent, 100)}%`,
+                        backgroundColor: utilizationColor,
+                      }
+                    ]} 
+                  />
+                </View>
+              </View>
+            );
+          })}
+
+          <View style={styles.cacheActions}>
+            <Pressable 
+              onPress={handleClearCache} 
+              style={styles.cacheActionButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="trash" size={18} color={colors.error} />
+              <Text style={[styles.cacheActionText, { color: colors.error }]}>Clear Cache</Text>
+            </Pressable>
+
+            <Pressable 
+              onPress={handleLogCacheStats} 
+              style={styles.cacheActionButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="doc.text" size={18} color={colors.primary} />
+              <Text style={styles.cacheActionText}>Log Stats</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Account Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <IconSymbol name="person" size={24} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Account</Text>
           </View>
 
-          {/* Actions Section */}
-          <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
-            <Text style={styles.sectionTitle}>Actions</Text>
-            <Pressable
-              style={[styles.button, styles.dangerButton]}
-              onPress={handleSignOut}
-            >
-              <Text style={styles.buttonText}>Sign Out</Text>
-            </Pressable>
-          </Animated.View>
-        </Animated.View>
+          <Pressable 
+            onPress={handleSignOut} 
+            style={styles.signOutButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <IconSymbol name="arrow.right.square" size={20} color={colors.error} />
+            <Text style={styles.signOutText}>Sign Out</Text>
+          </Pressable>
+        </View>
+
+        {/* App Info */}
+        <View style={styles.appInfo}>
+          <Text style={styles.appInfoText}>Recall App v1.0.0</Text>
+          <Text style={styles.appInfoText}>© 2024 Recall. All rights reserved.</Text>
+        </View>
       </ScrollView>
-    </>
+    </View>
   );
 }
 
@@ -88,52 +276,154 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  content: {
-    padding: 20,
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 40,
   },
   section: {
-    marginBottom: 30,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 15,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  infoLabel: {
-    fontSize: 16,
-    color: colors.textSecondary,
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
   },
-  infoValue: {
-    fontSize: 16,
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
     color: colors.text,
-    fontWeight: '500',
   },
-  button: {
-    backgroundColor: colors.primary,
-    padding: 16,
+  sectionDescription: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  userInfoContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  avatarContainer: {
+    marginBottom: 16,
+  },
+  userEmail: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  cacheCard: {
+    backgroundColor: colors.card,
     borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cacheHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  buttonText: {
-    color: '#FFFFFF',
+  cacheHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cacheName: {
     fontSize: 16,
     fontWeight: '600',
+    color: colors.text,
   },
-  dangerButton: {
-    backgroundColor: colors.error,
+  utilizationBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  headerButton: {
-    padding: 8,
-    marginHorizontal: 8,
+  utilizationText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cacheStats: {
+    gap: 8,
+    marginBottom: 12,
+  },
+  cacheStatRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cacheStatLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  cacheStatValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  progressBarContainer: {
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  cacheActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  cacheActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cacheActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  signOutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  signOutText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.error,
+  },
+  appInfo: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    gap: 4,
+  },
+  appInfoText: {
+    fontSize: 12,
+    color: colors.textTertiary,
   },
 });

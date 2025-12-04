@@ -12,6 +12,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { getImageDataUrl } from '@/utils/supabase';
 import { useNotes } from '@/hooks/useNotes';
+import { peopleCache, imageCache, CostCalculator } from '@/utils/memoryCache';
 
 interface Category {
   id: string;
@@ -42,11 +43,6 @@ export default function CategoryViewerScreen() {
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
-  
-  // Cache for people data to avoid redundant queries
-  const peopleCache = useRef<Map<string, any[]>>(new Map());
-  // Cache for image data to avoid redundant queries
-  const imageCache = useRef<Map<string, string>>(new Map());
 
   const ITEMS_PER_PAGE = 10;
 
@@ -57,15 +53,22 @@ export default function CategoryViewerScreen() {
     }
 
     try {
-      // Check cache first
-      const uncachedIds = recallIds.filter(id => !peopleCache.current.has(id));
+      // Check MemoryCache first
+      const uncachedIds: string[] = [];
+      const result: { [key: string]: any[] } = {};
+      
+      recallIds.forEach(id => {
+        const cached = peopleCache.get(id);
+        if (cached) {
+          result[id] = cached;
+        } else {
+          uncachedIds.push(id);
+        }
+      });
       
       if (uncachedIds.length === 0) {
         // All data is cached
-        const result: { [key: string]: any[] } = {};
-        recallIds.forEach(id => {
-          result[id] = peopleCache.current.get(id) || [];
-        });
+        console.log(`[CategoryViewer] All people data cached for ${recallIds.length} recalls`);
         return result;
       }
 
@@ -77,7 +80,7 @@ export default function CategoryViewerScreen() {
 
       if (recallPeopleError) {
         console.error('[CategoryViewer] Error loading recall_people:', recallPeopleError);
-        return {};
+        return result;
       }
 
       // Group people by recall_id
@@ -96,15 +99,12 @@ export default function CategoryViewerScreen() {
         }
       });
 
-      // Update cache
+      // Update MemoryCache with cost calculation
       uncachedIds.forEach(id => {
-        peopleCache.current.set(id, peopleByRecallId[id] || []);
-      });
-
-      // Merge cached and new data
-      const result: { [key: string]: any[] } = {};
-      recallIds.forEach(id => {
-        result[id] = peopleCache.current.get(id) || [];
+        const people = peopleByRecallId[id] || [];
+        const cost = CostCalculator.forPeople(people);
+        peopleCache.set(id, people, cost);
+        result[id] = people;
       });
 
       console.log(`[CategoryViewer] Loaded people for ${Object.keys(peopleByRecallId).length} recalls (${uncachedIds.length} from DB, ${recallIds.length - uncachedIds.length} from cache)`);
@@ -153,21 +153,24 @@ export default function CategoryViewerScreen() {
               try {
                 // Load first two images, others will be lazy loaded
                 if (index < 2) {
-                  // Check cache first
-                  if (imageCache.current.has(img.id)) {
-                    return { url: imageCache.current.get(img.id)!, id: img.id };
+                  // Check MemoryCache first
+                  const cachedImage = imageCache.get(img.id);
+                  if (cachedImage) {
+                    return { url: cachedImage, id: img.id };
                   }
                   
                   // Prefer CDN URL if available (much faster)
                   if (img.cdn_url) {
-                    imageCache.current.set(img.id, img.cdn_url);
+                    const cost = CostCalculator.forImage(img.cdn_url);
+                    imageCache.set(img.id, img.cdn_url, cost);
                     return { url: img.cdn_url, id: img.id };
                   }
                   
                   // Fallback to base64 data
                   const dataUrl = await getImageDataUrl(img.id);
                   if (dataUrl) {
-                    imageCache.current.set(img.id, dataUrl);
+                    const cost = CostCalculator.forImage(dataUrl);
+                    imageCache.set(img.id, dataUrl, cost);
                     return { url: dataUrl, id: img.id };
                   }
                   return { url: '', id: img.id };
@@ -381,9 +384,10 @@ export default function CategoryViewerScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    // Clear caches on refresh
-    peopleCache.current.clear();
-    imageCache.current.clear();
+    // Clear MemoryCache instances on refresh
+    console.log('[CategoryViewer] Clearing caches on refresh');
+    peopleCache.clear();
+    imageCache.clear();
     setPage(1);
     setHasMore(true);
     await loadCategoryAndRecalls(1, false);
