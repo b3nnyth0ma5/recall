@@ -60,6 +60,22 @@ export default function ProfileScreen() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleBackPress = () => {
+    if (Platform.OS !== 'web') {
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
+    }
+    
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/(home)');
+    }
+  };
+
   const handleSignOut = async () => {
     Alert.alert(
       'Sign Out',
@@ -226,6 +242,19 @@ export default function ProfileScreen() {
             fontWeight: 'bold',
             color: colors.primary,
           },
+          headerLeft: () => (
+            <Pressable
+              onPress={handleBackPress}
+              style={styles.backButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <IconSymbol 
+                name="chevron.left" 
+                size={28} 
+                color={colors.primary} 
+              />
+            </Pressable>
+          ),
         }}
       />
 
@@ -388,6 +417,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  backButton: {
+    paddingLeft: 16,
+    paddingRight: 8,
+    paddingVertical: 8,
   },
   scrollView: {
     flex: 1,
