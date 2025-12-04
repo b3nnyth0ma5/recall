@@ -61,7 +61,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
   const [showSearchHistory, setShowSearchHistory] = useState(false);
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const translateY = useSharedValue(0);
 
@@ -77,8 +76,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
         setKeyboardHeight(e.endCoordinates.height);
-        setIsKeyboardVisible(true);
-        // Reduced offset to bring component closer to keyboard
+        // Reduced offset to bring component closer to keyboard (from 20 to 10)
         translateY.value = withTiming(-(e.endCoordinates.height + 10), { duration: 250 });
       }
     );
@@ -87,9 +85,8 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
         setKeyboardHeight(0);
-        setIsKeyboardVisible(false);
         translateY.value = withTiming(0, { duration: 250 });
-        // Don't hide search history when keyboard closes
+        setShowSearchHistory(false);
       }
     );
 
@@ -141,7 +138,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       }
 
       setSearchHistory([]);
-      setShowSearchHistory(false);
       console.log('Search history cleared');
     } catch (error) {
       console.error('Error clearing search history:', error);
@@ -228,15 +224,17 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   };
 
   const handleTextInputFocus = () => {
-    if (searchHistory.length > 0) {
+    if (searchHistory.length > 0 && text.trim().length > 0) {
       setShowSearchHistory(true);
     }
   };
 
   const handleTextChange = (newText: string) => {
     setText(newText);
-    if (searchHistory.length > 0) {
+    if (newText.trim().length > 0 && searchHistory.length > 0) {
       setShowSearchHistory(true);
+    } else {
+      setShowSearchHistory(false);
     }
   };
 
@@ -330,7 +328,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       setText('');
       setImages([]);
       setLocation(null);
-      setShowSearchHistory(false);
       Keyboard.dismiss();
     } catch (error) {
       console.error('Error creating recall:', error);
@@ -352,99 +349,62 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     Keyboard.dismiss();
   };
 
-  const toggleSearchHistory = () => {
-    setShowSearchHistory(!showSearchHistory);
-  };
-
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
+        {/* Search History - Shows above search text when typing */}
+        {showSearchHistory && searchHistory.length > 0 && text.trim().length > 0 && (
+          <Animated.View 
+            entering={FadeIn.duration(200)} 
+            exiting={FadeOut.duration(200)}
+            style={styles.searchHistoryContainer}
+          >
+            <View style={styles.searchHistoryHeader}>
+              <Text style={styles.searchHistoryTitle}>Recent Searches</Text>
+              <Pressable onPress={clearSearchHistory} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.clearHistoryText}>Clear</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={styles.searchHistoryScroll} showsVerticalScrollIndicator={false}>
+              {searchHistory.map((item, index) => (
+                <Pressable
+                  key={item.id}
+                  style={styles.searchHistoryItem}
+                  onPress={() => handleHistoryItemPress(item.search_text)}
+                  hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+                >
+                  <IconSymbol name="clock.fill" size={16} color={colors.textSecondary} />
+                  <Text style={styles.searchHistoryItemText} numberOfLines={1}>
+                    {item.search_text}
+                  </Text>
+                  <IconSymbol name="arrow.up.left" size={14} color={colors.textTertiary} />
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Animated.View>
+        )}
+
+        {/* Search Text Display - Shows above the component when typing */}
+        {text.trim().length > 0 && (
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(300)}>
+            <Pressable
+              style={styles.searchTextContainer}
+              onPress={() => handleSearchPress()}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <View style={styles.searchTextContent}>
+                <IconSymbol name="magnifyingglass" size={18} color={colors.primary} />
+                <Text style={styles.searchText} numberOfLines={1}>
+                  {text.trim()}
+                </Text>
+              </View>
+              <IconSymbol name="arrow.right.circle.fill" size={24} color={colors.primary} />
+            </Pressable>
+          </Animated.View>
+        )}
+
         {/* Main Input Container with Blur Border */}
         <View style={styles.containerWrapper}>
-          {/* Search History - Inside the container, above search text */}
-          {showSearchHistory && searchHistory.length > 0 && (
-            <Animated.View 
-              entering={FadeIn.duration(200)} 
-              exiting={FadeOut.duration(200)}
-              style={styles.searchHistoryContainer}
-            >
-              <View style={styles.searchHistoryHeader}>
-                <Text style={styles.searchHistoryTitle}>Recent Searches</Text>
-                <View style={styles.searchHistoryHeaderActions}>
-                  <Pressable onPress={clearSearchHistory} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Text style={styles.clearHistoryText}>Clear</Text>
-                  </Pressable>
-                  <Pressable 
-                    onPress={toggleSearchHistory} 
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    style={styles.collapseButton}
-                  >
-                    <IconSymbol 
-                      name="chevron.down" 
-                      size={16} 
-                      color={colors.primary} 
-                    />
-                  </Pressable>
-                </View>
-              </View>
-              <ScrollView style={styles.searchHistoryScroll} showsVerticalScrollIndicator={false}>
-                {searchHistory.map((item, index) => (
-                  <Pressable
-                    key={item.id}
-                    style={styles.searchHistoryItem}
-                    onPress={() => handleHistoryItemPress(item.search_text)}
-                    hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-                  >
-                    <IconSymbol name="clock.fill" size={16} color={colors.textSecondary} />
-                    <Text style={styles.searchHistoryItemText} numberOfLines={1}>
-                      {item.search_text}
-                    </Text>
-                    <IconSymbol name="arrow.up.left" size={14} color={colors.textTertiary} />
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </Animated.View>
-          )}
-
-          {/* Collapsed Search History Indicator */}
-          {!showSearchHistory && searchHistory.length > 0 && (
-            <Animated.View 
-              entering={FadeIn.duration(200)} 
-              exiting={FadeOut.duration(200)}
-            >
-              <Pressable
-                style={styles.collapsedHistoryIndicator}
-                onPress={toggleSearchHistory}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <IconSymbol name="clock.fill" size={16} color={colors.textSecondary} />
-                <Text style={styles.collapsedHistoryText}>
-                  {searchHistory.length} recent {searchHistory.length === 1 ? 'search' : 'searches'}
-                </Text>
-                <IconSymbol name="chevron.up" size={16} color={colors.primary} />
-              </Pressable>
-            </Animated.View>
-          )}
-
-          {/* Search Text Display - Shows when typing */}
-          {text.trim().length > 0 && (
-            <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(300)}>
-              <Pressable
-                style={styles.searchTextContainer}
-                onPress={() => handleSearchPress()}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <View style={styles.searchTextContent}>
-                  <IconSymbol name="magnifyingglass" size={18} color={colors.primary} />
-                  <Text style={styles.searchText} numberOfLines={1}>
-                    {text.trim()}
-                  </Text>
-                </View>
-                <IconSymbol name="arrow.right.circle.fill" size={24} color={colors.primary} />
-              </Pressable>
-            </Animated.View>
-          )}
-
           <View style={styles.borderBlur}>
             <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
           </View>
@@ -492,9 +452,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 onFocus={handleTextInputFocus}
                 multiline
                 maxLength={1000}
-                returnKeyType="done"
-                blurOnSubmit={true}
-                enablesReturnKeyAutomatically={true}
               />
 
               {/* Button Row */}
@@ -508,23 +465,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 </Pressable>
 
                 <View style={styles.spacer} />
-
-                {/* Keyboard Dismiss Button - Only show when keyboard is visible */}
-                {isKeyboardVisible && (
-                  <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(200)}>
-                    <Pressable
-                      style={styles.keyboardDismissButton}
-                      onPress={dismissKeyboard}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <IconSymbol
-                        name="keyboard.chevron.compact.down"
-                        size={24}
-                        color={colors.text}
-                      />
-                    </Pressable>
-                  </Animated.View>
-                )}
 
                 <Pressable
                   style={styles.micButton}
@@ -647,7 +587,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 12,
     marginBottom: 8,
-    maxHeight: 220,
+    marginHorizontal: 16,
+    maxHeight: 200,
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
@@ -662,11 +603,6 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     backgroundColor: colors.card,
   },
-  searchHistoryHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
   searchHistoryTitle: {
     fontSize: 14,
     fontWeight: '600',
@@ -677,11 +613,8 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
   },
-  collapseButton: {
-    padding: 4,
-  },
   searchHistoryScroll: {
-    maxHeight: 170,
+    maxHeight: 150,
   },
   searchHistoryItem: {
     flexDirection: 'row',
@@ -698,24 +631,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
   },
-  collapsedHistoryIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  collapsedHistoryText: {
-    flex: 1,
-    fontSize: 14,
-    color: colors.textSecondary,
-    fontWeight: '500',
-  },
   searchTextContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -725,6 +640,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     marginBottom: 8,
+    marginHorizontal: 16,
     borderWidth: 1,
     borderColor: colors.primary,
   },
@@ -746,6 +662,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 6,
     gap: 6,
+    // Reduced by 15%: 108 * 0.85 = 91.8
     minHeight: 80,
   },
   locationChip: {
@@ -802,9 +719,6 @@ const styles = StyleSheet.create({
   spacer: {
     flex: 1,
   },
-  keyboardDismissButton: {
-    padding: 4,
-  },
   micButton: {
     padding: 4,
   },
@@ -837,6 +751,7 @@ const styles = StyleSheet.create({
     right: 5,
     backgroundColor: '#323232',
     borderRadius: 24,
+    //borderTopRightRadius: 24,
     padding: 24,
     paddingBottom: 40,
   },
