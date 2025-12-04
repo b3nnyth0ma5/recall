@@ -436,7 +436,7 @@ export function useNotes() {
     }
 
     try {
-      console.log('Deleting recall from Supabase:', noteId);
+      console.log('[useNotes] Deleting recall from Supabase:', noteId);
       setIsDeletingNote(true);
       
       // Clear caches for this recall
@@ -449,14 +449,36 @@ export function useNotes() {
         .select('id')
         .eq('recall_id', noteId);
 
-      // Clear image cache
+      // Delete images WITHOUT triggering category matching
+      // We pass a flag to indicate this is part of a recall deletion
       if (imagesData && imagesData.length > 0) {
+        console.log(`[useNotes] Deleting ${imagesData.length} images for recall ${noteId}`);
         for (const img of imagesData) {
           imageCache.remove(img.id);
-          await deleteImageRecord(img.id);
+          
+          // Delete image from CDN and database
+          // Note: We're NOT calling deleteImageRecord here because it triggers category matching
+          // Instead, we'll delete directly
+          const { data: imageData } = await supabase
+            .from('recall_images')
+            .select('cdn_url')
+            .eq('id', img.id)
+            .single();
+
+          if (imageData?.cdn_url) {
+            const { deleteImageFromCloudflare } = await import('@/utils/cloudflareCDN');
+            await deleteImageFromCloudflare(imageData.cdn_url);
+          }
+
+          // Delete from database without triggering category matching
+          await supabase
+            .from('recall_images')
+            .delete()
+            .eq('id', img.id);
         }
       }
 
+      // Delete the recall itself
       const { error } = await supabase
         .from('recalls')
         .delete()
@@ -464,15 +486,15 @@ export function useNotes() {
         .eq('user_id', user.id);
 
       if (error) {
-        console.error('Error deleting recall:', error);
+        console.error('[useNotes] Error deleting recall:', error);
         throw error;
       }
 
-      console.log('Recall deleted successfully');
+      console.log('[useNotes] Recall deleted successfully - category matching NOT triggered');
       
       await refreshNotes();
     } catch (error) {
-      console.error('Error deleting recall:', error);
+      console.error('[useNotes] Error deleting recall:', error);
       throw error;
     } finally {
       setIsDeletingNote(false);

@@ -65,7 +65,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
         setKeyboardHeight(e.endCoordinates.height);
-        translateY.value = withTiming(-e.endCoordinates.height, { duration: 250 });
+        // Adjust translateY to ensure component is fully visible above keyboard
+        // Add extra 20px padding to ensure nothing is cut off
+        translateY.value = withTiming(-(e.endCoordinates.height + 20), { duration: 250 });
       }
     );
 
@@ -333,7 +335,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
               <TextInput
                 ref={textInputRef}
                 style={styles.textInput}
-                placeholder="What do you want to Recall..."
+                placeholder="Recall or search..."
                 placeholderTextColor={colors.textTertiary}
                 value={text}
                 onChangeText={setText}
@@ -450,8 +452,7 @@ const styles = StyleSheet.create({
   },
   containerWrapper: {
     position: 'relative',
-    marginHorizontal: 26, // Increased from 20 to reduce width by ~5%
-    marginBottom: 20,
+    marginHorizontal: 16,
   },
   borderBlur: {
     position: 'absolute',
@@ -468,18 +469,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.primary,
     overflow: 'hidden',
   },
   searchTextContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.card,
+    backgroundColor: '#323232',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    marginBottom: 10,
+    marginBottom: 8,
     marginHorizontal: 16,
     borderWidth: 1,
     borderColor: colors.primary,
@@ -496,13 +497,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   inputContainer: {
-    backgroundColor: colors.card,
+    backgroundColor: '#333333',
     borderRadius: 20,
-    paddingTop: 16,
-    paddingHorizontal: 16,
-    paddingBottom: 14.4, // Reduced from 16 by 10% (16 * 0.9 = 14.4)
-    gap: 12,
-    minHeight: 108, // Reduced from 120 by 10% (120 * 0.9 = 108)
+    paddingTop: 10,
+    paddingHorizontal: 12,
+    paddingBottom: 6,
+    gap: 6,
+    // Reduced by 15%: 108 * 0.85 = 91.8
+    minHeight: 92,
   },
   locationChip: {
     flexDirection: 'row',
@@ -588,7 +590,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: colors.card,
+    backgroundColor: '#323232',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
