@@ -325,7 +325,7 @@ export default function HomeScreen() {
         }}
       />
 
-      {/* Main Content ScrollView - Category Carousel is now inside and scrolls with content */}
+      {/* Main Content ScrollView - Note cards scroll underneath the floating component */}
       <ScrollView
         ref={scrollViewRef}
         style={styles.scrollView}
@@ -387,7 +387,7 @@ export default function HomeScreen() {
         )}
       </ScrollView>
 
-      {/* Combined Search/Add Component - Now at bottom of screen */}
+      {/* Combined Search/Add Component - Floating at bottom of screen */}
       {combinedAddSearchEnabled && user && !loadingPreferences && (
         <CombinedSearchAdd
           onCreateRecall={handleCreateRecallFromCombined}
@@ -466,7 +466,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   scrollContentWithCombined: {
-    paddingBottom: 200,
+    paddingBottom: 250,
   },
   categoryCarouselContainer: {
     paddingTop: 8,
