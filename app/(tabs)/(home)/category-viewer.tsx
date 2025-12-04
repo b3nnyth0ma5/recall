@@ -11,6 +11,7 @@ import { Note } from '@/types/Note';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { getImageDataUrl } from '@/utils/supabase';
+import { useNotes } from '@/hooks/useNotes';
 
 interface Category {
   id: string;
@@ -24,6 +25,7 @@ export default function CategoryViewerScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
+  const { getCachedNote } = useNotes();
   const [category, setCategory] = useState<Category | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,146 +36,147 @@ export default function CategoryViewerScreen() {
   const [editImage, setEditImage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
+  
+  // Cache for people data to avoid redundant queries
+  const peopleCache = useRef<Map<string, any[]>>(new Map());
+  // Cache for image data to avoid redundant queries
+  const imageCache = useRef<Map<string, string>>(new Map());
 
-  // Optimized category and recalls loading with batch queries
-  const loadCategoryAndRecalls = useCallback(async () => {
-    if (!id || !user) {
-      console.log('[CategoryViewer] No category ID or user');
-      setLoading(false);
-      return;
+  const ITEMS_PER_PAGE = 10;
+
+  // Optimized helper function to load people for recalls in batch
+  const loadPeopleForRecalls = useCallback(async (recallIds: string[]) => {
+    if (!recallIds || recallIds.length === 0) {
+      return {};
     }
 
     try {
-      console.log('[CategoryViewer] Loading category and recalls for:', id);
+      // Check cache first
+      const uncachedIds = recallIds.filter(id => !peopleCache.current.has(id));
       
-      // Fetch category details
-      const { data: categoryData, error: categoryError } = await supabase
-        .from('recollection_categories')
-        .select('*')
-        .eq('id', id)
-        .eq('user_id', user.id)
-        .single();
-
-      if (categoryError) {
-        console.error('[CategoryViewer] Error loading category:', categoryError);
-        Alert.alert('Error', 'Failed to load category');
-        router.back();
-        return;
+      if (uncachedIds.length === 0) {
+        // All data is cached
+        const result: { [key: string]: any[] } = {};
+        recallIds.forEach(id => {
+          result[id] = peopleCache.current.get(id) || [];
+        });
+        return result;
       }
 
-      setCategory(categoryData);
-      console.log('[CategoryViewer] Category loaded:', categoryData.category_name);
-
-      // Fetch recall IDs that match this category using optimized composite index
-      const { data: recollectionsData, error: recollectionsError } = await supabase
-        .from('recollections')
-        .select('recall_id, match_score')
-        .eq('category_id', id)
-        .eq('user_id', user.id)
-        .order('match_score', { ascending: false });
-
-      if (recollectionsError) {
-        console.error('[CategoryViewer] Error fetching recollections:', recollectionsError);
-        setNotes([]);
-        return;
-      }
-
-      if (!recollectionsData || recollectionsData.length === 0) {
-        console.log('[CategoryViewer] No recalls found for this category');
-        setNotes([]);
-        return;
-      }
-
-      console.log(`[CategoryViewer] Found ${recollectionsData.length} recollections`);
-
-      const recallIds = recollectionsData.map(r => r.recall_id);
-      
-      // Create a map of recall_id to match_score for sorting
-      const matchScoreMap = new Map(
-        recollectionsData.map(r => [r.recall_id, r.match_score])
-      );
-
-      // Fetch the actual recalls
-      const { data: recallsData, error: recallsError } = await supabase
-        .from('recalls')
-        .select('*')
-        .in('id', recallIds)
-        .eq('user_id', user.id);
-
-      if (recallsError) {
-        console.error('[CategoryViewer] Error fetching recalls:', recallsError);
-        setNotes([]);
-        return;
-      }
-
-      // Batch load all images for all recalls
-      const { data: allImagesData, error: allImagesError } = await supabase
-        .from('recall_images')
-        .select('id, recall_id, cdn_url, ocr_text, image_explanation')
-        .in('recall_id', recallIds)
-        .order('created_at', { ascending: true });
-
-      if (allImagesError) {
-        console.error('[CategoryViewer] Error loading images:', allImagesError);
-      }
-
-      // Group images by recall_id
-      const imagesByRecallId = new Map<string, any[]>();
-      (allImagesData || []).forEach(img => {
-        if (!imagesByRecallId.has(img.recall_id)) {
-          imagesByRecallId.set(img.recall_id, []);
-        }
-        imagesByRecallId.get(img.recall_id)!.push(img);
-      });
-
-      // Batch load all people for all recalls
-      const { data: allRecallPeopleData, error: allRecallPeopleError } = await supabase
+      // Fetch only uncached data with optimized query using composite index
+      const { data: recallPeopleData, error: recallPeopleError } = await supabase
         .from('recall_people')
         .select('recall_id, person_id, persons!inner(id, person_name)')
-        .in('recall_id', recallIds);
+        .in('recall_id', uncachedIds);
 
-      if (allRecallPeopleError) {
-        console.error('[CategoryViewer] Error loading recall people:', allRecallPeopleError);
+      if (recallPeopleError) {
+        console.error('[CategoryViewer] Error loading recall_people:', recallPeopleError);
+        return {};
       }
 
       // Group people by recall_id
-      const peopleByRecallId = new Map<string, any[]>();
-      (allRecallPeopleData || []).forEach((rp: any) => {
-        if (!peopleByRecallId.has(rp.recall_id)) {
-          peopleByRecallId.set(rp.recall_id, []);
+      const peopleByRecallId: { [key: string]: any[] } = {};
+      
+      (recallPeopleData || []).forEach((rp: any) => {
+        if (!peopleByRecallId[rp.recall_id]) {
+          peopleByRecallId[rp.recall_id] = [];
         }
+        
         if (rp.persons) {
-          peopleByRecallId.get(rp.recall_id)!.push({
+          peopleByRecallId[rp.recall_id].push({
             id: rp.persons.id,
             person_name: rp.persons.person_name,
           });
         }
       });
 
-      // Transform recalls to Note format with optimized image loading
-      const transformedNotes: Note[] = await Promise.all(
-        (recallsData || []).map(async (recall: any) => {
+      // Update cache
+      uncachedIds.forEach(id => {
+        peopleCache.current.set(id, peopleByRecallId[id] || []);
+      });
+
+      // Merge cached and new data
+      const result: { [key: string]: any[] } = {};
+      recallIds.forEach(id => {
+        result[id] = peopleCache.current.get(id) || [];
+      });
+
+      console.log(`[CategoryViewer] Loaded people for ${Object.keys(peopleByRecallId).length} recalls (${uncachedIds.length} from DB, ${recallIds.length - uncachedIds.length} from cache)`);
+      return result;
+    } catch (error) {
+      console.error('[CategoryViewer] Error loading people for recalls:', error);
+      return {};
+    }
+  }, []);
+
+  // Optimized image loading with lazy loading and caching
+  const loadImagesForRecalls = useCallback(async (recalls: any[]) => {
+    // First, load people for all recalls in one batch
+    const recallIds = recalls.map(r => r.id);
+    const peopleByRecallId = await loadPeopleForRecalls(recallIds);
+
+    // Batch fetch all images for all recalls in one query
+    const { data: allImagesData, error: allImagesError } = await supabase
+      .from('recall_images')
+      .select('id, recall_id, cdn_url')
+      .in('recall_id', recallIds)
+      .order('created_at', { ascending: true });
+
+    if (allImagesError) {
+      console.error('[CategoryViewer] Error fetching images:', allImagesError);
+    }
+
+    // Group images by recall_id
+    const imagesByRecallId = new Map<string, any[]>();
+    (allImagesData || []).forEach(img => {
+      if (!imagesByRecallId.has(img.recall_id)) {
+        imagesByRecallId.set(img.recall_id, []);
+      }
+      imagesByRecallId.get(img.recall_id)!.push(img);
+    });
+
+    // Process recalls with their images
+    const processedNotes = await Promise.all(
+      recalls.map(async (recall) => {
+        try {
           const recallImages = imagesByRecallId.get(recall.id) || [];
           
-          // Only load first image immediately for better performance
+          // Load first TWO images immediately for better UX (same as landing page)
           const imageResults = await Promise.all(
-            recallImages.map(async (img: any, index: number) => {
+            recallImages.map(async (img, index) => {
               try {
-                // Load only first image, others will be lazy loaded
-                if (index === 0 && img.cdn_url) {
-                  return { url: img.cdn_url, id: img.id };
-                } else if (index === 0) {
+                // Load first two images, others will be lazy loaded
+                if (index < 2) {
+                  // Check cache first
+                  if (imageCache.current.has(img.id)) {
+                    return { url: imageCache.current.get(img.id)!, id: img.id };
+                  }
+                  
+                  // Prefer CDN URL if available (much faster)
+                  if (img.cdn_url) {
+                    imageCache.current.set(img.id, img.cdn_url);
+                    return { url: img.cdn_url, id: img.id };
+                  }
+                  
+                  // Fallback to base64 data
                   const dataUrl = await getImageDataUrl(img.id);
-                  return { url: dataUrl || '', id: img.id };
+                  if (dataUrl) {
+                    imageCache.current.set(img.id, dataUrl);
+                    return { url: dataUrl, id: img.id };
+                  }
+                  return { url: '', id: img.id };
                 } else {
                   // Return placeholder for lazy loading
                   return { url: '', id: img.id };
                 }
               } catch (error) {
-                console.error(`Error processing image ${img.id}:`, error);
+                console.error(`[CategoryViewer] Exception processing image ${img.id}:`, error);
                 return { url: '', id: img.id };
               }
             })
@@ -181,7 +184,7 @@ export default function CategoryViewerScreen() {
 
           const validImageUrls = imageResults.map(result => result.url);
           const imageIds = imageResults.map(result => result.id);
-          const people = peopleByRecallId.get(recall.id) || [];
+          const people = peopleByRecallId[recall.id] || [];
           
           return {
             id: recall.id,
@@ -196,34 +199,221 @@ export default function CategoryViewerScreen() {
             imageIds: imageIds,
             urls: [],
             people: people,
-            match_score: matchScoreMap.get(recall.id) || 0,
+            match_score: recall.match_score || 0,
           };
-        })
+        } catch (error) {
+          console.error(`[CategoryViewer] Exception processing recall ${recall.id}:`, error);
+          return {
+            id: recall.id,
+            text: recall.text || '',
+            created_at: recall.created_at,
+            updated_at: recall.updated_at,
+            location: recall.location,
+            latitude: recall.latitude,
+            longitude: recall.longitude,
+            location_primary_type: recall.location_primary_type,
+            images: [],
+            imageIds: [],
+            urls: [],
+            people: [],
+            match_score: recall.match_score || 0,
+          };
+        }
+      })
+    );
+
+    return processedNotes;
+  }, [loadPeopleForRecalls]);
+
+  // Optimized category and recalls loading with pagination and cache usage
+  const loadCategoryAndRecalls = useCallback(async (pageNum: number = 1, append: boolean = false) => {
+    if (!id || !user) {
+      console.log('[CategoryViewer] No category ID or user');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      if (!append) {
+        setLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
+      
+      console.log(`[CategoryViewer] Loading category and recalls page ${pageNum} for:`, id);
+      
+      // Fetch category details (only on first load)
+      if (pageNum === 1) {
+        const { data: categoryData, error: categoryError } = await supabase
+          .from('recollection_categories')
+          .select('*')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .single();
+
+        if (categoryError) {
+          console.error('[CategoryViewer] Error loading category:', categoryError);
+          Alert.alert('Error', 'Failed to load category');
+          router.back();
+          return;
+        }
+
+        setCategory(categoryData);
+        console.log('[CategoryViewer] Category loaded:', categoryData.category_name);
+      }
+
+      // Fetch recall IDs that match this category using optimized composite index with pagination
+      const from = (pageNum - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
+      const { data: recollectionsData, error: recollectionsError } = await supabase
+        .from('recollections')
+        .select('recall_id, match_score')
+        .eq('category_id', id)
+        .eq('user_id', user.id)
+        .order('match_score', { ascending: false })
+        .range(from, to);
+
+      if (recollectionsError) {
+        console.error('[CategoryViewer] Error fetching recollections:', recollectionsError);
+        if (!append) {
+          setNotes([]);
+        }
+        return;
+      }
+
+      if (!recollectionsData || recollectionsData.length === 0) {
+        console.log('[CategoryViewer] No recalls found for this page');
+        setHasMore(false);
+        if (!append) {
+          setNotes([]);
+        }
+        return;
+      }
+
+      if (recollectionsData.length < ITEMS_PER_PAGE) {
+        setHasMore(false);
+      }
+
+      console.log(`[CategoryViewer] Found ${recollectionsData.length} recollections for page ${pageNum}`);
+
+      const recallIds = recollectionsData.map(r => r.recall_id);
+      
+      // Create a map of recall_id to match_score for sorting
+      const matchScoreMap = new Map(
+        recollectionsData.map(r => [r.recall_id, r.match_score])
       );
+
+      // Check cache first for recalls (from landing page)
+      const cachedNotes: Note[] = [];
+      const uncachedRecallIds: string[] = [];
+
+      recallIds.forEach(recallId => {
+        const cachedNote = getCachedNote(recallId);
+        if (cachedNote) {
+          console.log(`[CategoryViewer] Using cached note for ${recallId}`);
+          cachedNotes.push({
+            ...cachedNote,
+            match_score: matchScoreMap.get(recallId) || 0,
+          });
+        } else {
+          uncachedRecallIds.push(recallId);
+        }
+      });
+
+      let transformedNotes: Note[] = [...cachedNotes];
+
+      // Fetch only uncached recalls
+      if (uncachedRecallIds.length > 0) {
+        console.log(`[CategoryViewer] Fetching ${uncachedRecallIds.length} uncached recalls from DB`);
+        
+        const { data: recallsData, error: recallsError } = await supabase
+          .from('recalls')
+          .select('*')
+          .in('id', uncachedRecallIds)
+          .eq('user_id', user.id);
+
+        if (recallsError) {
+          console.error('[CategoryViewer] Error fetching recalls:', recallsError);
+        } else if (recallsData) {
+          // Add match_score to recalls
+          const recallsWithScore = recallsData.map(recall => ({
+            ...recall,
+            match_score: matchScoreMap.get(recall.id) || 0,
+          }));
+
+          // Optimized image and people loading with lazy loading
+          const processedNotes = await loadImagesForRecalls(recallsWithScore);
+          transformedNotes = [...transformedNotes, ...processedNotes];
+        }
+      }
 
       // Sort by match_score
       transformedNotes.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
 
-      console.log(`[CategoryViewer] Loaded ${transformedNotes.length} recalls`);
+      console.log(`[CategoryViewer] Loaded ${transformedNotes.length} recalls (${cachedNotes.length} from cache, ${uncachedRecallIds.length} from DB)`);
       
-      setNotes(transformedNotes);
+      if (append) {
+        // Prevent duplicates by filtering out notes that already exist
+        setNotes(prevNotes => {
+          const existingIds = new Set(prevNotes.map(note => note.id));
+          const newUniqueNotes = transformedNotes.filter(note => !existingIds.has(note.id));
+          console.log(`[CategoryViewer] Adding ${newUniqueNotes.length} new unique notes (filtered ${transformedNotes.length - newUniqueNotes.length} duplicates)`);
+          return [...prevNotes, ...newUniqueNotes];
+        });
+      } else {
+        setNotes(transformedNotes);
+      }
     } catch (error) {
       console.error('[CategoryViewer] Error loading data:', error);
       Alert.alert('Error', 'Failed to load category data');
     } finally {
       setLoading(false);
+      setIsLoadingMore(false);
     }
-  }, [id, user, router]);
+  }, [id, user, router, getCachedNote, loadImagesForRecalls]);
 
   useEffect(() => {
-    loadCategoryAndRecalls();
+    loadCategoryAndRecalls(1, false);
+    setPage(1);
+    setHasMore(true);
   }, [loadCategoryAndRecalls]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadCategoryAndRecalls();
+    // Clear caches on refresh
+    peopleCache.current.clear();
+    imageCache.current.clear();
+    setPage(1);
+    setHasMore(true);
+    await loadCategoryAndRecalls(1, false);
     setRefreshing(false);
   };
+
+  const loadMoreRecalls = useCallback(() => {
+    if (!isLoadingMore && hasMore && !loading) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      loadCategoryAndRecalls(nextPage, true);
+    }
+  }, [page, hasMore, isLoadingMore, loading, loadCategoryAndRecalls]);
+
+  const handleScroll = useCallback((event: any) => {
+    try {
+      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+
+      // Load more recalls when near bottom
+      const paddingToBottom = 20;
+      const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+
+      if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
+        console.log('[CategoryViewer] Loading more recalls...');
+        loadMoreRecalls();
+      }
+    } catch (error) {
+      console.error('[CategoryViewer] Error handling scroll:', error);
+    }
+  }, [hasMore, isLoadingMore, loading, loadMoreRecalls]);
 
   const handleBack = useCallback(() => {
     router.back();
@@ -353,7 +543,7 @@ export default function CategoryViewerScreen() {
       }
 
       // Reload category data
-      await loadCategoryAndRecalls();
+      await loadCategoryAndRecalls(1, false);
       setShowEditModal(false);
     } catch (error) {
       console.error('Error updating category:', error);
@@ -585,6 +775,8 @@ export default function CategoryViewerScreen() {
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
+        onScroll={handleScroll}
+        scrollEventThrottle={400}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -653,6 +845,19 @@ export default function CategoryViewerScreen() {
                 onPress={() => handleNotePress(note.id)}
               />
             ))}
+            
+            {isLoadingMore && (
+              <View style={styles.loadingMoreContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.loadingMoreText}>Loading more...</Text>
+              </View>
+            )}
+            
+            {!hasMore && notes.length > 0 && (
+              <View style={styles.endContainer}>
+                <Text style={styles.endText}>You&apos;ve reached the end</Text>
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
@@ -899,6 +1104,26 @@ const styles = StyleSheet.create({
   notesContainer: {
     paddingHorizontal: 16,
     paddingTop: 16,
+  },
+  loadingMoreContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 20,
+    gap: 12,
+  },
+  loadingMoreText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  endContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  endText: {
+    fontSize: 14,
+    color: colors.textTertiary,
+    fontStyle: 'italic',
   },
   modalContainer: {
     flex: 1,

@@ -27,7 +27,7 @@ export function useNotes() {
   const [searchLocationName, setSearchLocationName] = useState<string | undefined>(undefined);
   const { user } = useAuth();
 
-  const ITEMS_PER_PAGE = 10;
+  const ITEMS_PER_PAGE = 7;
   
   // Cache for people data to avoid redundant queries
   const peopleCache = useRef<Map<string, any[]>>(new Map());
