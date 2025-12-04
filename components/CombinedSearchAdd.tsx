@@ -160,6 +160,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
     console.log('[CombinedSearchAdd] Search button pressed with query:', searchQuery);
     
+    // Dismiss keyboard first before navigation
+    Keyboard.dismiss();
+    
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
