@@ -47,14 +47,10 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
   const [isLazyLoading, setIsLazyLoading] = useState(false);
   const loadingQueueRef = useRef<Set<number>>(new Set());
 
-  // Show skeleton if loading
-  if (loading) {
-    return <NoteCardSkeleton />;
-  }
-
   // Initialize with first TWO images for better performance
+  // MOVED BEFORE THE CONDITIONAL RETURN TO FIX HOOKS RULE
   useEffect(() => {
-    if (note.images && note.images.length > 0) {
+    if (!loading && note.images && note.images.length > 0) {
       // Load first two images immediately if available
       const imagesToLoad = note.images.length > 1 ? note.images.slice(0, 2) : [note.images[0]];
       setLazyLoadedImages(imagesToLoad);
@@ -62,7 +58,12 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
       setCurrentImageIndex(0);
       console.log(`[NoteCard] Initialized with first ${imagesToLoad.length} image(s) for note ${note.id}`);
     }
-  }, [note.id, note.images]);
+  }, [note.id, note.images, loading]);
+
+  // Show skeleton if loading
+  if (loading) {
+    return <NoteCardSkeleton />;
+  }
 
   // Optimized lazy load with queue management
   const lazyLoadImage = async (index: number) => {

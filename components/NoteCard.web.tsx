@@ -44,23 +44,26 @@ export function NoteCard({ note, onPress, onImagePress, loading = false }: NoteC
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
 
+  // Initialize with first 2 images if note has more than 1 image
+  // MOVED BEFORE THE CONDITIONAL RETURN TO FIX HOOKS RULE
+  useEffect(() => {
+    if (!loading) {
+      if (note.images && note.images.length > 1) {
+        // Set first 2 images immediately
+        const initialImages = note.images.slice(0, 2);
+        setLazyLoadedImages(initialImages);
+        console.log(`[NoteCard] Initialized with first ${initialImages.length} images for note ${note.id}`);
+      } else if (note.images && note.images.length === 1) {
+        // If only 1 image, load it immediately
+        setLazyLoadedImages(note.images);
+      }
+    }
+  }, [note.id, note.images, loading]);
+
   // Show skeleton if loading
   if (loading) {
     return <NoteCardSkeleton />;
   }
-
-  // Initialize with first 2 images if note has more than 1 image
-  useEffect(() => {
-    if (note.images && note.images.length > 1) {
-      // Set first 2 images immediately
-      const initialImages = note.images.slice(0, 2);
-      setLazyLoadedImages(initialImages);
-      console.log(`[NoteCard] Initialized with first ${initialImages.length} images for note ${note.id}`);
-    } else if (note.images && note.images.length === 1) {
-      // If only 1 image, load it immediately
-      setLazyLoadedImages(note.images);
-    }
-  }, [note.id, note.images]);
 
   // Lazy load remaining images when user swipes to them
   const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {

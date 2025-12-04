@@ -5,53 +5,34 @@ import { colors } from '@/styles/commonStyles';
 import { SkeletonLoader } from './SkeletonLoader';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_PADDING = 8;
-const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 5);
+const CARD_PADDING = 16;
+const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 4);
 const IMAGE_HEIGHT = IMAGE_WIDTH * 1.25;
 
 export function NoteCardSkeleton() {
   return (
     <View style={styles.card}>
       <View style={styles.cardContent}>
-        {/* People Avatars Skeleton - Top Right Edge */}
+        {/* People Avatars Skeleton - Top Right Corner */}
         <View style={styles.peopleAvatarsContainer}>
           <View style={styles.avatarsRow}>
             <SkeletonLoader 
-              width={36} 
-              height={36} 
-              borderRadius={18}
+              width={28} 
+              height={28} 
+              borderRadius={14}
               variant="wave"
             />
             <SkeletonLoader 
-              width={36} 
-              height={36} 
-              borderRadius={18}
+              width={28} 
+              height={28} 
+              borderRadius={14}
               variant="wave"
               style={styles.avatarOverlap}
             />
           </View>
         </View>
 
-        {/* Image Skeleton - Displayed FIRST (matching NoteCard layout) */}
-        <View style={styles.imagesContainer}>
-          <SkeletonLoader 
-            width={IMAGE_WIDTH} 
-            height={IMAGE_HEIGHT} 
-            borderRadius={12}
-            variant="wave"
-          />
-          {/* Image counter skeleton */}
-          <View style={styles.imageCounter}>
-            <SkeletonLoader 
-              width={40} 
-              height={20} 
-              borderRadius={10}
-              variant="wave"
-            />
-          </View>
-        </View>
-
-        {/* Text Content Skeleton - Displayed AFTER images */}
+        {/* Text Content Skeleton - Displayed FIRST on web */}
         <View style={styles.textContainer}>
           {/* First line - 90% width */}
           <SkeletonLoader 
@@ -77,6 +58,25 @@ export function NoteCardSkeleton() {
             variant="wave"
             style={styles.textLine}
           />
+        </View>
+
+        {/* Image Skeleton - Displayed AFTER text on web */}
+        <View style={styles.imagesContainer}>
+          <SkeletonLoader 
+            width={IMAGE_WIDTH} 
+            height={IMAGE_HEIGHT} 
+            borderRadius={12}
+            variant="wave"
+          />
+          {/* Image counter skeleton */}
+          <View style={styles.imageCounter}>
+            <SkeletonLoader 
+              width={40} 
+              height={20} 
+              borderRadius={10}
+              variant="wave"
+            />
+          </View>
         </View>
 
         {/* Location and Time Container - Bottom section with border */}
@@ -115,49 +115,43 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 16,
     marginBottom: 16,
-    overflow: 'visible',
+    overflow: 'hidden',
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
     elevation: 2,
   },
   cardContent: {
     padding: CARD_PADDING,
     position: 'relative',
-    overflow: 'visible',
-    borderRadius: 16,
   },
   peopleAvatarsContainer: {
     position: 'absolute',
-    top: -10,
-    right: 8,
-    zIndex: 1000,
-    elevation: 10,
+    top: 12,
+    right: 12,
+    zIndex: 10,
   },
   avatarsRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   avatarOverlap: {
-    marginLeft: -8,
+    marginLeft: -10,
+  },
+  textContainer: {
+    marginBottom: 4,
+  },
+  textLine: {
+    marginBottom: 6,
   },
   imagesContainer: {
-    marginBottom: 12,
+    marginTop: 12,
     marginHorizontal: -CARD_PADDING,
     position: 'relative',
-    zIndex: 1,
     paddingHorizontal: CARD_PADDING,
   },
   imageCounter: {
     position: 'absolute',
     bottom: 12,
     right: CARD_PADDING + 12,
-    zIndex: 2,
-  },
-  textContainer: {
-    marginBottom: 4,
-    zIndex: 1,
-  },
-  textLine: {
-    marginBottom: 6,
   },
   locationTimeContainer: {
     flexDirection: 'row',
@@ -168,7 +162,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     gap: 8,
-    zIndex: 1,
   },
   locationWrapper: {
     flexDirection: 'row',
