@@ -154,8 +154,8 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     setShowDrawer(true);
   };
 
-  const handleSearchPress = async (query?: string) => {
-    const searchQuery = query || text.trim();
+  const handleSearchPress = async () => {
+    const searchQuery = text.trim();
     if (searchQuery) {
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -222,21 +222,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     router.push('/location-search');
   };
 
-  const handleMicrophonePress = async () => {
-    if (Platform.OS === 'web') {
-      Alert.alert('Not Supported', 'Speech-to-text is not supported on web');
-      return;
-    }
-
-    // Note: React Native doesn't have built-in speech-to-text
-    // You would need to use a library like @react-native-voice/voice
-    // or expo-speech (for text-to-speech, not speech-to-text)
-    Alert.alert(
-      'Speech-to-Text',
-      'Speech-to-text functionality requires additional setup. Please type your text for now.'
-    );
-  };
-
   const handleCreateRecall = async () => {
     if (!text.trim() && images.length === 0) {
       Alert.alert('Empty Recall', 'Please add some text or images');
@@ -285,29 +270,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
         {/* Main Input Container with Blur Border */}
         <View style={styles.containerWrapper}>
-          {/* Search Text Display - Shows when typing - NOW WITH PROPER Z-INDEX */}
-          {text.trim().length > 0 && (
-            <Animated.View 
-              entering={FadeIn.duration(300)} 
-              exiting={FadeOut.duration(300)}
-              style={styles.searchTextWrapper}
-            >
-              <Pressable
-                style={styles.searchTextContainer}
-                onPress={() => handleSearchPress()}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <View style={styles.searchTextContent}>
-                  <IconSymbol name="magnifyingglass" size={18} color={colors.primary} />
-                  <Text style={styles.searchText} numberOfLines={1}>
-                    {text.trim()}
-                  </Text>
-                </View>
-                <IconSymbol name="arrow.right.circle.fill" size={24} color={colors.primary} />
-              </Pressable>
-            </Animated.View>
-          )}
-
           <View style={styles.borderBlur}>
             <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
           </View>
@@ -372,14 +334,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 <View style={styles.spacer} />
 
                 <Pressable
-                  style={styles.micButton}
-                  onPress={handleMicrophonePress}
+                  style={styles.searchButton}
+                  onPress={handleSearchPress}
+                  disabled={!text.trim()}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <IconSymbol
-                    name={isRecording ? "waveform" : "mic.fill"}
+                    name="magnifyingglass"
                     size={24}
-                    color={colors.text}
+                    color={text.trim() ? colors.text : colors.textTertiary}
                   />
                 </Pressable>
 
@@ -471,11 +434,6 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginHorizontal: 16,
   },
-  searchTextWrapper: {
-    zIndex: 2000,
-    elevation: 2000,
-    position: 'relative',
-  },
   borderBlur: {
     position: 'absolute',
     top: -2,
@@ -495,38 +453,6 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     overflow: 'hidden',
     zIndex: 2,
-  },
-  searchTextContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  searchTextContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-  },
-  searchText: {
-    fontSize: 16,
-    color: colors.text,
-    flex: 1,
-    fontWeight: '500',
   },
   inputContainer: {
     backgroundColor: '#333333',
@@ -591,7 +517,7 @@ const styles = StyleSheet.create({
   spacer: {
     flex: 1,
   },
-  micButton: {
+  searchButton: {
     padding: 4,
   },
   submitButton: {
