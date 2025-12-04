@@ -13,6 +13,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { getImageDataUrl } from '@/utils/supabase';
 import { useNotes } from '@/hooks/useNotes';
 import { peopleCache, imageCache, CostCalculator } from '@/utils/memoryCache';
+import { SkeletonLoader } from '@/components/SkeletonLoader';
 
 interface Category {
   id: string;
@@ -673,18 +674,69 @@ export default function CategoryViewerScreen() {
     </View>
   );
 
-  // Render skeleton loaders for initial load
+  // Render skeleton loaders for initial load - NOW INCLUDING ICON AND DESCRIPTION
   const renderSkeletons = () => {
     return (
-      <View style={styles.notesContainer}>
-        {[...Array(3)].map((_, index) => (
-          <NoteCard
-            key={`skeleton-${index}`}
-            note={{} as any}
-            onPress={() => {}}
-            loading={true}
-          />
-        ))}
+      <View style={styles.container}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Category Info Skeleton */}
+          <View style={styles.categoryInfoContainer}>
+            <View style={styles.categoryTopRow}>
+              {/* Category Icon Skeleton */}
+              <SkeletonLoader 
+                width={80} 
+                height={80} 
+                borderRadius={40}
+                variant="wave"
+              />
+              
+              {/* Category Text Skeleton */}
+              <View style={styles.categoryTextContainer}>
+                {/* Description lines */}
+                <View style={styles.descriptionRow}>
+                  <View style={{ flex: 1 }}>
+                    <SkeletonLoader 
+                      width="100%" 
+                      height={16} 
+                      borderRadius={4}
+                      variant="wave"
+                      style={{ marginBottom: 6 }}
+                    />
+                    <SkeletonLoader 
+                      width="80%" 
+                      height={16} 
+                      borderRadius={4}
+                      variant="wave"
+                    />
+                  </View>
+                </View>
+                {/* Recall count skeleton */}
+                <SkeletonLoader 
+                  width={80} 
+                  height={14} 
+                  borderRadius={4}
+                  variant="wave"
+                  style={{ marginTop: 8 }}
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* Note Cards Skeleton */}
+          <View style={styles.notesContainer}>
+            {[...Array(3)].map((_, index) => (
+              <NoteCard
+                key={`skeleton-${index}`}
+                note={{} as any}
+                onPress={() => {}}
+                loading={true}
+              />
+            ))}
+          </View>
+        </ScrollView>
       </View>
     );
   };
@@ -715,12 +767,7 @@ export default function CategoryViewerScreen() {
             ),
           }}
         />
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {renderSkeletons()}
-        </ScrollView>
+        {renderSkeletons()}
       </View>
     );
   }

@@ -16,21 +16,9 @@ export function CategoryCarouselSkeleton() {
         contentContainerStyle={styles.scrollContent}
         scrollEnabled={false}
       >
-        {/* Create Category Skeleton */}
+        {/* Create Category - NO SKELETON (as per requirement) */}
         <View style={[styles.categoryItem, styles.categoryItemFirst]}>
-          <SkeletonLoader 
-            width={CATEGORY_SIZE} 
-            height={CATEGORY_SIZE} 
-            borderRadius={CATEGORY_SIZE / 2}
-            variant="wave"
-          />
-          <SkeletonLoader 
-            width={60} 
-            height={12} 
-            borderRadius={4} 
-            style={styles.categoryNameSkeleton}
-            variant="wave"
-          />
+          {/* Empty space - no skeleton for "new category" */}
         </View>
 
         {/* Category Items Skeleton */}

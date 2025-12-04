@@ -112,10 +112,10 @@ export default function SearchScreen() {
 
   // Show history when not searching and history is loaded
   useEffect(() => {
-    if (!hasSearched && searchHistory.length > 0) {
+    if (!hasSearched && searchHistory.length > 0 && !isLoadingHistory) {
       setShowHistory(true);
     }
-  }, [hasSearched, searchHistory]);
+  }, [hasSearched, searchHistory, isLoadingHistory]);
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
@@ -205,12 +205,17 @@ export default function SearchScreen() {
     return lines.length > 3;
   };
 
-  // Render skeleton loaders before user searches (initial state)
-  const renderInitialSkeletons = () => {
+  // Render skeleton loaders for recent search history
+  const renderHistorySkeletons = () => {
     return (
-      <Animated.View entering={FadeIn.duration(600)} style={styles.notesContainer}>
+      <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
+        <Text style={styles.historyTitle}>Recent Searches</Text>
         {[...Array(3)].map((_, index) => (
-          <NoteCardSkeleton key={`initial-skeleton-${index}`} />
+          <View key={`history-skeleton-${index}`} style={styles.historyItemSkeleton}>
+            <View style={styles.historyIconPlaceholder} />
+            <View style={styles.historyTextPlaceholder} />
+            <View style={styles.historyArrowPlaceholder} />
+          </View>
         ))}
       </Animated.View>
     );
@@ -330,8 +335,10 @@ export default function SearchScreen() {
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Show history when not searching and no search has been performed */}
-        {showHistory && searchHistory.length > 0 ? (
+        {/* Show history with skeleton when loading, or actual history when loaded */}
+        {showHistory && isLoadingHistory ? (
+          renderHistorySkeletons()
+        ) : showHistory && searchHistory.length > 0 ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
             <Text style={styles.historyTitle}>Recent Searches</Text>
             {searchHistory.map((item) => (
@@ -374,8 +381,6 @@ export default function SearchScreen() {
               </View>
             </View>
           </Animated.View>
-        ) : showHistory && isLoadingHistory ? (
-          renderInitialSkeletons()
         ) : isSearching ? (
           // Show progress indicator when search is running
           <SearchProgressIndicator 
@@ -630,6 +635,34 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: colors.text,
+  },
+  historyItemSkeleton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.card,
+    padding: 16 * 1.15,
+    borderRadius: 12,
+    marginBottom: 8,
+    minHeight: 56 * 1.1,
+  },
+  historyIconPlaceholder: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.cardDark,
+  },
+  historyTextPlaceholder: {
+    flex: 1,
+    height: 16,
+    borderRadius: 4,
+    backgroundColor: colors.cardDark,
+  },
+  historyArrowPlaceholder: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.cardDark,
   },
   emptyHistoryContainer: {
     flex: 1,
