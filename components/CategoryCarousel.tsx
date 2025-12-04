@@ -187,7 +187,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
             </View>
           </View>
           <Text style={styles.categoryName} numberOfLines={1}>
-            Create
+            New Category
           </Text>
         </Pressable>
 
@@ -349,8 +349,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   categoryName: {
-    fontSize: 12,
-    color: colors.textSecondary,
+    fontSize: 14,
+     color: colors.text,
+		//color: colors.textSecondary,
     textAlign: 'center',
     maxWidth: CATEGORY_SIZE,
     fontWeight: '500',
