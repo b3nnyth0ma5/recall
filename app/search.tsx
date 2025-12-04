@@ -70,6 +70,19 @@ export default function SearchScreen() {
     };
   }, [loadSearchHistory]);
 
+  // Separate function to execute search after state is set
+  const executeSearchWithQuery = useCallback((queryText: string) => {
+    console.log('Executing search with query:', queryText);
+    setShowHistory(false);
+    setHasSearched(true);
+    setIsAnswerExpanded(false);
+    
+    // Use setTimeout to ensure state updates are processed first
+    setTimeout(() => {
+      searchNotes(queryText, true);
+    }, 0);
+  }, [searchNotes]);
+
   // Handle query parameter from combined search/add component
   useEffect(() => {
     if (params.query && typeof params.query === 'string') {
@@ -79,16 +92,15 @@ export default function SearchScreen() {
       if (hasProcessedQueryRef.current !== queryText) {
         console.log('Processing search query from params:', queryText);
         hasProcessedQueryRef.current = queryText;
-        setSearchQuery(queryText);
-        setShowHistory(false);
-        setHasSearched(true);
-        setIsAnswerExpanded(false);
         
-        // Trigger the search with the query text
-        searchNotes(queryText, true);
+        // Set the search query first
+        setSearchQuery(queryText);
+        
+        // Then execute the search after state is set
+        executeSearchWithQuery(queryText);
       }
     }
-  }, [params.query]);
+  }, [params.query, executeSearchWithQuery]);
 
   // Show history when not searching and history is loaded
   useEffect(() => {
@@ -104,13 +116,8 @@ export default function SearchScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
       
-      console.log('Executing search with query:', searchQuery);
       hasProcessedQueryRef.current = searchQuery;
-      setShowHistory(false);
-      setHasSearched(true);
-      setIsAnswerExpanded(false);
-      // Always use v2 search
-      searchNotes(searchQuery, true);
+      executeSearchWithQuery(searchQuery);
       setTimeout(() => {
         loadSearchHistory();
       }, 500);
@@ -121,11 +128,7 @@ export default function SearchScreen() {
     console.log('Executing search from history:', searchText);
     hasProcessedQueryRef.current = searchText;
     setSearchQuery(searchText);
-    setShowHistory(false);
-    setHasSearched(true);
-    setIsAnswerExpanded(false);
-    // Always use v2 search
-    searchNotes(searchText, true);
+    executeSearchWithQuery(searchText);
   };
 
   const handleNotePress = (noteId: string) => {
