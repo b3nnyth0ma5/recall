@@ -1,17 +1,18 @@
 
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { PersonAvatar } from './PersonAvatar';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
-import { useAuth } from '@/contexts/AuthContext';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { getMultiplePersonRecallCounts } from '@/utils/recallCounter';
+import { PersonAvatar } from './PersonAvatar';
 import { IconSymbol } from './IconSymbol';
+import { PeopleWordCloud } from './PeopleWordCloud';
 import { supabase } from '@/utils/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Person {
   id: string;
   person_name: string;
+  photo_url?: string | null;
 }
 
 interface PeopleAvatarsRowProps {
@@ -23,200 +24,130 @@ interface PeopleAvatarsRowProps {
 
 export function PeopleAvatarsRow({ 
   people, 
-  avatarSize = 40,
+  avatarSize = 44,
   onPeopleChange,
   recallId,
 }: PeopleAvatarsRowProps) {
-  const { user } = useAuth();
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const [recallCounts, setRecallCounts] = useState<{ [personId: string]: number }>({});
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const { user } = useAuth();
+  const [showWordCloud, setShowWordCloud] = useState(false);
 
-  useEffect(() => {
-    if (people && people.length > 0 && user) {
-      loadRecallCounts();
+  const handleAddPeople = () => {
+    console.log('[PeopleAvatarsRow] Opening word cloud');
+    setShowWordCloud(true);
+  };
+
+  const handleSavePeople = async (selectedPeople: Person[]) => {
+    console.log('[PeopleAvatarsRow] ===== SAVING PEOPLE =====');
+    console.log('[PeopleAvatarsRow] Selected people:', selectedPeople);
+    console.log('[PeopleAvatarsRow] Recall ID:', recallId);
+    console.log('[PeopleAvatarsRow] User ID:', user?.id);
+
+    // Update local state immediately
+    if (onPeopleChange) {
+      onPeopleChange(selectedPeople);
     }
-  }, [people, user]);
 
-  // Handle selected people coming back from the word cloud screen
-  useEffect(() => {
-    console.log('[PeopleAvatarsRow] Params changed:', {
-      hasSelectedPeople: !!params.selectedPeople,
-      hasTimestamp: !!params.peopleUpdatedTimestamp,
-      timestamp: params.peopleUpdatedTimestamp,
-      databaseUpdated: params.databaseUpdated,
-    });
-
-    if (params.selectedPeople && params.peopleUpdatedTimestamp) {
+    // If we have a recallId (editing existing note), save to database
+    if (recallId && user) {
       try {
-        const selectedPeople = JSON.parse(params.selectedPeople as string);
-        console.log('[PeopleAvatarsRow] ===== RECEIVED PEOPLE FROM WORD CLOUD =====');
-        console.log('[PeopleAvatarsRow] Selected people count:', selectedPeople.length);
-        console.log('[PeopleAvatarsRow] Selected people:', selectedPeople.map((p: Person) => p.person_name).join(', '));
-        console.log('[PeopleAvatarsRow] Full data:', selectedPeople);
-        console.log('[PeopleAvatarsRow] Database was updated:', params.databaseUpdated === 'true');
-        
-        // If database was updated, fetch fresh data from database
-        if (params.databaseUpdated === 'true' && recallId && user) {
-          console.log('[PeopleAvatarsRow] Fetching fresh data from database for recall:', recallId);
-          refreshPeopleFromDatabase();
-        } else {
-          // Otherwise, just update the local state
-          if (onPeopleChange) {
-            console.log('[PeopleAvatarsRow] Calling onPeopleChange with selected people');
-            onPeopleChange(selectedPeople);
-            console.log('[PeopleAvatarsRow] onPeopleChange called successfully');
-          } else {
-            console.warn('[PeopleAvatarsRow] onPeopleChange callback is not defined!');
-          }
+        console.log('[PeopleAvatarsRow] Saving people associations to database');
+
+        // Delete existing associations
+        const { error: deleteError } = await supabase
+          .from('recall_people')
+          .delete()
+          .eq('recall_id', recallId)
+          .eq('user_id', user.id);
+
+        if (deleteError) {
+          console.error('[PeopleAvatarsRow] Error deleting existing associations:', deleteError);
+          throw deleteError;
         }
-        
-        // Clear the params to prevent re-triggering
-        console.log('[PeopleAvatarsRow] Clearing router params');
-        router.setParams({ 
-          selectedPeople: undefined,
-          peopleUpdatedTimestamp: undefined,
-          databaseUpdated: undefined,
-        });
-      } catch (error) {
-        console.error('[PeopleAvatarsRow] Error parsing selected people:', error);
-      }
-    }
-  }, [params.selectedPeople, params.peopleUpdatedTimestamp, params.databaseUpdated, onPeopleChange, router, recallId, user]);
 
-  const refreshPeopleFromDatabase = async () => {
-    if (!recallId || !user) {
-      console.log('[PeopleAvatarsRow] Cannot refresh - missing recallId or user');
-      return;
-    }
+        console.log('[PeopleAvatarsRow] Deleted existing associations');
 
-    try {
-      setIsRefreshing(true);
-      console.log('[PeopleAvatarsRow] ===== REFRESHING PEOPLE FROM DATABASE =====');
-      console.log('[PeopleAvatarsRow] Recall ID:', recallId);
-      console.log('[PeopleAvatarsRow] User ID:', user.id);
-
-      const { data: recallPeopleData, error: recallPeopleError } = await supabase
-        .from('recall_people')
-        .select('person_id, persons(id, person_name)')
-        .eq('recall_id', recallId)
-        .eq('user_id', user.id);
-
-      if (recallPeopleError) {
-        console.error('[PeopleAvatarsRow] ❌ ERROR fetching people from database:', recallPeopleError);
-        return;
-      }
-
-      console.log('[PeopleAvatarsRow] Fetched recall_people data:', recallPeopleData);
-
-      if (recallPeopleData && recallPeopleData.length > 0) {
-        const freshPeople: Person[] = recallPeopleData
-          .filter((rp: any) => rp.persons)
-          .map((rp: any) => ({
-            id: rp.persons.id,
-            person_name: rp.persons.person_name,
+        // Insert new associations
+        if (selectedPeople.length > 0) {
+          const insertData = selectedPeople.map(person => ({
+            recall_id: recallId,
+            person_id: person.id,
+            user_id: user.id,
           }));
 
-        console.log('[PeopleAvatarsRow] ✅ Fetched', freshPeople.length, 'people from database');
-        console.log('[PeopleAvatarsRow] Fresh people:', freshPeople.map(p => p.person_name).join(', '));
+          console.log('[PeopleAvatarsRow] Inserting new associations:', insertData);
 
-        if (onPeopleChange) {
-          console.log('[PeopleAvatarsRow] Calling onPeopleChange with fresh data');
-          onPeopleChange(freshPeople);
-          console.log('[PeopleAvatarsRow] onPeopleChange called successfully');
+          const { data: insertedData, error: insertError } = await supabase
+            .from('recall_people')
+            .insert(insertData)
+            .select();
+
+          if (insertError) {
+            console.error('[PeopleAvatarsRow] Error inserting associations:', insertError);
+            throw insertError;
+          }
+
+          console.log('[PeopleAvatarsRow] Successfully inserted associations:', insertedData);
         }
-      } else {
-        console.log('[PeopleAvatarsRow] No people found in database for this recall');
-        if (onPeopleChange) {
-          onPeopleChange([]);
-        }
+      } catch (error) {
+        console.error('[PeopleAvatarsRow] Error managing people associations:', error);
       }
-    } catch (error) {
-      console.error('[PeopleAvatarsRow] 🔥 ERROR refreshing people from database:', error);
-    } finally {
-      setIsRefreshing(false);
+    } else {
+      console.log('[PeopleAvatarsRow] No recallId, skipping database save (will be saved on note save)');
     }
   };
 
-  const loadRecallCounts = async () => {
-    if (!user) return;
-
-    const counts = await getMultiplePersonRecallCounts(people, user.id);
-    setRecallCounts(counts);
+  const handlePersonPress = (personId: string) => {
+    console.log('[PeopleAvatarsRow] Person pressed:', personId);
+    router.push(`/person-recalls?personId=${personId}`);
   };
-
-  const handlePersonPress = (person: Person) => {
-    console.log('[PeopleAvatarsRow] Person avatar clicked:', person.person_name);
-    router.push(`/person-recalls?personId=${person.id}`);
-  };
-
-  const handleAddPeoplePress = () => {
-    console.log('[PeopleAvatarsRow] ===== ADD PEOPLE BUTTON CLICKED =====');
-    console.log('[PeopleAvatarsRow] Current people count:', people.length);
-    console.log('[PeopleAvatarsRow] Current people:', people.map(p => p.person_name).join(', '));
-    console.log('[PeopleAvatarsRow] Recall ID:', recallId);
-    console.log('[PeopleAvatarsRow] Navigating to word cloud with initial selection');
-    
-    router.push({
-      pathname: '/people-word-cloud',
-      params: {
-        initialSelectedPeople: JSON.stringify(people),
-        recallId: recallId || undefined,
-      },
-    });
-  };
-
-  console.log('[PeopleAvatarsRow] Rendering with', people.length, 'people', isRefreshing ? '(refreshing...)' : '');
 
   return (
     <View style={styles.container}>
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={true}
-        contentContainerStyle={styles.avatarsRow}
-        style={styles.scrollView}
-      >
-        {/* Add People Placeholder Avatar */}
-        <Pressable
-          onPress={handleAddPeoplePress}
-          style={styles.avatarContainer}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <View style={[
-            styles.addPeopleAvatar, 
-            { width: avatarSize, height: avatarSize }
-          ]}>
-            <IconSymbol 
-              name="person.badge.plus" 
-              size={avatarSize * 0.5} 
-              color={colors.primary} 
-            />
-          </View>
-        </Pressable>
-
-        {people.map((person, index) => (
+      <View style={styles.avatarsContainer}>
+        {people.map((person) => (
           <Pressable
             key={person.id}
-            onPress={() => handlePersonPress(person)}
-            style={[
-              styles.avatarContainer,
-              { marginLeft: 8 }
-            ]}
+            onPress={() => handlePersonPress(person.id)}
+            style={styles.avatarWrapper}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <PersonAvatar
               personName={person.person_name}
+              photoUrl={person.photo_url}
               size={avatarSize}
             />
-            {recallCounts[person.id] !== undefined && recallCounts[person.id] > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{recallCounts[person.id]}</Text>
-              </View>
-            )}
           </Pressable>
         ))}
-      </ScrollView>
+        
+        <Pressable
+          onPress={handleAddPeople}
+          style={[
+            styles.addButton,
+            {
+              width: avatarSize,
+              height: avatarSize,
+              borderRadius: avatarSize / 2,
+            },
+          ]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <IconSymbol name="plus" size={avatarSize * 0.5} color={colors.primary} />
+        </Pressable>
+      </View>
+
+      {people.length > 0 && (
+        <Text style={styles.peopleText}>
+          {people.map(p => p.person_name).join(', ')}
+        </Text>
+      )}
+
+      <PeopleWordCloud
+        visible={showWordCloud}
+        onClose={() => setShowWordCloud(false)}
+        onSave={handleSavePeople}
+        initialSelectedPeople={people}
+      />
     </View>
   );
 }
@@ -224,45 +155,32 @@ export function PeopleAvatarsRow({
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 20,
-    paddingVertical: 8,
-    minHeight: 70,
+    paddingVertical: 12,
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
-  scrollView: {
-    flexGrow: 0,
-  },
-  avatarsRow: {
+  avatarsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
   },
-  avatarContainer: {
-    position: 'relative',
+  avatarWrapper: {
+    // No additional styles needed
   },
-  addPeopleAvatar: {
-    borderRadius: 100,
-    backgroundColor: colors.background,
-    borderWidth: 2,
+  addButton: {
+    backgroundColor: colors.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
     borderColor: colors.primary,
     borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  badge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    borderWidth: 2,
-    borderColor: colors.background,
-  },
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
+  peopleText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 8,
+    fontWeight: '500',
   },
 });

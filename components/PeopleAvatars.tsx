@@ -1,14 +1,12 @@
 
-import React, { useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
+import React from 'react';
+import { View, StyleSheet } from 'react-native';
 import { PersonAvatar } from './PersonAvatar';
-import { colors } from '@/styles/commonStyles';
-import { usePeopleGraph } from '@/contexts/PeopleGraphContext';
-import { useRouter } from 'expo-router';
 
 interface Person {
   id: string;
   person_name: string;
+  photo_url?: string | null;
 }
 
 interface PeopleAvatarsProps {
@@ -20,107 +18,65 @@ interface PeopleAvatarsProps {
 
 export function PeopleAvatars({ 
   people, 
-  maxVisible = 5, 
+  maxVisible = 3, 
   avatarSize = 40,
-  overlapOffset = 10,
+  overlapOffset = 12,
 }: PeopleAvatarsProps) {
-  const { openGraph } = usePeopleGraph();
-  const router = useRouter();
-  const containerRef = useRef<View>(null);
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
   if (!people || people.length === 0) {
     return null;
   }
 
-  const visiblePeople = people.slice(0, maxVisible - 1);
-  const remainingCount = people.length - visiblePeople.length;
-  const showRemainingCount = remainingCount > 1;
-
-  const handlePress = () => {
-    // If only one person, navigate to person-recalls screen
-    if (people.length === 1) {
-      console.log('[PeopleAvatars] Single person clicked, navigating to person-recalls');
-      router.push(`/person-recalls?personId=${people[0].id}`);
-      return;
-    }
-
-    // Animate press
-    Animated.sequence([
-      Animated.timing(scaleAnim, {
-        toValue: 0.9,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    // Measure position of the container
-    if (containerRef.current) {
-      containerRef.current.measure((x, y, width, height, pageX, pageY) => {
-        console.log('Avatar container position:', { pageX, pageY, width, height });
-        
-        // Set anchor position to the center of the avatar container
-        openGraph(people, {
-          x: pageX + width / 2,
-          y: pageY + height / 2,
-        });
-      });
-    }
-  };
+  const visiblePeople = people.slice(0, maxVisible);
+  const remainingCount = people.length - maxVisible;
 
   return (
-    <Pressable onPress={handlePress}>
-      <Animated.View 
-        ref={containerRef}
-        style={[
-          styles.container,
-          {
-            transform: [{ scale: scaleAnim }],
-          }
-        ]}
-      >
-        {visiblePeople.map((person, index) => (
+    <View style={styles.container}>
+      {visiblePeople.map((person, index) => (
+        <View
+          key={person.id}
+          style={[
+            styles.avatarWrapper,
+            {
+              marginLeft: index > 0 ? -overlapOffset : 0,
+              zIndex: visiblePeople.length - index,
+            },
+          ]}
+        >
           <PersonAvatar
-            key={person.id}
             personName={person.person_name}
+            photoUrl={person.photo_url}
             size={avatarSize}
-            style={[
-              styles.avatar,
-              { 
-                marginLeft: index > 0 ? -overlapOffset : 0,
-                zIndex: 1000 + (visiblePeople.length - index),
-                elevation: 10 + (visiblePeople.length - index),
-              }
-            ]}
           />
-        ))}
-        
-        {showRemainingCount && (
-          <View 
+        </View>
+      ))}
+      {remainingCount > 0 && (
+        <View
+          style={[
+            styles.avatarWrapper,
+            {
+              marginLeft: -overlapOffset,
+              zIndex: 0,
+            },
+          ]}
+        >
+          <View
             style={[
-              styles.remainingAvatar,
+              styles.moreAvatar,
               {
                 width: avatarSize,
                 height: avatarSize,
                 borderRadius: avatarSize / 2,
-                marginLeft: -overlapOffset,
-                zIndex: 1000,
-                elevation: 10,
-              }
+              },
             ]}
           >
-            <Text style={[styles.remainingText, { fontSize: avatarSize * 0.4 }]}>
-              +{remainingCount}
-            </Text>
+            <View style={styles.moreText}>
+              <View style={styles.plusSign} />
+              <View style={[styles.plusSign, styles.plusSignVertical]} />
+            </View>
           </View>
-        )}
-      </Animated.View>
-    </Pressable>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -129,19 +85,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  avatar: {
-    // Individual avatar styles handled in PersonAvatar component
+  avatarWrapper: {
+    position: 'relative',
   },
-  remainingAvatar: {
-    backgroundColor: colors.cardDark,
+  moreAvatar: {
+    backgroundColor: '#E0E0E0',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.background,
+    borderWidth: 1.25,
+    borderColor: '#776C6E',
+    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.2)',
   },
-  remainingText: {
-    color: colors.text,
-    fontWeight: '700',
-    textAlign: 'center',
+  moreText: {
+    position: 'relative',
+    width: 16,
+    height: 16,
+  },
+  plusSign: {
+    position: 'absolute',
+    backgroundColor: '#4E4749',
+    width: 12,
+    height: 2,
+    top: 7,
+    left: 2,
+  },
+  plusSignVertical: {
+    width: 2,
+    height: 12,
+    top: 2,
+    left: 7,
   },
 });

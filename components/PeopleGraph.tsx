@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, Pressable, Dimensions, Animated, Platform } fro
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
+import { PersonAvatar } from './PersonAvatar';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { getMultiplePersonRecallCounts } from '@/utils/recallCounter';
@@ -11,6 +12,7 @@ import { getMultiplePersonRecallCounts } from '@/utils/recallCounter';
 interface Person {
   id: string;
   person_name: string;
+  photo_url?: string | null;
 }
 
 interface PeopleGraphProps {
@@ -89,6 +91,7 @@ const calculateNodePositions = (
   const positions: Array<{
     id: string;
     name: string;
+    photoUrl: string | null;
     x: number;
     y: number;
     color: string;
@@ -120,6 +123,7 @@ const calculateNodePositions = (
     return {
       id: person.id,
       name: person.person_name,
+      photoUrl: person.photo_url || null,
       x,
       y,
       color: getAvatarColor(person.person_name),
@@ -178,6 +182,7 @@ const calculateNodePositions = (
     positions.push({
       id: pos.id,
       name: pos.name,
+      photoUrl: pos.photoUrl,
       x: pos.x,
       y: pos.y,
       color: pos.color,
@@ -206,6 +211,7 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
   const [nodePositions, setNodePositions] = useState<Array<{
     id: string;
     name: string;
+    photoUrl: string | null;
     x: number;
     y: number;
     color: string;
@@ -401,13 +407,20 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
                     left: node.x - node.width / 2,
                     top: node.y - PERSON_NODE_HEIGHT / 2,
                     width: node.width,
-                    backgroundColor: node.color,
                   },
                 ]}
               >
-                <Text style={styles.personName} numberOfLines={1}>
-                  {node.name}
-                </Text>
+                <View style={styles.personNodeContent}>
+                  <PersonAvatar 
+                    personName={node.name}
+                    photoUrl={node.photoUrl}
+                    size={32}
+                    style={styles.personAvatar}
+                  />
+                  <Text style={styles.personName} numberOfLines={1}>
+                    {node.name}
+                  </Text>
+                </View>
                 
                 {/* Recall count badge */}
                 {showBadge && (
@@ -478,11 +491,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     height: PERSON_NODE_HEIGHT,
     borderRadius: 22,
-    paddingHorizontal: PERSON_NODE_PADDING,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: colors.card,
     borderWidth: 2,
-    borderColor: '#776C6E',
+    borderColor: colors.primary,
     ...Platform.select({
       ios: {
         shadowColor: '#000000',
@@ -495,11 +510,20 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  personNodeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  personAvatar: {
+    // No additional styles needed
+  },
   personName: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#4E4749',
+    color: colors.text,
     textAlign: 'center',
+    flexShrink: 1,
   },
   badge: {
     position: 'absolute',

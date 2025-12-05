@@ -452,7 +452,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 const styles = StyleSheet.create({
   outerContainer: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 25,
     left: 5,
     right: 5,
     zIndex: 1000,
@@ -476,7 +476,7 @@ const styles = StyleSheet.create({
   },
   container: {
     backgroundColor: colors.background,
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.primary,
     overflow: 'hidden',
@@ -484,12 +484,12 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     backgroundColor: '#333333',
-    borderRadius: 20,
+    borderRadius: 18,
     paddingTop: 10,
     paddingHorizontal: 12,
-    paddingBottom: 6,
-    gap: 6,
-    minHeight: 80,
+    paddingBottom: 4,
+    gap: 4,
+    minHeight: 70,
   },
   locationChip: {
     flexDirection: 'row',
@@ -502,7 +502,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   locationText: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.primary,
     fontWeight: '600',
     maxWidth: 200,
@@ -549,7 +549,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   submitButton: {
-    padding: 8,
+    padding: 4,
   },
   submitButtonDisabled: {
     opacity: 0.4,
@@ -559,7 +559,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 10,
     right: 10,
-    bottom: -2,
+    bottom: -8,
     zIndex: 1000,
   },
   drawerBackdrop: {
@@ -567,12 +567,12 @@ const styles = StyleSheet.create({
     top: 0,
     left: 5,
     right: 5,
-    bottom: 0,
+    bottom: -4,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   drawer: {
     position: 'absolute',
-    bottom: 0,
+    bottom: -4,
     left: 5,
     right: 5,
     backgroundColor: '#323232',

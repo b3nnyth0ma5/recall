@@ -1,12 +1,17 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Alert, Platform } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system/legacy';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { IconSymbol } from '@/components/IconSymbol';
+import { PersonAvatar } from '@/components/PersonAvatar';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
+import { uploadImageToCloudflare } from '@/utils/cloudflareCDN';
 import { useAuth } from '@/contexts/AuthContext';
 import { Note } from '@/types/Note';
 import { peopleCache, imageCache, CostCalculator } from '@/utils/memoryCache';
@@ -20,6 +25,8 @@ export default function PersonRecallsScreen() {
   const [recalls, setRecalls] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [personName, setPersonName] = useState<string>('');
+  const [personPhotoUrl, setPersonPhotoUrl] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -62,7 +69,7 @@ export default function PersonRecallsScreen() {
       // Fetch only uncached data with optimized query using composite index
       const { data: recallPeopleData, error: recallPeopleError } = await supabase
         .from('recall_people')
-        .select('recall_id, person_id, persons!inner(id, person_name)')
+        .select('recall_id, person_id, persons!inner(id, person_name, photo_url)')
         .in('recall_id', uncachedIds);
 
       if (recallPeopleError) {
@@ -82,6 +89,7 @@ export default function PersonRecallsScreen() {
           peopleByRecallId[rp.recall_id].push({
             id: rp.persons.id,
             person_name: rp.persons.person_name,
+            photo_url: rp.persons.photo_url,
           });
         }
       });
@@ -208,11 +216,11 @@ export default function PersonRecallsScreen() {
       
       console.log(`[PersonRecalls] Loading recalls page ${pageNum} for person:`, personId);
 
-      // First, get the person's name (only on first load)
+      // First, get the person's name and photo (only on first load)
       if (pageNum === 1) {
         const { data: personData, error: personError } = await supabase
           .from('persons')
-          .select('person_name')
+          .select('person_name, photo_url')
           .eq('id', personId)
           .eq('user_id', user?.id)
           .single();
@@ -223,6 +231,7 @@ export default function PersonRecallsScreen() {
         }
 
         setPersonName(personData.person_name);
+        setPersonPhotoUrl(personData.photo_url || null);
       }
 
       // Get recall IDs for this person using optimized index with pagination
@@ -361,6 +370,172 @@ export default function PersonRecallsScreen() {
     router.back();
   }, [router]);
 
+  const handlePhotoPress = useCallback(async () => {
+    try {
+      // Show action sheet
+      Alert.alert(
+        'Person Photo',
+        'Choose an option',
+        [
+          {
+            text: 'Take Photo',
+            onPress: async () => {
+              const { status } = await ImagePicker.requestCameraPermissionsAsync();
+              if (status !== 'granted') {
+                Alert.alert('Permission needed', 'Please grant camera permissions');
+                return;
+              }
+
+              const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.9,
+              });
+
+              if (!result.canceled && result.assets) {
+                await handlePhotoUpload(result.assets[0].uri);
+              }
+            },
+          },
+          {
+            text: 'Choose from Library',
+            onPress: async () => {
+              const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+              if (status !== 'granted') {
+                Alert.alert('Permission needed', 'Please grant photo library permissions');
+                return;
+              }
+
+              const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.9,
+              });
+
+              if (!result.canceled && result.assets) {
+                await handlePhotoUpload(result.assets[0].uri);
+              }
+            },
+          },
+          ...(personPhotoUrl ? [{
+            text: 'Remove Photo',
+            style: 'destructive' as const,
+            onPress: async () => {
+              await handlePhotoRemove();
+            },
+          }] : []),
+          {
+            text: 'Cancel',
+            style: 'cancel' as const,
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error handling photo press:', error);
+    }
+  }, [personPhotoUrl]);
+
+  const handlePhotoUpload = async (uri: string) => {
+    try {
+      setUploadingPhoto(true);
+      console.log('[PersonRecalls] Starting photo upload process');
+
+      // Manipulate image - resize and compress
+      const manipulatedImage = await ImageManipulator.manipulateAsync(
+        uri,
+        [
+          { resize: { width: 512 } } // Resize to 512px width for avatar
+        ],
+        {
+          compress: 0.8,
+          format: ImageManipulator.SaveFormat.JPEG,
+        }
+      );
+
+      console.log('[PersonRecalls] Image manipulated:', manipulatedImage.uri);
+
+      // Convert to base64
+      const base64 = await FileSystem.readAsStringAsync(manipulatedImage.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      console.log('[PersonRecalls] Image converted to base64, length:', base64.length);
+
+      // Upload to Cloudflare
+      const fileName = `person-${personId}-${Date.now()}.jpg`;
+      const cdnUrl = await uploadImageToCloudflare(base64, fileName, 'image/jpeg');
+
+      if (!cdnUrl) {
+        throw new Error('Failed to upload image to Cloudflare');
+      }
+
+      console.log('[PersonRecalls] Image uploaded to Cloudflare:', cdnUrl);
+
+      // Update person record with photo URL
+      const { error: updateError } = await supabase
+        .from('persons')
+        .update({ photo_url: cdnUrl })
+        .eq('id', personId)
+        .eq('user_id', user?.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      console.log('[PersonRecalls] Person record updated with photo URL');
+
+      // Update local state
+      setPersonPhotoUrl(cdnUrl);
+
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      Alert.alert('Success', 'Photo uploaded successfully!');
+    } catch (error) {
+      console.error('[PersonRecalls] Error uploading photo:', error);
+      Alert.alert('Error', 'Failed to upload photo. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handlePhotoRemove = async () => {
+    try {
+      setUploadingPhoto(true);
+      console.log('[PersonRecalls] Removing person photo');
+
+      // Update person record to remove photo URL
+      const { error: updateError } = await supabase
+        .from('persons')
+        .update({ photo_url: null })
+        .eq('id', personId)
+        .eq('user_id', user?.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      console.log('[PersonRecalls] Person photo removed');
+
+      // Update local state
+      setPersonPhotoUrl(null);
+
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      Alert.alert('Success', 'Photo removed successfully!');
+    } catch (error) {
+      console.error('[PersonRecalls] Error removing photo:', error);
+      Alert.alert('Error', 'Failed to remove photo. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   // Render skeleton loaders during initial load
   const renderSkeletonLoaders = () => {
     return (
@@ -411,6 +586,35 @@ export default function PersonRecallsScreen() {
         onScroll={handleScroll}
         scrollEventThrottle={400}
       >
+        {/* Person Avatar Section */}
+        <View style={styles.avatarSection}>
+          <Pressable 
+            onPress={handlePhotoPress}
+            disabled={uploadingPhoto}
+            style={styles.avatarPressable}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <PersonAvatar 
+              personName={personName} 
+              photoUrl={personPhotoUrl}
+              size={100}
+            />
+            {uploadingPhoto && (
+              <View style={styles.uploadingOverlay}>
+                <ActivityIndicator size="large" color={colors.primary} />
+              </View>
+            )}
+            <View style={styles.cameraIconContainer}>
+              <IconSymbol 
+                name="camera.fill" 
+                size={20} 
+                color="#FFFFFF" 
+              />
+            </View>
+          </Pressable>
+          <Text style={styles.personNameText}>{personName}</Text>
+        </View>
+
         {loading ? (
           renderSkeletonLoaders()
         ) : recalls.length === 0 ? (
@@ -470,6 +674,45 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 40,
     paddingHorizontal: 16,
+  },
+  avatarSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingTop: 32,
+  },
+  avatarPressable: {
+    position: 'relative',
+    marginBottom: 12,
+  },
+  uploadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cameraIconContainer: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.background,
+  },
+  personNameText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    textAlign: 'center',
   },
   loadingContainer: {
     flex: 1,

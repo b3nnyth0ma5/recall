@@ -16,6 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 interface Person {
   id: string;
   person_name: string;
+  photo_url?: string | null;
   mention_count?: number;
 }
 
@@ -57,7 +58,7 @@ export function PeopleWordCloud({
       // Fetch all people for this user
       const { data: personsData, error: personsError } = await supabase
         .from('persons')
-        .select('id, person_name')
+        .select('id, person_name, photo_url')
         .eq('user_id', user.id)
         .order('person_name', { ascending: true });
 

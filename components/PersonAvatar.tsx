@@ -1,10 +1,11 @@
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 
 interface PersonAvatarProps {
   personName: string;
+  photoUrl?: string | null;
   size?: number;
   style?: any;
 }
@@ -56,7 +57,7 @@ const getAvatarColor = (name: string): string => {
   return colors[index];
 };
 
-export function PersonAvatar({ personName, size = 40, style }: PersonAvatarProps) {
+export function PersonAvatar({ personName, photoUrl, size = 40, style }: PersonAvatarProps) {
   const initials = getInitials(personName);
   const backgroundColor = getAvatarColor(personName);
   const fontSize = size * 0.4; // Font size is 40% of avatar size
@@ -69,14 +70,26 @@ export function PersonAvatar({ personName, size = 40, style }: PersonAvatarProps
           width: size, 
           height: size, 
           borderRadius: size / 2,
-          backgroundColor,
+          backgroundColor: photoUrl ? 'transparent' : backgroundColor,
         },
         style
       ]}
     >
-      <Text style={[styles.initials, { fontSize }]}>
-        {initials}
-      </Text>
+      {photoUrl ? (
+        <Image 
+          source={{ uri: photoUrl }} 
+          style={{
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+          }}
+          resizeMode="cover"
+        />
+      ) : (
+        <Text style={[styles.initials, { fontSize }]}>
+          {initials}
+        </Text>
+      )}
     </View>
   );
 }
@@ -88,6 +101,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.25,
     borderColor: '#776C6E',
     boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.2)',
+    overflow: 'hidden',
   },
   initials: {
     color: '#4E4749',
