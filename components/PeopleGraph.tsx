@@ -1,14 +1,14 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, Animated, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, Animated, Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { PersonAvatar } from './PersonAvatar';
+import { SkeletonLoader } from './SkeletonLoader';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { getMultiplePersonRecallCounts } from '@/utils/recallCounter';
-import { SkeletonLoader } from './SkeletonLoader';
 
 interface Person {
   id: string;
@@ -25,15 +25,15 @@ interface PeopleGraphProps {
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Constants for layout
-const ROOT_NODE_SIZE = 50;
+const ROOT_NODE_SIZE = 48;
 const PERSON_NODE_HEIGHT = 44;
 const PERSON_NODE_MIN_WIDTH = 100;
-const PERSON_NODE_PADDING = 16;
+const PERSON_NODE_PADDING = 12;
 const MIN_RADIUS = 120; // Minimum distance from root
 const MAX_RADIUS = 220; // Maximum distance from root
 const EDGE_WIDTH = 2;
-const MIN_NODE_SPACING = 60; // Minimum space between nodes to prevent overlap
-const BADGE_SIZE = 24; // Size of the recall count badge
+const MIN_NODE_SPACING = 50; // Minimum space between nodes to prevent overlap
+const BADGE_SIZE = 20; // Size of the recall count badge
 
 // Color palette for avatars (matching PersonAvatar)
 const AVATAR_COLORS = [
@@ -349,12 +349,32 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
 
   // Render skeleton placeholders
   const renderSkeleton = () => {
+    const centerX = SCREEN_WIDTH / 2;
+    const centerY = SCREEN_HEIGHT / 2;
+    
     return (
       <View style={styles.skeletonContainer}>
-        <View style={styles.skeletonContent}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.skeletonText}>Loading people graph...</Text>
+        {/* Center skeleton node */}
+        <View style={[styles.skeletonCenterNode, { left: centerX - 30, top: centerY - 30 }]}>
+          <SkeletonLoader width={60} height={60} borderRadius={30} />
         </View>
+        
+        {/* Surrounding skeleton nodes */}
+        {[0, 1, 2, 3, 4].map((index) => {
+          const angle = (index / 5) * 2 * Math.PI - Math.PI / 2;
+          const radius = 150;
+          const x = centerX + Math.cos(angle) * radius;
+          const y = centerY + Math.sin(angle) * radius;
+          
+          return (
+            <View 
+              key={`skeleton-${index}`}
+              style={[styles.skeletonPersonNode, { left: x - 60, top: y - 20 }]}
+            >
+              <SkeletonLoader width={120} height={40} borderRadius={20} />
+            </View>
+          );
+        })}
       </View>
     );
   };
@@ -410,7 +430,7 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
             >
               <IconSymbol
                 name="person.2.fill"
-                size={30}
+                size={28}
                 color="#FFFFFF"
               />
             </Pressable>
@@ -437,7 +457,7 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
                     <PersonAvatar 
                       personName={node.name}
                       photoUrl={node.photoUrl}
-                      size={32}
+                      size={30}
                       style={styles.personAvatar}
                     />
                     <Text style={styles.personName} numberOfLines={1}>
@@ -473,19 +493,14 @@ const styles = StyleSheet.create({
   },
   skeletonContainer: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
     zIndex: 1000000,
     elevation: 1000000,
   },
-  skeletonContent: {
-    alignItems: 'center',
-    gap: 16,
+  skeletonCenterNode: {
+    position: 'absolute',
   },
-  skeletonText: {
-    fontSize: 16,
-    color: colors.text,
-    fontWeight: '600',
+  skeletonPersonNode: {
+    position: 'absolute',
   },
   graphContainer: {
     ...StyleSheet.absoluteFillObject,
@@ -531,10 +546,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     height: PERSON_NODE_HEIGHT,
     borderRadius: 22,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     paddingVertical: 6,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'left',
     backgroundColor: colors.card,
     borderWidth: 2,
     borderColor: colors.primary,
@@ -562,7 +577,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: colors.text,
-    textAlign: 'center',
+    textAlign: 'left',
     flexShrink: 1,
   },
   badge: {

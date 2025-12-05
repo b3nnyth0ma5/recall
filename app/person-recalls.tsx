@@ -10,6 +10,7 @@ import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { IconSymbol } from '@/components/IconSymbol';
 import { PersonAvatar } from '@/components/PersonAvatar';
+import { SkeletonLoader } from '@/components/SkeletonLoader';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { uploadImageToCloudflare } from '@/utils/cloudflareCDN';
 import { useAuth } from '@/contexts/AuthContext';
@@ -31,6 +32,7 @@ export default function PersonRecallsScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadingPersonInfo, setLoadingPersonInfo] = useState(true);
 
   const personId = params.personId as string;
   const ITEMS_PER_PAGE = 10;
@@ -219,6 +221,7 @@ export default function PersonRecallsScreen() {
 
       // First, get the person's name and photo (only on first load)
       if (pageNum === 1) {
+        setLoadingPersonInfo(true);
         const { data: personData, error: personError } = await supabase
           .from('persons')
           .select('person_name, photo_url')
@@ -228,11 +231,13 @@ export default function PersonRecallsScreen() {
 
         if (personError) {
           console.error('[PersonRecalls] Error loading person:', personError);
+          setLoadingPersonInfo(false);
           return;
         }
 
         setPersonName(personData.person_name);
         setPersonPhotoUrl(personData.photo_url || null);
+        setLoadingPersonInfo(false);
       }
 
       // Get recall IDs for this person using optimized index with pagination
@@ -580,6 +585,27 @@ export default function PersonRecallsScreen() {
     );
   };
 
+  // Render skeleton for person info section
+  const renderPersonInfoSkeleton = () => {
+    return (
+      <View style={styles.avatarSection}>
+        <View style={styles.avatarPressable}>
+          <SkeletonLoader 
+            width={100} 
+            height={100} 
+            borderRadius={50}
+            style={{ marginBottom: 12 }}
+          />
+        </View>
+        <SkeletonLoader 
+          width={180} 
+          height={28} 
+          borderRadius={8}
+        />
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -622,34 +648,38 @@ export default function PersonRecallsScreen() {
           />
         }
       >
-        {/* Person Avatar Section */}
-        <View style={styles.avatarSection}>
-          <Pressable 
-            onPress={handlePhotoPress}
-            disabled={uploadingPhoto}
-            style={styles.avatarPressable}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <PersonAvatar 
-              personName={personName} 
-              photoUrl={personPhotoUrl}
-              size={100}
-            />
-            {uploadingPhoto && (
-              <View style={styles.uploadingOverlay}>
-                <ActivityIndicator size="large" color={colors.primary} />
-              </View>
-            )}
-            <View style={styles.cameraIconContainer}>
-              <IconSymbol 
-                name="camera.fill" 
-                size={20} 
-                color="#FFFFFF" 
+        {/* Person Avatar Section with Skeleton */}
+        {loadingPersonInfo ? (
+          renderPersonInfoSkeleton()
+        ) : (
+          <View style={styles.avatarSection}>
+            <Pressable 
+              onPress={handlePhotoPress}
+              disabled={uploadingPhoto}
+              style={styles.avatarPressable}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <PersonAvatar 
+                personName={personName} 
+                photoUrl={personPhotoUrl}
+                size={100}
               />
-            </View>
-          </Pressable>
-          <Text style={styles.personNameText}>{personName}</Text>
-        </View>
+              {uploadingPhoto && (
+                <View style={styles.uploadingOverlay}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                </View>
+              )}
+              <View style={styles.cameraIconContainer}>
+                <IconSymbol 
+                  name="camera.fill" 
+                  size={20} 
+                  color="#FFFFFF" 
+                />
+              </View>
+            </Pressable>
+            <Text style={styles.personNameText}>{personName}</Text>
+          </View>
+        )}
 
         {loading ? (
           renderSkeletonLoaders()

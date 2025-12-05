@@ -1,8 +1,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
+import { SkeletonLoader } from './SkeletonLoader';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -314,6 +315,38 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     });
   }
 
+  // Render skeleton placeholders
+  const renderSkeleton = () => {
+    const centerX = SCREEN_WIDTH / 2;
+    const centerY = SCREEN_HEIGHT / 2;
+    
+    return (
+      <View style={styles.skeletonContainer}>
+        {/* Center skeleton node */}
+        <View style={[styles.skeletonCenterNode, { left: centerX - 30, top: centerY - 30 }]}>
+          <SkeletonLoader width={60} height={60} borderRadius={30} />
+        </View>
+        
+        {/* Surrounding skeleton nodes */}
+        {[0, 1, 2, 3, 4].map((index) => {
+          const angle = (index / 5) * 2 * Math.PI - Math.PI / 2;
+          const radius = 150;
+          const x = centerX + Math.cos(angle) * radius;
+          const y = centerY + Math.sin(angle) * radius;
+          
+          return (
+            <View 
+              key={`skeleton-${index}`}
+              style={[styles.skeletonPersonNode, { left: x - 60, top: y - 20 }]}
+            >
+              <SkeletonLoader width={120} height={40} borderRadius={20} />
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
+
   console.log('[PeopleGraph Web] Rendering', nodes.length, 'nodes and', edges.length, 'edges');
 
   return (
@@ -346,10 +379,7 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
 
       {/* Show skeleton while loading */}
       {isLoading ? (
-        <View style={styles.skeletonContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.skeletonText}>Loading people graph...</Text>
-        </View>
+        renderSkeleton()
       ) : (
         /* Graph visualization */
         <View 
@@ -490,14 +520,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
   },
-  skeletonText: {
-    fontSize: 16,
-    color: colors.text,
-    fontWeight: '600',
+  skeletonCenterNode: {
+    position: 'absolute',
+  },
+  skeletonPersonNode: {
+    position: 'absolute',
   },
   graphContainer: {
     flex: 1,

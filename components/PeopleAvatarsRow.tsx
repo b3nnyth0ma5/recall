@@ -1,13 +1,10 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { PersonAvatar } from './PersonAvatar';
 import { IconSymbol } from './IconSymbol';
-import { PeopleWordCloud } from './PeopleWordCloud';
-import { supabase } from '@/utils/supabase';
-import { useAuth } from '@/contexts/AuthContext';
 
 interface Person {
   id: string;
@@ -29,72 +26,30 @@ export function PeopleAvatarsRow({
   recallId,
 }: PeopleAvatarsRowProps) {
   const router = useRouter();
-  const { user } = useAuth();
-  const [showWordCloud, setShowWordCloud] = useState(false);
 
   const handleAddPeople = () => {
-    console.log('[PeopleAvatarsRow] Opening word cloud');
-    setShowWordCloud(true);
-  };
-
-  const handleSavePeople = async (selectedPeople: Person[]) => {
-    console.log('[PeopleAvatarsRow] ===== SAVING PEOPLE =====');
-    console.log('[PeopleAvatarsRow] Selected people:', selectedPeople);
+    console.log('[PeopleAvatarsRow] Opening people word cloud screen');
     console.log('[PeopleAvatarsRow] Recall ID:', recallId);
-    console.log('[PeopleAvatarsRow] User ID:', user?.id);
-
-    // Update local state immediately
-    if (onPeopleChange) {
-      onPeopleChange(selectedPeople);
+    console.log('[PeopleAvatarsRow] Current people:', people);
+    
+    // Navigate to people-word-cloud screen with initial selected people
+    const params: any = {};
+    
+    if (people && people.length > 0) {
+      params.initialSelectedPeople = JSON.stringify(people);
     }
-
-    // If we have a recallId (editing existing note), save to database
-    if (recallId && user) {
-      try {
-        console.log('[PeopleAvatarsRow] Saving people associations to database');
-
-        // Delete existing associations
-        const { error: deleteError } = await supabase
-          .from('recall_people')
-          .delete()
-          .eq('recall_id', recallId)
-          .eq('user_id', user.id);
-
-        if (deleteError) {
-          console.error('[PeopleAvatarsRow] Error deleting existing associations:', deleteError);
-          throw deleteError;
-        }
-
-        console.log('[PeopleAvatarsRow] Deleted existing associations');
-
-        // Insert new associations
-        if (selectedPeople.length > 0) {
-          const insertData = selectedPeople.map(person => ({
-            recall_id: recallId,
-            person_id: person.id,
-            user_id: user.id,
-          }));
-
-          console.log('[PeopleAvatarsRow] Inserting new associations:', insertData);
-
-          const { data: insertedData, error: insertError } = await supabase
-            .from('recall_people')
-            .insert(insertData)
-            .select();
-
-          if (insertError) {
-            console.error('[PeopleAvatarsRow] Error inserting associations:', insertError);
-            throw insertError;
-          }
-
-          console.log('[PeopleAvatarsRow] Successfully inserted associations:', insertedData);
-        }
-      } catch (error) {
-        console.error('[PeopleAvatarsRow] Error managing people associations:', error);
-      }
-    } else {
-      console.log('[PeopleAvatarsRow] No recallId, skipping database save (will be saved on note save)');
+    
+    if (recallId) {
+      params.recallId = recallId;
     }
+    
+    console.log('[PeopleAvatarsRow] Navigation params:', params);
+    
+    // Navigate to the people-word-cloud screen
+    router.push({
+      pathname: '/people-word-cloud',
+      params,
+    });
   };
 
   const handlePersonPress = (personId: string) => {
@@ -137,13 +92,6 @@ export function PeopleAvatarsRow({
           </Pressable>
         ))}
       </View>
-
-      <PeopleWordCloud
-        visible={showWordCloud}
-        onClose={() => setShowWordCloud(false)}
-        onSave={handleSavePeople}
-        initialSelectedPeople={people}
-      />
     </View>
   );
 }
