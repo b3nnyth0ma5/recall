@@ -1,6 +1,7 @@
 
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
 import { PersonAvatar } from './PersonAvatar';
 
 interface Person {
@@ -22,15 +23,38 @@ export function PeopleAvatars({
   avatarSize = 40,
   overlapOffset = 12,
 }: PeopleAvatarsProps) {
+  const router = useRouter();
+
   if (!people || people.length === 0) {
     return null;
   }
+
+  const handlePress = () => {
+    console.log('[PeopleAvatars] Clicked with', people.length, 'people');
+    
+    if (people.length === 1) {
+      // Navigate to person-recalls screen for single person
+      console.log('[PeopleAvatars] Navigating to person-recalls for:', people[0].person_name);
+      router.push(`/person-recalls?personId=${people[0].id}`);
+    } else {
+      // Navigate to PeopleGraph for multiple people
+      console.log('[PeopleAvatars] Navigating to PeopleGraph for multiple people');
+      // We'll need to pass the people data through a context or state management
+      // For now, we'll use the transparent-modal route with people data
+      const peopleIds = people.map(p => p.id).join(',');
+      router.push(`/transparent-modal?peopleIds=${peopleIds}`);
+    }
+  };
 
   const visiblePeople = people.slice(0, maxVisible);
   const remainingCount = people.length - maxVisible;
 
   return (
-    <View style={styles.container}>
+    <Pressable 
+      onPress={handlePress}
+      style={styles.container}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    >
       {visiblePeople.map((person, index) => (
         <View
           key={person.id}
@@ -76,7 +100,7 @@ export function PeopleAvatars({
           </View>
         </View>
       )}
-    </View>
+    </Pressable>
   );
 }
 

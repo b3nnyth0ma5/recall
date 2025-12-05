@@ -1,46 +1,97 @@
-import { StyleSheet, Text, Pressable } from 'react-native';
-import { router } from 'expo-router';
-import { GlassView } from 'expo-glass-effect';
-import { useTheme } from '@react-navigation/native';
+
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View, ActivityIndicator } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { PeopleGraph } from '@/components/PeopleGraph';
+import { supabase } from '@/utils/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+import { colors } from '@/styles/commonStyles';
+
+interface Person {
+  id: string;
+  person_name: string;
+  photo_url?: string | null;
+}
 
 export default function TransparentModal() {
-  const theme = useTheme();
+  const params = useLocalSearchParams();
+  const { user } = useAuth();
+  const [people, setPeople] = useState<Person[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadPeople = async () => {
+      if (!params.peopleIds || !user) {
+        console.log('[TransparentModal] No peopleIds or user, closing');
+        router.back();
+        return;
+      }
+
+      try {
+        const peopleIds = (params.peopleIds as string).split(',');
+        console.log('[TransparentModal] Loading people:', peopleIds);
+
+        const { data, error } = await supabase
+          .from('persons')
+          .select('id, person_name, photo_url')
+          .in('id', peopleIds)
+          .eq('user_id', user.id);
+
+        if (error) {
+          console.error('[TransparentModal] Error loading people:', error);
+          router.back();
+          return;
+        }
+
+        if (data && data.length > 0) {
+          console.log('[TransparentModal] Loaded people:', data);
+          setPeople(data);
+        } else {
+          console.log('[TransparentModal] No people found, closing');
+          router.back();
+        }
+      } catch (error) {
+        console.error('[TransparentModal] Error:', error);
+        router.back();
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPeople();
+  }, [params.peopleIds, user]);
+
+  const handleClose = () => {
+    console.log('[TransparentModal] Closing');
+    router.back();
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (people.length === 0) {
+    return null;
+  }
 
   return (
-    <Pressable style={styles.backdrop} onPress={() => router.back()}>
-      <Pressable onPress={(e) => e.stopPropagation()}>
-        <GlassView style={styles.modal} glassEffectStyle="regular">
-          <Text style={[styles.title, { color: theme.colors.text }]}>Transparent Modal</Text>
-          <Text style={[styles.text, { color: theme.colors.text }]}>Tap outside to dismiss</Text>
-        </GlassView>
-      </Pressable>
-    </Pressable>
+    <PeopleGraph
+      people={people}
+      onClose={handleClose}
+      anchorPosition={{ x: 0, y: 0 }}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  loadingContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-  },
-  modal: {
-    borderRadius: 12,
-    padding: 20,
-    alignItems: 'center',
-    minWidth: 200,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 12,
-    // color handled dynamically
-  },
-  text: {
-    fontSize: 16,
-    textAlign: 'center',
-    // color handled dynamically
   },
 });

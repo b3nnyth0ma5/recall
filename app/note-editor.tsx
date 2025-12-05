@@ -652,7 +652,7 @@ export default function NoteEditorScreen() {
               // Refresh people
               const { data: recallPeopleData } = await supabase
                 .from('recall_people')
-                .select('person_id, persons(id, person_name)')
+                .select('person_id, persons(id, person_name, photo_url)')
                 .eq('recall_id', noteId);
 
               if (recallPeopleData && recallPeopleData.length > 0) {
@@ -661,6 +661,7 @@ export default function NoteEditorScreen() {
                   .map((rp: any) => ({
                     id: rp.persons.id,
                     person_name: rp.persons.person_name,
+                    photo_url: rp.persons.photo_url,
                   }));
                 setPeople(loadedPeople);
                 setInitialPeople(loadedPeople);
@@ -749,7 +750,7 @@ export default function NoteEditorScreen() {
         console.log('[NoteEditor] Loading people for recall:', noteId);
         const { data: recallPeopleData, error: recallPeopleError } = await supabase
           .from('recall_people')
-          .select('person_id, persons(id, person_name)')
+          .select('person_id, persons(id, person_name, photo_url)')
           .eq('recall_id', noteId);
 
         if (recallPeopleError) {
@@ -760,6 +761,7 @@ export default function NoteEditorScreen() {
             .map((rp: any) => ({
               id: rp.persons.id,
               person_name: rp.persons.person_name,
+              photo_url: rp.persons.photo_url,
             }));
           console.log('[NoteEditor] Loaded people from database:', loadedPeople);
           setPeople(loadedPeople);

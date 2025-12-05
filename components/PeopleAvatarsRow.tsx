@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { PersonAvatar } from './PersonAvatar';
@@ -105,21 +105,7 @@ export function PeopleAvatarsRow({
   return (
     <View style={styles.container}>
       <View style={styles.avatarsContainer}>
-        {people.map((person) => (
-          <Pressable
-            key={person.id}
-            onPress={() => handlePersonPress(person.id)}
-            style={styles.avatarWrapper}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <PersonAvatar
-              personName={person.person_name}
-              photoUrl={person.photo_url}
-              size={avatarSize}
-            />
-          </Pressable>
-        ))}
-        
+        {/* Plus icon - leftmost */}
         <Pressable
           onPress={handleAddPeople}
           style={[
@@ -134,13 +120,23 @@ export function PeopleAvatarsRow({
         >
           <IconSymbol name="plus" size={avatarSize * 0.5} color={colors.primary} />
         </Pressable>
-      </View>
 
-      {people.length > 0 && (
-        <Text style={styles.peopleText}>
-          {people.map(p => p.person_name).join(', ')}
-        </Text>
-      )}
+        {/* People avatars */}
+        {people.map((person) => (
+          <Pressable
+            key={person.id}
+            onPress={() => handlePersonPress(person.id)}
+            style={styles.avatarWrapper}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <PersonAvatar
+              personName={person.person_name}
+              photoUrl={person.photo_url}
+              size={avatarSize}
+            />
+          </Pressable>
+        ))}
+      </View>
 
       <PeopleWordCloud
         visible={showWordCloud}
@@ -176,11 +172,5 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.primary,
     borderStyle: 'dashed',
-  },
-  peopleText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: 8,
-    fontWeight: '500',
   },
 });

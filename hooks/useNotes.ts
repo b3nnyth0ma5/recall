@@ -75,10 +75,10 @@ export function useNotes() {
       }
 
       // Fetch only uncached data with optimized query using composite index
-      // Uses new idx_recall_people_person_user index
+      // FIXED: Include photo_url in the select
       const { data: recallPeopleData, error: recallPeopleError } = await supabase
         .from('recall_people')
-        .select('recall_id, person_id, persons!inner(id, person_name)')
+        .select('recall_id, person_id, persons!inner(id, person_name, photo_url)')
         .in('recall_id', uncachedIds);
 
       if (recallPeopleError) {
@@ -99,6 +99,7 @@ export function useNotes() {
           peopleByRecallId[rp.recall_id].push({
             id: rp.persons.id,
             person_name: rp.persons.person_name,
+            photo_url: rp.persons.photo_url,
           });
         }
       });

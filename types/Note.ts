@@ -20,6 +20,7 @@ export interface Note {
 export interface Person {
   id: string;
   person_name: string;
+  photo_url?: string | null;
 }
 
 export interface NoteImage {
