@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Alert, Platform, RefreshControl } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -24,6 +24,7 @@ export default function PersonRecallsScreen() {
   const { getCachedNote } = useNotes();
   const [recalls, setRecalls] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [personName, setPersonName] = useState<string>('');
   const [personPhotoUrl, setPersonPhotoUrl] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -358,6 +359,25 @@ export default function PersonRecallsScreen() {
     }
   }, [hasMore, isLoadingMore, loading, loadMoreRecalls]);
 
+  const handleRefresh = useCallback(async () => {
+    console.log('[PersonRecalls] Pull-to-refresh triggered');
+    setRefreshing(true);
+    
+    // Reset pagination
+    setPage(1);
+    setHasMore(true);
+    
+    // Reload first page
+    await loadRecallsForPerson(1, false);
+    
+    setRefreshing(false);
+    
+    // Haptic feedback on refresh complete
+    if (Platform.OS !== 'web') {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  }, [loadRecallsForPerson]);
+
   const handleNotePress = useCallback((noteId: string) => {
     try {
       router.push(`/note-editor?id=${noteId}`);
@@ -489,11 +509,15 @@ export default function PersonRecallsScreen() {
       // Update local state
       setPersonPhotoUrl(cdnUrl);
 
+      // Clear people cache to ensure updated photo is reflected everywhere
+      console.log('[PersonRecalls] Clearing people cache to update photo everywhere');
+      peopleCache.clear();
+
       if (Platform.OS !== 'web') {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
-      Alert.alert('Success', 'Photo uploaded successfully!');
+      // Don't show success modal - just haptic feedback
     } catch (error) {
       console.error('[PersonRecalls] Error uploading photo:', error);
       Alert.alert('Error', 'Failed to upload photo. Please try again.');
@@ -523,11 +547,15 @@ export default function PersonRecallsScreen() {
       // Update local state
       setPersonPhotoUrl(null);
 
+      // Clear people cache to ensure updated photo is reflected everywhere
+      console.log('[PersonRecalls] Clearing people cache to update photo everywhere');
+      peopleCache.clear();
+
       if (Platform.OS !== 'web') {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
-      Alert.alert('Success', 'Photo removed successfully!');
+      // Don't show success modal - just haptic feedback
     } catch (error) {
       console.error('[PersonRecalls] Error removing photo:', error);
       Alert.alert('Error', 'Failed to remove photo. Please try again.');
@@ -585,6 +613,14 @@ export default function PersonRecallsScreen() {
         contentContainerStyle={styles.scrollContent}
         onScroll={handleScroll}
         scrollEventThrottle={400}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       >
         {/* Person Avatar Section */}
         <View style={styles.avatarSection}>

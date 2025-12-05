@@ -269,6 +269,7 @@ export default function SearchScreen() {
             onSubmitEditing={handleSearch}
             returnKeyType="search"
             enablesReturnKeyAutomatically={true}
+            blurOnSubmit={true}
           />
           {searchQuery.length > 0 && (
             <Pressable 

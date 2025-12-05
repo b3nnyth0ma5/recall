@@ -12,6 +12,7 @@ import {
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { PersonAvatar } from '@/components/PersonAvatar';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
@@ -20,6 +21,7 @@ import { Platform } from 'react-native';
 interface Person {
   id: string;
   person_name: string;
+  photo_url?: string | null;
   mention_count?: number;
 }
 
@@ -65,7 +67,7 @@ export default function PeopleWordCloudScreen() {
       // Fetch all people for this user
       const { data: personsData, error: personsError } = await supabase
         .from('persons')
-        .select('id, person_name')
+        .select('id, person_name, photo_url')
         .eq('user_id', user.id)
         .order('person_name', { ascending: true });
 
@@ -168,6 +170,7 @@ export default function PeopleWordCloudScreen() {
       const cleanedPeople = selectedPeople.map(p => ({
         id: p.id,
         person_name: p.person_name,
+        photo_url: p.photo_url,
       }));
       
       router.setParams({
@@ -285,7 +288,7 @@ export default function PeopleWordCloudScreen() {
       console.log('[PeopleWordCloud] Step 3: Verifying saved people associations');
       const { data: verifyData, error: verifyError } = await supabase
         .from('recall_people')
-        .select('id, recall_id, person_id, user_id, persons(id, person_name)')
+        .select('id, recall_id, person_id, user_id, persons(id, person_name, photo_url)')
         .eq('recall_id', recallId)
         .eq('user_id', user.id);
       
@@ -322,6 +325,7 @@ export default function PeopleWordCloudScreen() {
       const cleanedPeople = selectedPeople.map(p => ({
         id: p.id,
         person_name: p.person_name,
+        photo_url: p.photo_url,
       }));
       
       router.setParams({
@@ -347,6 +351,14 @@ export default function PeopleWordCloudScreen() {
   const handleCancel = () => {
     console.log('[PeopleWordCloud] Cancelling - navigating back without saving');
     router.back();
+  };
+
+  // Truncate name to 18 characters
+  const truncateName = (name: string, maxLength: number = 18): string => {
+    if (name.length <= maxLength) {
+      return name;
+    }
+    return name.substring(0, maxLength) + '...';
   };
 
   return (
@@ -457,6 +469,11 @@ export default function PeopleWordCloudScreen() {
                 ]}
                 hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
               >
+                <PersonAvatar 
+                  personName={person.person_name}
+                  photoUrl={person.photo_url}
+                  size={32}
+                />
                 <Text
                   style={[
                     styles.personName,
@@ -464,7 +481,7 @@ export default function PeopleWordCloudScreen() {
                   ]}
                   numberOfLines={1}
                 >
-                  {person.person_name}
+                  {truncateName(person.person_name)}
                 </Text>
                 {person.mention_count !== undefined && person.mention_count > 0 && (
                   <View style={[
@@ -626,18 +643,19 @@ const styles = StyleSheet.create({
     padding: 16,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 12,
   },
   personChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 18,
+    borderRadius: 20,
     backgroundColor: colors.background,
     borderWidth: 1.5,
     borderColor: colors.border,
-    gap: 6,
+    gap: 8,
+    marginHorizontal: 4,
   },
   personChipSelected: {
     backgroundColor: colors.primary,
@@ -647,6 +665,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: colors.text,
+    maxWidth: 120,
   },
   personNameSelected: {
     color: '#FFFFFF',

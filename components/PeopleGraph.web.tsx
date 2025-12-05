@@ -1,6 +1,6 @@
 
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Dimensions, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { useRouter } from 'expo-router';
@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 interface Person {
   id: string;
   person_name: string;
+  photo_url?: string | null;
 }
 
 interface GraphNode {
@@ -205,6 +206,7 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
   const [opacity, setOpacity] = React.useState(0);
   const [scale, setScale] = React.useState(0.8);
   const [recallCounts, setRecallCounts] = React.useState<{ [personId: string]: number }>({});
+  const [isLoading, setIsLoading] = useState(true);
 
   // Load recall counts for each person
   useEffect(() => {
@@ -248,6 +250,11 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     // Calculate layout with centered root
     nodesRef.current = calculateLayout(people);
     console.log('[PeopleGraph Web] Calculated nodes:', nodesRef.current);
+
+    // Simulate loading delay for skeleton
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 500);
 
     // Trigger haptic feedback on web (vibration API if available)
     console.log('[PeopleGraph Web] Graph loaded - triggering vibration feedback');
@@ -337,103 +344,111 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
         </View>
       </Pressable>
 
-      {/* Graph visualization */}
-      <View 
-        style={[
-          styles.graphContainer,
-          {
-            transform: `scale(${scale})`,
-            transition: 'transform 0.3s ease-in-out',
-          }
-        ]}
-      >
-        {/* Render edges */}
-        <View style={styles.edgesContainer}>
-          {edges.map((edge, index) => {
-            const length = Math.sqrt(
-              Math.pow(edge.x2 - edge.x1, 2) + Math.pow(edge.y2 - edge.y1, 2)
-            );
-            const angle = Math.atan2(edge.y2 - edge.y1, edge.x2 - edge.x1) * (180 / Math.PI);
-
-            return (
-              <View
-                key={`edge-${index}`}
-                style={[
-                  styles.edge,
-                  {
-                    width: length,
-                    left: edge.x1,
-                    top: edge.y1,
-                    transform: `rotate(${angle}deg)`,
-                  },
-                ]}
-              />
-            );
-          })}
+      {/* Show skeleton while loading */}
+      {isLoading ? (
+        <View style={styles.skeletonContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.skeletonText}>Loading people graph...</Text>
         </View>
+      ) : (
+        /* Graph visualization */
+        <View 
+          style={[
+            styles.graphContainer,
+            {
+              transform: `scale(${scale})`,
+              transition: 'transform 0.3s ease-in-out',
+            }
+          ]}
+        >
+          {/* Render edges */}
+          <View style={styles.edgesContainer}>
+            {edges.map((edge, index) => {
+              const length = Math.sqrt(
+                Math.pow(edge.x2 - edge.x1, 2) + Math.pow(edge.y2 - edge.y1, 2)
+              );
+              const angle = Math.atan2(edge.y2 - edge.y1, edge.x2 - edge.x1) * (180 / Math.PI);
 
-        {/* Render root node (people icon) - Centered and clickable to collapse */}
-        {rootNode && (
-          <Pressable
-            onPress={handleRootNodePress}
-            style={[
-              styles.rootNode,
-              {
-                left: rootNode.x - ROOT_NODE_SIZE / 2,
-                top: rootNode.y - ROOT_NODE_SIZE / 2,
-                width: ROOT_NODE_SIZE,
-                height: ROOT_NODE_SIZE,
-                backgroundColor: colors.primary,
-              },
-            ]}
-          >
-            <IconSymbol 
-              ios_icon_name="person.3.fill"
-              android_material_icon_name="group"
-              size={28} 
-              color="#FFFFFF" 
-            />
-          </Pressable>
-        )}
+              return (
+                <View
+                  key={`edge-${index}`}
+                  style={[
+                    styles.edge,
+                    {
+                      width: length,
+                      left: edge.x1,
+                      top: edge.y1,
+                      transform: `rotate(${angle}deg)`,
+                    },
+                  ]}
+                />
+              );
+            })}
+          </View>
 
-        {/* Render person nodes */}
-        {personNodes.map((node) => {
-          const recallCount = recallCounts[node.id] || 0;
-          const showBadge = recallCount > 1;
-
-          return (
+          {/* Render root node (people icon) - Centered and clickable to collapse */}
+          {rootNode && (
             <Pressable
-              key={node.id}
-              onPress={() => handlePersonPress(node.id, node.name)}
+              onPress={handleRootNodePress}
               style={[
-                styles.personNode,
+                styles.rootNode,
                 {
-                  left: node.x - node.width / 2,
-                  top: node.y - NODE_HEIGHT / 2,
-                  width: node.width,
-                  height: NODE_HEIGHT,
-                  backgroundColor: node.color,
+                  left: rootNode.x - ROOT_NODE_SIZE / 2,
+                  top: rootNode.y - ROOT_NODE_SIZE / 2,
+                  width: ROOT_NODE_SIZE,
+                  height: ROOT_NODE_SIZE,
+                  backgroundColor: colors.primary,
                 },
               ]}
             >
-              <Text 
-                style={styles.nodeName}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {node.name}
-              </Text>
-
-              {/* Recall count badge */}
-              {showBadge && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{recallCount}</Text>
-                </View>
-              )}
+              <IconSymbol 
+                ios_icon_name="person.3.fill"
+                android_material_icon_name="group"
+                size={28} 
+                color="#FFFFFF" 
+              />
             </Pressable>
-          );
-        })}
-      </View>
+          )}
+
+          {/* Render person nodes */}
+          {personNodes.map((node) => {
+            const recallCount = recallCounts[node.id] || 0;
+            const showBadge = recallCount > 1;
+
+            return (
+              <Pressable
+                key={node.id}
+                onPress={() => handlePersonPress(node.id, node.name)}
+                style={[
+                  styles.personNode,
+                  {
+                    left: node.x - node.width / 2,
+                    top: node.y - NODE_HEIGHT / 2,
+                    width: node.width,
+                    height: NODE_HEIGHT,
+                    backgroundColor: node.color,
+                  },
+                ]}
+              >
+                <Text 
+                  style={styles.nodeName}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {node.name}
+                </Text>
+
+                {/* Recall count badge */}
+                {showBadge && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{recallCount}</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
@@ -468,6 +483,21 @@ const styles = StyleSheet.create({
     padding: 4,
     boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.6)',
     cursor: 'pointer',
+  },
+  skeletonContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
+  skeletonText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
   },
   graphContainer: {
     flex: 1,

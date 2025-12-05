@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, Animated, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, Animated, Platform, ActivityIndicator } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
@@ -8,6 +8,7 @@ import { PersonAvatar } from './PersonAvatar';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { getMultiplePersonRecallCounts } from '@/utils/recallCounter';
+import { SkeletonLoader } from './SkeletonLoader';
 
 interface Person {
   id: string;
@@ -219,6 +220,7 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
   }>>([]);
   const [rootPosition, setRootPosition] = useState({ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT / 2 });
   const [recallCounts, setRecallCounts] = useState<{ [personId: string]: number }>({});
+  const [isLoading, setIsLoading] = useState(true);
 
   // Load recall counts for each person using the standalone function
   useEffect(() => {
@@ -244,6 +246,11 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     console.log('[PeopleGraph] Root position:', { x: centerX, y: centerY });
     setNodePositions(positions);
     setRootPosition({ x: centerX, y: centerY });
+
+    // Simulate loading delay for skeleton
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 500);
 
     // Trigger heavy haptic feedback when graph loads
     console.log('[PeopleGraph] Graph loaded - triggering heavy haptic feedback');
@@ -340,6 +347,18 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     });
   };
 
+  // Render skeleton placeholders
+  const renderSkeleton = () => {
+    return (
+      <View style={styles.skeletonContainer}>
+        <View style={styles.skeletonContent}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.skeletonText}>Loading people graph...</Text>
+        </View>
+      </View>
+    );
+  };
+
   console.log('[PeopleGraph] Rendering with', nodePositions.length, 'nodes');
 
   return (
@@ -356,83 +375,88 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
         <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
       </Animated.View>
 
-      {/* Graph content */}
-      <Animated.View
-        style={[
-          styles.graphContainer,
-          {
-            opacity: graphOpacity,
-            transform: [{ scale: graphScale }],
-          },
-        ]}
-        pointerEvents="box-none"
-      >
-        {/* Edges layer */}
-        <View style={styles.edgesLayer} pointerEvents="none">
-          {renderEdges()}
-        </View>
+      {/* Show skeleton while loading */}
+      {isLoading ? (
+        renderSkeleton()
+      ) : (
+        /* Graph content */
+        <Animated.View
+          style={[
+            styles.graphContainer,
+            {
+              opacity: graphOpacity,
+              transform: [{ scale: graphScale }],
+            },
+          ]}
+          pointerEvents="box-none"
+        >
+          {/* Edges layer */}
+          <View style={styles.edgesLayer} pointerEvents="none">
+            {renderEdges()}
+          </View>
 
-        {/* Nodes layer */}
-        <View style={styles.nodesLayer} pointerEvents="box-none">
-          {/* Root node - centered on screen */}
-          <Pressable
-            onPress={handleRootPress}
-            style={[
-              styles.rootNode,
-              {
-                left: rootPosition.x - ROOT_NODE_SIZE / 2,
-                top: rootPosition.y - ROOT_NODE_SIZE / 2,
-              },
-            ]}
-          >
-            <IconSymbol
-              name="person.2.fill"
-              size={30}
-              color="#FFFFFF"
-            />
-          </Pressable>
+          {/* Nodes layer */}
+          <View style={styles.nodesLayer} pointerEvents="box-none">
+            {/* Root node - centered on screen */}
+            <Pressable
+              onPress={handleRootPress}
+              style={[
+                styles.rootNode,
+                {
+                  left: rootPosition.x - ROOT_NODE_SIZE / 2,
+                  top: rootPosition.y - ROOT_NODE_SIZE / 2,
+                },
+              ]}
+            >
+              <IconSymbol
+                name="person.2.fill"
+                size={30}
+                color="#FFFFFF"
+              />
+            </Pressable>
 
-          {/* Person nodes */}
-          {nodePositions.map((node) => {
-            const recallCount = recallCounts[node.id] || 0;
-            const showBadge = recallCount > 1;
+            {/* Person nodes */}
+            {nodePositions.map((node) => {
+              const recallCount = recallCounts[node.id] || 0;
+              const showBadge = recallCount > 1;
 
-            return (
-              <Pressable
-                key={node.id}
-                onPress={() => handlePersonPress(node.id, node.name)}
-                style={[
-                  styles.personNode,
-                  {
-                    left: node.x - node.width / 2,
-                    top: node.y - PERSON_NODE_HEIGHT / 2,
-                    width: node.width,
-                  },
-                ]}
-              >
-                <View style={styles.personNodeContent}>
-                  <PersonAvatar 
-                    personName={node.name}
-                    photoUrl={node.photoUrl}
-                    size={32}
-                    style={styles.personAvatar}
-                  />
-                  <Text style={styles.personName} numberOfLines={1}>
-                    {node.name}
-                  </Text>
-                </View>
-                
-                {/* Recall count badge */}
-                {showBadge && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{recallCount}</Text>
+              return (
+                <Pressable
+                  key={node.id}
+                  onPress={() => handlePersonPress(node.id, node.name)}
+                  style={[
+                    styles.personNode,
+                    {
+                      left: node.x - node.width / 2,
+                      top: node.y - PERSON_NODE_HEIGHT / 2,
+                      width: node.width,
+                    },
+                  ]}
+                >
+                  <View style={styles.personNodeContent}>
+                    <PersonAvatar 
+                      personName={node.name}
+                      photoUrl={node.photoUrl}
+                      size={32}
+                      style={styles.personAvatar}
+                    />
+                    <Text style={styles.personName} numberOfLines={1}>
+                      {node.name}
+                    </Text>
                   </View>
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
-      </Animated.View>
+                  
+                  {/* Recall count badge */}
+                  {showBadge && (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>{recallCount}</Text>
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -446,6 +470,22 @@ const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  },
+  skeletonContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000000,
+    elevation: 1000000,
+  },
+  skeletonContent: {
+    alignItems: 'center',
+    gap: 16,
+  },
+  skeletonText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
   },
   graphContainer: {
     ...StyleSheet.absoluteFillObject,
