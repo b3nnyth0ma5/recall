@@ -26,6 +26,9 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  withRepeat,
+  withSequence,
+  Easing,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { supabase } from '@/utils/supabase';
@@ -52,10 +55,26 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const translateY = useSharedValue(0);
+  
+  // Pulsating border animation
+  const borderOpacity = useSharedValue(1);
 
   // Get current location on mount
   useEffect(() => {
     getCurrentLocation();
+  }, []);
+
+  // Start pulsating border animation on mount
+  useEffect(() => {
+    // Subtle pulsating effect: opacity goes from 1 to 0.6 and back
+    borderOpacity.value = withRepeat(
+      withSequence(
+        withTiming(0.6, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1, // Infinite repeat
+      false
+    );
   }, []);
 
   // Handle keyboard show/hide
@@ -87,6 +106,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const animatedStyle = useAnimatedStyle(() => {
     return {
       transform: [{ translateY: translateY.value }],
+    };
+  });
+
+  const animatedBorderStyle = useAnimatedStyle(() => {
+    return {
+      opacity: borderOpacity.value,
     };
   });
 
@@ -302,7 +327,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
           <View style={styles.borderBlur}>
             <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
           </View>
-          <View style={styles.container}>
+          <Animated.View style={[styles.container, animatedBorderStyle]}>
             <View style={styles.inputContainer}>
               {/* Location Display - Above Images */}
               {location && (
@@ -384,7 +409,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 </Pressable>
               </View>
             </View>
-          </View>
+          </Animated.View>
         </View>
 
         {/* Slide-up Drawer */}
@@ -453,8 +478,8 @@ const styles = StyleSheet.create({
   outerContainer: {
     position: 'absolute',
     bottom: 25,
-    left: 5,
-    right: 5,
+    left: 10,
+    right: 10,
     zIndex: 1000,
     elevation: 1000,
   },
@@ -529,7 +554,7 @@ const styles = StyleSheet.create({
   textInput: {
     fontSize: 16,
     color: colors.text,
-    minHeight: 44,
+    minHeight: 38,
     maxHeight: 100,
     paddingVertical: 8,
     paddingHorizontal: 4,

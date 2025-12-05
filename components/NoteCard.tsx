@@ -23,7 +23,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 8;
 const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 5);
 // Reduced by 10%: (IMAGE_WIDTH * 1.25) * 0.9 = IMAGE_WIDTH * 1.125
-const IMAGE_HEIGHT = IMAGE_WIDTH * 1.125;
+const IMAGE_HEIGHT = IMAGE_WIDTH * 1.1;
 const IMAGE_SPACING = 12;
 
 // Helper function to check if text contains URLs
@@ -414,8 +414,9 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardContent: {
-    padding: CARD_PADDING,
-    position: 'relative',
+    //padding: CARD_PADDING,
+    padding: 4,
+		position: 'relative',
     overflow: 'visible',
     borderRadius: 16,
   },
