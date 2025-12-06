@@ -33,6 +33,7 @@ export default function PersonRecallsScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadingPersonInfo, setLoadingPersonInfo] = useState(true);
+  const [photoUpdateTrigger, setPhotoUpdateTrigger] = useState(0);
 
   const personId = params.personId as string;
   const ITEMS_PER_PAGE = 10;
@@ -278,7 +279,7 @@ export default function PersonRecallsScreen() {
       recallIds.forEach(recallId => {
         const cachedNote = getCachedNote(recallId);
         if (cachedNote) {
-          console.log(`[PersonRecalls] Using cached note for ${recallId}`);
+          console.log(`[PersonRecalls] Using cached Recall for ${recallId}`);
           cachedNotes.push(cachedNote);
         } else {
           uncachedRecallIds.push(recallId);
@@ -313,7 +314,7 @@ export default function PersonRecallsScreen() {
       console.log(`[PersonRecalls] Loaded ${transformedNotes.length} recalls (${cachedNotes.length} from cache, ${uncachedRecallIds.length} from DB)`);
       
       if (append) {
-        // Prevent duplicates by filtering out notes that already exist
+        // Prevent duplicates by filtering out Recalls that already exist
         setRecalls(prevRecalls => {
           const existingIds = new Set(prevRecalls.map(recall => recall.id));
           const newUniqueRecalls = transformedNotes.filter(recall => !existingIds.has(recall.id));
@@ -387,7 +388,7 @@ export default function PersonRecallsScreen() {
     try {
       router.push(`/note-editor?id=${noteId}`);
     } catch (error) {
-      console.error('Error navigating to note editor:', error);
+      console.error('Error navigating to Recall editor:', error);
     }
   }, [router]);
 
@@ -518,6 +519,10 @@ export default function PersonRecallsScreen() {
       console.log('[PersonRecalls] Clearing people cache to update photo everywhere');
       peopleCache.clear();
 
+      // Force re-render of all Recall cards by incrementing trigger
+      console.log('[PersonRecalls] Forcing avatar refresh on all Recall cards');
+      setPhotoUpdateTrigger(prev => prev + 1);
+
       if (Platform.OS !== 'web') {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
@@ -555,6 +560,10 @@ export default function PersonRecallsScreen() {
       // Clear people cache to ensure updated photo is reflected everywhere
       console.log('[PersonRecalls] Clearing people cache to update photo everywhere');
       peopleCache.clear();
+
+      // Force re-render of all Recall cards by incrementing trigger
+      console.log('[PersonRecalls] Forcing avatar refresh on all Recall cards');
+      setPhotoUpdateTrigger(prev => prev + 1);
 
       if (Platform.OS !== 'web') {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -660,6 +669,7 @@ export default function PersonRecallsScreen() {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <PersonAvatar 
+                key={`person-avatar-${photoUpdateTrigger}`}
                 personName={personName} 
                 photoUrl={personPhotoUrl}
                 size={100}
@@ -693,17 +703,17 @@ export default function PersonRecallsScreen() {
             />
             <Text style={styles.emptyTitle}>No Recalls Found</Text>
             <Text style={styles.emptyText}>
-              No recalls mention {personName}
+              No Recalls mention {personName}
             </Text>
           </View>
         ) : (
           <View style={styles.recallsContainer}>
             <Text style={styles.countText}>
-              {recalls.length} {recalls.length === 1 ? 'recall' : 'recalls'} mentioning {personName}
+              {recalls.length} {recalls.length === 1 ? 'Recall' : 'Recalls'} mentioning {personName}
             </Text>
             {recalls.map((recall, index) => (
               <NoteCard
-                key={`${recall.id}-${index}`}
+                key={`${recall.id}-${index}-${photoUpdateTrigger}`}
                 note={recall}
                 onPress={() => handleNotePress(recall.id)}
                 loading={false}
