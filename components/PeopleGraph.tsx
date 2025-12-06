@@ -247,10 +247,11 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     setNodePositions(positions);
     setRootPosition({ x: centerX, y: centerY });
 
-    // Simulate loading delay for skeleton
+    // Show skeleton placeholders while loading
+    // This gives time for the graph to render smoothly
     setTimeout(() => {
       setIsLoading(false);
-    }, 500);
+    }, 300);
 
     // Trigger heavy haptic feedback when graph loads
     console.log('[PeopleGraph] Graph loaded - triggering heavy haptic feedback');

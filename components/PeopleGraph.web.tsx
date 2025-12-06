@@ -252,10 +252,10 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     nodesRef.current = calculateLayout(people);
     console.log('[PeopleGraph Web] Calculated nodes:', nodesRef.current);
 
-    // Simulate loading delay for skeleton
+    // Show skeleton placeholders while loading
     setTimeout(() => {
       setIsLoading(false);
-    }, 500);
+    }, 300);
 
     // Trigger haptic feedback on web (vibration API if available)
     console.log('[PeopleGraph Web] Graph loaded - triggering vibration feedback');

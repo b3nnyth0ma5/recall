@@ -246,11 +246,19 @@ export default function HomeScreen() {
       return;
     }
 
+    console.log('[handleCreateRecallFromCombined] Starting recall creation');
+    console.log('[handleCreateRecallFromCombined] Text length:', data.text.length);
+    console.log('[handleCreateRecallFromCombined] Number of images:', data.images.length);
+    console.log('[handleCreateRecallFromCombined] Has location:', !!data.location);
+
     try {
       setIsSaving(true);
 
-      // Optimized: Create recall and upload images in parallel
-      const recallPromise = supabase
+      // Step 1: Create the recall first (fast operation)
+      console.log('[handleCreateRecallFromCombined] Step 1: Creating recall record...');
+      const recallStartTime = Date.now();
+      
+      const { data: recallData, error: recallError } = await supabase
         .from('recalls')
         .insert({
           text: data.text,
@@ -264,31 +272,66 @@ export default function HomeScreen() {
         .select()
         .single();
 
-      const { data: recallData, error: recallError } = await recallPromise;
+      const recallDuration = Date.now() - recallStartTime;
+      console.log(`[handleCreateRecallFromCombined] Recall created in ${recallDuration}ms`);
 
       if (recallError) {
-        console.error('Error creating recall:', recallError);
+        console.error('[handleCreateRecallFromCombined] Error creating recall:', recallError);
         Alert.alert('Error', 'Failed to create recall');
         return;
       }
 
-      // Upload images in parallel for speed
+      console.log('[handleCreateRecallFromCombined] Recall created with ID:', recallData.id);
+
+      // Step 2: Upload images sequentially to avoid race conditions
+      // This fixes the "last image fails" bug
       if (data.images.length > 0) {
-        const uploadPromises = data.images.map(uri =>
-          uploadImageToDatabase(uri, recallData.id, 'image/jpeg')
-        );
-        await Promise.all(uploadPromises);
+        console.log('[handleCreateRecallFromCombined] Step 2: Uploading images sequentially...');
+        const imageStartTime = Date.now();
+        
+        for (let i = 0; i < data.images.length; i++) {
+          const uri = data.images[i];
+          console.log(`[handleCreateRecallFromCombined] Uploading image ${i + 1}/${data.images.length}...`);
+          
+          try {
+            const imageId = await uploadImageToDatabase(uri, recallData.id, 'image/jpeg');
+            
+            if (imageId) {
+              console.log(`[handleCreateRecallFromCombined] Image ${i + 1} uploaded successfully with ID:`, imageId);
+            } else {
+              console.error(`[handleCreateRecallFromCombined] Image ${i + 1} upload failed - no ID returned`);
+            }
+            
+            // Small delay between uploads to prevent overwhelming the system
+            if (i < data.images.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          } catch (uploadError) {
+            console.error(`[handleCreateRecallFromCombined] Exception uploading image ${i + 1}:`, uploadError);
+            // Continue with next image even if one fails
+          }
+        }
+        
+        const imageDuration = Date.now() - imageStartTime;
+        console.log(`[handleCreateRecallFromCombined] All images uploaded in ${imageDuration}ms`);
       }
 
-      // Refresh the recalls list
+      // Step 3: Refresh the recalls list
+      console.log('[handleCreateRecallFromCombined] Step 3: Refreshing recalls list...');
       await refreshNotes();
 
-      // Show success message
+      // Show success feedback
+      console.log('[handleCreateRecallFromCombined] Recall creation complete!');
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
+      
+      // Note: OCR, people finder, and category matching are triggered automatically
+      // by database triggers in the background. No need to wait for them.
+      console.log('[handleCreateRecallFromCombined] Background processing (OCR, people finder) will run asynchronously');
+      
     } catch (error) {
-      console.error('Error creating recall:', error);
+      console.error('[handleCreateRecallFromCombined] Exception in recall creation:', error);
       Alert.alert('Error', 'Failed to create recall');
     } finally {
       setIsSaving(false);

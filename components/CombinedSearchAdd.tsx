@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: `${colors.primary}20`,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 16,
     alignSelf: 'flex-start',
   },
