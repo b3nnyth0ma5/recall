@@ -16,6 +16,7 @@ interface NoteCardProps {
   onPress: () => void;
   onImagePress?: () => void;
   loading?: boolean;
+  expectedImageCount?: number; // NEW: Expected total image count for newly created notes
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -31,7 +32,7 @@ const hasUrl = (text: string): boolean => {
   return urlRegex.test(text);
 };
 
-export function NoteCard({ note, onPress, onImagePress, loading = false }: NoteCardProps) {
+export function NoteCard({ note, onPress, onImagePress, loading = false, expectedImageCount }: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -44,22 +45,31 @@ export function NoteCard({ note, onPress, onImagePress, loading = false }: NoteC
   // Lazy loading state for images
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
+  
+  // FIXED: Track total image count separately from loaded images
+  const [totalImageCount, setTotalImageCount] = useState(0);
 
   // Initialize with first 2 images if note has more than 1 image
   // MOVED BEFORE THE CONDITIONAL RETURN TO FIX HOOKS RULE
   useEffect(() => {
-    if (!loading) {
-      if (note.images && note.images.length > 1) {
-        // Set first 2 images immediately
-        const initialImages = note.images.slice(0, 2);
-        setLazyLoadedImages(initialImages);
-        console.log(`[NoteCard] Initialized with first ${initialImages.length} images for note ${note.id}`);
-      } else if (note.images && note.images.length === 1) {
-        // If only 1 image, load it immediately
-        setLazyLoadedImages(note.images);
-      }
+    if (!loading && note.images && note.images.length > 0) {
+      // Set total count immediately
+      setTotalImageCount(note.images.length);
+      
+      // Load first two images immediately if available
+      const imagesToLoad = note.images.length > 1 ? note.images.slice(0, 2) : [note.images[0]];
+      setLazyLoadedImages(imagesToLoad);
+      console.log(`[NoteCard.web] Initialized with first ${imagesToLoad.length} image(s) for note ${note.id}, total count: ${note.images.length}`);
+    } else if (!loading && note.imageIds && note.imageIds.length > 0) {
+      // FIXED: If we have imageIds but no images yet (placeholder records), set the count
+      setTotalImageCount(note.imageIds.length);
+      console.log(`[NoteCard.web] Set total image count to ${note.imageIds.length} from imageIds for note ${note.id}`);
+    } else if (!loading && expectedImageCount && expectedImageCount > 0) {
+      // FIXED: Use expectedImageCount if provided (for newly created notes with pending uploads)
+      setTotalImageCount(expectedImageCount);
+      console.log(`[NoteCard.web] Set total image count to ${expectedImageCount} from expectedImageCount for note ${note.id}`);
     }
-  }, [note.id, note.images, loading]);
+  }, [note.id, note.images, note.imageIds, loading, expectedImageCount]);
 
   // Show skeleton if loading
   if (loading) {
@@ -71,17 +81,17 @@ export function NoteCard({ note, onPress, onImagePress, loading = false }: NoteC
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
     
-    if (index >= 0 && index < (note.images?.length || 0)) {
+    if (index >= 0 && index < totalImageCount) {
       setCurrentImageIndex(index);
       
       // If we're approaching an image that hasn't been loaded yet, load it
-      if (note.images && note.images.length > 2 && index >= 1 && !isLazyLoading) {
+      if (totalImageCount > 2 && index >= 1 && !isLazyLoading) {
         const nextIndex = index + 1;
         
         // Check if the next image needs to be loaded
-        if (nextIndex < note.images.length && nextIndex >= lazyLoadedImages.length) {
+        if (nextIndex < totalImageCount && !lazyLoadedImages[nextIndex]) {
           setIsLazyLoading(true);
-          console.log(`[NoteCard] Lazy loading image at index ${nextIndex} for note ${note.id}`);
+          console.log(`[NoteCard.web] Lazy loading image at index ${nextIndex} for note ${note.id}`);
           
           try {
             // Load the next image
@@ -94,11 +104,11 @@ export function NoteCard({ note, onPress, onImagePress, loading = false }: NoteC
                   newImages[nextIndex] = imageUrl;
                   return newImages;
                 });
-                console.log(`[NoteCard] Successfully lazy loaded image at index ${nextIndex}`);
+                console.log(`[NoteCard.web] Successfully lazy loaded image at index ${nextIndex}`);
               }
             }
           } catch (error) {
-            console.error(`[NoteCard] Error lazy loading image at index ${nextIndex}:`, error);
+            console.error(`[NoteCard.web] Error lazy loading image at index ${nextIndex}:`, error);
           } finally {
             setIsLazyLoading(false);
           }
@@ -237,8 +247,10 @@ export function NoteCard({ note, onPress, onImagePress, loading = false }: NoteC
     }
   };
 
-  // Determine which images to display (lazy loaded or all)
-  const displayImages = note.images && note.images.length > 1 ? lazyLoadedImages : (note.images || []);
+  // FIXED: Create display array with placeholders based on totalImageCount
+  const displayImages = totalImageCount > 0 
+    ? Array.from({ length: totalImageCount }, (_, index) => lazyLoadedImages[index] || '') 
+    : [];
 
   // Check if note has people mentioned
   const hasPeople = note.people && note.people.length > 0;
@@ -335,10 +347,11 @@ export function NoteCard({ note, onPress, onImagePress, loading = false }: NoteC
                 </Pressable>
               ))}
             </ScrollView>
-            {displayImages.length > 1 && (
+            {/* FIXED: Use totalImageCount for accurate count display */}
+            {totalImageCount > 1 && (
               <View style={styles.imageCounter}>
                 <Text style={styles.imageCounterText}>
-                  {currentImageIndex + 1} / {note.images?.length || displayImages.length}
+                  {currentImageIndex + 1} / {totalImageCount}
                 </Text>
               </View>
             )}

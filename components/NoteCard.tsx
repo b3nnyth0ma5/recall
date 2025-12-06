@@ -17,6 +17,7 @@ interface NoteCardProps {
   onPress: () => void;
   onImagePress?: () => void;
   loading?: boolean;
+  expectedImageCount?: number; // NEW: Expected total image count for newly created notes
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -33,7 +34,7 @@ const hasUrl = (text: string): boolean => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, loading = false }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, loading = false, expectedImageCount }: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -69,8 +70,12 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
       // FIXED: If we have imageIds but no images yet (placeholder records), set the count
       setTotalImageCount(note.imageIds.length);
       console.log(`[NoteCard] Set total image count to ${note.imageIds.length} from imageIds for note ${note.id}`);
+    } else if (!loading && expectedImageCount && expectedImageCount > 0) {
+      // FIXED: Use expectedImageCount if provided (for newly created notes with pending uploads)
+      setTotalImageCount(expectedImageCount);
+      console.log(`[NoteCard] Set total image count to ${expectedImageCount} from expectedImageCount for note ${note.id}`);
     }
-  }, [note.id, note.images, note.imageIds, loading]);
+  }, [note.id, note.images, note.imageIds, loading, expectedImageCount]);
 
   // Show skeleton if loading
   if (loading) {
@@ -415,7 +420,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     prevProps.note.images?.length === nextProps.note.images?.length &&
     prevProps.note.imageIds?.length === nextProps.note.imageIds?.length &&
     prevProps.note.people?.length === nextProps.note.people?.length &&
-    prevProps.loading === nextProps.loading
+    prevProps.loading === nextProps.loading &&
+    prevProps.expectedImageCount === nextProps.expectedImageCount
   );
 });
 

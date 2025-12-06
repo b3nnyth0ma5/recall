@@ -29,6 +29,8 @@ export default function HomeScreen() {
   const [loadingPreferences, setLoadingPreferences] = useState(true);
   const [hasCheckedForRecalls, setHasCheckedForRecalls] = useState(false);
   const [hasRecalls, setHasRecalls] = useState(false);
+  // NEW: Track pending image uploads per recall
+  const pendingImageUploadsRef = useRef<Map<string, number>>(new Map());
 
   // Check if user has any recalls
   useEffect(() => {
@@ -284,6 +286,13 @@ export default function HomeScreen() {
 
       console.log('[handleCreateRecallFromCombined] Recall created with ID:', recallData.id);
 
+      // FIXED: Track the total number of images being uploaded
+      const totalImageCount = data.images.length;
+      if (totalImageCount > 0) {
+        pendingImageUploadsRef.current.set(recallData.id, totalImageCount);
+        console.log(`[handleCreateRecallFromCombined] Tracking ${totalImageCount} pending image uploads for recall ${recallData.id}`);
+      }
+
       // Step 2: Upload images - FIRST IMAGE SYNCHRONOUSLY, REST ASYNCHRONOUSLY
       if (data.images.length > 0) {
         console.log('[handleCreateRecallFromCombined] Step 2: Uploading images...');
@@ -336,7 +345,18 @@ export default function HomeScreen() {
             }
             
             console.log(`[handleCreateRecallFromCombined] [ASYNC] All remaining images uploaded`);
+            
+            // FIXED: Clear pending uploads tracking after all images are uploaded
+            pendingImageUploadsRef.current.delete(recallData.id);
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Cleared pending uploads tracking for recall ${recallData.id}`);
+            
+            // FIXED: Refresh the single note after all images are uploaded
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Refreshing note ${recallData.id} after all images uploaded`);
+            await refreshSingleNote(recallData.id);
           })();
+        } else {
+          // Only one image, clear tracking immediately
+          pendingImageUploadsRef.current.delete(recallData.id);
         }
       }
 
@@ -404,6 +424,11 @@ export default function HomeScreen() {
   // 1. We've checked for recalls AND
   // 2. Either have recalls OR have notes loaded
   const shouldShowContent = hasCheckedForRecalls && (hasRecalls || notes.length > 0);
+
+  // FIXED: Helper function to get expected image count for a note
+  const getExpectedImageCount = (noteId: string): number | undefined => {
+    return pendingImageUploadsRef.current.get(noteId);
+  };
 
   return (
     <View style={styles.container}>
@@ -485,6 +510,7 @@ export default function HomeScreen() {
                   note={note}
                   onPress={() => handleNotePress(note.id)}
                   loading={false}
+                  expectedImageCount={getExpectedImageCount(note.id)}
                 />
               ))}
             </View>
