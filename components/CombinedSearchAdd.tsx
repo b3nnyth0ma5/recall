@@ -264,14 +264,13 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       // Use manually selected location if available, otherwise use current location
       const locationToSave = location || currentLocation;
       
-      // Pass images to the parent handler which will handle async upload
       await onCreateRecall({
         text: text.trim(),
         images,
         location: locationToSave || undefined,
       });
 
-      // Reset form immediately after recall is created
+      // Reset form
       setText('');
       setImages([]);
       setLocation(null);

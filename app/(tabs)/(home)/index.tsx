@@ -12,10 +12,6 @@ import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
 import { supabase } from '@/utils/supabase';
 import { uploadImageToDatabase } from '@/utils/supabase';
-import { ZeroState } from '@/components/ZeroState';
-
-// Import the image at the top level
-import recallIcon from '@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
@@ -287,68 +283,40 @@ export default function HomeScreen() {
 
       console.log('[handleCreateRecallFromCombined] Recall created with ID:', recallData.id);
 
-      // Step 2: Upload first image synchronously, remaining images asynchronously
+      // Step 2: Upload images sequentially to avoid race conditions
+      // This fixes the "last image fails" bug
       if (data.images.length > 0) {
-        console.log('[handleCreateRecallFromCombined] Step 2: Uploading first image synchronously...');
-        const firstImageStartTime = Date.now();
+        console.log('[handleCreateRecallFromCombined] Step 2: Uploading images sequentially...');
+        const imageStartTime = Date.now();
         
-        // Upload first image synchronously
-        const firstImageUri = data.images[0];
-        console.log(`[handleCreateRecallFromCombined] Uploading first image (1/${data.images.length})...`);
-        
-        try {
-          const firstImageId = await uploadImageToDatabase(firstImageUri, recallData.id, 'image/jpeg');
+        for (let i = 0; i < data.images.length; i++) {
+          const uri = data.images[i];
+          console.log(`[handleCreateRecallFromCombined] Uploading image ${i + 1}/${data.images.length}...`);
           
-          if (firstImageId) {
-            console.log(`[handleCreateRecallFromCombined] First image uploaded successfully with ID:`, firstImageId);
-          } else {
-            console.error(`[handleCreateRecallFromCombined] First image upload failed - no ID returned`);
-          }
-        } catch (uploadError) {
-          console.error(`[handleCreateRecallFromCombined] Exception uploading first image:`, uploadError);
-        }
-        
-        const firstImageDuration = Date.now() - firstImageStartTime;
-        console.log(`[handleCreateRecallFromCombined] First image uploaded in ${firstImageDuration}ms`);
-
-        // Upload remaining images asynchronously in the background
-        if (data.images.length > 1) {
-          console.log(`[handleCreateRecallFromCombined] Uploading remaining ${data.images.length - 1} images asynchronously in background...`);
-          
-          // Don't await this - let it run in the background
-          (async () => {
-            const remainingImages = data.images.slice(1);
+          try {
+            const imageId = await uploadImageToDatabase(uri, recallData.id, 'image/jpeg');
             
-            for (let i = 0; i < remainingImages.length; i++) {
-              const uri = remainingImages[i];
-              const imageNumber = i + 2; // +2 because we already uploaded the first image
-              console.log(`[handleCreateRecallFromCombined] [ASYNC] Uploading image ${imageNumber}/${data.images.length}...`);
-              
-              try {
-                const imageId = await uploadImageToDatabase(uri, recallData.id, 'image/jpeg');
-                
-                if (imageId) {
-                  console.log(`[handleCreateRecallFromCombined] [ASYNC] Image ${imageNumber} uploaded successfully with ID:`, imageId);
-                } else {
-                  console.error(`[handleCreateRecallFromCombined] [ASYNC] Image ${imageNumber} upload failed - no ID returned`);
-                }
-                
-                // Small delay between uploads to prevent overwhelming the system
-                if (i < remainingImages.length - 1) {
-                  await new Promise(resolve => setTimeout(resolve, 100));
-                }
-              } catch (uploadError) {
-                console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception uploading image ${imageNumber}:`, uploadError);
-                // Continue with next image even if one fails
-              }
+            if (imageId) {
+              console.log(`[handleCreateRecallFromCombined] Image ${i + 1} uploaded successfully with ID:`, imageId);
+            } else {
+              console.error(`[handleCreateRecallFromCombined] Image ${i + 1} upload failed - no ID returned`);
             }
             
-            console.log(`[handleCreateRecallFromCombined] [ASYNC] All remaining images uploaded`);
-          })();
+            // Small delay between uploads to prevent overwhelming the system
+            if (i < data.images.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          } catch (uploadError) {
+            console.error(`[handleCreateRecallFromCombined] Exception uploading image ${i + 1}:`, uploadError);
+            // Continue with next image even if one fails
+          }
         }
+        
+        const imageDuration = Date.now() - imageStartTime;
+        console.log(`[handleCreateRecallFromCombined] All images uploaded in ${imageDuration}ms`);
       }
 
-      // Step 3: Refresh the recalls list immediately (don't wait for async uploads)
+      // Step 3: Refresh the recalls list
       console.log('[handleCreateRecallFromCombined] Step 3: Refreshing recalls list...');
       await refreshNotes();
 
@@ -361,7 +329,6 @@ export default function HomeScreen() {
       // Note: OCR, people finder, and category matching are triggered automatically
       // by database triggers in the background. No need to wait for them.
       console.log('[handleCreateRecallFromCombined] Background processing (OCR, people finder) will run asynchronously');
-      console.log('[handleCreateRecallFromCombined] Remaining image uploads will continue in background');
       
     } catch (error) {
       console.error('[handleCreateRecallFromCombined] Exception in recall creation:', error);
@@ -372,6 +339,7 @@ export default function HomeScreen() {
   };
 
   const renderEmptyState = () => {
+    const { ZeroState } = require('@/components/ZeroState');
     return (
       <ZeroState
         icon="doc.text"
@@ -424,7 +392,7 @@ export default function HomeScreen() {
           headerLeft: () => (
             <Pressable onPress={handleRecallIconPress} style={styles.headerButton}>
               <Image
-                source={recallIcon}
+                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
                 style={styles.headerIcon}
                 resizeMode="contain"
               />
