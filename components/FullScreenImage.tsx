@@ -13,7 +13,6 @@ import {
   NativeScrollEvent,
   Platform,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import Animated, { 
   useSharedValue,
@@ -33,6 +32,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
 import { getImageDataUrl } from '@/utils/supabase';
+import { SkeletonLoader } from './SkeletonLoader';
 
 interface FullScreenImageProps {
   visible: boolean;
@@ -59,6 +59,7 @@ const DISMISS_THRESHOLD = 100;
  * - OCR modal for viewing image analysis
  * - Reusable across NoteCard and note-editor
  * - Loads all images from imageIds when opened
+ * - Skeleton placeholders instead of loading spinner
  */
 export function FullScreenImage({
   visible,
@@ -73,6 +74,7 @@ export function FullScreenImage({
   const [isClosing, setIsClosing] = useState(false);
   const [loadedImages, setLoadedImages] = useState<string[]>([]);
   const [isLoadingImages, setIsLoadingImages] = useState(false);
+  const [imageLoadStates, setImageLoadStates] = useState<{ [key: number]: boolean }>({});
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Animated values for swipe-to-dismiss gesture
@@ -258,6 +260,10 @@ export function FullScreenImage({
     onClose();
   };
 
+  const handleImageLoad = (index: number) => {
+    setImageLoadStates(prev => ({ ...prev, [index]: true }));
+  };
+
   // Improved Pan Gesture for swipe-to-dismiss with smoother animations
   const panGesture = Gesture.Pan()
     .onStart(() => {
@@ -368,14 +374,6 @@ export function FullScreenImage({
               </View>
             </Pressable>
 
-            {/* Loading Indicator */}
-            {isLoadingImages && (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color="#FFFFFF" />
-                <Text style={styles.loadingText}>Loading images...</Text>
-              </View>
-            )}
-
             {/* Image Carousel */}
             <ScrollView
               ref={scrollViewRef}
@@ -391,15 +389,32 @@ export function FullScreenImage({
               {displayImages.map((imageUrl, index) => (
                 <View key={`fullscreen-${index}`} style={styles.imageWrapper}>
                   {imageUrl ? (
-                    <Image
-                      source={{ uri: imageUrl }}
-                      style={styles.image}
-                      resizeMode="contain"
-                    />
+                    <>
+                      {!imageLoadStates[index] && (
+                        <View style={styles.skeletonContainer}>
+                          <SkeletonLoader
+                            width={SCREEN_WIDTH}
+                            height={SCREEN_HEIGHT}
+                            borderRadius={0}
+                            variant="wave"
+                          />
+                        </View>
+                      )}
+                      <Image
+                        source={{ uri: imageUrl }}
+                        style={styles.image}
+                        resizeMode="contain"
+                        onLoad={() => handleImageLoad(index)}
+                      />
+                    </>
                   ) : (
-                    <View style={styles.imageLoadingContainer}>
-                      <ActivityIndicator size="large" color="#FFFFFF" />
-                      <Text style={styles.imageLoadingText}>Loading...</Text>
+                    <View style={styles.skeletonContainer}>
+                      <SkeletonLoader
+                        width={SCREEN_WIDTH}
+                        height={SCREEN_HEIGHT}
+                        borderRadius={0}
+                        variant="wave"
+                      />
                     </View>
                   )}
                 </View>
@@ -415,7 +430,12 @@ export function FullScreenImage({
             >
               <View style={styles.shareButtonContent}>
                 {isSharing ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <SkeletonLoader
+                    width={24}
+                    height={24}
+                    borderRadius={12}
+                    variant="pulse"
+                  />
                 ) : (
                   <IconSymbol 
                     name="paperplane.fill" 
@@ -538,22 +558,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 500,
-  },
-  loadingText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    marginTop: 12,
-    fontWeight: '500',
-  },
   scrollView: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
@@ -568,16 +572,14 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
   },
-  imageLoadingContainer: {
+  skeletonContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  imageLoadingText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    marginTop: 8,
   },
   shareButton: {
     position: 'absolute',

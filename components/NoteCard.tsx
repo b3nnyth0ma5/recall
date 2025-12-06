@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, memo } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ActivityIndicator, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Alert, Platform } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
@@ -11,6 +11,7 @@ import { getImageDataUrl } from '@/utils/supabase';
 import { PeopleAvatars } from './PeopleAvatars';
 import * as Haptics from 'expo-haptics';
 import { NoteCardSkeleton } from './NoteCardSkeleton';
+import { SkeletonLoader } from './SkeletonLoader';
 
 interface NoteCardProps {
   note: Note;
@@ -84,7 +85,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
 
   // Optimized lazy load with queue management
   const lazyLoadImage = async (index: number) => {
-    if (!note.images || index >= note.images.length) return;
+    if (!note.imageIds || index >= note.imageIds.length) return;
     if (lazyLoadedImages[index]) return; // Already loaded
     if (loadingQueueRef.current.has(index)) return; // Already in queue
     
@@ -92,7 +93,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     setIsLazyLoading(true);
     
     try {
-      const imageIdToLoad = note.imageIds?.[index];
+      const imageIdToLoad = note.imageIds[index];
       if (imageIdToLoad) {
         const imageUrl = await getImageDataUrl(imageIdToLoad);
         if (imageUrl) {
@@ -262,7 +263,18 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
   // FIXED: Create display array with placeholders based on totalImageCount
   // This ensures the carousel shows all image slots with placeholders
   const displayImages = totalImageCount > 0 
-    ? Array.from({ length: totalImageCount }, (_, index) => lazyLoadedImages[index] || '') 
+    ? Array.from({ length: totalImageCount }, (_, index) => {
+        // First check if we have a lazy loaded image
+        if (lazyLoadedImages[index]) {
+          return lazyLoadedImages[index];
+        }
+        // Then check if we have the image in the note.images array
+        if (note.images && note.images[index]) {
+          return note.images[index];
+        }
+        // Otherwise return empty string for placeholder
+        return '';
+      }) 
     : [];
 
   // Check if note has people mentioned
@@ -306,14 +318,23 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
                 >
                   {!imageUrl ? (
                     <View style={styles.imageLoadingContainer}>
-                      <ActivityIndicator size="large" color={colors.primary} />
-                      <Text style={styles.loadingText}>Loading...</Text>
+                      <SkeletonLoader
+                        width={IMAGE_WIDTH}
+                        height={IMAGE_HEIGHT}
+                        borderRadius={12}
+                        variant="wave"
+                      />
                     </View>
                   ) : (
                     <>
                       {imageLoadingStates[index] && !imageErrorStates[index] && !imageLoadedStates[index] && (
                         <View style={styles.imageLoadingContainer}>
-                          <ActivityIndicator size="large" color={colors.primary} />
+                          <SkeletonLoader
+                            width={IMAGE_WIDTH}
+                            height={IMAGE_HEIGHT}
+                            borderRadius={12}
+                            variant="wave"
+                          />
                         </View>
                       )}
                       {imageErrorStates[index] ? (

@@ -507,6 +507,15 @@ export function useNotes() {
             console.log('[useNotes] [ASYNC] Recall deleted successfully from database');
           }
           
+          // FIXED: Add a small delay (300ms) before refreshing the landing page
+          console.log('[useNotes] [ASYNC] Waiting 300ms before refreshing landing page...');
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Refresh the landing page after deletion completes
+          console.log('[useNotes] [ASYNC] Refreshing landing page after deletion...');
+          await refreshNotes();
+          console.log('[useNotes] [ASYNC] Landing page refreshed');
+          
           // Note: Edge functions that run on delete (if any) will be triggered
           // automatically by database triggers. They run asynchronously.
           console.log('[useNotes] [ASYNC] Any delete triggers will run asynchronously');
@@ -525,7 +534,7 @@ export function useNotes() {
       setIsDeletingNote(false);
       throw error;
     }
-  }, [user]);
+  }, [user, refreshNotes]);
 
   const searchNotes = useCallback(async (query: string, useV2: boolean = false) => {
     if (!user) {

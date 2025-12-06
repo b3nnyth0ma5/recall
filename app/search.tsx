@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -117,7 +117,7 @@ export default function SearchScreen() {
     }
   }, [hasSearched, searchHistory, isLoadingHistory]);
 
-  const handleSearch = () => {
+  const handleSearch = useCallback(() => {
     if (searchQuery.trim()) {
       // Haptic feedback when search is clicked
       if (Platform.OS !== 'web') {
@@ -140,9 +140,9 @@ export default function SearchScreen() {
         }, 500);
       });
     }
-  };
+  }, [searchQuery, searchNotes, loadSearchHistory]);
 
-  const handleHistoryItemPress = (searchText: string) => {
+  const handleHistoryItemPress = useCallback((searchText: string) => {
     console.log('[SearchScreen] Executing search from history:', searchText);
     setSearchQuery(searchText);
     setShowHistory(false);
@@ -154,22 +154,22 @@ export default function SearchScreen() {
       console.log('[SearchScreen] History search completed');
       setIsSearching(false);
     });
-  };
+  }, [searchNotes]);
 
-  const handleNotePress = (noteId: string) => {
+  const handleNotePress = useCallback((noteId: string) => {
     router.push(`/note-editor?id=${noteId}`);
-  };
+  }, [router]);
 
-  const handleClear = () => {
+  const handleClear = useCallback(() => {
     setSearchQuery('');
     setShowHistory(true);
     setHasSearched(false);
     setIsAnswerExpanded(false);
     setIsSearching(false);
     searchNotes('');
-  };
+  }, [searchNotes]);
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     console.log('[SearchScreen] Back button pressed - clearing search results');
     
     // Clear search results
@@ -182,31 +182,31 @@ export default function SearchScreen() {
     
     // Navigate back
     router.back();
-  };
+  }, [searchNotes, router]);
 
-  const toggleKeyboard = () => {
+  const toggleKeyboard = useCallback(() => {
     if (keyboardVisible) {
       Keyboard.dismiss();
     } else {
       searchInputRef.current?.focus();
     }
-  };
+  }, [keyboardVisible]);
 
-  const getAnswerPreview = (answer: string) => {
+  const getAnswerPreview = useCallback((answer: string) => {
     const lines = answer.split('\n');
     if (lines.length <= 3) {
       return answer;
     }
     return lines.slice(0, 3).join('\n') + '...';
-  };
+  }, []);
 
-  const shouldShowAnswerToggle = (answer: string) => {
+  const shouldShowAnswerToggle = useCallback((answer: string) => {
     const lines = answer.split('\n');
     return lines.length > 3;
-  };
+  }, []);
 
   // Render skeleton loaders for recent search history
-  const renderHistorySkeletons = () => {
+  const renderHistorySkeletons = useMemo(() => {
     return (
       <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
         <Text style={styles.historyTitle}>Recent Searches</Text>
@@ -219,7 +219,62 @@ export default function SearchScreen() {
         ))}
       </Animated.View>
     );
-  };
+  }, []);
+
+  // Memoize search tips to prevent re-renders
+  const searchTips = useMemo(() => (
+    <View style={styles.searchTipsContainer}>
+      <Text style={styles.searchTipsTitle}>Try searching for:</Text>
+      <View style={styles.searchTipsList}>
+        <View style={styles.searchTipItem}>
+          <IconSymbol name="location.fill" size={16} color={colors.primary} />
+          <Text style={styles.searchTipText}>Places you&apos;ve been</Text>
+        </View>
+        <View style={styles.searchTipItem}>
+          <IconSymbol name="person.fill" size={16} color={colors.primary} />
+          <Text style={styles.searchTipText}>People you&apos;ve mentioned</Text>
+        </View>
+        <View style={styles.searchTipItem}>
+          <IconSymbol name="photo.fill" size={16} color={colors.primary} />
+          <Text style={styles.searchTipText}>Things in your photos</Text>
+        </View>
+      </View>
+    </View>
+  ), []);
+
+  // Memoize feature list to prevent re-renders
+  const featureList = useMemo(() => (
+    <View style={styles.featureList}>
+      <View style={styles.featureItem}>
+        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <Text style={styles.featureText}>What&apos;s coming up next month?</Text>
+      </View>
+      <View style={styles.featureItem}>
+        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <Text style={styles.featureText}>Restaurants in Collingwood that are on my wishlist </Text>
+      </View>
+      <View style={styles.featureItem}>
+        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <Text style={styles.featureText}>Any Recalls that mention Elly</Text>
+      </View>
+      <View style={styles.featureItem}>
+        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <Text style={styles.featureText}>What wines did I have at Bistro Marigold?</Text>
+      </View>
+      <View style={styles.featureItem}>
+        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <Text style={styles.featureText}>What vaccinations has Kiki had and when is it due?</Text>
+      </View>
+      <View style={styles.featureItem}>
+        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <Text style={styles.featureText}>My cocktail recipes that use lime, ginger and agave</Text>
+      </View>
+      <View style={styles.featureItem}>
+        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <Text style={styles.featureText}>Steak night specials on Thursdays</Text>
+      </View>
+    </View>
+  ), []);
 
   return (
     <View style={styles.container}>
@@ -338,7 +393,7 @@ export default function SearchScreen() {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Show history with skeleton when loading, or actual history when loaded */}
         {showHistory && isLoadingHistory ? (
-          renderHistorySkeletons()
+          renderHistorySkeletons
         ) : showHistory && searchHistory.length > 0 ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
             <Text style={styles.historyTitle}>Recent Searches</Text>
@@ -364,23 +419,7 @@ export default function SearchScreen() {
             <Text style={styles.emptyHistoryMessage}>
               Your recent searches will appear here
             </Text>
-            <View style={styles.searchTipsContainer}>
-              <Text style={styles.searchTipsTitle}>Try searching for:</Text>
-              <View style={styles.searchTipsList}>
-                <View style={styles.searchTipItem}>
-                  <IconSymbol name="location.fill" size={16} color={colors.primary} />
-                  <Text style={styles.searchTipText}>Places you&apos;ve been</Text>
-                </View>
-                <View style={styles.searchTipItem}>
-                  <IconSymbol name="person.fill" size={16} color={colors.primary} />
-                  <Text style={styles.searchTipText}>People you&apos;ve mentioned</Text>
-                </View>
-                <View style={styles.searchTipItem}>
-                  <IconSymbol name="photo.fill" size={16} color={colors.primary} />
-                  <Text style={styles.searchTipText}>Things in your photos</Text>
-                </View>
-              </View>
-            </View>
+            {searchTips}
           </Animated.View>
         ) : isSearching ? (
           // Show progress indicator when search is running
@@ -401,38 +440,7 @@ export default function SearchScreen() {
             <Text style={styles.emptyText}>
               Search your Recalls like you&apos;re talking to a friend
             </Text>
-            <View style={styles.featureList}>
-              <React.Fragment>
-                <View style={styles.featureItem}>
-                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>What&apos;s coming up next month?</Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>Restaurants in Collingwood that are on my wishlist </Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>Any Recalls that mention Elly</Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>What wines did I have at Bistro Marigold?</Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>What vaccinations has Kiki had and when is it due?</Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>My cocktail recipes that use lime, ginger and agave</Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-                  <Text style={styles.featureText}>Steak night specials on Thursdays</Text>
-                </View>
-              </React.Fragment>
-            </View>
+            {featureList}
           </Animated.View>
         ) : notes.length === 0 && !searchAnswer ? (
           // Show empty state only when search is complete and no results
