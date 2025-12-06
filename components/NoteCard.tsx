@@ -44,43 +44,56 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
   const imageScrollRef = useRef<ScrollView>(null);
   
   // Optimized lazy loading state for images
-  const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
+  const [displayImages, setDisplayImages] = useState<string[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
   const loadingQueueRef = useRef<Set<number>>(new Set());
-
-  // Initialize with first TWO images for better performance
-  // MOVED BEFORE THE CONDITIONAL RETURN TO FIX HOOKS RULE
-  useEffect(() => {
-    if (!loading && note.images && note.images.length > 0) {
-      // Load first two images immediately if available
-      const imagesToLoad = note.images.length > 1 ? note.images.slice(0, 2) : [note.images[0]];
-      setLazyLoadedImages(imagesToLoad);
-      // Initialize currentImageIndex to 0 to show counter immediately
-      setCurrentImageIndex(0);
-      console.log(`[NoteCard] Initialized with first ${imagesToLoad.length} image(s) for note ${note.id}`);
-    }
-  }, [note.id, note.images, loading]);
 
   // Show skeleton if loading
   if (loading) {
     return <NoteCardSkeleton />;
   }
 
+  // FIXED: Get total image count from note.imageIds (which represents all uploaded images)
+  const totalImageCount = note.imageIds?.length || 0;
+
+  // FIXED: Initialize display images with first image loaded and rest as placeholders
+  useEffect(() => {
+    if (note.images && note.images.length > 0 && note.imageIds && note.imageIds.length > 0) {
+      // Create array with correct length based on imageIds (total uploaded images)
+      const initialImages = note.imageIds.map((_, index) => {
+        // First image is already loaded from note.images
+        if (index === 0 && note.images[0]) {
+          return note.images[0];
+        }
+        // Second image might also be loaded
+        if (index === 1 && note.images[1]) {
+          return note.images[1];
+        }
+        // Rest are placeholders (empty strings)
+        return '';
+      });
+      
+      setDisplayImages(initialImages);
+      setCurrentImageIndex(0);
+      console.log(`[NoteCard] Initialized with ${note.imageIds.length} image slots (${note.images.length} loaded, ${note.imageIds.length - note.images.length} placeholders) for note ${note.id}`);
+    }
+  }, [note.id, note.imageIds?.length, note.images?.length]);
+
   // Optimized lazy load with queue management
   const lazyLoadImage = async (index: number) => {
-    if (!note.images || index >= note.images.length) return;
-    if (lazyLoadedImages[index]) return; // Already loaded
+    if (!note.imageIds || index >= note.imageIds.length) return;
+    if (displayImages[index]) return; // Already loaded
     if (loadingQueueRef.current.has(index)) return; // Already in queue
     
     loadingQueueRef.current.add(index);
     setIsLazyLoading(true);
     
     try {
-      const imageIdToLoad = note.imageIds?.[index];
+      const imageIdToLoad = note.imageIds[index];
       if (imageIdToLoad) {
         const imageUrl = await getImageDataUrl(imageIdToLoad);
         if (imageUrl) {
-          setLazyLoadedImages(prev => {
+          setDisplayImages(prev => {
             const newImages = [...prev];
             newImages[index] = imageUrl;
             return newImages;
@@ -101,15 +114,18 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
     
-    if (index >= 0 && index < (note.images?.length || 0)) {
+    if (index >= 0 && index < totalImageCount) {
       setCurrentImageIndex(index);
       
+      // Lazy load current image if not loaded
+      if (!displayImages[index]) {
+        lazyLoadImage(index);
+      }
+      
       // Prefetch next image
-      if (note.images && note.images.length > 2) {
-        const nextIndex = index + 1;
-        if (nextIndex < note.images.length && !lazyLoadedImages[nextIndex]) {
-          lazyLoadImage(nextIndex);
-        }
+      const nextIndex = index + 1;
+      if (nextIndex < totalImageCount && !displayImages[nextIndex]) {
+        lazyLoadImage(nextIndex);
       }
     }
   };
@@ -243,12 +259,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     }
   };
 
-  // FIXED: Create display array with placeholders for lazy-loaded images
-  // This ensures the carousel shows all image slots with placeholders
-  const displayImages = note.images && note.images.length > 0 
-    ? note.images.map((_, index) => lazyLoadedImages[index] || '') 
-    : [];
-
   // Check if note has people mentioned
   const hasPeople = note.people && note.people.length > 0;
 
@@ -268,7 +278,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
         )}
 
         {/* Images - Now displayed FIRST */}
-        {displayImages && displayImages.length > 0 && (
+        {totalImageCount > 0 && (
           <View style={styles.imagesContainer}>
             <ScrollView
               ref={imageScrollRef}
@@ -320,11 +330,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
                 </Pressable>
               ))}
             </ScrollView>
-            {/* FIXED: Use note.images.length instead of displayImages.length for accurate count */}
-            {note.images && note.images.length > 1 && (
+            {/* FIXED: Use totalImageCount for accurate counter */}
+            {totalImageCount > 1 && (
               <View style={styles.imageCounter}>
                 <Text style={styles.imageCounterText}>
-                  {currentImageIndex + 1} / {note.images.length}
+                  {currentImageIndex + 1} / {totalImageCount}
                 </Text>
               </View>
             )}
@@ -401,7 +411,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
   return (
     prevProps.note.id === nextProps.note.id &&
     prevProps.note.updated_at === nextProps.note.updated_at &&
-    prevProps.note.images?.length === nextProps.note.images?.length &&
+    prevProps.note.imageIds?.length === nextProps.note.imageIds?.length &&
     prevProps.note.people?.length === nextProps.note.people?.length &&
     prevProps.loading === nextProps.loading
   );
