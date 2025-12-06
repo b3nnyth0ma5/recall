@@ -82,7 +82,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       keyboardWillShowListener.remove();
       keyboardWillHideListener.remove();
     };
-  }, [translateY]);
+  }, []);
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
@@ -141,7 +141,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         selectedPrimaryType: undefined,
       });
     }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, router]);
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName]);
 
   const handlePlusPress = () => {
     if (Platform.OS !== 'web') {
@@ -355,7 +355,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 <Pressable
                   style={styles.plusButton}
                   onPress={handlePlusPress}
-                  hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <IconSymbol name="plus.circle.fill" size={32} color={colors.text} />
                 </Pressable>
@@ -365,7 +365,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 <Pressable
                   style={styles.searchButton}
                   onPress={handleSearchPress}
-                  hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <IconSymbol
                     name="magnifyingglass"
@@ -378,7 +378,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   style={[styles.submitButton, (!text.trim() && images.length === 0) && styles.submitButtonDisabled]}
                   onPress={handleCreateRecall}
                   disabled={(!text.trim() && images.length === 0) || isCreating}
-                  hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <IconSymbol name="arrow.up.circle.fill" size={32} color={colors.primary} />
                 </Pressable>
@@ -540,16 +540,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   plusButton: {
-    padding: 8,
+    padding: 4,
   },
   spacer: {
     flex: 1,
   },
   searchButton: {
-    padding: 8,
+    padding: 4,
   },
   submitButton: {
-    padding: 8,
+    padding: 4,
   },
   submitButtonDisabled: {
     opacity: 0.4,
