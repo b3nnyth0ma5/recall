@@ -24,8 +24,43 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
-  const [combinedAddSearchEnabled, setCombinedAddSearchEnabled] = useState(false);
+  const [combinedAddSearchEnabled, setCombinedAddSearchEnabled] = useState(true);
   const [loadingPreferences, setLoadingPreferences] = useState(true);
+  const [hasCheckedForRecalls, setHasCheckedForRecalls] = useState(false);
+  const [hasRecalls, setHasRecalls] = useState(false);
+
+  // Check if user has any recalls
+  useEffect(() => {
+    const checkForRecalls = async () => {
+      if (!user) {
+        setHasCheckedForRecalls(true);
+        setHasRecalls(false);
+        return;
+      }
+
+      try {
+        const { data, error, count } = await supabase
+          .from('recalls')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .limit(1);
+
+        if (error) {
+          console.error('Error checking for recalls:', error);
+          setHasRecalls(false);
+        } else {
+          setHasRecalls((count || 0) > 0);
+        }
+      } catch (error) {
+        console.error('Exception checking for recalls:', error);
+        setHasRecalls(false);
+      } finally {
+        setHasCheckedForRecalls(true);
+      }
+    };
+
+    checkForRecalls();
+  }, [user]);
 
   // Load user preferences
   useEffect(() => {
@@ -45,7 +80,7 @@ export default function HomeScreen() {
         if (error && error.code !== 'PGRST116') {
           console.error('Error loading user preferences:', error);
         } else if (data) {
-          setCombinedAddSearchEnabled(data.combined_add_search_enabled || false);
+          setCombinedAddSearchEnabled(data.combined_add_search_enabled !== false);
         }
       } catch (error) {
         console.error('Exception loading user preferences:', error);
@@ -72,12 +107,12 @@ export default function HomeScreen() {
         return;
       }
       
-      // Check if a new note was created (notes count increased)
+      // Check if a new recall was created (notes count increased)
       const currentCount = notes.length;
       const previousCount = previousNotesCountRef.current;
       
       if (currentCount > previousCount) {
-        console.log('[useFocusEffect] New note detected, auto-refreshing...');
+        console.log('[useFocusEffect] New recall detected, auto-refreshing...');
         refreshNotes();
       }
       
@@ -101,7 +136,7 @@ export default function HomeScreen() {
     console.log('[handleRefresh] Refreshing landing page data from Supabase...');
     
     try {
-      console.log('[handleRefresh] Refreshing all notes...');
+      console.log('[handleRefresh] Refreshing all recalls...');
       await refreshNotes();
       
       // Refresh categories
@@ -138,11 +173,11 @@ export default function HomeScreen() {
       }
     }
     
-    // Navigate directly to note editor
+    // Navigate directly to recall editor
     try {
       router.push('/note-editor');
     } catch (error) {
-      console.error('Error navigating to note editor:', error);
+      console.error('Error navigating to recall editor:', error);
     }
   };
 
@@ -150,7 +185,7 @@ export default function HomeScreen() {
     try {
       router.push(`/note-editor?id=${noteId}`);
     } catch (error) {
-      console.error('Error navigating to note editor:', error);
+      console.error('Error navigating to recall editor:', error);
     }
   };
 
@@ -188,12 +223,12 @@ export default function HomeScreen() {
       // Dismiss keyboard when scrolling
       Keyboard.dismiss();
 
-      // Load more notes when near bottom
+      // Load more recalls when near bottom
       const paddingToBottom = 20;
       const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
 
       if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
-        console.log('[handleScroll] Loading more notes...');
+        console.log('[handleScroll] Loading more recalls...');
         loadMoreNotes();
       }
     } catch (error) {
@@ -214,8 +249,8 @@ export default function HomeScreen() {
     try {
       setIsSaving(true);
 
-      // Create the recall
-      const { data: recallData, error: recallError } = await supabase
+      // Optimized: Create recall and upload images in parallel
+      const recallPromise = supabase
         .from('recalls')
         .insert({
           text: data.text,
@@ -229,13 +264,15 @@ export default function HomeScreen() {
         .select()
         .single();
 
+      const { data: recallData, error: recallError } = await recallPromise;
+
       if (recallError) {
         console.error('Error creating recall:', recallError);
         Alert.alert('Error', 'Failed to create recall');
         return;
       }
 
-      // Upload images if any
+      // Upload images in parallel for speed
       if (data.images.length > 0) {
         const uploadPromises = data.images.map(uri =>
           uploadImageToDatabase(uri, recallData.id, 'image/jpeg')
@@ -243,7 +280,7 @@ export default function HomeScreen() {
         await Promise.all(uploadPromises);
       }
 
-      // Refresh the notes list
+      // Refresh the recalls list
       await refreshNotes();
 
       // Show success message
@@ -287,6 +324,11 @@ export default function HomeScreen() {
       </View>
     );
   };
+
+  // Determine what to show
+  const shouldShowSkeletons = loading && !hasCheckedForRecalls;
+  const shouldShowZeroState = hasCheckedForRecalls && !hasRecalls && notes.length === 0 && !loading;
+  const shouldShowContent = hasCheckedForRecalls && (hasRecalls || notes.length > 0);
 
   return (
     <View style={styles.container}>
@@ -354,13 +396,13 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {loading && !refreshing ? (
+        {shouldShowSkeletons ? (
           renderSkeletons()
-        ) : notes.length === 0 ? (
+        ) : shouldShowZeroState ? (
           renderEmptyState()
-        ) : (
+        ) : shouldShowContent ? (
           <View style={styles.notesContainer}>
-            {/* Notes section */}
+            {/* Recalls section */}
             <View style={styles.allNotesSection}>
               {notes.map((note, index) => (
                 <NoteCard
@@ -384,7 +426,7 @@ export default function HomeScreen() {
               </View>
             )}
           </View>
-        )}
+        ) : null}
       </ScrollView>
 
       {/* Combined Search/Add Component - Now at bottom of screen */}
@@ -393,34 +435,6 @@ export default function HomeScreen() {
           onCreateRecall={handleCreateRecallFromCombined}
           userId={user.id}
         />
-      )}
-
-      {/* Only show FABs if combined add/search is disabled */}
-      {!combinedAddSearchEnabled && (
-        <View style={styles.bottomActions}>
-          <Pressable
-            onPress={handleSearch}
-            style={styles.searchFab}
-          >
-            <IconSymbol 
-              name="magnifyingglass" 
-              size={24} 
-              color={colors.text}
-            />
-          </Pressable>
-
-          {/* Main Add Recall FAB - Now navigates directly to note editor */}
-          <Pressable
-            onPress={handleAddRecall}
-            style={styles.fab}
-          >
-            <IconSymbol 
-              name="plus" 
-              size={24} 
-              color="#FFFFFF" 
-            />
-          </Pressable>
-        </View>
       )}
 
       {/* Deletion Indicator Modal */}
@@ -432,7 +446,7 @@ export default function HomeScreen() {
         <View style={styles.deletionModalContainer}>
           <View style={styles.deletionModalContent}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.deletionModalText}>Deleting note...</Text>
+            <Text style={styles.deletionModalText}>Deleting recall...</Text>
           </View>
         </View>
       </Modal>
@@ -446,7 +460,7 @@ export default function HomeScreen() {
         <View style={styles.deletionModalContainer}>
           <View style={styles.deletionModalContent}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.deletionModalText}>Saving note...</Text>
+            <Text style={styles.deletionModalText}>Saving recall...</Text>
           </View>
         </View>
       </Modal>
@@ -533,33 +547,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  bottomActions: {
-    position: 'absolute',
-    bottom: 40,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    zIndex: 100,
-    elevation: 100,
-  },
-  searchFab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   deletionModalContainer: {
     flex: 1,

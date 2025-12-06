@@ -1,49 +1,17 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Switch, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { CacheManager } from '@/utils/memoryCache';
-import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
   const [cacheStats, setCacheStats] = useState<any[]>([]);
-  const [combinedAddSearchEnabled, setCombinedAddSearchEnabled] = useState(false);
-  const [loadingPreferences, setLoadingPreferences] = useState(true);
-
-  // Load user preferences
-  useEffect(() => {
-    const loadUserPreferences = async () => {
-      if (!user) {
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase
-          .from('user_preferences')
-          .select('combined_add_search_enabled')
-          .eq('user_id', user.id)
-          .single();
-
-        if (error && error.code !== 'PGRST116') {
-          console.error('Error loading user preferences:', error);
-        } else if (data) {
-          setCombinedAddSearchEnabled(data.combined_add_search_enabled || false);
-        }
-      } catch (error) {
-        console.error('Exception loading user preferences:', error);
-      } finally {
-        setLoadingPreferences(false);
-      }
-    };
-
-    loadUserPreferences();
-  }, [user]);
 
   // Load cache statistics
   useEffect(() => {
@@ -177,55 +145,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleToggleCombinedAddSearch = async (value: boolean) => {
-    if (!user) {
-      return;
-    }
-
-    try {
-      // Haptic feedback
-      if (Platform.OS !== 'web') {
-        try {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        } catch (error) {
-          console.error('Error triggering haptic feedback:', error);
-        }
-      }
-
-      setCombinedAddSearchEnabled(value);
-
-      // Upsert user preferences
-      const { error } = await supabase
-        .from('user_preferences')
-        .upsert({
-          user_id: user.id,
-          combined_add_search_enabled: value,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'user_id',
-        });
-
-      if (error) {
-        console.error('Error updating user preferences:', error);
-        Alert.alert('Error', 'Failed to update preferences');
-        // Revert the toggle
-        setCombinedAddSearchEnabled(!value);
-      } else {
-        Alert.alert(
-          'Success',
-          value
-            ? 'Combined add/search UI enabled. Please restart the app to see changes.'
-            : 'Combined add/search UI disabled. Please restart the app to see changes.'
-        );
-      }
-    } catch (error) {
-      console.error('Exception updating user preferences:', error);
-      Alert.alert('Error', 'Failed to update preferences');
-      // Revert the toggle
-      setCombinedAddSearchEnabled(!value);
-    }
-  };
-
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -351,38 +270,6 @@ export default function ProfileScreen() {
               <IconSymbol name="doc.text" size={18} color={colors.primary} />
               <Text style={styles.cacheActionText}>Log Stats</Text>
             </Pressable>
-          </View>
-        </View>
-
-        {/* Feature Toggles Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <IconSymbol name="sparkles" size={24} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Experimental Features</Text>
-          </View>
-
-          <Text style={styles.sectionDescription}>
-            Try out new features before they&apos;re released to everyone
-          </Text>
-
-          <View style={styles.featureToggleCard}>
-            <View style={styles.featureToggleContent}>
-              <View style={styles.featureToggleHeader}>
-                <IconSymbol name="plus.magnifyingglass" size={20} color={colors.primary} />
-                <Text style={styles.featureToggleName}>Combined Add/Search</Text>
-              </View>
-              <Text style={styles.featureToggleDescription}>
-                New unified interface for creating recalls and searching. Includes speech-to-text, image upload, and location selection in one place.
-              </Text>
-            </View>
-            <Switch
-              value={combinedAddSearchEnabled}
-              onValueChange={handleToggleCombinedAddSearch}
-              disabled={loadingPreferences}
-              trackColor={{ false: colors.border, true: colors.primary }}
-              thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'}
-              ios_backgroundColor={colors.border}
-            />
           </View>
         </View>
 
@@ -547,36 +434,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.primary,
-  },
-  featureToggleCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 16,
-  },
-  featureToggleContent: {
-    flex: 1,
-    gap: 8,
-  },
-  featureToggleHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  featureToggleName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  featureToggleDescription: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 20,
   },
   signOutButton: {
     flexDirection: 'row',
