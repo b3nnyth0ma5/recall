@@ -10,6 +10,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { Note } from '@/types/Note';
+import { ZeroState } from '@/components/ZeroState';
+
+// Import the image at the top level
+import recallIcon from '@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png';
 
 // Constants
 const PULL_THRESHOLD = 80;
@@ -503,7 +507,6 @@ export default function HomeScreen() {
   // ============================================================================
 
   const renderEmptyState = () => {
-    const { ZeroState } = require('@/components/ZeroState');
     return (
       <ZeroState
         icon={selectedCategoryId ? "folder" : "doc.text"}
@@ -598,7 +601,7 @@ export default function HomeScreen() {
           headerLeft: () => (
             <Pressable onPress={handleRecallIconPress} style={styles.headerButton}>
               <Image
-                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+                source={recallIcon}
                 style={styles.headerIcon}
                 resizeMode="contain"
               />

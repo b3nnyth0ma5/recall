@@ -12,6 +12,10 @@ import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
 import { supabase } from '@/utils/supabase';
 import { uploadImageToDatabase } from '@/utils/supabase';
+import { ZeroState } from '@/components/ZeroState';
+
+// Import the image at the top level
+import recallIcon from '@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
@@ -368,7 +372,6 @@ export default function HomeScreen() {
   };
 
   const renderEmptyState = () => {
-    const { ZeroState } = require('@/components/ZeroState');
     return (
       <ZeroState
         icon="doc.text"
@@ -421,7 +424,7 @@ export default function HomeScreen() {
           headerLeft: () => (
             <Pressable onPress={handleRecallIconPress} style={styles.headerButton}>
               <Image
-                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+                source={recallIcon}
                 style={styles.headerIcon}
                 resizeMode="contain"
               />
