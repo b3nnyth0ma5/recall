@@ -1142,45 +1142,85 @@ export default function NoteEditorScreen() {
         console.log('[NoteEditor] No people to save');
       }
 
-      let uploadedCount = 0;
-      let failedCount = 0;
-      const uploadedImageIds: string[] = [];
-
-      for (const image of images) {
-        if (image.id) {
-          console.log('[NoteEditor] Skipping existing image:', image.id);
-          continue;
+      // Upload images - first image synchronously, remaining asynchronously
+      const newImages = images.filter(img => !img.id);
+      
+      if (newImages.length > 0) {
+        console.log(`[NoteEditor] Uploading ${newImages.length} new images`);
+        
+        // Upload first image synchronously
+        const firstImage = newImages[0];
+        const firstImageUri = firstImage.localUri || firstImage.uri;
+        console.log('[NoteEditor] Uploading first image synchronously:', firstImageUri);
+        
+        const firstImageId = await uploadImageToDatabase(firstImageUri, recallId, firstImage.contentType);
+        
+        if (firstImageId) {
+          console.log('[NoteEditor] First image uploaded successfully:', firstImageId);
+          
+          // Trigger OCR for first image
+          console.log('[NoteEditor] Triggering OCR processing for first image:', firstImageId);
+          triggerOCRProcessing(firstImageId).then(result => {
+            if (result.success) {
+              console.log('[NoteEditor] OCR processing triggered successfully for first image');
+            } else {
+              console.error('[NoteEditor] Failed to trigger OCR processing:', result.error);
+            }
+          }).catch(error => {
+            console.error('[NoteEditor] Error triggering OCR processing:', error);
+          });
+        } else {
+          console.error('[NoteEditor] Failed to upload first image');
         }
-
-        if (image.localUri || image.uri) {
-          const imageUri = image.localUri || image.uri;
-          console.log('[NoteEditor] Uploading new image to database:', imageUri);
+        
+        // Upload remaining images asynchronously in background
+        if (newImages.length > 1) {
+          console.log(`[NoteEditor] Uploading remaining ${newImages.length - 1} images asynchronously in background...`);
           
-          const imageId = await uploadImageToDatabase(imageUri, recallId, image.contentType);
-          
-          if (imageId) {
-            uploadedCount++;
-            uploadedImageIds.push(imageId);
-            console.log('[NoteEditor] Image uploaded successfully to database');
+          // Don't await this - let it run in the background
+          (async () => {
+            const remainingImages = newImages.slice(1);
             
-            console.log('[NoteEditor] Triggering OCR processing for image:', imageId);
-            triggerOCRProcessing(imageId).then(result => {
-              if (result.success) {
-                console.log('[NoteEditor] OCR processing triggered successfully for image:', imageId);
-              } else {
-                console.error('[NoteEditor] Failed to trigger OCR processing:', result.error);
+            for (let i = 0; i < remainingImages.length; i++) {
+              const image = remainingImages[i];
+              const imageUri = image.localUri || image.uri;
+              const imageNumber = i + 2; // +2 because we already uploaded the first image
+              console.log(`[NoteEditor] [ASYNC] Uploading image ${imageNumber}/${newImages.length}...`);
+              
+              try {
+                const imageId = await uploadImageToDatabase(imageUri, recallId, image.contentType);
+                
+                if (imageId) {
+                  console.log(`[NoteEditor] [ASYNC] Image ${imageNumber} uploaded successfully:`, imageId);
+                  
+                  // Trigger OCR for this image
+                  triggerOCRProcessing(imageId).then(result => {
+                    if (result.success) {
+                      console.log(`[NoteEditor] [ASYNC] OCR processing triggered for image ${imageNumber}`);
+                    } else {
+                      console.error(`[NoteEditor] [ASYNC] Failed to trigger OCR for image ${imageNumber}:`, result.error);
+                    }
+                  }).catch(error => {
+                    console.error(`[NoteEditor] [ASYNC] Error triggering OCR for image ${imageNumber}:`, error);
+                  });
+                } else {
+                  console.error(`[NoteEditor] [ASYNC] Image ${imageNumber} upload failed`);
+                }
+                
+                // Small delay between uploads to prevent overwhelming the system
+                if (i < remainingImages.length - 1) {
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                }
+              } catch (uploadError) {
+                console.error(`[NoteEditor] [ASYNC] Exception uploading image ${imageNumber}:`, uploadError);
+                // Continue with next image even if one fails
               }
-            }).catch(error => {
-              console.error('[NoteEditor] Error triggering OCR processing:', error);
-            });
-          } else {
-            failedCount++;
-            console.error('[NoteEditor] Failed to upload image to database');
-          }
+            }
+            
+            console.log(`[NoteEditor] [ASYNC] All remaining images uploaded`);
+          })();
         }
       }
-
-      console.log(`[NoteEditor] Upload complete: ${uploadedCount} new images uploaded, ${failedCount} failed`);
 
       console.log('[NoteEditor] Processing URLs in note text for recall:', recallId);
       processRecallUrls(user.id, recallId, noteData.text).then(result => {
@@ -1226,14 +1266,6 @@ export default function NoteEditorScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
-      if (failedCount > 0) {
-        Alert.alert(
-          'Partial Upload',
-          `${uploadedCount} image(s) uploaded successfully, but ${failedCount} failed. Check console logs for details.`,
-          [{ text: 'OK' }]
-        );
-      }
-
       console.log('[NoteEditor] ===== SAVE COMPLETE - NAVIGATING BACK =====');
       router.back();
       
@@ -1267,21 +1299,56 @@ export default function NoteEditorScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            try {
-              setDeleting(true);
-              await deleteNote(params.id as string);
-              
-              router.back();
-              
-              setTimeout(() => {
-                refreshNotes();
-              }, 300);
-            } catch (error) {
-              console.error('Error deleting recall:', error);
-              Alert.alert('Error', 'Failed to delete recall');
-            } finally {
-              setDeleting(false);
-            }
+            const recallIdToDelete = params.id as string;
+            
+            console.log('[handleDelete] ===== ASYNC DELETION STARTED =====');
+            console.log('[handleDelete] Recall ID:', recallIdToDelete);
+            
+            // Navigate back to landing page immediately
+            console.log('[handleDelete] Navigating to landing page immediately...');
+            router.push('/(tabs)/(home)');
+            
+            // Perform deletion asynchronously in the background
+            (async () => {
+              try {
+                console.log('[handleDelete] [ASYNC] Starting background deletion...');
+                
+                // Delete the recall (this will cascade delete images and other related data)
+                console.log('[handleDelete] [ASYNC] Deleting recall from database...');
+                const { error: deleteError } = await supabase
+                  .from('recalls')
+                  .delete()
+                  .eq('id', recallIdToDelete);
+                
+                if (deleteError) {
+                  console.error('[handleDelete] [ASYNC] ❌ Error deleting recall:', deleteError);
+                  console.error('[handleDelete] [ASYNC] Error details:', JSON.stringify(deleteError, null, 2));
+                } else {
+                  console.log('[handleDelete] [ASYNC] ✅ Recall deleted successfully');
+                }
+                
+                // Refresh the notes list after deletion
+                console.log('[handleDelete] [ASYNC] Refreshing notes list...');
+                await refreshNotes();
+                console.log('[handleDelete] [ASYNC] ✅ Notes list refreshed');
+                
+                // Note: Any edge functions triggered by delete triggers will run automatically
+                // via database triggers using pg_net.http_post() for async execution
+                console.log('[handleDelete] [ASYNC] Edge functions will be triggered by database triggers');
+                console.log('[handleDelete] [ASYNC] Database triggers use pg_net.http_post() for async execution');
+                
+                console.log('[handleDelete] [ASYNC] ===== DELETION COMPLETE =====');
+                
+              } catch (error) {
+                console.error('[handleDelete] [ASYNC] 🔥 Exception during deletion:', error);
+                if (error instanceof Error) {
+                  console.error('[handleDelete] [ASYNC] Error message:', error.message);
+                  console.error('[handleDelete] [ASYNC] Error stack:', error.stack);
+                }
+              }
+            })();
+            
+            console.log('[handleDelete] User navigated back, deletion continuing in background');
           },
         },
       ]
