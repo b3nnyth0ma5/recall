@@ -387,12 +387,22 @@ export default function HomeScreen() {
     );
   };
 
-  // Determine what to show
-  // Show skeletons while loading AND haven't checked for recalls yet
-  const shouldShowSkeletons = loading && !hasCheckedForRecalls;
-  // Show zero state only if we've checked, user has no recalls, and not loading
+  // FIXED: Improved skeleton display logic
+  // Show skeletons if:
+  // 1. Still loading AND haven't checked for recalls yet, OR
+  // 2. Still loading AND have checked but notes array is empty (initial load)
+  const shouldShowSkeletons = loading && (!hasCheckedForRecalls || notes.length === 0);
+  
+  // Show zero state only if:
+  // 1. We've checked for recalls
+  // 2. User has no recalls
+  // 3. Notes array is empty
+  // 4. Not currently loading
   const shouldShowZeroState = hasCheckedForRecalls && !hasRecalls && notes.length === 0 && !loading;
-  // Show content if we've checked and either have recalls or have notes loaded
+  
+  // Show content if:
+  // 1. We've checked for recalls AND
+  // 2. Either have recalls OR have notes loaded
   const shouldShowContent = hasCheckedForRecalls && (hasRecalls || notes.length > 0);
 
   return (

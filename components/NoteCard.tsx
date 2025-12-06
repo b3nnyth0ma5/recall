@@ -47,19 +47,30 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
   const loadingQueueRef = useRef<Set<number>>(new Set());
+  
+  // FIXED: Track total image count separately from loaded images
+  // This ensures we always show the correct count even if images haven't loaded yet
+  const [totalImageCount, setTotalImageCount] = useState(0);
 
   // Initialize with first TWO images for better performance
   // MOVED BEFORE THE CONDITIONAL RETURN TO FIX HOOKS RULE
   useEffect(() => {
     if (!loading && note.images && note.images.length > 0) {
+      // Set total count immediately
+      setTotalImageCount(note.images.length);
+      
       // Load first two images immediately if available
       const imagesToLoad = note.images.length > 1 ? note.images.slice(0, 2) : [note.images[0]];
       setLazyLoadedImages(imagesToLoad);
       // Initialize currentImageIndex to 0 to show counter immediately
       setCurrentImageIndex(0);
-      console.log(`[NoteCard] Initialized with first ${imagesToLoad.length} image(s) for note ${note.id}`);
+      console.log(`[NoteCard] Initialized with first ${imagesToLoad.length} image(s) for note ${note.id}, total count: ${note.images.length}`);
+    } else if (!loading && note.imageIds && note.imageIds.length > 0) {
+      // FIXED: If we have imageIds but no images yet (placeholder records), set the count
+      setTotalImageCount(note.imageIds.length);
+      console.log(`[NoteCard] Set total image count to ${note.imageIds.length} from imageIds for note ${note.id}`);
     }
-  }, [note.id, note.images, loading]);
+  }, [note.id, note.images, note.imageIds, loading]);
 
   // Show skeleton if loading
   if (loading) {
@@ -101,13 +112,13 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
     
-    if (index >= 0 && index < (note.images?.length || 0)) {
+    if (index >= 0 && index < totalImageCount) {
       setCurrentImageIndex(index);
       
       // Prefetch next image
-      if (note.images && note.images.length > 2) {
+      if (totalImageCount > 2) {
         const nextIndex = index + 1;
-        if (nextIndex < note.images.length && !lazyLoadedImages[nextIndex]) {
+        if (nextIndex < totalImageCount && !lazyLoadedImages[nextIndex]) {
           lazyLoadImage(nextIndex);
         }
       }
@@ -243,10 +254,10 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     }
   };
 
-  // FIXED: Create display array with placeholders for lazy-loaded images
+  // FIXED: Create display array with placeholders based on totalImageCount
   // This ensures the carousel shows all image slots with placeholders
-  const displayImages = note.images && note.images.length > 0 
-    ? note.images.map((_, index) => lazyLoadedImages[index] || '') 
+  const displayImages = totalImageCount > 0 
+    ? Array.from({ length: totalImageCount }, (_, index) => lazyLoadedImages[index] || '') 
     : [];
 
   // Check if note has people mentioned
@@ -320,11 +331,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
                 </Pressable>
               ))}
             </ScrollView>
-            {/* FIXED: Use note.images.length instead of displayImages.length for accurate count */}
-            {note.images && note.images.length > 1 && (
+            {/* FIXED: Use totalImageCount for accurate count display */}
+            {totalImageCount > 1 && (
               <View style={styles.imageCounter}>
                 <Text style={styles.imageCounterText}>
-                  {currentImageIndex + 1} / {note.images.length}
+                  {currentImageIndex + 1} / {totalImageCount}
                 </Text>
               </View>
             )}
@@ -402,6 +413,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     prevProps.note.id === nextProps.note.id &&
     prevProps.note.updated_at === nextProps.note.updated_at &&
     prevProps.note.images?.length === nextProps.note.images?.length &&
+    prevProps.note.imageIds?.length === nextProps.note.imageIds?.length &&
     prevProps.note.people?.length === nextProps.note.people?.length &&
     prevProps.loading === nextProps.loading
   );
