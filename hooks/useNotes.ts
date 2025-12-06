@@ -437,70 +437,95 @@ export function useNotes() {
     }
 
     try {
-      console.log('[useNotes] Deleting recall from Supabase:', noteId);
+      console.log('[useNotes] ===== ASYNC DELETION STARTED =====');
+      console.log('[useNotes] Deleting recall:', noteId);
+      
+      // Show deletion indicator immediately
       setIsDeletingNote(true);
       
-      // Clear caches for this recall
+      // Clear caches for this recall immediately
       peopleCache.remove(noteId);
       noteCache.remove(noteId);
       
-      // Get all images for this recall
-      const { data: imagesData } = await supabase
-        .from('recall_images')
-        .select('id')
-        .eq('recall_id', noteId);
-
-      // Delete images WITHOUT triggering category matching
-      // We pass a flag to indicate this is part of a recall deletion
-      if (imagesData && imagesData.length > 0) {
-        console.log(`[useNotes] Deleting ${imagesData.length} images for recall ${noteId}`);
-        for (const img of imagesData) {
-          imageCache.remove(img.id);
+      // Remove from UI immediately (optimistic update)
+      setNotes(prevNotes => prevNotes.filter(note => note.id !== noteId));
+      console.log('[useNotes] Recall removed from UI (optimistic update)');
+      
+      // Hide deletion indicator after UI update
+      setIsDeletingNote(false);
+      
+      // Perform actual deletion ASYNCHRONOUSLY (fire and forget)
+      console.log('[useNotes] Starting async deletion process...');
+      (async () => {
+        try {
+          console.log('[useNotes] [ASYNC] Getting images for recall:', noteId);
           
-          // Delete image from CDN and database
-          // Note: We're NOT calling deleteImageRecord here because it triggers category matching
-          // Instead, we'll delete directly
-          const { data: imageData } = await supabase
+          // Get all images for this recall
+          const { data: imagesData } = await supabase
             .from('recall_images')
-            .select('cdn_url')
-            .eq('id', img.id)
-            .single();
+            .select('id, cdn_url')
+            .eq('recall_id', noteId);
 
-          if (imageData?.cdn_url) {
-            const { deleteImageFromCloudflare } = await import('@/utils/cloudflareCDN');
-            await deleteImageFromCloudflare(imageData.cdn_url);
+          // Delete images from CDN and database
+          if (imagesData && imagesData.length > 0) {
+            console.log(`[useNotes] [ASYNC] Deleting ${imagesData.length} images for recall ${noteId}`);
+            
+            for (const img of imagesData) {
+              imageCache.remove(img.id);
+              
+              // Delete from CDN if URL exists
+              if (img.cdn_url) {
+                console.log(`[useNotes] [ASYNC] Deleting image from CDN:`, img.cdn_url);
+                const { deleteImageFromCloudflare } = await import('@/utils/cloudflareCDN');
+                await deleteImageFromCloudflare(img.cdn_url);
+              }
+
+              // Delete from database
+              console.log(`[useNotes] [ASYNC] Deleting image from database:`, img.id);
+              await supabase
+                .from('recall_images')
+                .delete()
+                .eq('id', img.id);
+            }
+            
+            console.log(`[useNotes] [ASYNC] All ${imagesData.length} images deleted`);
           }
 
-          // Delete from database without triggering category matching
-          await supabase
-            .from('recall_images')
+          // Delete the recall itself
+          console.log('[useNotes] [ASYNC] Deleting recall from database:', noteId);
+          const { error } = await supabase
+            .from('recalls')
             .delete()
-            .eq('id', img.id);
+            .eq('id', noteId)
+            .eq('user_id', user.id);
+
+          if (error) {
+            console.error('[useNotes] [ASYNC] Error deleting recall:', error);
+            // Note: We don't throw here because the UI has already been updated
+            // The user won't see this error, but it's logged for debugging
+          } else {
+            console.log('[useNotes] [ASYNC] Recall deleted successfully from database');
+          }
+          
+          // Note: Edge functions that run on delete (if any) will be triggered
+          // automatically by database triggers. They run asynchronously.
+          console.log('[useNotes] [ASYNC] Any delete triggers will run asynchronously');
+          
+          console.log('[useNotes] ===== ASYNC DELETION COMPLETE =====');
+        } catch (asyncError) {
+          console.error('[useNotes] [ASYNC] Exception during async deletion:', asyncError);
+          // Note: We don't show an error to the user because they've already
+          // been navigated away. This is logged for debugging purposes.
         }
-      }
-
-      // Delete the recall itself
-      const { error } = await supabase
-        .from('recalls')
-        .delete()
-        .eq('id', noteId)
-        .eq('user_id', user.id);
-
-      if (error) {
-        console.error('[useNotes] Error deleting recall:', error);
-        throw error;
-      }
-
-      console.log('[useNotes] Recall deleted successfully - category matching NOT triggered');
+      })();
       
-      await refreshNotes();
+      console.log('[useNotes] Deletion initiated asynchronously, returning control to caller');
     } catch (error) {
-      console.error('[useNotes] Error deleting recall:', error);
-      throw error;
-    } finally {
+      console.error('[useNotes] Error initiating recall deletion:', error);
       setIsDeletingNote(false);
+      throw error;
     }
-  }, [refreshNotes, user]);
+  }, [user]);
 
   const searchNotes = useCallback(async (query: string, useV2: boolean = false) => {
     if (!user) {

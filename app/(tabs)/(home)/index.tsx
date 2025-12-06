@@ -283,37 +283,60 @@ export default function HomeScreen() {
 
       console.log('[handleCreateRecallFromCombined] Recall created with ID:', recallData.id);
 
-      // Step 2: Upload images sequentially to avoid race conditions
-      // This fixes the "last image fails" bug
+      // Step 2: Upload images - FIRST IMAGE SYNCHRONOUSLY, REST ASYNCHRONOUSLY
       if (data.images.length > 0) {
-        console.log('[handleCreateRecallFromCombined] Step 2: Uploading images sequentially...');
+        console.log('[handleCreateRecallFromCombined] Step 2: Uploading images...');
         const imageStartTime = Date.now();
         
-        for (let i = 0; i < data.images.length; i++) {
-          const uri = data.images[i];
-          console.log(`[handleCreateRecallFromCombined] Uploading image ${i + 1}/${data.images.length}...`);
+        // Upload FIRST image synchronously
+        console.log(`[handleCreateRecallFromCombined] Uploading first image synchronously (1/${data.images.length})...`);
+        try {
+          const firstImageId = await uploadImageToDatabase(data.images[0], recallData.id, 'image/jpeg');
           
-          try {
-            const imageId = await uploadImageToDatabase(uri, recallData.id, 'image/jpeg');
-            
-            if (imageId) {
-              console.log(`[handleCreateRecallFromCombined] Image ${i + 1} uploaded successfully with ID:`, imageId);
-            } else {
-              console.error(`[handleCreateRecallFromCombined] Image ${i + 1} upload failed - no ID returned`);
-            }
-            
-            // Small delay between uploads to prevent overwhelming the system
-            if (i < data.images.length - 1) {
-              await new Promise(resolve => setTimeout(resolve, 100));
-            }
-          } catch (uploadError) {
-            console.error(`[handleCreateRecallFromCombined] Exception uploading image ${i + 1}:`, uploadError);
-            // Continue with next image even if one fails
+          if (firstImageId) {
+            console.log(`[handleCreateRecallFromCombined] First image uploaded successfully with ID:`, firstImageId);
+          } else {
+            console.error(`[handleCreateRecallFromCombined] First image upload failed - no ID returned`);
           }
+        } catch (uploadError) {
+          console.error(`[handleCreateRecallFromCombined] Exception uploading first image:`, uploadError);
         }
         
-        const imageDuration = Date.now() - imageStartTime;
-        console.log(`[handleCreateRecallFromCombined] All images uploaded in ${imageDuration}ms`);
+        const firstImageDuration = Date.now() - imageStartTime;
+        console.log(`[handleCreateRecallFromCombined] First image uploaded in ${firstImageDuration}ms`);
+        
+        // Upload REMAINING images ASYNCHRONOUSLY (don't wait)
+        if (data.images.length > 1) {
+          console.log(`[handleCreateRecallFromCombined] Uploading remaining ${data.images.length - 1} images asynchronously...`);
+          
+          // Fire and forget - upload remaining images in background
+          (async () => {
+            for (let i = 1; i < data.images.length; i++) {
+              const uri = data.images[i];
+              console.log(`[handleCreateRecallFromCombined] [ASYNC] Uploading image ${i + 1}/${data.images.length}...`);
+              
+              try {
+                const imageId = await uploadImageToDatabase(uri, recallData.id, 'image/jpeg');
+                
+                if (imageId) {
+                  console.log(`[handleCreateRecallFromCombined] [ASYNC] Image ${i + 1} uploaded successfully with ID:`, imageId);
+                } else {
+                  console.error(`[handleCreateRecallFromCombined] [ASYNC] Image ${i + 1} upload failed - no ID returned`);
+                }
+                
+                // Small delay between uploads to prevent overwhelming the system
+                if (i < data.images.length - 1) {
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                }
+              } catch (uploadError) {
+                console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception uploading image ${i + 1}:`, uploadError);
+                // Continue with next image even if one fails
+              }
+            }
+            
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] All remaining images uploaded`);
+          })();
+        }
       }
 
       // Step 3: Refresh the recalls list

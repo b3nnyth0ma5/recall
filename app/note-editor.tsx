@@ -1268,19 +1268,23 @@ export default function NoteEditorScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              setDeleting(true);
-              await deleteNote(params.id as string);
+              console.log('[NoteEditor] ===== ASYNC DELETE INITIATED =====');
+              console.log('[NoteEditor] User confirmed deletion, navigating back immediately');
               
-              router.back();
+              // Navigate back to landing page IMMEDIATELY
+              router.push('/(tabs)/(home)');
               
-              setTimeout(() => {
-                refreshNotes();
-              }, 300);
+              // Delete asynchronously (fire and forget)
+              console.log('[NoteEditor] Calling deleteNote asynchronously...');
+              deleteNote(params.id as string).catch(error => {
+                console.error('[NoteEditor] Error in async deletion:', error);
+                // Note: User has already been navigated away, so we don't show an alert
+              });
+              
+              console.log('[NoteEditor] Navigation complete, deletion running in background');
             } catch (error) {
-              console.error('Error deleting recall:', error);
+              console.error('[NoteEditor] Error initiating deletion:', error);
               Alert.alert('Error', 'Failed to delete recall');
-            } finally {
-              setDeleting(false);
             }
           },
         },
@@ -1660,16 +1664,6 @@ export default function NoteEditorScreen() {
           <View style={styles.savingModalContent}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.savingModalText}>Saving Recall...</Text>
-          </View>
-        </View>
-      )}
-
-      {/* Deleting Modal */}
-      {deleting && (
-        <View style={styles.savingModalContainer}>
-          <View style={styles.savingModalContent}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.savingModalText}>Deleting Recall...</Text>
           </View>
         </View>
       )}

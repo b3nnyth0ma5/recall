@@ -26,7 +26,6 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-  Easing,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { supabase } from '@/utils/supabase';
