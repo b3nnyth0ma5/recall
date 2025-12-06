@@ -243,8 +243,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     }
   };
 
-  // Determine which images to display (lazy loaded or all)
-  const displayImages = note.images && note.images.length > 1 ? lazyLoadedImages : (note.images || []);
+  // FIXED: Create display array with placeholders for lazy-loaded images
+  // This ensures the carousel shows all image slots with placeholders
+  const displayImages = note.images && note.images.length > 0 
+    ? note.images.map((_, index) => lazyLoadedImages[index] || '') 
+    : [];
 
   // Check if note has people mentioned
   const hasPeople = note.people && note.people.length > 0;
@@ -317,7 +320,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
                 </Pressable>
               ))}
             </ScrollView>
-            {/* Fixed: Check note.images.length instead of displayImages.length */}
+            {/* FIXED: Use note.images.length instead of displayImages.length for accurate count */}
             {note.images && note.images.length > 1 && (
               <View style={styles.imageCounter}>
                 <Text style={styles.imageCounterText}>
@@ -414,9 +417,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardContent: {
-    //padding: CARD_PADDING,
     padding: 4,
-		position: 'relative',
+    position: 'relative',
     overflow: 'visible',
     borderRadius: 16,
   },

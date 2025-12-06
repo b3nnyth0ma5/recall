@@ -12,6 +12,7 @@ import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
 import { supabase } from '@/utils/supabase';
 import { uploadImageToDatabase } from '@/utils/supabase';
+import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
@@ -380,20 +381,18 @@ export default function HomeScreen() {
     return (
       <View style={styles.allNotesSection}>
         {[...Array(3)].map((_, index) => (
-          <NoteCard
-            key={`skeleton-${index}`}
-            note={{} as any}
-            onPress={() => {}}
-            loading={true}
-          />
+          <NoteCardSkeleton key={`skeleton-${index}`} />
         ))}
       </View>
     );
   };
 
   // Determine what to show
+  // Show skeletons while loading AND haven't checked for recalls yet
   const shouldShowSkeletons = loading && !hasCheckedForRecalls;
+  // Show zero state only if we've checked, user has no recalls, and not loading
   const shouldShowZeroState = hasCheckedForRecalls && !hasRecalls && notes.length === 0 && !loading;
+  // Show content if we've checked and either have recalls or have notes loaded
   const shouldShowContent = hasCheckedForRecalls && (hasRecalls || notes.length > 0);
 
   return (
