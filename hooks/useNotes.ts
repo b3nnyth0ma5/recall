@@ -4,6 +4,7 @@ import { Note } from '@/types/Note';
 import { supabase, getImageDataUrl, deleteImageRecord, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
+import { getCachedImage, setCachedImage, removeCachedImage, clearImageCache } from '@/utils/imageCache';
 
 export type SearchStage = 'idle' | 'detecting' | 'resolving' | 'filtering' | 'searching' | 'complete';
 
@@ -30,7 +31,7 @@ export function useNotes() {
 
   const ITEMS_PER_PAGE = 7;
 
-  // NEW: Function to get cached note data using MemoryCache
+  // Function to get cached note data using MemoryCache
   const getCachedNote = useCallback((noteId: string): Note | null => {
     const cached = noteCache.get(noteId);
     if (cached) {
@@ -41,14 +42,14 @@ export function useNotes() {
     return null;
   }, []);
 
-  // NEW: Function to update note cache using MemoryCache
+  // Function to update note cache using MemoryCache
   const updateNoteCache = useCallback((note: Note) => {
     const cost = CostCalculator.forNote(note);
     noteCache.set(note.id, note, cost);
     console.log(`[useNotes] Updated cache for note ${note.id} (cost: ${(cost / 1024).toFixed(2)} KB)`);
   }, []);
 
-  // Optimized helper function to load people for recalls in batch
+  // OPTIMIZED: Batch load people for recalls with better caching
   const loadPeopleForRecalls = useCallback(async (recallIds: string[]) => {
     if (!recallIds || recallIds.length === 0) {
       return {};
@@ -69,13 +70,11 @@ export function useNotes() {
       });
       
       if (uncachedIds.length === 0) {
-        // All data is cached
         console.log(`[useNotes] All people data cached for ${recallIds.length} recalls`);
         return result;
       }
 
-      // Fetch only uncached data with optimized query using composite index
-      // FIXED: Include photo_url in the select
+      // OPTIMIZED: Fetch only uncached data using optimized index
       const { data: recallPeopleData, error: recallPeopleError } = await supabase
         .from('recall_people')
         .select('recall_id, person_id, persons!inner(id, person_name, photo_url)')
@@ -94,7 +93,6 @@ export function useNotes() {
           peopleByRecallId[rp.recall_id] = [];
         }
         
-        // Extract person data from the nested persons object
         if (rp.persons) {
           peopleByRecallId[rp.recall_id].push({
             id: rp.persons.id,
@@ -120,14 +118,15 @@ export function useNotes() {
     }
   }, []);
 
-  // Optimized image loading with better error handling and caching
+  // OPTIMIZED: Image loading with global cache and better performance
   const loadImagesForRecalls = useCallback(async (recalls: any[]) => {
+    const startTime = performance.now();
+    
     // First, load people for all recalls in one batch
     const recallIds = recalls.map(r => r.id);
     const peopleByRecallId = await loadPeopleForRecalls(recallIds);
 
-    // Batch fetch all images for all recalls in one query
-    // Uses idx_recall_images_user_recall index
+    // OPTIMIZED: Batch fetch all images using new covering index
     const { data: allImagesData, error: allImagesError } = await supabase
       .from('recall_images')
       .select('id, recall_id, cdn_url')
@@ -138,6 +137,9 @@ export function useNotes() {
       console.error('Error fetching images:', allImagesError);
     }
 
+    const fetchTime = performance.now() - startTime;
+    console.log(`[useNotes] Fetched ${allImagesData?.length || 0} images in ${fetchTime.toFixed(2)}ms`);
+
     // Group images by recall_id
     const imagesByRecallId = new Map<string, any[]>();
     (allImagesData || []).forEach(img => {
@@ -147,41 +149,36 @@ export function useNotes() {
       imagesByRecallId.get(img.recall_id)!.push(img);
     });
 
-    // Process recalls with their images
+    // OPTIMIZED: Process recalls with global image cache
     const processedNotes = await Promise.all(
       recalls.map(async (recall) => {
         try {
           const recallImages = imagesByRecallId.get(recall.id) || [];
           
-          // Load first TWO images immediately for better UX (as per recent requirement)
+          // OPTIMIZED: Load first TWO images using global cache
           const imageResults = await Promise.all(
             recallImages.map(async (img, index) => {
               try {
-                // Load first two images, others will be lazy loaded
+                // Load first two images immediately
                 if (index < 2) {
-                  // Check MemoryCache first
-                  const cachedImage = imageCache.get(img.id);
-                  if (cachedImage) {
-                    return { url: cachedImage, id: img.id };
-                  }
-                  
                   // Prefer CDN URL if available (much faster)
                   if (img.cdn_url) {
-                    const cost = CostCalculator.forImage(img.cdn_url);
-                    imageCache.set(img.id, img.cdn_url, cost);
+                    setCachedImage(img.id, img.cdn_url);
                     return { url: img.cdn_url, id: img.id };
                   }
                   
-                  // Fallback to base64 data
-                  const dataUrl = await getImageDataUrl(img.id);
+                  // Use global cache for base64 data
+                  const dataUrl = await getCachedImage(img.id);
                   if (dataUrl) {
-                    const cost = CostCalculator.forImage(dataUrl);
-                    imageCache.set(img.id, dataUrl, cost);
                     return { url: dataUrl, id: img.id };
                   }
                   return { url: '', id: img.id };
                 } else {
-                  // Return placeholder for lazy loading
+                  // Placeholder for lazy loading (will be loaded by NoteCard)
+                  // But pre-cache CDN URLs if available
+                  if (img.cdn_url) {
+                    setCachedImage(img.id, img.cdn_url);
+                  }
                   return { url: '', id: img.id };
                 }
               } catch (error) {
@@ -201,7 +198,7 @@ export function useNotes() {
             people: peopleByRecallId[recall.id] || [],
           };
 
-          // Update note cache with processed note
+          // Update note cache
           updateNoteCache(processedNote);
 
           return processedNote;
@@ -216,6 +213,9 @@ export function useNotes() {
         }
       })
     );
+
+    const totalTime = performance.now() - startTime;
+    console.log(`[useNotes] Processed ${processedNotes.length} notes in ${totalTime.toFixed(2)}ms`);
 
     return processedNotes;
   }, [loadPeopleForRecalls, updateNoteCache]);
@@ -239,7 +239,7 @@ export function useNotes() {
       const from = (pageNum - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
-      // Optimized query using idx_recalls_user_created composite index
+      // OPTIMIZED: Query using idx_recalls_user_created composite index
       const { data: recallsData, error: recallsError } = await supabase
         .from('recalls')
         .select('*')
@@ -264,11 +264,11 @@ export function useNotes() {
         setHasMore(false);
       }
 
-      // Optimized image and people loading
+      // OPTIMIZED: Load images and people with global cache
       const notesWithImagesAndPeople = await loadImagesForRecalls(recallsData);
 
       if (append) {
-        // Prevent duplicates by filtering out notes that already exist
+        // Prevent duplicates
         setNotes(prevNotes => {
           const existingIds = new Set(prevNotes.map(note => note.id));
           const newUniqueNotes = notesWithImagesAndPeople.filter(note => !existingIds.has(note.id));
@@ -303,11 +303,12 @@ export function useNotes() {
   }, [page, hasMore, isLoadingMore, loading, loadNotes]);
 
   const refreshNotes = useCallback(async () => {
-    // Clear MemoryCache instances on refresh
+    // Clear all caches on refresh
     console.log('[useNotes] Clearing all caches on refresh');
     peopleCache.clear();
     imageCache.clear();
     noteCache.clear();
+    clearImageCache(); // Clear global image cache
     
     setPage(1);
     setHasMore(true);
@@ -335,7 +336,7 @@ export function useNotes() {
         return;
       }
 
-      // Clear cache for this recall
+      // Clear caches for this recall
       peopleCache.remove(noteId);
       noteCache.remove(noteId);
 
@@ -454,13 +455,13 @@ export function useNotes() {
       // Hide deletion indicator after UI update
       setIsDeletingNote(false);
       
-      // Perform actual deletion ASYNCHRONOUSLY (fire and forget)
+      // OPTIMIZED: Perform actual deletion ASYNCHRONOUSLY
       console.log('[useNotes] Starting async deletion process...');
       (async () => {
         try {
           console.log('[useNotes] [ASYNC] Getting images for recall:', noteId);
           
-          // Get all images for this recall
+          // OPTIMIZED: Get all images using new index
           const { data: imagesData } = await supabase
             .from('recall_images')
             .select('id, cdn_url')
@@ -471,7 +472,8 @@ export function useNotes() {
             console.log(`[useNotes] [ASYNC] Deleting ${imagesData.length} images for recall ${noteId}`);
             
             for (const img of imagesData) {
-              imageCache.remove(img.id);
+              // Remove from global cache
+              removeCachedImage(img.id);
               
               // Delete from CDN if URL exists
               if (img.cdn_url) {
@@ -480,7 +482,7 @@ export function useNotes() {
                 await deleteImageFromCloudflare(img.cdn_url);
               }
 
-              // Delete from database
+              // OPTIMIZED: Delete from database using new index
               console.log(`[useNotes] [ASYNC] Deleting image from database:`, img.id);
               await supabase
                 .from('recall_images')
@@ -501,30 +503,22 @@ export function useNotes() {
 
           if (error) {
             console.error('[useNotes] [ASYNC] Error deleting recall:', error);
-            // Note: We don't throw here because the UI has already been updated
-            // The user won't see this error, but it's logged for debugging
           } else {
             console.log('[useNotes] [ASYNC] Recall deleted successfully from database');
           }
           
-          // FIXED: Add a small delay (300ms) before refreshing the landing page
+          // Small delay before refreshing
           console.log('[useNotes] [ASYNC] Waiting 300ms before refreshing landing page...');
           await new Promise(resolve => setTimeout(resolve, 300));
           
-          // Refresh the landing page after deletion completes
+          // Refresh the landing page
           console.log('[useNotes] [ASYNC] Refreshing landing page after deletion...');
           await refreshNotes();
           console.log('[useNotes] [ASYNC] Landing page refreshed');
           
-          // Note: Edge functions that run on delete (if any) will be triggered
-          // automatically by database triggers. They run asynchronously.
-          console.log('[useNotes] [ASYNC] Any delete triggers will run asynchronously');
-          
           console.log('[useNotes] ===== ASYNC DELETION COMPLETE =====');
         } catch (asyncError) {
           console.error('[useNotes] [ASYNC] Exception during async deletion:', asyncError);
-          // Note: We don't show an error to the user because they've already
-          // been navigated away. This is logged for debugging purposes.
         }
       })();
       
@@ -564,7 +558,7 @@ export function useNotes() {
       setSearchStage('detecting');
       setSearchLocationName(undefined);
       
-      // Save search history (uses idx_search_history_user_updated index)
+      // Save search history
       await saveSearchHistory(user.id, query);
       
       // Get current session
@@ -574,7 +568,7 @@ export function useNotes() {
         return;
       }
 
-      // Step 1: Check for location intent using search-recalls-with-location
+      // Step 1: Check for location intent
       console.log('Step 1: Checking for location intent...');
       const locationCheckStart = Date.now();
       
@@ -592,11 +586,9 @@ export function useNotes() {
         
         setSearchStage('resolving');
         setSearchLocationName(locationData.locationInfo?.resolvedPlace);
-        
-        // Store location info
         setLocationInfo(locationData.locationInfo);
         
-        // Step 2: Use search-recalls-v2 with the filtered recall IDs
+        // Step 2: Use search-recalls-v2 with filtered recall IDs
         console.log('Step 2: Running AI search on location-filtered recalls...');
         setSearchStage('searching');
         
@@ -604,7 +596,7 @@ export function useNotes() {
         const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls-v2', {
           body: {
             query: locationData.cleanedQuery || query.trim(),
-            recallIds: locationData.recallIds, // Pass filtered IDs
+            recallIds: locationData.recallIds,
           },
         });
 
@@ -612,7 +604,7 @@ export function useNotes() {
 
         if (searchError) {
           console.error('Error in AI search:', searchError);
-          // Fallback: just show the location-filtered recalls
+          // Fallback: show location-filtered recalls
           const { data: recallsData } = await supabase
             .from('recalls')
             .select('*')
@@ -635,9 +627,6 @@ export function useNotes() {
         const personInfoData = searchResults?.personInfo || null;
         
         console.log(`Found ${matchedRecallIds.length} AI-ranked results`);
-        console.log('Answer:', answer);
-        console.log('Confidence:', confidence);
-        console.log('Person info:', personInfoData);
         
         if (matchedRecallIds.length > 0) {
           const { data: recallsData } = await supabase
@@ -646,7 +635,6 @@ export function useNotes() {
             .in('id', matchedRecallIds)
             .eq('user_id', user.id);
 
-          // Map recalls with match info
           const orderedRecalls = searchResults.results
             .map((matchInfo: any) => {
               const recall = recallsData?.find(r => r.id === matchInfo.id);
@@ -678,7 +666,7 @@ export function useNotes() {
         return;
       }
 
-      // No location intent or couldn't resolve - use regular V2 search
+      // No location intent - use regular V2 search
       console.log('No location intent detected - using regular AI search');
       setSearchStage('searching');
       setLocationInfo(null);
@@ -716,9 +704,6 @@ export function useNotes() {
       const personInfoData = searchResults?.personInfo || null;
       
       console.log(`Found ${matchedRecallIds.length} results`);
-      console.log('Answer:', answer);
-      console.log('Confidence:', confidence);
-      console.log('Person info:', personInfoData);
       
       if (matchedRecallIds.length > 0) {
         const { data: recallsData } = await supabase
@@ -781,7 +766,6 @@ export function useNotes() {
     }
 
     try {
-      // Uses idx_search_history_user_updated index
       const { data, error } = await supabase
         .from('search_history')
         .select('*')

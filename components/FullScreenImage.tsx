@@ -31,8 +31,8 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
-import { getImageDataUrl } from '@/utils/supabase';
 import { SkeletonLoader } from './SkeletonLoader';
+import { getCachedImage } from '@/utils/imageCache';
 
 interface FullScreenImageProps {
   visible: boolean;
@@ -48,7 +48,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const DISMISS_THRESHOLD = 100;
 
 /**
- * Standalone full-screen image viewer component with integrated OCR functionality
+ * OPTIMIZED: Standalone full-screen image viewer component with integrated OCR functionality
  * 
  * Features:
  * - Full-screen image carousel with smooth scrolling
@@ -58,7 +58,7 @@ const DISMISS_THRESHOLD = 100;
  * - Image counter and pagination dots
  * - OCR modal for viewing image analysis
  * - Reusable across NoteCard and note-editor
- * - Loads all images from imageIds when opened
+ * - OPTIMIZED: Uses global image cache for faster loading
  * - Skeleton placeholders instead of loading spinner
  */
 export function FullScreenImage({
@@ -81,7 +81,7 @@ export function FullScreenImage({
   const translateY = useSharedValue(0);
   const contextY = useSharedValue(0);
 
-  // Load all images when modal opens
+  // OPTIMIZED: Load all images using global cache when modal opens
   useEffect(() => {
     if (visible) {
       setCurrentImageIndex(initialIndex);
@@ -90,17 +90,25 @@ export function FullScreenImage({
       translateY.value = 0;
       contextY.value = 0;
       
-      // Load all images from imageIds if available
+      // OPTIMIZED: Load all images from global cache
       const loadAllImages = async () => {
         if (imageIds && imageIds.length > 0) {
-          console.log('[FullScreenImage] Loading all images from imageIds');
+          console.log('[FullScreenImage] Loading all images from global cache');
           setIsLoadingImages(true);
           
           try {
+            const startTime = performance.now();
+            
+            // OPTIMIZED: Use global cache for all images
             const imagePromises = imageIds.map(async (imageId, index) => {
               try {
-                const imageUrl = await getImageDataUrl(imageId);
-                return imageUrl || images[index] || '';
+                // Try global cache first
+                const cachedUrl = await getCachedImage(imageId);
+                if (cachedUrl) {
+                  return cachedUrl;
+                }
+                // Fallback to original images array
+                return images[index] || '';
               } catch (error) {
                 console.error(`[FullScreenImage] Error loading image ${index}:`, error);
                 return images[index] || '';
@@ -109,7 +117,9 @@ export function FullScreenImage({
             
             const allImages = await Promise.all(imagePromises);
             setLoadedImages(allImages);
-            console.log('[FullScreenImage] Successfully loaded all images');
+            
+            const loadTime = performance.now() - startTime;
+            console.log(`[FullScreenImage] Loaded ${allImages.length} images in ${loadTime.toFixed(2)}ms`);
           } catch (error) {
             console.error('[FullScreenImage] Error loading images:', error);
             // Fallback to original images array

@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, memo } from 'react';
+import React, { useState, useRef, useEffect, memo, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Alert, Platform } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
@@ -7,24 +7,23 @@ import { IconSymbol } from './IconSymbol';
 import { FullScreenImage } from './FullScreenImage';
 import { TimeAgo } from './TimeAgo';
 import { shareRecall } from '@/utils/shareRecall';
-import { getImageDataUrl } from '@/utils/supabase';
 import { PeopleAvatars } from './PeopleAvatars';
 import * as Haptics from 'expo-haptics';
 import { NoteCardSkeleton } from './NoteCardSkeleton';
 import { SkeletonLoader } from './SkeletonLoader';
+import { getCachedImage, prefetchImages } from '@/utils/imageCache';
 
 interface NoteCardProps {
   note: Note;
   onPress: () => void;
   onImagePress?: () => void;
   loading?: boolean;
-  expectedImageCount?: number; // NEW: Expected total image count for newly created notes
+  expectedImageCount?: number;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 8;
 const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 5);
-// Reduced by 10%: (IMAGE_WIDTH * 1.25) * 0.9 = IMAGE_WIDTH * 1.125
 const IMAGE_HEIGHT = IMAGE_WIDTH * 1.1;
 const IMAGE_SPACING = 12;
 
@@ -39,43 +38,77 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
-  const [imageLoadingStates, setImageLoadingStates] = useState<{ [key: number]: boolean }>({});
-  const [imageErrorStates, setImageErrorStates] = useState<{ [key: number]: boolean }>({});
-  const [imageLoadedStates, setImageLoadedStates] = useState<{ [key: number]: boolean }>({});
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const imageScrollRef = useRef<ScrollView>(null);
   
-  // Optimized lazy loading state for images
-  const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
-  const [isLazyLoading, setIsLazyLoading] = useState(false);
-  const loadingQueueRef = useRef<Set<number>>(new Set());
-  
-  // FIXED: Track total image count separately from loaded images
-  // This ensures we always show the correct count even if images haven't loaded yet
+  // OPTIMIZED: Simplified state management with global cache
+  const [loadedImages, setLoadedImages] = useState<Map<number, string>>(new Map());
+  const [loadingImages, setLoadingImages] = useState<Set<number>>(new Set());
+  const [errorImages, setErrorImages] = useState<Set<number>>(new Set());
   const [totalImageCount, setTotalImageCount] = useState(0);
+  const loadingInProgressRef = useRef<Set<number>>(new Set());
 
-  // Initialize with first TWO images for better performance
-  // MOVED BEFORE THE CONDITIONAL RETURN TO FIX HOOKS RULE
+  // OPTIMIZED: Initialize with cached images and prefetch
   useEffect(() => {
-    if (!loading && note.images && note.images.length > 0) {
-      // Set total count immediately
-      setTotalImageCount(note.images.length);
-      
-      // Load first two images immediately if available
-      const imagesToLoad = note.images.length > 1 ? note.images.slice(0, 2) : [note.images[0]];
-      setLazyLoadedImages(imagesToLoad);
-      // Initialize currentImageIndex to 0 to show counter immediately
+    if (loading) return;
+
+    const imageIds = note.imageIds || [];
+    const images = note.images || [];
+    
+    // Determine total count
+    const count = expectedImageCount || imageIds.length || images.length;
+    setTotalImageCount(count);
+
+    if (count === 0) return;
+
+    // OPTIMIZED: Load images using global cache
+    const loadInitialImages = async () => {
+      const newLoadedImages = new Map<number, string>();
+
+      // Load first image immediately
+      if (images[0]) {
+        newLoadedImages.set(0, images[0]);
+      } else if (imageIds[0]) {
+        const url = await getCachedImage(imageIds[0]);
+        if (url) newLoadedImages.set(0, url);
+      }
+
+      // Load second image immediately for better UX
+      if (count > 1) {
+        if (images[1]) {
+          newLoadedImages.set(1, images[1]);
+        } else if (imageIds[1]) {
+          const url = await getCachedImage(imageIds[1]);
+          if (url) newLoadedImages.set(1, url);
+        }
+      }
+
+      setLoadedImages(newLoadedImages);
       setCurrentImageIndex(0);
-      console.log(`[NoteCard] Initialized with first ${imagesToLoad.length} image(s) for note ${note.id}, total count: ${note.images.length}`);
-    } else if (!loading && note.imageIds && note.imageIds.length > 0) {
-      // FIXED: If we have imageIds but no images yet (placeholder records), set the count
-      setTotalImageCount(note.imageIds.length);
-      console.log(`[NoteCard] Set total image count to ${note.imageIds.length} from imageIds for note ${note.id}`);
-    } else if (!loading && expectedImageCount && expectedImageCount > 0) {
-      // FIXED: Use expectedImageCount if provided (for newly created notes with pending uploads)
-      setTotalImageCount(expectedImageCount);
-      console.log(`[NoteCard] Set total image count to ${expectedImageCount} from expectedImageCount for note ${note.id}`);
-    }
+
+      // OPTIMIZED: Prefetch remaining images in background
+      if (count > 2) {
+        const remainingImageIds = imageIds.slice(2);
+        if (remainingImageIds.length > 0) {
+          console.log(`[NoteCard] Prefetching ${remainingImageIds.length} remaining images`);
+          prefetchImages(remainingImageIds, 2).then(() => {
+            // Update loaded images after prefetch
+            const updatedImages = new Map(newLoadedImages);
+            for (let i = 2; i < count; i++) {
+              if (imageIds[i]) {
+                getCachedImage(imageIds[i]).then((url) => {
+                  if (url) {
+                    setLoadedImages((prev) => new Map(prev).set(i, url));
+                  }
+                });
+              }
+            }
+          });
+        }
+      }
+    };
+
+    loadInitialImages();
   }, [note.id, note.images, note.imageIds, loading, expectedImageCount]);
 
   // Show skeleton if loading
@@ -83,53 +116,59 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     return <NoteCardSkeleton />;
   }
 
-  // Optimized lazy load with queue management
-  const lazyLoadImage = async (index: number) => {
-    if (!note.imageIds || index >= note.imageIds.length) return;
-    if (lazyLoadedImages[index]) return; // Already loaded
-    if (loadingQueueRef.current.has(index)) return; // Already in queue
+  // OPTIMIZED: Lazy load image with global cache
+  const lazyLoadImage = useCallback(async (index: number) => {
+    const imageIds = note.imageIds || [];
     
-    loadingQueueRef.current.add(index);
-    setIsLazyLoading(true);
+    if (index >= totalImageCount || !imageIds[index]) return;
+    if (loadedImages.has(index)) return;
+    if (loadingInProgressRef.current.has(index)) return;
+    
+    loadingInProgressRef.current.add(index);
+    setLoadingImages((prev) => new Set(prev).add(index));
     
     try {
-      const imageIdToLoad = note.imageIds[index];
-      if (imageIdToLoad) {
-        const imageUrl = await getImageDataUrl(imageIdToLoad);
-        if (imageUrl) {
-          setLazyLoadedImages(prev => {
-            const newImages = [...prev];
-            newImages[index] = imageUrl;
-            return newImages;
-          });
-          console.log(`[NoteCard] Successfully lazy loaded image at index ${index}`);
-        }
+      const url = await getCachedImage(imageIds[index]);
+      if (url) {
+        setLoadedImages((prev) => new Map(prev).set(index, url));
+        setLoadingImages((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(index);
+          return newSet;
+        });
+      } else {
+        setErrorImages((prev) => new Set(prev).add(index));
       }
     } catch (error) {
       console.error(`[NoteCard] Error lazy loading image at index ${index}:`, error);
+      setErrorImages((prev) => new Set(prev).add(index));
     } finally {
-      loadingQueueRef.current.delete(index);
-      setIsLazyLoading(false);
+      loadingInProgressRef.current.delete(index);
+      setLoadingImages((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(index);
+        return newSet;
+      });
     }
-  };
+  }, [note.imageIds, totalImageCount, loadedImages]);
 
-  // Optimized image scroll handler with prefetching
-  const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+  // OPTIMIZED: Improved scroll handler with intelligent prefetching
+  const handleImageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
     
     if (index >= 0 && index < totalImageCount) {
       setCurrentImageIndex(index);
       
-      // Prefetch next image
-      if (totalImageCount > 2) {
-        const nextIndex = index + 1;
-        if (nextIndex < totalImageCount && !lazyLoadedImages[nextIndex]) {
-          lazyLoadImage(nextIndex);
+      // OPTIMIZED: Prefetch adjacent images (next 2 and previous 1)
+      const imagesToPrefetch = [index + 1, index + 2, index - 1];
+      imagesToPrefetch.forEach((prefetchIndex) => {
+        if (prefetchIndex >= 0 && prefetchIndex < totalImageCount && !loadedImages.has(prefetchIndex)) {
+          lazyLoadImage(prefetchIndex);
         }
-      }
+      });
     }
-  };
+  }, [totalImageCount, loadedImages, lazyLoadImage]);
 
   const renderTextWithLinks = (text: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -172,52 +211,29 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     return note.text && note.text.length > 150;
   };
 
-  const handleImageError = (index: number) => {
-    console.error('Error loading image at index:', index);
-    setImageErrorStates(prev => ({ ...prev, [index]: true }));
-    setImageLoadingStates(prev => ({ ...prev, [index]: false }));
-    setImageLoadedStates(prev => ({ ...prev, [index]: false }));
-  };
-
-  const handleImageLoadStart = (index: number) => {
-    // Only set loading state if the image hasn't been loaded before
-    if (!imageLoadedStates[index]) {
-      setImageLoadingStates(prev => ({ ...prev, [index]: true }));
-    }
-  };
-
-  const handleImageLoad = (index: number) => {
-    // Mark as loaded and stop showing loading indicator
-    setImageLoadingStates(prev => ({ ...prev, [index]: false }));
-    setImageLoadedStates(prev => ({ ...prev, [index]: true }));
-  };
-
-  const handleImagePress = (index: number) => {
+  const handleImagePress = useCallback((index: number) => {
     setFullScreenImageIndex(index);
     setShowFullScreenImage(true);
     if (onImagePress) {
       onImagePress();
     }
-  };
+  }, [onImagePress]);
 
-  const handleTextPress = () => {
-    // Open note editor when text is clicked
+  const handleTextPress = useCallback(() => {
     onPress();
-  };
+  }, [onPress]);
 
-  const handleToggleExpand = (e: any) => {
-    // Stop propagation to prevent opening the note editor
+  const handleToggleExpand = useCallback((e: any) => {
     e.stopPropagation();
     setIsExpanded(!isExpanded);
-  };
+  }, [isExpanded]);
 
-  const handleLocationPress = async () => {
+  const handleLocationPress = useCallback(async () => {
     if (!note.latitude || !note.longitude) {
       console.log('No location coordinates available');
       return;
     }
 
-    // Trigger heavy haptic feedback
     if (Platform.OS !== 'web') {
       try {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -230,10 +246,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     const locationName = note.location || '';
     
     try {
-      // Use universal URL format with location name for better context
       let universalUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
       
-      // If we have a location name, include it in the query for better context
       if (locationName) {
         const encodedLocationName = encodeURIComponent(locationName);
         universalUrl = `https://www.google.com/maps/search/?api=1&query=${encodedLocationName}+${latitude},${longitude}`;
@@ -249,41 +263,27 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     } catch (error) {
       console.error('Error opening maps:', error);
     }
-  };
+  }, [note.latitude, note.longitude, note.location]);
 
-  const handleSharePress = async () => {
+  const handleSharePress = useCallback(async () => {
     try {
       await shareRecall(note, currentImageIndex);
     } catch (error) {
       console.error('Error sharing recall:', error);
       Alert.alert('Error', 'Failed to share recall. Please try again.');
     }
-  };
+  }, [note, currentImageIndex]);
 
-  // FIXED: Create display array with placeholders based on totalImageCount
-  // This ensures the carousel shows all image slots with placeholders
-  const displayImages = totalImageCount > 0 
-    ? Array.from({ length: totalImageCount }, (_, index) => {
-        // First check if we have a lazy loaded image
-        if (lazyLoadedImages[index]) {
-          return lazyLoadedImages[index];
-        }
-        // Then check if we have the image in the note.images array
-        if (note.images && note.images[index]) {
-          return note.images[index];
-        }
-        // Otherwise return empty string for placeholder
-        return '';
-      }) 
-    : [];
+  // OPTIMIZED: Build display array efficiently
+  const displayImages = Array.from({ length: totalImageCount }, (_, index) => {
+    return loadedImages.get(index) || '';
+  });
 
-  // Check if note has people mentioned
   const hasPeople = note.people && note.people.length > 0;
 
   return (
     <View style={styles.card}>
       <Pressable onPress={onPress} style={styles.cardContent}>
-        {/* People Avatars - Top Right Edge (Superscript Position) */}
         {hasPeople && (
           <View style={styles.peopleAvatarsContainer}>
             <PeopleAvatars 
@@ -295,7 +295,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
           </View>
         )}
 
-        {/* Images - Now displayed FIRST */}
         {displayImages && displayImages.length > 0 && (
           <View style={styles.imagesContainer}>
             <ScrollView
@@ -316,7 +315,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
                   onPress={() => handleImagePress(index)}
                   style={styles.imageWrapper}
                 >
-                  {!imageUrl ? (
+                  {!imageUrl || loadingImages.has(index) ? (
                     <View style={styles.imageLoadingContainer}>
                       <SkeletonLoader
                         width={IMAGE_WIDTH}
@@ -325,39 +324,21 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
                         variant="wave"
                       />
                     </View>
+                  ) : errorImages.has(index) ? (
+                    <View style={styles.imageErrorContainer}>
+                      <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
+                      <Text style={styles.imageErrorText}>Failed to load image</Text>
+                    </View>
                   ) : (
-                    <>
-                      {imageLoadingStates[index] && !imageErrorStates[index] && !imageLoadedStates[index] && (
-                        <View style={styles.imageLoadingContainer}>
-                          <SkeletonLoader
-                            width={IMAGE_WIDTH}
-                            height={IMAGE_HEIGHT}
-                            borderRadius={12}
-                            variant="wave"
-                          />
-                        </View>
-                      )}
-                      {imageErrorStates[index] ? (
-                        <View style={styles.imageErrorContainer}>
-                          <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
-                          <Text style={styles.imageErrorText}>Failed to load image</Text>
-                        </View>
-                      ) : (
-                        <Image
-                          source={{ uri: imageUrl }}
-                          style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
-                          resizeMode="cover"
-                          onLoadStart={() => handleImageLoadStart(index)}
-                          onLoad={() => handleImageLoad(index)}
-                          onError={() => handleImageError(index)}
-                        />
-                      )}
-                    </>
+                    <Image
+                      source={{ uri: imageUrl }}
+                      style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
+                      resizeMode="cover"
+                    />
                   )}
                 </Pressable>
               ))}
             </ScrollView>
-            {/* FIXED: Use totalImageCount for accurate count display */}
             {totalImageCount > 1 && (
               <View style={styles.imageCounter}>
                 <Text style={styles.imageCounterText}>
@@ -368,7 +349,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
           </View>
         )}
 
-        {/* Text Content - Now displayed AFTER images */}
         {note.text && (
           <Pressable onPress={handleTextPress}>
             <Text style={styles.text}>
@@ -392,9 +372,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
           </Pressable>
         )}
 
-        {/* Location and Time on the same line */}
         <View style={styles.locationTimeContainer}>
-          {/* Location - Left-aligned, occupies 75% of space */}
           {note.location && (
             <Pressable 
               onPress={handleLocationPress}
@@ -410,7 +388,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
             </Pressable>
           )}
           
-          {/* Time Ago - Right-aligned, occupies remaining space */}
           <View style={styles.timeAgoWrapper}>
             <TimeAgo 
               date={note.created_at} 
@@ -420,7 +397,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
         </View>
       </Pressable>
 
-      {/* Full Screen Image Component - Pass original images array, not lazy loaded */}
       {note.images && note.images.length > 0 && (
         <FullScreenImage
           visible={showFullScreenImage}
@@ -433,8 +409,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     </View>
   );
 }, (prevProps, nextProps) => {
-  // Custom comparison function for memo
-  // Only re-render if note data actually changed or loading state changed
   return (
     prevProps.note.id === nextProps.note.id &&
     prevProps.note.updated_at === nextProps.note.updated_at &&
