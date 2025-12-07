@@ -297,10 +297,10 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
-        {/* Main Input Container with Blur Border */}
+        {/* Main Input Container with Enhanced Border */}
         <View style={styles.containerWrapper}>
-          <View style={styles.borderBlur}>
-            <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
+          <View style={styles.borderGlow}>
+            <BlurView intensity={30} tint="light" style={StyleSheet.absoluteFill} />
           </View>
           <View style={styles.container}>
             <View style={styles.inputContainer}>
@@ -462,22 +462,27 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginHorizontal: 16,
   },
-  borderBlur: {
+  borderGlow: {
     position: 'absolute',
-    top: -2,
-    left: -2,
-    right: -2,
-    bottom: -2,
-    borderRadius: 20,
+    top: -3,
+    left: -3,
+    right: -3,
+    bottom: -3,
+    borderRadius: 22,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 2,
+    borderColor: colors.primary,
     zIndex: 1,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 8,
   },
   container: {
     backgroundColor: colors.background,
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: 18,
+    borderWidth: 2,
     borderColor: colors.primary,
     overflow: 'hidden',
     zIndex: 2,

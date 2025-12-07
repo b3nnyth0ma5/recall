@@ -394,8 +394,8 @@ Deno.serve(async (req) => {
     // Sort by similarity (highest first)
     candidateRecalls.sort((a, b) => b.similarity - a.similarity);
 
-    // Step 6: Use OpenAI to analyze and rank the candidate recalls
-    console.log('Step 6: Using OpenAI to analyze and rank candidate recalls...');
+    // Step 6: Use OpenAI gpt-5-mini to analyze and rank the candidate recalls
+    console.log('Step 6: Using OpenAI gpt-5-mini to analyze and rank candidate recalls...');
 
     // Prepare context for OpenAI with recall information
     const recallsContext = candidateRecalls.map((recall, idx) => {
@@ -456,6 +456,7 @@ Analyze each recall and provide your response in JSON format:
 
 Only include recalls with confidence >= 60. If no recalls meet this threshold, return an empty matches array.`;
 
+    console.log('Making request to OpenAI gpt-5-mini...');
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -463,13 +464,13 @@ Only include recalls with confidence >= 60. If no recalls meet this threshold, r
         'Authorization': `Bearer ${openaiApiKey}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.3,
-        max_tokens: 1500,
+        reasoning_effort: 'minimal',
+        verbosity: 'low',
         response_format: { type: 'json_object' }
       })
     });
@@ -477,6 +478,8 @@ Only include recalls with confidence >= 60. If no recalls meet this threshold, r
     if (!openaiResponse.ok) {
       const errorText = await openaiResponse.text();
       console.error('OpenAI API error:', errorText);
+      console.error('Response status:', openaiResponse.status);
+      console.error('Response headers:', JSON.stringify(Object.fromEntries(openaiResponse.headers.entries())));
       return new Response(JSON.stringify({
         error: 'Failed to analyze recalls with OpenAI',
         details: errorText
@@ -490,6 +493,7 @@ Only include recalls with confidence >= 60. If no recalls meet this threshold, r
     }
 
     const openaiData = await openaiResponse.json();
+    console.log('OpenAI response received:', JSON.stringify(openaiData, null, 2));
     const openaiContent = openaiData.choices?.[0]?.message?.content;
 
     let matches: Array<{ recallId: string; confidence: number; reason: string }> = [];
