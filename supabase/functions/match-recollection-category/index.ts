@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 const corsHeaders = {
@@ -484,14 +483,13 @@ async function matchRecallAgainstCategories(
 
   const context = categoriesContext.map((c) => c.contextText).join('\n\n');
 
-  const systemPrompt = `You are an expert at matching recalls (notes) to categories. You will be given a recall with its content (text, location, images, people) and a list of candidate categories that have already been filtered by embedding similarity.
+  const systemPrompt = `You are an expert at matching recalls to categories. You will be given a recall with its content (text, location, images, people) and a list of candidate categories that have already been filtered by embedding similarity.
 
 Your task is to:
 1. Analyze each category to determine if the recall truly belongs to it
 2. Assign a confidence score (0-100) for each category
-3. Only include categories with confidence >= 60 in your final matches
 
-Be strict in your evaluation. A recall should only match a category if it clearly relates to the category name and description.`;
+A recall should only match a category if it clearly relates to the category name and description (give more weight to the Category Description).`;
 
   const userPrompt = `Recall:
 ${recallContext}
@@ -507,7 +505,7 @@ Analyze each category and provide your response in JSON format:
   ]
 }
 
-Only include categories with confidence >= 60. If no categories meet this threshold, return an empty matches array.`;
+Only include categories with confidence >= 55. If no categories meet this threshold, return an empty matches array.`;
 
   const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -516,15 +514,15 @@ Only include categories with confidence >= 60. If no categories meet this thresh
       'Authorization': `Bearer ${openaiApiKey}`
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.3,
-      max_tokens: 1500,
-      response_format: { type: 'json_object' }
-    })
+        model: 'gpt-5-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        reasoning_effort: 'minimal',
+        verbosity: 'low',
+        response_format: { type: 'json_object' }
+      })
   });
 
   if (!openaiResponse.ok) {

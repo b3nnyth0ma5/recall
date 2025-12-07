@@ -267,7 +267,7 @@ Deno.serve(async (req) => {
     console.log('Step 3: Fetching recalls for user:', categoryData.user_id);
     const { data: recallsData, error: recallsError } = await supabase
       .from('recalls')
-      .select('id, text, recall_embedding, user_id')
+      .select('id, text, recall_embedding, user_id, location, location_primary_type')
       .eq('user_id', categoryData.user_id)
       .not('recall_embedding', 'is', null);
 
@@ -346,6 +346,8 @@ Deno.serve(async (req) => {
         return {
           recallId: recall.id,
           recallText: recall.text || '',
+          location: recall.location || '',
+          locationType: recall.location_primary_type || '',
           similarity: maxSimilarity,
           matchSource,
           images: imagesData || []
@@ -404,13 +406,21 @@ Deno.serve(async (req) => {
       
       let contextText = `${recallId} (${similarity}% similarity):\nText: ${sanitizeText(recall.recallText, 300)}`;
       
+      // Add location information if available
+      if (recall.location) {
+        contextText += `\nLocation: ${sanitizeText(recall.location, 100)}`;
+        if (recall.locationType) {
+          contextText += ` (${recall.locationType})`;
+        }
+      }
+      
       // Add image information if available
       if (recall.images && recall.images.length > 0) {
         const imageInfo = recall.images
           .map((img: any) => {
             const parts = [];
-            if (img.ocr_text) parts.push(`OCR: ${sanitizeText(img.ocr_text, 150)}`);
-            if (img.image_explanation) parts.push(`Description: ${sanitizeText(img.image_explanation, 150)}`);
+            if (img.ocr_text) parts.push(`OCR: ${sanitizeText(img.ocr_text, 250)}`);
+            if (img.image_explanation) parts.push(`Description: ${sanitizeText(img.image_explanation, 100)}`);
             return parts.join(', ');
           })
           .filter((info: string) => info.length > 0)
@@ -431,14 +441,13 @@ Deno.serve(async (req) => {
 
     const context = recallsContext.map((r) => r.contextText).join('\n\n');
 
-    const systemPrompt = `You are an expert at matching recalls to categories. You will be given a category description and a list of candidate recalls that have already been filtered by embedding similarity.
+    const systemPrompt = `You are an expert at matching recalls to categories. You will be given a category description and a list of candidate recalls that have already been filtered by embedding similarity. Use the Category Description as a guide to understand what the user wants in the category.
 
 Your task is to:
 1. Analyze each recall to determine if it truly belongs to the category
 2. Assign a confidence score (0-100) for each recall
-3. Only include recalls with confidence >= 60 in your final matches
 
-Be strict in your evaluation. A recall should only match if it clearly relates to the category description.`;
+A recall should only match if it clearly relates to the category description.`;
 
     const userPrompt = `Category: ${categoryData.category_name}
 Category Description: ${categoryText}
@@ -454,7 +463,7 @@ Analyze each recall and provide your response in JSON format:
   ]
 }
 
-Only include recalls with confidence >= 60. If no recalls meet this threshold, return an empty matches array.`;
+Only include recalls with confidence >= 55. If no recalls meet this threshold, return an empty matches array.`;
 
     console.log('Making request to OpenAI gpt-5-mini...');
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {

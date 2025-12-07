@@ -330,6 +330,11 @@ export default function HomeScreen() {
                 
                 if (imageId) {
                   console.log(`[handleCreateRecallFromCombined] [ASYNC] Image ${i + 1} uploaded successfully with ID:`, imageId);
+                  
+                  // FIXED: Refresh the single note immediately after each successful upload
+                  // This ensures the carousel counter updates in real-time
+                  console.log(`[handleCreateRecallFromCombined] [ASYNC] Refreshing note ${recallData.id} after image ${i + 1} upload`);
+                  await refreshSingleNote(recallData.id);
                 } else {
                   console.error(`[handleCreateRecallFromCombined] [ASYNC] Image ${i + 1} upload failed - no ID returned`);
                 }
@@ -350,8 +355,8 @@ export default function HomeScreen() {
             pendingImageUploadsRef.current.delete(recallData.id);
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Cleared pending uploads tracking for recall ${recallData.id}`);
             
-            // FIXED: Refresh the single note after all images are uploaded
-            console.log(`[handleCreateRecallFromCombined] [ASYNC] Refreshing note ${recallData.id} after all images uploaded`);
+            // Final refresh to ensure everything is up to date
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Final refresh of note ${recallData.id}`);
             await refreshSingleNote(recallData.id);
           })();
         } else {
