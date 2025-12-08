@@ -317,7 +317,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 </Animated.View>
               )}
 
-              {/* Images Display - Horizontal Scrollable */}
+              {/* Images Display - Horizontal Scrollable with scrollEnabled always true */}
               {images.length > 0 && (
                 <ScrollView 
                   horizontal 
@@ -327,6 +327,8 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   decelerationRate="fast"
                   snapToInterval={88}
                   snapToAlignment="start"
+                  scrollEnabled={true}
+                  nestedScrollEnabled={true}
                 >
                   {images.map((uri, index) => (
                     <View key={index} style={styles.imageContainer}>
@@ -347,7 +349,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
               <TextInput
                 ref={textInputRef}
                 style={styles.textInput}
-                placeholder="Create a Recall or Search..."
+                placeholder="Add a Recall or Search..."
                 placeholderTextColor={colors.textTertiary}
                 value={text}
                 onChangeText={handleTextChange}

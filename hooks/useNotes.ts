@@ -1,7 +1,7 @@
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Note } from '@/types/Note';
-import { supabase, getImageDataUrl, deleteImageRecord, saveSearchHistory } from '@/utils/supabase';
+import { supabase, getImageDataUrl, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
 
@@ -30,7 +30,7 @@ export function useNotes() {
 
   const ITEMS_PER_PAGE = 7;
 
-  // NEW: Function to get cached note data using MemoryCache
+  // Function to get cached note data using MemoryCache
   const getCachedNote = useCallback((noteId: string): Note | null => {
     const cached = noteCache.get(noteId);
     if (cached) {
@@ -41,7 +41,7 @@ export function useNotes() {
     return null;
   }, []);
 
-  // NEW: Function to update note cache using MemoryCache
+  // Function to update note cache using MemoryCache
   const updateNoteCache = useCallback((note: Note) => {
     const cost = CostCalculator.forNote(note);
     noteCache.set(note.id, note, cost);
@@ -75,7 +75,6 @@ export function useNotes() {
       }
 
       // Fetch only uncached data with optimized query using composite index
-      // FIXED: Include photo_url in the select
       const { data: recallPeopleData, error: recallPeopleError } = await supabase
         .from('recall_people')
         .select('recall_id, person_id, persons!inner(id, person_name, photo_url)')
@@ -127,7 +126,6 @@ export function useNotes() {
     const peopleByRecallId = await loadPeopleForRecalls(recallIds);
 
     // Batch fetch all images for all recalls in one query
-    // Uses idx_recall_images_user_recall index
     const { data: allImagesData, error: allImagesError } = await supabase
       .from('recall_images')
       .select('id, recall_id, cdn_url')
@@ -153,7 +151,7 @@ export function useNotes() {
         try {
           const recallImages = imagesByRecallId.get(recall.id) || [];
           
-          // Load first TWO images immediately for better UX (as per recent requirement)
+          // Load first TWO images immediately for better UX
           const imageResults = await Promise.all(
             recallImages.map(async (img, index) => {
               try {
@@ -437,22 +435,17 @@ export function useNotes() {
     }
 
     try {
-      console.log('[useNotes] ===== ASYNC DELETION STARTED =====');
+      console.log('[useNotes] ===== OPTIMIZED DELETION STARTED =====');
       console.log('[useNotes] Deleting recall:', noteId);
-      
-      // Show deletion indicator immediately
-      setIsDeletingNote(true);
       
       // Clear caches for this recall immediately
       peopleCache.remove(noteId);
       noteCache.remove(noteId);
+      console.log('[useNotes] Caches invalidated for recall:', noteId);
       
       // Remove from UI immediately (optimistic update)
       setNotes(prevNotes => prevNotes.filter(note => note.id !== noteId));
       console.log('[useNotes] Recall removed from UI (optimistic update)');
-      
-      // Hide deletion indicator after UI update
-      setIsDeletingNote(false);
       
       // Perform actual deletion ASYNCHRONOUSLY (fire and forget)
       console.log('[useNotes] Starting async deletion process...');
@@ -466,11 +459,12 @@ export function useNotes() {
             .select('id, cdn_url')
             .eq('recall_id', noteId);
 
-          // Delete images from CDN and database
+          // Delete images from CDN and clear image cache
           if (imagesData && imagesData.length > 0) {
             console.log(`[useNotes] [ASYNC] Deleting ${imagesData.length} images for recall ${noteId}`);
             
             for (const img of imagesData) {
+              // Clear image cache
               imageCache.remove(img.id);
               
               // Delete from CDN if URL exists
@@ -479,19 +473,12 @@ export function useNotes() {
                 const { deleteImageFromCloudflare } = await import('@/utils/cloudflareCDN');
                 await deleteImageFromCloudflare(img.cdn_url);
               }
-
-              // Delete from database
-              console.log(`[useNotes] [ASYNC] Deleting image from database:`, img.id);
-              await supabase
-                .from('recall_images')
-                .delete()
-                .eq('id', img.id);
             }
             
-            console.log(`[useNotes] [ASYNC] All ${imagesData.length} images deleted`);
+            console.log(`[useNotes] [ASYNC] All ${imagesData.length} images deleted and caches cleared`);
           }
 
-          // Delete the recall itself
+          // Delete the recall itself (cascading will handle recall_images, recall_people, etc.)
           console.log('[useNotes] [ASYNC] Deleting recall from database:', noteId);
           const { error } = await supabase
             .from('recalls')
@@ -501,40 +488,23 @@ export function useNotes() {
 
           if (error) {
             console.error('[useNotes] [ASYNC] Error deleting recall:', error);
-            // Note: We don't throw here because the UI has already been updated
-            // The user won't see this error, but it's logged for debugging
           } else {
             console.log('[useNotes] [ASYNC] Recall deleted successfully from database');
+            console.log('[useNotes] [ASYNC] Cascading deletions (recall_images, recall_people, etc.) handled by database');
           }
           
-          // FIXED: Add a small delay (300ms) before refreshing the landing page
-          console.log('[useNotes] [ASYNC] Waiting 300ms before refreshing landing page...');
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          // Refresh the landing page after deletion completes
-          console.log('[useNotes] [ASYNC] Refreshing landing page after deletion...');
-          await refreshNotes();
-          console.log('[useNotes] [ASYNC] Landing page refreshed');
-          
-          // Note: Edge functions that run on delete (if any) will be triggered
-          // automatically by database triggers. They run asynchronously.
-          console.log('[useNotes] [ASYNC] Any delete triggers will run asynchronously');
-          
-          console.log('[useNotes] ===== ASYNC DELETION COMPLETE =====');
+          console.log('[useNotes] ===== OPTIMIZED DELETION COMPLETE =====');
         } catch (asyncError) {
           console.error('[useNotes] [ASYNC] Exception during async deletion:', asyncError);
-          // Note: We don't show an error to the user because they've already
-          // been navigated away. This is logged for debugging purposes.
         }
       })();
       
       console.log('[useNotes] Deletion initiated asynchronously, returning control to caller');
     } catch (error) {
       console.error('[useNotes] Error initiating recall deletion:', error);
-      setIsDeletingNote(false);
       throw error;
     }
-  }, [user, refreshNotes]);
+  }, [user]);
 
   const searchNotes = useCallback(async (query: string, useV2: boolean = false) => {
     if (!user) {
@@ -564,7 +534,7 @@ export function useNotes() {
       setSearchStage('detecting');
       setSearchLocationName(undefined);
       
-      // Save search history (uses idx_search_history_user_updated index)
+      // Save search history
       await saveSearchHistory(user.id, query);
       
       // Get current session
@@ -604,7 +574,7 @@ export function useNotes() {
         const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls-v2', {
           body: {
             query: locationData.cleanedQuery || query.trim(),
-            recallIds: locationData.recallIds, // Pass filtered IDs
+            recallIds: locationData.recallIds,
           },
         });
 
@@ -650,7 +620,9 @@ export function useNotes() {
           const orderedRecalls = searchResults.results
             .map((matchInfo: any) => {
               const recall = recallsData?.find(r => r.id === matchInfo.id);
-              if (!recall) return null;
+              if (!recall) {
+                return null;
+              }
               
               return {
                 ...recall,
@@ -730,7 +702,9 @@ export function useNotes() {
         const orderedRecalls = searchResults.results
           .map((matchInfo: any) => {
             const recall = recallsData?.find(r => r.id === matchInfo.id);
-            if (!recall) return null;
+            if (!recall) {
+              return null;
+            }
             
             return {
               ...recall,
@@ -781,7 +755,6 @@ export function useNotes() {
     }
 
     try {
-      // Uses idx_search_history_user_updated index
       const { data, error } = await supabase
         .from('search_history')
         .select('*')

@@ -18,13 +18,12 @@ interface NoteCardProps {
   onPress: () => void;
   onImagePress?: () => void;
   loading?: boolean;
-  expectedImageCount?: number; // NEW: Expected total image count for newly created notes
+  expectedImageCount?: number;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 8;
 const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 5);
-// Reduced by 10%: (IMAGE_WIDTH * 1.25) * 0.9 = IMAGE_WIDTH * 1.125
 const IMAGE_HEIGHT = IMAGE_WIDTH * 1.1;
 const IMAGE_SPACING = 12;
 
@@ -50,15 +49,13 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
   const [isLazyLoading, setIsLazyLoading] = useState(false);
   const loadingQueueRef = useRef<Set<number>>(new Set());
   
-  // FIXED: Track total image count separately from loaded images
-  // This ensures we always show the correct count even if images haven't loaded yet
+  // Track total image count separately from loaded images
   const [totalImageCount, setTotalImageCount] = useState(0);
   
-  // NEW: Track if images are currently being uploaded
+  // Track if images are currently being uploaded
   const [isUploadingImages, setIsUploadingImages] = useState(false);
 
   // Initialize with first TWO images for better performance
-  // MOVED BEFORE THE CONDITIONAL RETURN TO FIX HOOKS RULE
   useEffect(() => {
     if (!loading && note.images && note.images.length > 0) {
       // Set total count immediately
@@ -78,7 +75,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
         setIsUploadingImages(false);
       }
     } else if (!loading && note.imageIds && note.imageIds.length > 0) {
-      // FIXED: If we have imageIds but no images yet (placeholder records), set the count
+      // If we have imageIds but no images yet (placeholder records), set the count
       setTotalImageCount(note.imageIds.length);
       console.log(`[NoteCard] Set total image count to ${note.imageIds.length} from imageIds for note ${note.id}`);
       
@@ -89,7 +86,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
         setIsUploadingImages(false);
       }
     } else if (!loading && expectedImageCount && expectedImageCount > 0) {
-      // FIXED: Use expectedImageCount if provided (for newly created notes with pending uploads)
+      // Use expectedImageCount if provided (for newly created notes with pending uploads)
       setTotalImageCount(expectedImageCount);
       setIsUploadingImages(true);
       console.log(`[NoteCard] Set total image count to ${expectedImageCount} from expectedImageCount for note ${note.id}`);
@@ -286,8 +283,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     }
   };
 
-  // FIXED: Create display array with placeholders based on totalImageCount
-  // This ensures the carousel shows all image slots with placeholders
+  // Create display array with placeholders based on totalImageCount
   const displayImages = totalImageCount > 0 
     ? Array.from({ length: totalImageCount }, (_, index) => {
         // First check if we have a lazy loaded image
@@ -383,8 +379,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
                 </Pressable>
               ))}
             </ScrollView>
-            {/* FIXED: Use totalImageCount for accurate count display with busy spinner */}
-            {totalImageCount > 1 && (
+            {/* Image counter with busy spinner - visible immediately */}
+            {totalImageCount > 0 && (
               <View style={styles.imageCounter}>
                 {isUploadingImages && (
                   <ActivityIndicator 
@@ -394,7 +390,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
                   />
                 )}
                 <Text style={styles.imageCounterText}>
-                  {currentImageIndex + 1} / {totalImageCount}
+                  {totalImageCount > 1 ? `${currentImageIndex + 1} / ${totalImageCount}` : `1 / ${totalImageCount}`}
                 </Text>
               </View>
             )}
