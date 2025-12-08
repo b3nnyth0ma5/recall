@@ -23,8 +23,8 @@ interface NoteCardProps {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 8;
-const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 5);
-const IMAGE_HEIGHT = IMAGE_WIDTH * 1.1;
+const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 4.8);
+const IMAGE_HEIGHT = IMAGE_WIDTH * 1.08;
 const IMAGE_SPACING = 12;
 
 // Helper function to check if text contains URLs
@@ -192,7 +192,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
   };
 
   const shouldShowToggle = () => {
-    return note.text && note.text.length > 150;
+    return note.text && note.text.length > 125;
   };
 
   const handleImageError = (index: number) => {
@@ -311,7 +311,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
             <PeopleAvatars 
               people={note.people || []} 
               maxVisible={5}
-              avatarSize={36}
+              avatarSize={32}
               overlapOffset={8}
             />
           </View>
@@ -434,7 +434,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
                 <Text style={styles.location} numberOfLines={1} ellipsizeMode="tail">
                   {note.location}
                 </Text>
-                <IconSymbol name="chevron.right" size={14} color={colors.primary} />
+                <IconSymbol name="chevron.right" size={12} color={colors.primary} />
               </View>
             </Pressable>
           )}
@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
   },
   imageWrapper: {
     marginRight: IMAGE_SPACING,
-    borderRadius: 12,
+    borderRadius: 10,
     overflow: 'hidden',
     backgroundColor: colors.cardDark,
     width: IMAGE_WIDTH,
@@ -571,9 +571,11 @@ const styles = StyleSheet.create({
   },
   text: {
     fontSize: 15,
-    lineHeight: 24,
+    lineHeight: 22,
     color: colors.text,
-    marginBottom: 4,
+    marginBottom: 2,
+		marginTop: 4,
+		marginLeft: 6,
     zIndex: 1,
   },
   normalText: {
@@ -586,7 +588,7 @@ const styles = StyleSheet.create({
   toggleContainer: {
     alignSelf: 'flex-end',
     paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     marginTop: 4,
     zIndex: 1,
   },
@@ -599,8 +601,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+		paddingHorizontal: 6,
     marginTop: 8,
-    paddingTop: 12,
+    paddingTop: 8,
+		paddingBottom: 6,
     gap: 8,
     zIndex: 1,
   },
@@ -619,7 +623,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   location: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.primary,
     fontWeight: '500',
     flexShrink: 1,
