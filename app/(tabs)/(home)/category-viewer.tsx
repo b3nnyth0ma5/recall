@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Alert, TextInput, Image, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -10,6 +10,7 @@ import { supabase } from '@/utils/supabase';
 import { Note } from '@/types/Note';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import { getImageDataUrl } from '@/utils/supabase';
 import { useNotes } from '@/hooks/useNotes';
 import { peopleCache, imageCache, CostCalculator } from '@/utils/memoryCache';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
@@ -55,8 +56,8 @@ export default function CategoryViewerScreen() {
     try {
       // Check MemoryCache first
       const uncachedIds: string[] = [];
-      const result: Record<string, unknown[]> = {};
-
+      const result: { [key: string]: any[] } = {};
+      
       recallIds.forEach(id => {
         const cached = peopleCache.get(id);
         if (cached) {
@@ -65,7 +66,7 @@ export default function CategoryViewerScreen() {
           uncachedIds.push(id);
         }
       });
-
+      
       if (uncachedIds.length === 0) {
         // All data is cached
         console.log(`[CategoryViewer] All people data cached for ${recallIds.length} recalls`);
@@ -84,19 +85,17 @@ export default function CategoryViewerScreen() {
       }
 
       // Group people by recall_id
-      const peopleByRecallId: Record<string, unknown[]> = {};
-
-      (recallPeopleData || []).forEach((rp: Record<string, unknown>) => {
-        const recallId = rp.recall_id as string;
-        if (!peopleByRecallId[recallId]) {
-          peopleByRecallId[recallId] = [];
+      const peopleByRecallId: { [key: string]: any[] } = {};
+      
+      (recallPeopleData || []).forEach((rp: any) => {
+        if (!peopleByRecallId[rp.recall_id]) {
+          peopleByRecallId[rp.recall_id] = [];
         }
-
+        
         if (rp.persons) {
-          const persons = rp.persons as Record<string, unknown>;
-          peopleByRecallId[recallId].push({
-            id: persons.id,
-            person_name: persons.person_name,
+          peopleByRecallId[rp.recall_id].push({
+            id: rp.persons.id,
+            person_name: rp.persons.person_name,
           });
         }
       });
@@ -118,9 +117,9 @@ export default function CategoryViewerScreen() {
   }, []);
 
   // Optimized image loading with lazy loading and caching
-  const loadImagesForRecalls = useCallback(async (recalls: Record<string, unknown>[]) => {
+  const loadImagesForRecalls = useCallback(async (recalls: any[]) => {
     // First, load people for all recalls in one batch
-    const recallIds = recalls.map(r => r.id as string);
+    const recallIds = recalls.map(r => r.id);
     const peopleByRecallId = await loadPeopleForRecalls(recallIds);
 
     // Batch fetch all images for all recalls in one query
@@ -135,101 +134,93 @@ export default function CategoryViewerScreen() {
     }
 
     // Group images by recall_id
-    const imagesByRecallId = new Map<string, Record<string, unknown>[]>();
+    const imagesByRecallId = new Map<string, any[]>();
     (allImagesData || []).forEach(img => {
-      const recallId = img.recall_id as string;
-      if (!imagesByRecallId.has(recallId)) {
-        imagesByRecallId.set(recallId, []);
+      if (!imagesByRecallId.has(img.recall_id)) {
+        imagesByRecallId.set(img.recall_id, []);
       }
-      const images = imagesByRecallId.get(recallId);
-      if (images) {
-        images.push(img);
-      }
+      imagesByRecallId.get(img.recall_id)!.push(img);
     });
 
     // Process recalls with their images
     const processedNotes = await Promise.all(
       recalls.map(async (recall) => {
         try {
-          const recallId = recall.id as string;
-          const recallImages = imagesByRecallId.get(recallId) || [];
-
+          const recallImages = imagesByRecallId.get(recall.id) || [];
+          
           // Load first TWO images immediately for better UX (same as landing page)
           const imageResults = await Promise.all(
             recallImages.map(async (img, index) => {
               try {
-                const imgId = img.id as string;
                 // Load first two images, others will be lazy loaded
                 if (index < 2) {
                   // Check MemoryCache first
-                  const cachedImage = imageCache.get(imgId);
+                  const cachedImage = imageCache.get(img.id);
                   if (cachedImage) {
-                    return { url: cachedImage, id: imgId };
+                    return { url: cachedImage, id: img.id };
                   }
-
+                  
                   // Prefer CDN URL if available (much faster)
                   if (img.cdn_url) {
-                    const cdnUrl = img.cdn_url as string;
-                    const cost = CostCalculator.forImage(cdnUrl);
-                    imageCache.set(imgId, cdnUrl, cost);
-                    return { url: cdnUrl, id: imgId };
+                    const cost = CostCalculator.forImage(img.cdn_url);
+                    imageCache.set(img.id, img.cdn_url, cost);
+                    return { url: img.cdn_url, id: img.id };
                   }
-
+                  
                   // Fallback to base64 data
-                  const { getImageDataUrl } = await import('@/utils/supabase');
-                  const dataUrl = await getImageDataUrl(imgId);
+                  const dataUrl = await getImageDataUrl(img.id);
                   if (dataUrl) {
                     const cost = CostCalculator.forImage(dataUrl);
-                    imageCache.set(imgId, dataUrl, cost);
-                    return { url: dataUrl, id: imgId };
+                    imageCache.set(img.id, dataUrl, cost);
+                    return { url: dataUrl, id: img.id };
                   }
-                  return { url: '', id: imgId };
+                  return { url: '', id: img.id };
                 } else {
                   // Return placeholder for lazy loading
-                  return { url: '', id: imgId };
+                  return { url: '', id: img.id };
                 }
               } catch (error) {
                 console.error(`[CategoryViewer] Exception processing image ${img.id}:`, error);
-                return { url: '', id: img.id as string };
+                return { url: '', id: img.id };
               }
             })
           );
 
           const validImageUrls = imageResults.map(result => result.url);
           const imageIds = imageResults.map(result => result.id);
-          const people = peopleByRecallId[recallId] || [];
-
+          const people = peopleByRecallId[recall.id] || [];
+          
           return {
-            id: recallId,
-            text: (recall.text as string) || '',
-            created_at: recall.created_at as string,
-            updated_at: recall.updated_at as string,
-            location: recall.location as string,
-            latitude: recall.latitude as number,
-            longitude: recall.longitude as number,
-            location_primary_type: recall.location_primary_type as string,
+            id: recall.id,
+            text: recall.text || '',
+            created_at: recall.created_at,
+            updated_at: recall.updated_at,
+            location: recall.location,
+            latitude: recall.latitude,
+            longitude: recall.longitude,
+            location_primary_type: recall.location_primary_type,
             images: validImageUrls,
             imageIds: imageIds,
             urls: [],
             people: people,
-            match_score: (recall.match_score as number) || 0,
+            match_score: recall.match_score || 0,
           };
         } catch (error) {
           console.error(`[CategoryViewer] Exception processing recall ${recall.id}:`, error);
           return {
-            id: recall.id as string,
-            text: (recall.text as string) || '',
-            created_at: recall.created_at as string,
-            updated_at: recall.updated_at as string,
-            location: recall.location as string,
-            latitude: recall.latitude as number,
-            longitude: recall.longitude as number,
-            location_primary_type: recall.location_primary_type as string,
+            id: recall.id,
+            text: recall.text || '',
+            created_at: recall.created_at,
+            updated_at: recall.updated_at,
+            location: recall.location,
+            latitude: recall.latitude,
+            longitude: recall.longitude,
+            location_primary_type: recall.location_primary_type,
             images: [],
             imageIds: [],
             urls: [],
             people: [],
-            match_score: (recall.match_score as number) || 0,
+            match_score: recall.match_score || 0,
           };
         }
       })

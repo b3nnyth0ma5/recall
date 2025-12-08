@@ -2,7 +2,6 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { File } from 'expo-file-system';
-import { imageCache } from './imageCache';
 
 // Initialize constants at module scope
 const supabaseUrl = 'https://cesmsdnblkdjkskmiqib.supabase.co';
@@ -37,26 +36,17 @@ export async function uploadImageToDatabase(
     console.log('User authenticated:', session.user.id);
 
     console.log('Converting image to base64...');
-    const conversionStart = performance.now();
-    
     // Use the new File API from expo-file-system
     const file = new File(uri);
     const base64 = await file.base64();
-    
-    const conversionTime = performance.now() - conversionStart;
-    console.log(`Base64 conversion successful in ${conversionTime.toFixed(2)}ms, length: ${base64.length}`);
+    console.log('Base64 conversion successful, length:', base64.length);
 
     // Upload to Cloudflare CDN
     const { uploadImageToCloudflare } = await import('./cloudflareCDN');
     const fileName = `image-${Date.now()}-${Math.random().toString(36).substring(7)}.${contentType.split('/')[1]}`;
     
     console.log('Uploading to Cloudflare CDN with filename:', fileName);
-    const uploadStart = performance.now();
-    
     const cdnUrl = await uploadImageToCloudflare(base64, fileName, contentType);
-    
-    const uploadTime = performance.now() - uploadStart;
-    console.log(`CDN upload completed in ${uploadTime.toFixed(2)}ms`);
     
     if (!cdnUrl) {
       console.error('Failed to upload to Cloudflare CDN - no URL returned');
@@ -65,8 +55,6 @@ export async function uploadImageToDatabase(
 
     console.log('CDN upload successful, URL:', cdnUrl);
     console.log('Storing metadata in database...');
-    
-    const dbStart = performance.now();
     
     // Store the CDN URL in the database
     const { data, error } = await supabase
@@ -79,9 +67,6 @@ export async function uploadImageToDatabase(
       }])
       .select('id')
       .single();
-
-    const dbTime = performance.now() - dbStart;
-    console.log(`Database insert completed in ${dbTime.toFixed(2)}ms`);
 
     if (error) {
       console.error('=== Database insert error ===');
@@ -98,18 +83,15 @@ export async function uploadImageToDatabase(
       return null;
     }
 
-    // OPTIMIZATION: Cache the image immediately
-    imageCache.set(data.id, cdnUrl);
-
-    const totalTime = performance.now() - conversionStart;
     console.log('=== Upload successful ===');
     console.log('Image ID:', data.id);
     console.log('CDN URL:', cdnUrl);
     console.log('Recall ID:', recallId);
-    console.log(`Total time: ${totalTime.toFixed(2)}ms (conversion: ${conversionTime.toFixed(2)}ms, upload: ${uploadTime.toFixed(2)}ms, db: ${dbTime.toFixed(2)}ms)`);
     
     // NOTE: OCR processing is automatically triggered by the database trigger
+    // No need to manually call triggerOCRProcessing here
     console.log('OCR processing will be automatically triggered by database trigger');
+    console.log('Database trigger: trigger-ocr-on-image-insert');
     
     return data.id;
   } catch (error) {
@@ -126,12 +108,6 @@ export async function uploadImageToDatabase(
 
 export async function getImageDataUrl(imageId: string): Promise<string | null> {
   try {
-    // OPTIMIZATION: Check cache first
-    const cachedUrl = imageCache.get(imageId);
-    if (cachedUrl) {
-      return cachedUrl;
-    }
-
     console.log('Fetching image data for ID:', imageId);
     
     const { data, error } = await supabase
@@ -154,8 +130,6 @@ export async function getImageDataUrl(imageId: string): Promise<string | null> {
     // Return CDN URL
     if (data.cdn_url) {
       console.log('Using CDN URL for image:', imageId);
-      // OPTIMIZATION: Cache the URL
-      imageCache.set(imageId, data.cdn_url);
       return data.cdn_url;
     }
 
@@ -210,9 +184,6 @@ export async function deleteImageRecord(imageId: string): Promise<boolean> {
       console.error('Error deleting image record:', error);
       return false;
     }
-
-    // OPTIMIZATION: Remove from cache
-    imageCache.delete(imageId);
 
     console.log('Image record deleted successfully');
 
