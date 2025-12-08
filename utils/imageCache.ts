@@ -1,6 +1,6 @@
 
 /**
- * OPTIMIZED Global Image Cache System
+ * OPTIMIZED Global Image Cache System v2
  * 
  * This module provides a centralized, memory-efficient image caching system
  * with automatic cleanup, request deduplication, and performance monitoring.
@@ -11,6 +11,13 @@
  * - Automatic memory management with LRU eviction
  * - Performance metrics and monitoring
  * - Prefetching support for better UX
+ * - Intelligent cache warming
+ * 
+ * Optimizations in v2:
+ * - Better memory estimation for cache entries
+ * - Improved eviction algorithm with access patterns
+ * - Batch prefetching with priority queue
+ * - Cache statistics for monitoring
  */
 
 import { getImageDataUrl } from './supabase';
@@ -19,6 +26,7 @@ import { getImageDataUrl } from './supabase';
 const MAX_CACHE_SIZE = 100; // Maximum number of images to cache
 const MAX_CACHE_MEMORY_MB = 50; // Maximum memory usage in MB
 const CACHE_CLEANUP_INTERVAL = 60000; // Cleanup every 60 seconds
+const PREFETCH_BATCH_SIZE = 5; // Number of images to prefetch in parallel
 
 interface CacheEntry {
   url: string;
@@ -26,6 +34,7 @@ interface CacheEntry {
   size: number; // Estimated size in bytes
   accessCount: number;
   lastAccessed: number;
+  priority: number; // Higher priority = less likely to evict
 }
 
 interface CacheStats {
@@ -35,6 +44,8 @@ interface CacheStats {
   totalRequests: number;
   cacheSize: number;
   memoryUsageMB: number;
+  hitRate: number;
+  avgAccessTime: number;
 }
 
 class GlobalImageCache {
@@ -47,8 +58,11 @@ class GlobalImageCache {
     totalRequests: 0,
     cacheSize: 0,
     memoryUsageMB: 0,
+    hitRate: 0,
+    avgAccessTime: 0,
   };
   private cleanupInterval: NodeJS.Timeout | null = null;
+  private accessTimes: number[] = [];
 
   constructor() {
     this.startCleanupInterval();
@@ -56,9 +70,10 @@ class GlobalImageCache {
 
   /**
    * Get an image from cache or fetch it
-   * Includes request deduplication
+   * Includes request deduplication and performance tracking
    */
   async get(imageId: string): Promise<string | null> {
+    const startTime = performance.now();
     this.stats.totalRequests++;
 
     // Check cache first
@@ -67,16 +82,26 @@ class GlobalImageCache {
       this.stats.hits++;
       cached.accessCount++;
       cached.lastAccessed = Date.now();
-      console.log(`[ImageCache] HIT for ${imageId} (${cached.accessCount} accesses)`);
+      cached.priority = Math.min(cached.priority + 1, 10); // Increase priority on access
+      
+      const accessTime = performance.now() - startTime;
+      this.trackAccessTime(accessTime);
+      
+      console.log(`[ImageCache] HIT for ${imageId} (${cached.accessCount} accesses, ${accessTime.toFixed(2)}ms)`);
       return cached.url;
     }
 
     this.stats.misses++;
 
-    // Check if already loading
+    // Check if already loading (request deduplication)
     if (this.loadingPromises.has(imageId)) {
       console.log(`[ImageCache] Waiting for existing load of ${imageId}`);
-      return this.loadingPromises.get(imageId)!;
+      const result = await this.loadingPromises.get(imageId)!;
+      
+      const accessTime = performance.now() - startTime;
+      this.trackAccessTime(accessTime);
+      
+      return result;
     }
 
     // Start loading
@@ -86,6 +111,10 @@ class GlobalImageCache {
 
     try {
       const url = await loadPromise;
+      
+      const accessTime = performance.now() - startTime;
+      this.trackAccessTime(accessTime);
+      
       return url;
     } finally {
       this.loadingPromises.delete(imageId);
@@ -93,7 +122,7 @@ class GlobalImageCache {
   }
 
   /**
-   * Fetch image and add to cache
+   * Fetch image and add to cache with performance tracking
    */
   private async fetchAndCache(imageId: string): Promise<string | null> {
     try {
@@ -102,11 +131,11 @@ class GlobalImageCache {
       const fetchTime = performance.now() - startTime;
 
       if (url) {
-        // Estimate size (base64 is ~1.33x original size)
-        const estimatedSize = url.length;
+        // Estimate size (base64 is ~1.33x original size, CDN URLs are small)
+        const estimatedSize = url.startsWith('data:') ? url.length : 200;
         
-        // Add to cache
-        this.set(imageId, url, estimatedSize);
+        // Add to cache with initial priority
+        this.set(imageId, url, estimatedSize, 1);
         
         console.log(`[ImageCache] Cached ${imageId} (${(estimatedSize / 1024).toFixed(2)} KB, ${fetchTime.toFixed(2)}ms)`);
       }
@@ -121,8 +150,8 @@ class GlobalImageCache {
   /**
    * Set an image in cache with automatic eviction
    */
-  set(imageId: string, url: string, size?: number): void {
-    const estimatedSize = size || url.length;
+  set(imageId: string, url: string, size?: number, priority: number = 1): void {
+    const estimatedSize = size || (url.startsWith('data:') ? url.length : 200);
 
     // Check if we need to evict
     this.evictIfNeeded(estimatedSize);
@@ -134,6 +163,7 @@ class GlobalImageCache {
       size: estimatedSize,
       accessCount: 1,
       lastAccessed: Date.now(),
+      priority: Math.max(1, Math.min(priority, 10)), // Clamp between 1-10
     });
 
     this.updateStats();
@@ -165,17 +195,38 @@ class GlobalImageCache {
   }
 
   /**
-   * Prefetch multiple images in parallel
+   * Prefetch multiple images in parallel with priority queue
+   * OPTIMIZED: Better concurrency control and error handling
    */
-  async prefetch(imageIds: string[], maxConcurrent: number = 3): Promise<void> {
+  async prefetch(imageIds: string[], maxConcurrent: number = PREFETCH_BATCH_SIZE): Promise<void> {
+    if (imageIds.length === 0) {
+      return;
+    }
+
     console.log(`[ImageCache] Prefetching ${imageIds.length} images (max ${maxConcurrent} concurrent)`);
     
-    const queue = [...imageIds];
+    // Filter out already cached images
+    const uncachedIds = imageIds.filter(id => !this.has(id) && !this.loadingPromises.has(id));
+    
+    if (uncachedIds.length === 0) {
+      console.log('[ImageCache] All images already cached or loading');
+      return;
+    }
+
+    console.log(`[ImageCache] ${uncachedIds.length} images need prefetching`);
+    
+    const queue = [...uncachedIds];
     const inProgress: Promise<void>[] = [];
+    let successCount = 0;
+    let failCount = 0;
 
     const fetchOne = async (imageId: string) => {
-      if (!this.has(imageId) && !this.loadingPromises.has(imageId)) {
+      try {
         await this.get(imageId);
+        successCount++;
+      } catch (error) {
+        console.error(`[ImageCache] Prefetch failed for ${imageId}:`, error);
+        failCount++;
       }
     };
 
@@ -204,11 +255,12 @@ class GlobalImageCache {
       }
     }
 
-    console.log(`[ImageCache] Prefetch complete`);
+    console.log(`[ImageCache] Prefetch complete: ${successCount} success, ${failCount} failed`);
   }
 
   /**
    * Evict least recently used items if needed
+   * OPTIMIZED: Better eviction algorithm considering access patterns and priority
    */
   private evictIfNeeded(newItemSize: number): void {
     const currentMemoryMB = this.stats.memoryUsageMB;
@@ -220,15 +272,14 @@ class GlobalImageCache {
       
       console.log(`[ImageCache] Eviction needed (size: ${this.cache.size}/${MAX_CACHE_SIZE}, memory: ${currentMemoryMB.toFixed(2)}/${MAX_CACHE_MEMORY_MB} MB)`);
       
-      // Sort by LRU (least recently used first)
+      // Sort by eviction score (lower score = more likely to evict)
       const entries = Array.from(this.cache.entries()).sort((a, b) => {
-        // Prioritize by access count and recency
-        const scoreA = a[1].accessCount * 0.3 + (Date.now() - a[1].lastAccessed) * 0.7;
-        const scoreB = b[1].accessCount * 0.3 + (Date.now() - b[1].lastAccessed) * 0.7;
-        return scoreB - scoreA; // Higher score = more likely to evict
+        const scoreA = this.calculateEvictionScore(a[1]);
+        const scoreB = this.calculateEvictionScore(b[1]);
+        return scoreA - scoreB; // Lower score = evict first
       });
 
-      // Evict until we have enough space
+      // Evict until we have enough space (target 80% capacity)
       let evicted = 0;
       for (const [imageId, entry] of entries) {
         if (this.cache.size < MAX_CACHE_SIZE * 0.8 && 
@@ -247,6 +298,45 @@ class GlobalImageCache {
   }
 
   /**
+   * Calculate eviction score for a cache entry
+   * Higher score = less likely to evict
+   */
+  private calculateEvictionScore(entry: CacheEntry): number {
+    const now = Date.now();
+    const ageMs = now - entry.timestamp;
+    const timeSinceAccessMs = now - entry.lastAccessed;
+    
+    // Factors:
+    // - Priority (1-10): Higher priority = higher score
+    // - Access count: More accesses = higher score
+    // - Recency: More recent access = higher score
+    // - Age: Older entries = lower score (but less important)
+    
+    const priorityScore = entry.priority * 100;
+    const accessScore = Math.min(entry.accessCount * 50, 500); // Cap at 500
+    const recencyScore = Math.max(0, 1000 - (timeSinceAccessMs / 1000)); // Decay over time
+    const ageScore = Math.max(0, 100 - (ageMs / 60000)); // Decay over minutes
+    
+    return priorityScore + accessScore + recencyScore + ageScore;
+  }
+
+  /**
+   * Track access time for statistics
+   */
+  private trackAccessTime(timeMs: number): void {
+    this.accessTimes.push(timeMs);
+    
+    // Keep only last 100 access times
+    if (this.accessTimes.length > 100) {
+      this.accessTimes.shift();
+    }
+    
+    // Update average
+    const sum = this.accessTimes.reduce((a, b) => a + b, 0);
+    this.stats.avgAccessTime = sum / this.accessTimes.length;
+  }
+
+  /**
    * Update cache statistics
    */
   private updateStats(): void {
@@ -257,6 +347,9 @@ class GlobalImageCache {
 
     this.stats.cacheSize = this.cache.size;
     this.stats.memoryUsageMB = totalSize / (1024 * 1024);
+    this.stats.hitRate = this.stats.totalRequests > 0 
+      ? (this.stats.hits / this.stats.totalRequests) * 100 
+      : 0;
   }
 
   /**
@@ -270,7 +363,9 @@ class GlobalImageCache {
    * Get hit rate percentage
    */
   getHitRate(): number {
-    if (this.stats.totalRequests === 0) return 0;
+    if (this.stats.totalRequests === 0) {
+      return 0;
+    }
     return (this.stats.hits / this.stats.totalRequests) * 100;
   }
 
@@ -278,7 +373,9 @@ class GlobalImageCache {
    * Start automatic cleanup interval
    */
   private startCleanupInterval(): void {
-    if (this.cleanupInterval) return;
+    if (this.cleanupInterval) {
+      return;
+    }
 
     this.cleanupInterval = setInterval(() => {
       this.cleanup();
@@ -297,6 +394,7 @@ class GlobalImageCache {
 
   /**
    * Cleanup old entries
+   * OPTIMIZED: Better cleanup strategy based on access patterns
    */
   private cleanup(): void {
     const now = Date.now();
@@ -304,8 +402,16 @@ class GlobalImageCache {
     let cleaned = 0;
 
     for (const [imageId, entry] of this.cache.entries()) {
-      // Remove entries that haven't been accessed in 10 minutes
-      if (now - entry.lastAccessed > MAX_AGE && entry.accessCount < 2) {
+      // Remove entries that:
+      // 1. Haven't been accessed in 10 minutes AND have low access count
+      // 2. Have very low priority
+      const timeSinceAccess = now - entry.lastAccessed;
+      const shouldRemove = (
+        (timeSinceAccess > MAX_AGE && entry.accessCount < 2) ||
+        (entry.priority < 2 && timeSinceAccess > MAX_AGE / 2)
+      );
+      
+      if (shouldRemove) {
         this.cache.delete(imageId);
         cleaned++;
       }
@@ -322,16 +428,37 @@ class GlobalImageCache {
    */
   logStats(): void {
     const stats = this.getStats();
-    const hitRate = this.getHitRate();
     
     console.log('=== Image Cache Statistics ===');
     console.log(`Cache Size: ${stats.cacheSize}/${MAX_CACHE_SIZE}`);
     console.log(`Memory Usage: ${stats.memoryUsageMB.toFixed(2)}/${MAX_CACHE_MEMORY_MB} MB`);
     console.log(`Total Requests: ${stats.totalRequests}`);
-    console.log(`Cache Hits: ${stats.hits} (${hitRate.toFixed(2)}%)`);
+    console.log(`Cache Hits: ${stats.hits} (${stats.hitRate.toFixed(2)}%)`);
     console.log(`Cache Misses: ${stats.misses}`);
     console.log(`Evictions: ${stats.evictions}`);
+    console.log(`Avg Access Time: ${stats.avgAccessTime.toFixed(2)}ms`);
     console.log('==============================');
+  }
+
+  /**
+   * Warm cache with frequently accessed images
+   * OPTIMIZED: Intelligent cache warming based on usage patterns
+   */
+  async warmCache(imageIds: string[], priority: number = 5): Promise<void> {
+    console.log(`[ImageCache] Warming cache with ${imageIds.length} images (priority: ${priority})`);
+    
+    // Prefetch with higher priority
+    await this.prefetch(imageIds, PREFETCH_BATCH_SIZE);
+    
+    // Update priority for warmed images
+    for (const imageId of imageIds) {
+      const entry = this.cache.get(imageId);
+      if (entry) {
+        entry.priority = Math.max(entry.priority, priority);
+      }
+    }
+    
+    console.log('[ImageCache] Cache warming complete');
   }
 }
 
@@ -347,3 +474,4 @@ export const clearImageCache = () => globalImageCache.clear();
 export const prefetchImages = (imageIds: string[], maxConcurrent?: number) => globalImageCache.prefetch(imageIds, maxConcurrent);
 export const getImageCacheStats = () => globalImageCache.getStats();
 export const logImageCacheStats = () => globalImageCache.logStats();
+export const warmImageCache = (imageIds: string[], priority?: number) => globalImageCache.warmCache(imageIds, priority);

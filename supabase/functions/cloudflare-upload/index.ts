@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log('=== Cloudflare Upload Edge Function (Optimized) ===');
+    console.log('=== Cloudflare Upload Edge Function (Optimized v2) ===');
     const startTime = performance.now();
 
     // Get Cloudflare credentials from environment
@@ -82,34 +82,72 @@ Deno.serve(async (req) => {
     const formData = new FormData();
     formData.append('file', blob, fileName);
 
-    // OPTIMIZATION 4: Use fetch with optimized settings
+    // OPTIMIZATION 4: Use fetch with optimized settings and retry logic
     const uploadUrl = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/images/v1`;
     
     const uploadStart = performance.now();
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
-      },
-      body: formData,
-      // OPTIMIZATION: Set signal for timeout (30 seconds)
-      signal: AbortSignal.timeout(30000),
-    });
+    
+    // OPTIMIZATION 5: Implement retry logic with exponential backoff
+    let uploadResponse: Response | null = null;
+    let lastError: Error | null = null;
+    const maxRetries = 2;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          const backoffMs = Math.pow(2, attempt - 1) * 1000;
+          console.log(`Retry attempt ${attempt}/${maxRetries} after ${backoffMs}ms`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+        }
+        
+        uploadResponse = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+          },
+          body: formData,
+          // OPTIMIZATION: Set signal for timeout (30 seconds)
+          signal: AbortSignal.timeout(30000),
+        });
+        
+        // Break on success or client error (4xx)
+        if (uploadResponse.ok || (uploadResponse.status >= 400 && uploadResponse.status < 500)) {
+          break;
+        }
+        
+        // Retry on server errors (5xx)
+        if (uploadResponse.status >= 500) {
+          lastError = new Error(`Server error: ${uploadResponse.status}`);
+          console.warn(`Server error ${uploadResponse.status}, will retry...`);
+          continue;
+        }
+        
+        break;
+      } catch (error) {
+        lastError = error as Error;
+        console.error(`Upload attempt ${attempt + 1} failed:`, error);
+        
+        // Don't retry on timeout or abort
+        if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+          break;
+        }
+      }
+    }
 
     const uploadTime = performance.now() - uploadStart;
     console.log(`Upload request completed in ${uploadTime.toFixed(2)}ms`);
 
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
+    if (!uploadResponse || !uploadResponse.ok) {
+      const errorText = uploadResponse ? await uploadResponse.text() : lastError?.message || 'Unknown error';
       console.error('Cloudflare upload failed:', errorText);
       return new Response(
         JSON.stringify({ 
           error: 'Failed to upload to Cloudflare', 
           details: errorText,
-          statusCode: uploadResponse.status,
+          statusCode: uploadResponse?.status || 500,
         }),
         { 
-          status: uploadResponse.status, 
+          status: uploadResponse?.status || 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
@@ -126,7 +164,7 @@ Deno.serve(async (req) => {
     console.log(`Total processing time: ${totalTime.toFixed(2)}ms`);
     console.log('CDN URL:', cdnUrl);
 
-    // OPTIMIZATION 5: Return minimal response payload
+    // OPTIMIZATION 6: Return minimal response payload with performance metrics
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -137,6 +175,7 @@ Deno.serve(async (req) => {
           conversionTime: Math.round(conversionTime),
           uploadTime: Math.round(uploadTime),
           totalTime: Math.round(totalTime),
+          fileSize: bytes.length,
         }
       }),
       { 
@@ -148,7 +187,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Exception in cloudflare-upload:', error);
     
-    // OPTIMIZATION 6: Better error handling with specific error types
+    // OPTIMIZATION 7: Better error handling with specific error types
     let errorMessage = 'Internal server error';
     let statusCode = 500;
     
@@ -161,6 +200,9 @@ Deno.serve(async (req) => {
         statusCode = 408;
       } else if (error.message.includes('base64')) {
         errorMessage = 'Invalid base64 data';
+        statusCode = 400;
+      } else if (error.message.includes('JSON')) {
+        errorMessage = 'Invalid request format';
         statusCode = 400;
       }
     }

@@ -1,13 +1,13 @@
 
-const { withAppDelegate, withXcodeProject, withInfoPlist, withEntitlementsPlist } = require('@expo/config-plugins');
+const { withInfoPlist, withEntitlementsPlist } = require('@expo/config-plugins');
 const { createRunOncePlugin } = require('@expo/config-plugins');
 
 /**
  * Expo Config Plugin for iOS Share Extension using @bacons/apple-targets
- * 
+ *
  * This plugin configures the iOS Share Extension to allow the Recall app
  * to appear in the iOS share sheet when users share content from other apps.
- * 
+ *
  * IMPORTANT: This plugin works in conjunction with @bacons/apple-targets
  * Make sure to run `npm run build:ios` (expo prebuild -p ios --clean) after changes
  */
@@ -21,24 +21,24 @@ const withShareExtensionConfig = (config) => {
   // Add App Groups entitlement to main app
   config = withEntitlementsPlist(config, (config) => {
     console.log('[Config Plugin] Adding App Groups entitlement to main app');
-    
+
     if (!config.modResults['com.apple.security.application-groups']) {
       config.modResults['com.apple.security.application-groups'] = [];
     }
-    
+
     const appGroups = config.modResults['com.apple.security.application-groups'];
     if (!appGroups.includes(APP_GROUP_ID)) {
       appGroups.push(APP_GROUP_ID);
       console.log('[Config Plugin] Added App Group:', APP_GROUP_ID);
     }
-    
+
     return config;
   });
 
   // Update main app Info.plist with URL schemes and document types
   config = withInfoPlist(config, (config) => {
     console.log('[Config Plugin] Configuring main app Info.plist');
-    
+
     // Ensure CFBundleURLTypes exists
     if (!config.modResults.CFBundleURLTypes) {
       config.modResults.CFBundleURLTypes = [];
@@ -65,7 +65,7 @@ const withShareExtensionConfig = (config) => {
     }
 
     const documentTypes = config.modResults.CFBundleDocumentTypes;
-    
+
     // Add support for various document types
     const supportedTypes = [
       {

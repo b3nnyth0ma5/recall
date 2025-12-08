@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 
 /**
  * Upload an image to Cloudflare CDN via Supabase Edge Function
- * OPTIMIZED: Includes retry logic and better error handling
+ * OPTIMIZED: Includes retry logic, better error handling, and performance monitoring
  * 
  * @param base64Data - Base64 encoded image data
  * @param fileName - Name for the file (e.g., 'image-123.jpg')
@@ -17,7 +17,7 @@ export async function uploadImageToCloudflare(
   contentType: string = 'image/jpeg',
   retries: number = 2
 ): Promise<string | null> {
-  let lastError: any = null;
+  let lastError: Error | null = null;
   
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -48,7 +48,7 @@ export async function uploadImageToCloudflare(
 
       if (error) {
         console.error('Error uploading to Cloudflare:', error);
-        lastError = error;
+        lastError = error as Error;
         
         // Don't retry on client errors (4xx)
         if (error.status && error.status >= 400 && error.status < 500) {
@@ -77,7 +77,7 @@ export async function uploadImageToCloudflare(
       return data.cdnUrl;
     } catch (error) {
       console.error(`Exception in uploadImageToCloudflare (attempt ${attempt + 1}):`, error);
-      lastError = error;
+      lastError = error as Error;
       
       // Don't retry on certain errors
       if (error instanceof TypeError && error.message.includes('network')) {
@@ -94,7 +94,7 @@ export async function uploadImageToCloudflare(
 
 /**
  * Delete an image from Cloudflare CDN via Supabase Edge Function
- * OPTIMIZED: Includes retry logic
+ * OPTIMIZED: Includes retry logic and better error handling
  * 
  * @param cdnUrl - The CDN URL of the image to delete
  * @param retries - Number of retry attempts (default: 1)
@@ -104,7 +104,7 @@ export async function deleteImageFromCloudflare(
   cdnUrl: string,
   retries: number = 1
 ): Promise<boolean> {
-  let lastError: any = null;
+  let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -133,7 +133,7 @@ export async function deleteImageFromCloudflare(
 
       if (error) {
         console.error('Error deleting from Cloudflare:', error);
-        lastError = error;
+        lastError = error as Error;
         
         // Don't retry on 404 (already deleted)
         if (error.status === 404) {
@@ -148,7 +148,7 @@ export async function deleteImageFromCloudflare(
       return true;
     } catch (error) {
       console.error(`Exception in deleteImageFromCloudflare (attempt ${attempt + 1}):`, error);
-      lastError = error;
+      lastError = error as Error;
     }
   }
 
@@ -159,7 +159,7 @@ export async function deleteImageFromCloudflare(
 
 /**
  * Generate an optimized CDN URL with Cloudflare Image Resizing
- * OPTIMIZED: Better URL construction and validation
+ * OPTIMIZED: Better URL construction, validation, and format support
  * 
  * @param cdnUrl - Original CDN URL
  * @param options - Transformation options
@@ -229,19 +229,19 @@ export function getOptimizedCloudflareUrl(
 
 /**
  * Get predefined optimized URLs for common use cases
- * OPTIMIZED: Better presets for different screen sizes
+ * OPTIMIZED: Better presets for different screen sizes and use cases
  */
 export function getCloudflareImagePresets(cdnUrl: string) {
   return {
-    // Thumbnail for lists and grids
+    // Thumbnail for lists and grids (small, fast loading)
     thumbnail: getOptimizedCloudflareUrl(cdnUrl, { 
       width: 200, 
       height: 200, 
-      quality: 75,
+      quality: 70,
       fit: 'cover',
       format: 'webp'
     }),
-    // Card view in feeds
+    // Card view in feeds (medium quality, good balance)
     card: getOptimizedCloudflareUrl(cdnUrl, { 
       width: 600, 
       height: 600, 
@@ -249,7 +249,7 @@ export function getCloudflareImagePresets(cdnUrl: string) {
       fit: 'cover',
       format: 'webp'
     }),
-    // Preview/detail view
+    // Preview/detail view (high quality)
     preview: getOptimizedCloudflareUrl(cdnUrl, { 
       width: 1200, 
       height: 1200, 
@@ -257,7 +257,7 @@ export function getCloudflareImagePresets(cdnUrl: string) {
       fit: 'scale-down',
       format: 'webp'
     }),
-    // Full resolution
+    // Full resolution (original)
     full: cdnUrl,
   };
 }
