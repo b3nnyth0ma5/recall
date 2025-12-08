@@ -687,7 +687,6 @@ export default function PersonRecallsScreen() {
                 />
               </View>
             </Pressable>
-            <Text style={styles.personNameText}>{personName}</Text>
           </View>
         )}
 
@@ -748,17 +747,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 20,
     paddingHorizontal: 16,
   },
   avatarSection: {
     alignItems: 'center',
-    paddingVertical: 24,
-    paddingTop: 32,
+    paddingVertical: 0,
+    paddingTop: 14,
   },
   avatarPressable: {
     position: 'relative',
-    marginBottom: 12,
+    marginBottom: 4,
   },
   uploadingOverlay: {
     position: 'absolute',
@@ -819,10 +818,10 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
   countText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '500',
     color: colors.textSecondary,
-    marginBottom: 16,
+    marginBottom: 8,
     textAlign: 'center',
   },
   headerButton: {

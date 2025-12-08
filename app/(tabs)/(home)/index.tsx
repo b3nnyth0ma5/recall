@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform, Alert, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform, Alert, Keyboard, Animated } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
@@ -13,6 +13,10 @@ import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
 import { supabase } from '@/utils/supabase';
 import { uploadImageToDatabase } from '@/utils/supabase';
 import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
+
+const HEADER_MAX_HEIGHT = 54; // Reduced by 10% from 60
+const HEADER_MIN_HEIGHT = 0;
+const HEADER_SCROLL_DISTANCE = HEADER_MAX_HEIGHT - HEADER_MIN_HEIGHT;
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
@@ -31,6 +35,9 @@ export default function HomeScreen() {
   const [hasRecalls, setHasRecalls] = useState(false);
   // NEW: Track pending image uploads per recall
   const pendingImageUploadsRef = useRef<Map<string, number>>(new Map());
+  
+  // Animated value for header
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   // Check if user has any recalls
   useEffect(() => {
@@ -435,53 +442,72 @@ export default function HomeScreen() {
     return pendingImageUploadsRef.current.get(noteId);
   };
 
+  // Header animation
+  const headerHeight = scrollY.interpolate({
+    inputRange: [0, HEADER_SCROLL_DISTANCE],
+    outputRange: [HEADER_MAX_HEIGHT, HEADER_MIN_HEIGHT],
+    extrapolate: 'clamp',
+  });
+
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, HEADER_SCROLL_DISTANCE / 2, HEADER_SCROLL_DISTANCE],
+    outputRange: [1, 0.5, 0],
+    extrapolate: 'clamp',
+  });
+
   return (
     <View style={styles.container}>
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerTitle: 'Recall',
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerTintColor: colors.text,
-          headerTitleAlign: 'center',
-          headerTitleStyle: {
-            fontSize: 32,
-            fontWeight: 'bold',
-            color: colors.primary,
-          },
-          headerLeft: () => (
-            <Pressable onPress={handleRecallIconPress} style={styles.headerButton}>
-              <Image
-                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-                style={styles.headerIcon}
-                resizeMode="contain"
-              />
-            </Pressable>
-          ),
-          headerRight: () => (
-            <Pressable onPress={handleProfile} style={styles.headerButton}>
-              <IconSymbol 
-                name="person.circle.fill" 
-                size={32} 
-                color={colors.text} 
-              />
-            </Pressable>
-          ),
+          headerShown: false,
         }}
       />
 
+      {/* Custom Animated Header */}
+      <Animated.View 
+        style={[
+          styles.customHeader,
+          {
+            height: headerHeight,
+            opacity: headerOpacity,
+          }
+        ]}
+      >
+        <Pressable onPress={handleRecallIconPress} style={styles.headerIconButton}>
+          <Image
+            source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+            style={styles.headerIcon}
+            resizeMode="contain"
+          />
+        </Pressable>
+        
+        <Text style={styles.headerTitle}>Recall</Text>
+        
+        <Pressable onPress={handleProfile} style={styles.headerIconButton}>
+          <IconSymbol 
+            name="person.circle.fill" 
+            size={29} 
+            color={colors.text} 
+          />
+        </Pressable>
+      </Animated.View>
+
       {/* Main Content ScrollView - Category Carousel is now inside and scrolls with content */}
-      <ScrollView
+      <Animated.ScrollView
         ref={scrollViewRef}
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
           combinedAddSearchEnabled && styles.scrollContentWithCombined,
         ]}
-        onScroll={handleScroll}
-        scrollEventThrottle={400}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { 
+            useNativeDriver: false,
+            listener: handleScroll,
+          }
+        )}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -491,6 +517,9 @@ export default function HomeScreen() {
           />
         }
       >
+        {/* Spacer for header */}
+        <View style={{ height: HEADER_MAX_HEIGHT }} />
+
         {/* Category Carousel - Now scrolls with content */}
         {user && (
           <View style={styles.categoryCarouselContainer}>
@@ -533,7 +562,7 @@ export default function HomeScreen() {
             )}
           </View>
         ) : null}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* Combined Search/Add Component - Now at bottom of screen */}
       {combinedAddSearchEnabled && user && !loadingPreferences && (
@@ -579,6 +608,31 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  customHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: colors.background,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'android' ? 48 : 8,
+    zIndex: 1000,
+  },
+  headerTitle: {
+    fontSize: 27,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  headerIconButton: {
+    padding: 4,
+  },
+  headerIcon: {
+    width: 32,
+    height: 32,
+  },
   scrollView: {
     flex: 1,
   },
@@ -589,8 +643,8 @@ const styles = StyleSheet.create({
     paddingBottom: 200,
   },
   categoryCarouselContainer: {
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: 0,
+    paddingBottom: 4,
   },
   loadingContainer: {
     flex: 1,
@@ -622,7 +676,7 @@ const styles = StyleSheet.create({
   },
   allNotesSection: {
     paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingTop: 0,
   },
   loadingMoreContainer: {
     flexDirection: 'row',
@@ -643,16 +697,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textTertiary,
     fontStyle: 'italic',
-  },
-  headerIcon: {
-    width: 36,
-    height: 36,
-  },
-  headerButton: {
-    padding: 8,
-    marginHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   deletionModalContainer: {
     flex: 1,

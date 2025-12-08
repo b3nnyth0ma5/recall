@@ -22,10 +22,10 @@ interface NoteCardProps {
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_PADDING = 8;
-const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 5);
-const IMAGE_HEIGHT = IMAGE_WIDTH * 1.1;
-const IMAGE_SPACING = 12;
+const CARD_PADDING = 10;
+const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 3.2);
+const IMAGE_HEIGHT = IMAGE_WIDTH * 1.05;
+const IMAGE_SPACING = 10;
 
 // Helper function to check if text contains URLs
 const hasUrl = (text: string): boolean => {
@@ -192,7 +192,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
   };
 
   const shouldShowToggle = () => {
-    return note.text && note.text.length > 150;
+    return note.text && note.text.length > 120;
   };
 
   const handleImageError = (index: number) => {
@@ -571,9 +571,10 @@ const styles = StyleSheet.create({
   },
   text: {
     fontSize: 15,
-    lineHeight: 24,
+    lineHeight: 22,
     color: colors.text,
     marginBottom: 4,
+		paddingHorizontal: 8,
     zIndex: 1,
   },
   normalText: {
@@ -587,7 +588,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     paddingVertical: 4,
     paddingHorizontal: 8,
-    marginTop: 4,
+    marginTop: 0,
     zIndex: 1,
   },
   toggleText: {
@@ -599,8 +600,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 6,
+		marginBottom: 6,
     paddingTop: 12,
+		paddingHorizontal: 8,
     gap: 8,
     zIndex: 1,
   },
@@ -619,7 +622,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   location: {
-    fontSize: 14,
+    fontSize: 12,
     color: colors.primary,
     fontWeight: '500',
     flexShrink: 1,
@@ -630,7 +633,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   date: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textSecondary,
     fontWeight: '500',
     textAlign: 'right',

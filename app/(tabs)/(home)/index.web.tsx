@@ -17,6 +17,9 @@ const FAB_SIZE = 60;
 const ACTION_BUTTON_SIZE = 46.8;
 const BUTTON_SPACING = 77;
 const DIAGONAL_OFFSET = 54.45;
+const HEADER_MAX_HEIGHT = 54; // Reduced by 10% from 60
+const HEADER_MIN_HEIGHT = 0;
+const HEADER_SCROLL_DISTANCE = HEADER_MAX_HEIGHT - HEADER_MIN_HEIGHT;
 
 export default function HomeScreen() {
   // Hooks
@@ -54,6 +57,7 @@ export default function HomeScreen() {
   const cameraButtonAnim = useRef(new Animated.Value(0)).current;
   const textButtonAnim = useRef(new Animated.Value(0)).current;
   const locationButtonAnim = useRef(new Animated.Value(0)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   // ============================================================================
   // Effects
@@ -573,6 +577,19 @@ export default function HomeScreen() {
     outputRange: [0, -BUTTON_SPACING],
   });
 
+  // Header animation
+  const headerHeight = scrollY.interpolate({
+    inputRange: [0, HEADER_SCROLL_DISTANCE],
+    outputRange: [HEADER_MAX_HEIGHT, HEADER_MIN_HEIGHT],
+    extrapolate: 'clamp',
+  });
+
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, HEADER_SCROLL_DISTANCE / 2, HEADER_SCROLL_DISTANCE],
+    outputRange: [1, 0.5, 0],
+    extrapolate: 'clamp',
+  });
+
   // ============================================================================
   // Render
   // ============================================================================
@@ -584,33 +601,34 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerTitle: 'Recall',
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerTintColor: colors.text,
-          headerTitleAlign: 'center',
-          headerTitleStyle: {
-            fontSize: 32,
-            fontWeight: 'bold',
-          },
-          headerLeft: () => (
-            <Pressable onPress={handleRecallIconPress} style={styles.headerButton}>
-              <Image
-                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-                style={styles.headerIcon}
-                resizeMode="contain"
-              />
-            </Pressable>
-          ),
-          headerRight: () => (
-            <Pressable onPress={handleProfile} style={styles.headerButton}>
-              <IconSymbol name="person.circle.fill" size={32} color={colors.text} />
-            </Pressable>
-          ),
+          headerShown: false,
         }}
       />
+
+      {/* Custom Animated Header */}
+      <Animated.View 
+        style={[
+          styles.customHeader,
+          {
+            height: headerHeight,
+            opacity: headerOpacity,
+          }
+        ]}
+      >
+        <Pressable onPress={handleRecallIconPress} style={styles.headerIconButton}>
+          <Image
+            source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+            style={styles.headerIcon}
+            resizeMode="contain"
+          />
+        </Pressable>
+        
+        <Text style={styles.headerTitle}>Recall</Text>
+        
+        <Pressable onPress={handleProfile} style={styles.headerIconButton}>
+          <IconSymbol name="person.circle.fill" size={29} color={colors.text} />
+        </Pressable>
+      </Animated.View>
 
       {/* Pull-to-refresh indicator */}
       {pullIndicatorVisible && (
@@ -629,16 +647,25 @@ export default function HomeScreen() {
       )}
 
       {/* Main Content */}
-      <ScrollView
+      <Animated.ScrollView
         ref={scrollViewRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
-        onScroll={handleScroll}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { 
+            useNativeDriver: false,
+            listener: handleScroll,
+          }
+        )}
         scrollEventThrottle={16}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
+        {/* Spacer for header */}
+        <View style={{ height: HEADER_MAX_HEIGHT }} />
+
         {/* Category Carousel */}
         <View style={styles.categoryCarouselContainer}>
           <CategoryCarousel 
@@ -680,7 +707,7 @@ export default function HomeScreen() {
             )}
           </View>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* Bottom Actions */}
       <View style={styles.bottomActions}>
@@ -831,6 +858,31 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  customHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: colors.background,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    zIndex: 1000,
+  },
+  headerTitle: {
+    fontSize: 27,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  headerIconButton: {
+    padding: 4,
+  },
+  headerIcon: {
+    width: 32,
+    height: 32,
+  },
   scrollView: {
     flex: 1,
   },
@@ -892,16 +944,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textTertiary,
     fontStyle: 'italic',
-  },
-  headerIcon: {
-    width: 36,
-    height: 36,
-  },
-  headerButton: {
-    padding: 8,
-    marginHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   bottomActions: {
     position: 'absolute',
