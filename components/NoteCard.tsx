@@ -421,7 +421,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
           </Pressable>
         )}
 
-        {/* Location and Time on the same line */}
+        {/* Location and Time on the same line - REMOVED BORDER */}
         <View style={styles.locationTimeContainer}>
           {/* Location - Left-aligned, occupies 75% of space */}
           {note.location && (
@@ -570,7 +570,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   text: {
-    fontSize: 16,
+    fontSize: 15,
     lineHeight: 24,
     color: colors.text,
     marginBottom: 4,
@@ -601,8 +601,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
     paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
     gap: 8,
     zIndex: 1,
   },

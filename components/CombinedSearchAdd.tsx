@@ -82,7 +82,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       keyboardWillShowListener.remove();
       keyboardWillHideListener.remove();
     };
-  }, []);
+  }, [translateY]);
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
@@ -141,7 +141,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         selectedPrimaryType: undefined,
       });
     }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName]);
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, router]);
 
   const handlePlusPress = () => {
     if (Platform.OS !== 'web') {
@@ -273,6 +273,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       setText('');
       setImages([]);
       setLocation(null);
+      
+      // Dismiss keyboard after creating recall
+      console.log('[CombinedSearchAdd] Dismissing keyboard after recall creation');
       Keyboard.dismiss();
     } catch (error) {
       console.error('Error creating recall:', error);
@@ -298,12 +301,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
         {/* Main Input Container with Enhanced Border */}
-        <View style={styles.containerWrapper} pointerEvents="box-none">
+        <View style={styles.containerWrapper}>
           <View style={styles.borderGlow} pointerEvents="none">
             <BlurView intensity={30} tint="light" style={StyleSheet.absoluteFill} />
           </View>
-          <View style={styles.container} pointerEvents="box-none">
-            <View style={styles.inputContainer} pointerEvents="box-none">
+          <View style={styles.container}>
+            <View style={styles.inputContainer}>
               {/* Location Display - Above Images */}
               {location && (
                 <Animated.View entering={FadeIn.duration(300)} style={styles.locationChip}>
@@ -317,37 +320,34 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 </Animated.View>
               )}
 
-              {/* Images Display - Horizontal Scrollable with explicit pointerEvents and zIndex */}
+              {/* Images Display - Horizontal Scrollable - FIXED: Removed pointerEvents="box-none" wrapper */}
               {images.length > 0 && (
-                <View style={styles.imagesScrollWrapper} pointerEvents="box-none">
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false} 
-                    style={styles.imagesScroll}
-                    contentContainerStyle={styles.imagesScrollContent}
-                    decelerationRate="fast"
-                    snapToInterval={88}
-                    snapToAlignment="start"
-                    scrollEnabled={true}
-                    nestedScrollEnabled={true}
-                    pointerEvents="auto"
-                    removeClippedSubviews={false}
-                    keyboardShouldPersistTaps="handled"
-                  >
-                    {images.map((uri, index) => (
-                      <View key={index} style={styles.imageContainer}>
-                        <Image source={{ uri }} style={styles.image} />
-                        <Pressable
-                          style={styles.removeImageButton}
-                          onPress={() => handleRemoveImage(index)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
-                        </Pressable>
-                      </View>
-                    ))}
-                  </ScrollView>
-                </View>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  style={styles.imagesScroll}
+                  contentContainerStyle={styles.imagesScrollContent}
+                  decelerationRate="fast"
+                  snapToInterval={88}
+                  snapToAlignment="start"
+                  scrollEnabled={true}
+                  nestedScrollEnabled={true}
+                  removeClippedSubviews={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {images.map((uri, index) => (
+                    <View key={index} style={styles.imageContainer}>
+                      <Image source={{ uri }} style={styles.image} />
+                      <Pressable
+                        style={styles.removeImageButton}
+                        onPress={() => handleRemoveImage(index)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
+                      </Pressable>
+                    </View>
+                  ))}
+                </ScrollView>
               )}
 
               {/* Text Input - Now above the button row */}
@@ -527,14 +527,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     maxWidth: 200,
   },
-  imagesScrollWrapper: {
-    zIndex: 100,
-    elevation: 100,
-  },
   imagesScroll: {
     maxHeight: 100,
-    zIndex: 100,
-    elevation: 100,
   },
   imagesScrollContent: {
     paddingRight: 8,

@@ -16,7 +16,7 @@ interface NoteCardProps {
   onPress: () => void;
   onImagePress?: () => void;
   loading?: boolean;
-  expectedImageCount?: number; // NEW: Expected total image count for newly created notes
+  expectedImageCount?: number;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -46,11 +46,10 @@ export function NoteCard({ note, onPress, onImagePress, loading = false, expecte
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
   
-  // FIXED: Track total image count separately from loaded images
+  // Track total image count separately from loaded images
   const [totalImageCount, setTotalImageCount] = useState(0);
 
   // Initialize with first 2 images if note has more than 1 image
-  // MOVED BEFORE THE CONDITIONAL RETURN TO FIX HOOKS RULE
   useEffect(() => {
     if (!loading && note.images && note.images.length > 0) {
       // Set total count immediately
@@ -61,11 +60,11 @@ export function NoteCard({ note, onPress, onImagePress, loading = false, expecte
       setLazyLoadedImages(imagesToLoad);
       console.log(`[NoteCard.web] Initialized with first ${imagesToLoad.length} image(s) for note ${note.id}, total count: ${note.images.length}`);
     } else if (!loading && note.imageIds && note.imageIds.length > 0) {
-      // FIXED: If we have imageIds but no images yet (placeholder records), set the count
+      // If we have imageIds but no images yet (placeholder records), set the count
       setTotalImageCount(note.imageIds.length);
       console.log(`[NoteCard.web] Set total image count to ${note.imageIds.length} from imageIds for note ${note.id}`);
     } else if (!loading && expectedImageCount && expectedImageCount > 0) {
-      // FIXED: Use expectedImageCount if provided (for newly created notes with pending uploads)
+      // Use expectedImageCount if provided (for newly created notes with pending uploads)
       setTotalImageCount(expectedImageCount);
       console.log(`[NoteCard.web] Set total image count to ${expectedImageCount} from expectedImageCount for note ${note.id}`);
     }
@@ -247,7 +246,7 @@ export function NoteCard({ note, onPress, onImagePress, loading = false, expecte
     }
   };
 
-  // FIXED: Create display array with placeholders based on totalImageCount
+  // Create display array with placeholders based on totalImageCount
   const displayImages = totalImageCount > 0 
     ? Array.from({ length: totalImageCount }, (_, index) => lazyLoadedImages[index] || '') 
     : [];
@@ -347,7 +346,7 @@ export function NoteCard({ note, onPress, onImagePress, loading = false, expecte
                 </Pressable>
               ))}
             </ScrollView>
-            {/* FIXED: Use totalImageCount for accurate count display */}
+            {/* Use totalImageCount for accurate count display */}
             {totalImageCount > 1 && (
               <View style={styles.imageCounter}>
                 <Text style={styles.imageCounterText}>
@@ -358,7 +357,7 @@ export function NoteCard({ note, onPress, onImagePress, loading = false, expecte
           </View>
         )}
 
-        {/* Location and Time on the same line */}
+        {/* Location and Time on the same line - REMOVED BORDER */}
         <View style={styles.locationTimeContainer}>
           {/* Location - Left-aligned, occupies 75% of space */}
           {note.location && (
@@ -420,7 +419,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   text: {
-    fontSize: 16,
+    fontSize: 15,
     lineHeight: 24,
     color: colors.text,
     marginBottom: 4,
@@ -514,8 +513,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
     paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
     gap: 8,
   },
   locationWrapper: {
