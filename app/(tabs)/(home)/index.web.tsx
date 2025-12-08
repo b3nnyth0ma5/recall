@@ -584,33 +584,26 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerTitle: 'Recall',
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerTintColor: colors.text,
-          headerTitleAlign: 'center',
-          headerTitleStyle: {
-            fontSize: 32,
-            fontWeight: 'bold',
-          },
-          headerLeft: () => (
-            <Pressable onPress={handleRecallIconPress} style={styles.headerButton}>
-              <Image
-                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-                style={styles.headerIcon}
-                resizeMode="contain"
-              />
-            </Pressable>
-          ),
-          headerRight: () => (
-            <Pressable onPress={handleProfile} style={styles.headerButton}>
-              <IconSymbol name="person.circle.fill" size={32} color={colors.text} />
-            </Pressable>
-          ),
+          headerShown: false,
         }}
       />
+
+      {/* Custom Header - Now scrolls with content */}
+      <View style={styles.customHeader}>
+        <Pressable onPress={handleRecallIconPress} style={styles.headerIconButton}>
+          <Image
+            source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+            style={styles.headerIcon}
+            resizeMode="contain"
+          />
+        </Pressable>
+        
+        <Text style={styles.headerTitle}>Recall</Text>
+        
+        <Pressable onPress={handleProfile} style={styles.headerIconButton}>
+          <IconSymbol name="person.circle.fill" size={32} color={colors.text} />
+        </Pressable>
+      </View>
 
       {/* Pull-to-refresh indicator */}
       {pullIndicatorVisible && (
@@ -831,6 +824,30 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  customHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    height: 54,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  headerIconButton: {
+    padding: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerIcon: {
+    width: 36,
+    height: 36,
+  },
   scrollView: {
     flex: 1,
   },
@@ -892,16 +909,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textTertiary,
     fontStyle: 'italic',
-  },
-  headerIcon: {
-    width: 36,
-    height: 36,
-  },
-  headerButton: {
-    padding: 8,
-    marginHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   bottomActions: {
     position: 'absolute',
