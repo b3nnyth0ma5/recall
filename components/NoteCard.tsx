@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, memo } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Alert, Platform, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
@@ -53,6 +53,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
   // FIXED: Track total image count separately from loaded images
   // This ensures we always show the correct count even if images haven't loaded yet
   const [totalImageCount, setTotalImageCount] = useState(0);
+  
+  // NEW: Track if images are currently being uploaded
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
 
   // Initialize with first TWO images for better performance
   // MOVED BEFORE THE CONDITIONAL RETURN TO FIX HOOKS RULE
@@ -67,14 +70,31 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
       // Initialize currentImageIndex to 0 to show counter immediately
       setCurrentImageIndex(0);
       console.log(`[NoteCard] Initialized with first ${imagesToLoad.length} image(s) for note ${note.id}, total count: ${note.images.length}`);
+      
+      // Check if we're still uploading images
+      if (expectedImageCount && note.images.length < expectedImageCount) {
+        setIsUploadingImages(true);
+      } else {
+        setIsUploadingImages(false);
+      }
     } else if (!loading && note.imageIds && note.imageIds.length > 0) {
       // FIXED: If we have imageIds but no images yet (placeholder records), set the count
       setTotalImageCount(note.imageIds.length);
       console.log(`[NoteCard] Set total image count to ${note.imageIds.length} from imageIds for note ${note.id}`);
+      
+      // Check if we're still uploading images
+      if (expectedImageCount && note.imageIds.length < expectedImageCount) {
+        setIsUploadingImages(true);
+      } else {
+        setIsUploadingImages(false);
+      }
     } else if (!loading && expectedImageCount && expectedImageCount > 0) {
       // FIXED: Use expectedImageCount if provided (for newly created notes with pending uploads)
       setTotalImageCount(expectedImageCount);
+      setIsUploadingImages(true);
       console.log(`[NoteCard] Set total image count to ${expectedImageCount} from expectedImageCount for note ${note.id}`);
+    } else {
+      setIsUploadingImages(false);
     }
   }, [note.id, note.images, note.imageIds, loading, expectedImageCount]);
 
@@ -85,9 +105,15 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
 
   // Optimized lazy load with queue management
   const lazyLoadImage = async (index: number) => {
-    if (!note.imageIds || index >= note.imageIds.length) return;
-    if (lazyLoadedImages[index]) return; // Already loaded
-    if (loadingQueueRef.current.has(index)) return; // Already in queue
+    if (!note.imageIds || index >= note.imageIds.length) {
+      return;
+    }
+    if (lazyLoadedImages[index]) {
+      return;
+    }
+    if (loadingQueueRef.current.has(index)) {
+      return;
+    }
     
     loadingQueueRef.current.add(index);
     setIsLazyLoading(true);
@@ -357,9 +383,16 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
                 </Pressable>
               ))}
             </ScrollView>
-            {/* FIXED: Use totalImageCount for accurate count display */}
+            {/* FIXED: Use totalImageCount for accurate count display with busy spinner */}
             {totalImageCount > 1 && (
               <View style={styles.imageCounter}>
+                {isUploadingImages && (
+                  <ActivityIndicator 
+                    size="small" 
+                    color="#FFFFFF" 
+                    style={styles.imageCounterSpinner}
+                  />
+                )}
                 <Text style={styles.imageCounterText}>
                   {currentImageIndex + 1} / {totalImageCount}
                 </Text>
@@ -528,6 +561,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     zIndex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  imageCounterSpinner: {
+    marginRight: 4,
   },
   imageCounterText: {
     fontSize: 12,

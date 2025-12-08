@@ -317,9 +317,17 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 </Animated.View>
               )}
 
-              {/* Images Display */}
+              {/* Images Display - Horizontal Scrollable */}
               {images.length > 0 && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  style={styles.imagesScroll}
+                  contentContainerStyle={styles.imagesScrollContent}
+                  decelerationRate="fast"
+                  snapToInterval={88}
+                  snapToAlignment="start"
+                >
                   {images.map((uri, index) => (
                     <View key={index} style={styles.imageContainer}>
                       <Image source={{ uri }} style={styles.image} />
@@ -514,6 +522,9 @@ const styles = StyleSheet.create({
   },
   imagesScroll: {
     maxHeight: 100,
+  },
+  imagesScrollContent: {
+    paddingRight: 8,
   },
   imageContainer: {
     position: 'relative',
