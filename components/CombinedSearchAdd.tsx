@@ -298,12 +298,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
         {/* Main Input Container with Enhanced Border */}
-        <View style={styles.containerWrapper}>
-          <View style={styles.borderGlow}>
+        <View style={styles.containerWrapper} pointerEvents="box-none">
+          <View style={styles.borderGlow} pointerEvents="none">
             <BlurView intensity={30} tint="light" style={StyleSheet.absoluteFill} />
           </View>
-          <View style={styles.container}>
-            <View style={styles.inputContainer}>
+          <View style={styles.container} pointerEvents="box-none">
+            <View style={styles.inputContainer} pointerEvents="box-none">
               {/* Location Display - Above Images */}
               {location && (
                 <Animated.View entering={FadeIn.duration(300)} style={styles.locationChip}>
@@ -317,32 +317,37 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 </Animated.View>
               )}
 
-              {/* Images Display - Horizontal Scrollable with scrollEnabled always true */}
+              {/* Images Display - Horizontal Scrollable with explicit pointerEvents and zIndex */}
               {images.length > 0 && (
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false} 
-                  style={styles.imagesScroll}
-                  contentContainerStyle={styles.imagesScrollContent}
-                  decelerationRate="fast"
-                  snapToInterval={88}
-                  snapToAlignment="start"
-                  scrollEnabled={true}
-                  nestedScrollEnabled={true}
-                >
-                  {images.map((uri, index) => (
-                    <View key={index} style={styles.imageContainer}>
-                      <Image source={{ uri }} style={styles.image} />
-                      <Pressable
-                        style={styles.removeImageButton}
-                        onPress={() => handleRemoveImage(index)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
-                      </Pressable>
-                    </View>
-                  ))}
-                </ScrollView>
+                <View style={styles.imagesScrollWrapper} pointerEvents="box-none">
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false} 
+                    style={styles.imagesScroll}
+                    contentContainerStyle={styles.imagesScrollContent}
+                    decelerationRate="fast"
+                    snapToInterval={88}
+                    snapToAlignment="start"
+                    scrollEnabled={true}
+                    nestedScrollEnabled={true}
+                    pointerEvents="auto"
+                    removeClippedSubviews={false}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {images.map((uri, index) => (
+                      <View key={index} style={styles.imageContainer}>
+                        <Image source={{ uri }} style={styles.image} />
+                        <Pressable
+                          style={styles.removeImageButton}
+                          onPress={() => handleRemoveImage(index)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </View>
               )}
 
               {/* Text Input - Now above the button row */}
@@ -522,8 +527,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     maxWidth: 200,
   },
+  imagesScrollWrapper: {
+    zIndex: 100,
+    elevation: 100,
+  },
   imagesScroll: {
     maxHeight: 100,
+    zIndex: 100,
+    elevation: 100,
   },
   imagesScrollContent: {
     paddingRight: 8,
@@ -551,11 +562,13 @@ const styles = StyleSheet.create({
     maxHeight: 100,
     paddingVertical: 8,
     paddingHorizontal: 4,
+    zIndex: 1,
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    zIndex: 1,
   },
   plusButton: {
     padding: 4,
