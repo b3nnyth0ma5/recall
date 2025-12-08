@@ -23,9 +23,9 @@ interface NoteCardProps {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 8;
-const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 4.8);
-const IMAGE_HEIGHT = IMAGE_WIDTH * 1.08;
-const IMAGE_SPACING = 12;
+const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 5);
+const IMAGE_HEIGHT = IMAGE_WIDTH * 1.1;
+const IMAGE_SPACING = 3;
 
 // Helper function to check if text contains URLs
 const hasUrl = (text: string): boolean => {
@@ -508,6 +508,7 @@ const styles = StyleSheet.create({
   },
   imageWrapper: {
     marginRight: IMAGE_SPACING,
+		marginLeft: IMAGE_SPACING - 3,
     borderRadius: 10,
     overflow: 'hidden',
     backgroundColor: colors.cardDark,
