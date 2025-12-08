@@ -41,8 +41,6 @@ export default function CategoryViewerScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [photoUpdateTrigger, setPhotoUpdateTrigger] = useState(0);
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
@@ -452,72 +450,30 @@ export default function CategoryViewerScreen() {
     }
   };
 
-  const handlePhotoPress = useCallback(async () => {
+  const handleSelectImage = async () => {
     try {
-      // Show action sheet
-      Alert.alert(
-        'Category Photo',
-        'Choose an option',
-        [
-          {
-            text: 'Take Photo',
-            onPress: async () => {
-              const { status } = await ImagePicker.requestCameraPermissionsAsync();
-              if (status !== 'granted') {
-                Alert.alert('Permission needed', 'Please grant camera permissions');
-                return;
-              }
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant permission to access your photo library.');
+        return;
+      }
 
-              const result = await ImagePicker.launchCameraAsync({
-                mediaTypes: ['images'],
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.9,
-              });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
 
-              if (!result.canceled && result.assets) {
-                setEditImage(result.assets[0].uri);
-              }
-            },
-          },
-          {
-            text: 'Choose from Library',
-            onPress: async () => {
-              const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-              if (status !== 'granted') {
-                Alert.alert('Permission needed', 'Please grant photo library permissions');
-                return;
-              }
-
-              const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ['images'],
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.9,
-              });
-
-              if (!result.canceled && result.assets) {
-                setEditImage(result.assets[0].uri);
-              }
-            },
-          },
-          ...(category?.icon_cdn_url ? [{
-            text: 'Remove Photo',
-            style: 'destructive' as const,
-            onPress: async () => {
-              setEditImage(null);
-            },
-          }] : []),
-          {
-            text: 'Cancel',
-            style: 'cancel' as const,
-          },
-        ]
-      );
+      if (!result.canceled && result.assets[0]) {
+        setEditImage(result.assets[0].uri);
+      }
     } catch (error) {
-      console.error('Error handling photo press:', error);
+      console.error('Error selecting image:', error);
+      Alert.alert('Error', 'Failed to select image');
     }
-  }, [category?.icon_cdn_url]);
+  };
 
   const handleSaveEdit = async () => {
     if (!category || !user) return;
@@ -554,8 +510,6 @@ export default function CategoryViewerScreen() {
         if (uploadedUrl) {
           iconUrl = uploadedUrl;
         }
-      } else if (editImage === null) {
-        iconUrl = null;
       }
 
       // Update category in database
@@ -733,9 +687,9 @@ export default function CategoryViewerScreen() {
             <View style={styles.categoryTopRow}>
               {/* Category Icon Skeleton */}
               <SkeletonLoader 
-                width={100} 
-                height={100} 
-                borderRadius={50}
+                width={80} 
+                height={80} 
+                borderRadius={40}
                 variant="wave"
               />
               
@@ -902,60 +856,50 @@ export default function CategoryViewerScreen() {
           />
         }
       >
-        {/* Category Info - UPDATED TO MATCH PERSON-RECALLS STYLE */}
+        {/* Category Info - Updated Layout */}
         <View style={styles.categoryInfoContainer}>
-          <View style={styles.avatarPressable}>
-            <Pressable 
-              onPress={handlePhotoPress}
-              disabled={uploadingPhoto}
-              style={styles.iconPressableContainer}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              {category.icon_cdn_url ? (
+          <View style={styles.categoryTopRow}>
+            {/* Category Icon - 20% smaller and on the left with edit badge */}
+            <View style={styles.iconContainer}>
+              {category.icon_cdn_url && (
                 <Image
                   source={{ uri: category.icon_cdn_url }}
                   style={styles.categoryIcon}
                   resizeMode="cover"
                 />
-              ) : (
-                <View style={styles.placeholderIcon}>
-                  <IconSymbol 
-                    name="folder.fill" 
-                    size={40} 
-                    color={colors.textSecondary} 
-                  />
-                </View>
               )}
-              {uploadingPhoto && (
-                <View style={styles.uploadingOverlay}>
-                  <ActivityIndicator size="large" color={colors.primary} />
-                </View>
-              )}
-              <View style={styles.cameraIconContainer}>
-                <IconSymbol 
-                  name="camera.fill" 
-                  size={20} 
-                  color="#FFFFFF" 
-                />
-              </View>
-            </Pressable>
-          </View>
-          
-          {/* Description and Edit Button */}
-          <View style={styles.descriptionContainer}>
-            <View style={styles.descriptionRow}>
-              <Text style={styles.categoryDescription}>{category.category_search_description}</Text>
+              {/* Edit badge on photo */}
               <Pressable 
                 onPress={handleEditPress} 
-                style={styles.editTextButton}
+                style={styles.photoEditBadge}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Text style={styles.editText}>edit</Text>
+                <IconSymbol 
+                  ios_icon_name="pencil.circle.fill" 
+                  android_material_icon_name="edit" 
+                  size={24} 
+                  color={colors.primary} 
+                />
               </Pressable>
             </View>
-            <Text style={styles.recallCount}>
-              {notes.length} {notes.length === 1 ? 'Recall' : 'Recalls'}
-            </Text>
+            
+            {/* Search Description and Recall Count - Vertically aligned */}
+            <View style={styles.categoryTextContainer}>
+              <View style={styles.descriptionRow}>
+                <Text style={styles.categoryDescription}>{category.category_search_description}</Text>
+                {/* Small Edit Text */}
+                <Pressable 
+                  onPress={handleEditPress} 
+                  style={styles.editTextButton}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.editText}>edit</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.recallCount}>
+                {notes.length} {notes.length === 1 ? 'Recall' : 'Recalls'}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -1021,7 +965,7 @@ export default function CategoryViewerScreen() {
             {/* Category Icon */}
             <View style={styles.modalImageSection}>
               <Text style={styles.modalLabel}>Category Icon</Text>
-              <Pressable onPress={handlePhotoPress} style={styles.modalImageSelector}>
+              <Pressable onPress={handleSelectImage} style={styles.modalImageSelector}>
                 {editImage ? (
                   <Image source={{ uri: editImage }} style={styles.modalSelectedImage} resizeMode="cover" />
                 ) : (
@@ -1169,81 +1113,47 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
   categoryInfoContainer: {
-    alignItems: 'center',
-    paddingVertical: 0,
-    paddingTop: 14,
-    paddingHorizontal: 16,
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   categoryTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 16,
   },
-  avatarPressable: {
-    position: 'relative',
-    marginBottom: 4,
-  },
-  iconPressableContainer: {
+  iconContainer: {
     position: 'relative',
   },
   categoryIcon: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
-  placeholderIcon: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: colors.cardBackground,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  uploadingOverlay: {
+  photoEditBadge: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cameraIconContainer: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.background,
+    bottom: -4,
+    right: -4,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 2,
   },
   categoryTextContainer: {
     flex: 1,
     justifyContent: 'space-between',
     minHeight: 80,
   },
-  descriptionContainer: {
-    width: '100%',
-    marginTop: 12,
-  },
   descriptionRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    marginBottom: 8,
+    flex: 1,
   },
   categoryDescription: {
     fontSize: 16,
     color: colors.textSecondary,
     lineHeight: 22,
     flex: 1,
-    textAlign: 'center',
   },
   editTextButton: {
     paddingVertical: 2,
@@ -1258,7 +1168,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: '600',
-    textAlign: 'center',
+    alignSelf: 'flex-start',
     marginTop: 4,
   },
   notesContainer: {
