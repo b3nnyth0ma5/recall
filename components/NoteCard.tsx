@@ -41,27 +41,31 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const imageScrollRef = useRef<ScrollView>(null);
   
-  // OPTIMIZED: Simplified state management with global cache
+  // Simplified state management with global cache
   const [loadedImages, setLoadedImages] = useState<Map<number, string>>(new Map());
   const [loadingImages, setLoadingImages] = useState<Set<number>>(new Set());
   const [errorImages, setErrorImages] = useState<Set<number>>(new Set());
   const [totalImageCount, setTotalImageCount] = useState(0);
   const loadingInProgressRef = useRef<Set<number>>(new Set());
 
-  // OPTIMIZED: Initialize with cached images and prefetch
+  // Initialize with cached images and prefetch
   useEffect(() => {
-    if (loading) return;
+    if (loading) {
+      return;
+    }
 
     const imageIds = note.imageIds || [];
     const images = note.images || [];
     
-    // Determine total count
+    // Determine total count - use expectedImageCount if provided (for pending uploads)
     const count = expectedImageCount || imageIds.length || images.length;
     setTotalImageCount(count);
 
-    if (count === 0) return;
+    if (count === 0) {
+      return;
+    }
 
-    // OPTIMIZED: Load images using global cache
+    // Load images using global cache
     const loadInitialImages = async () => {
       const newLoadedImages = new Map<number, string>();
 
@@ -70,7 +74,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
         newLoadedImages.set(0, images[0]);
       } else if (imageIds[0]) {
         const url = await getCachedImage(imageIds[0]);
-        if (url) newLoadedImages.set(0, url);
+        if (url) {
+          newLoadedImages.set(0, url);
+        }
       }
 
       // Load second image immediately for better UX
@@ -79,21 +85,22 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
           newLoadedImages.set(1, images[1]);
         } else if (imageIds[1]) {
           const url = await getCachedImage(imageIds[1]);
-          if (url) newLoadedImages.set(1, url);
+          if (url) {
+            newLoadedImages.set(1, url);
+          }
         }
       }
 
       setLoadedImages(newLoadedImages);
       setCurrentImageIndex(0);
 
-      // OPTIMIZED: Prefetch remaining images in background
+      // Prefetch remaining images in background
       if (count > 2) {
         const remainingImageIds = imageIds.slice(2);
         if (remainingImageIds.length > 0) {
           console.log(`[NoteCard] Prefetching ${remainingImageIds.length} remaining images`);
           prefetchImages(remainingImageIds, 2).then(() => {
             // Update loaded images after prefetch
-            const updatedImages = new Map(newLoadedImages);
             for (let i = 2; i < count; i++) {
               if (imageIds[i]) {
                 getCachedImage(imageIds[i]).then((url) => {
@@ -116,13 +123,19 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     return <NoteCardSkeleton />;
   }
 
-  // OPTIMIZED: Lazy load image with global cache
+  // Lazy load image with global cache
   const lazyLoadImage = useCallback(async (index: number) => {
     const imageIds = note.imageIds || [];
     
-    if (index >= totalImageCount || !imageIds[index]) return;
-    if (loadedImages.has(index)) return;
-    if (loadingInProgressRef.current.has(index)) return;
+    if (index >= totalImageCount || !imageIds[index]) {
+      return;
+    }
+    if (loadedImages.has(index)) {
+      return;
+    }
+    if (loadingInProgressRef.current.has(index)) {
+      return;
+    }
     
     loadingInProgressRef.current.add(index);
     setLoadingImages((prev) => new Set(prev).add(index));
@@ -152,7 +165,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     }
   }, [note.imageIds, totalImageCount, loadedImages]);
 
-  // OPTIMIZED: Improved scroll handler with intelligent prefetching
+  // Improved scroll handler with intelligent prefetching
   const handleImageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
@@ -160,7 +173,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     if (index >= 0 && index < totalImageCount) {
       setCurrentImageIndex(index);
       
-      // OPTIMIZED: Prefetch adjacent images (next 2 and previous 1)
+      // Prefetch adjacent images (next 2 and previous 1)
       const imagesToPrefetch = [index + 1, index + 2, index - 1];
       imagesToPrefetch.forEach((prefetchIndex) => {
         if (prefetchIndex >= 0 && prefetchIndex < totalImageCount && !loadedImages.has(prefetchIndex)) {
@@ -274,7 +287,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     }
   }, [note, currentImageIndex]);
 
-  // OPTIMIZED: Build display array efficiently
+  // Build display array efficiently
   const displayImages = Array.from({ length: totalImageCount }, (_, index) => {
     return loadedImages.get(index) || '';
   });
