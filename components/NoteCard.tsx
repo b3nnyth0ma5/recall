@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, memo } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Alert, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
@@ -37,8 +37,21 @@ const hasUrl = (text: string): boolean => {
 };
 
 // Helper function to count newline characters
+// Updated to include ALL Apple NSCharacterSet newlines:
+// U+000A (Line Feed - \n)
+// U+000D (Carriage Return - \r)
+// U+0085 (Next Line - NEL)
+// U+2028 (Line Separator - LS)
+// U+2029 (Paragraph Separator - PS)
+// U+000B (Vertical Tab - \v)
+// U+000C (Form Feed - \f)
+// U+000D U+000A (CRLF - \r\n counted as one)
 const countNewlines = (text: string): number => {
-  return (text.match(/\n/g) || []).length;
+  // Match all newline characters from Apple's NSCharacterSet
+  // Including: \n, \r, \v, \f, NEL, LS, PS
+  // Handle CRLF (\r\n) as a single newline
+  const newlineRegex = /\r\n|[\n\r\u000B\u000C\u0085\u2028\u2029]/g;
+  return (text.match(newlineRegex) || []).length;
 };
 
 // Memoized component for better performance
@@ -206,7 +219,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       return false;
     }
     const newlineCount = countNewlines(note.text);
-    return note.text.length > 125 || newlineCount > 6;
+    return note.text.length > 125 || newlineCount > 4;
   };
 
   const handleImageError = (index: number) => {
@@ -293,43 +306,32 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       await shareRecall(note, currentImageIndex);
     } catch (error) {
       console.error('Error sharing recall:', error);
-      Alert.alert('Error', 'Failed to share recall. Please try again.');
     }
   };
 
   const handleDelete = async () => {
-    if (Platform.OS !== 'web') {
-      try {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
+    console.log('[NoteCard] ===== SWIPE-TO-DELETE INITIATED =====');
+    console.log('[NoteCard] Deleting recall:', note.id);
+    
+    // NO CONFIRMATION ALERT - Delete immediately
+    // NO HAPTIC FEEDBACK on delete button press
+    
+    if (onDelete) {
+      console.log('[NoteCard] Calling onDelete callback');
+      onDelete();
+      
+      // Trigger success haptic feedback AFTER deletion is initiated
+      if (Platform.OS !== 'web') {
+        try {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          console.log('[NoteCard] Success haptic feedback triggered');
+        } catch (error) {
+          console.error('[NoteCard] Error triggering haptic feedback:', error);
+        }
       }
     }
-
-    Alert.alert(
-      'Delete Recall',
-      'Are you sure you want to delete this recall?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: () => {
-            // Close the swipeable
-            swipeableRef.current?.close();
-          },
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            if (onDelete) {
-              onDelete();
-            }
-          },
-        },
-      ],
-      { cancelable: true }
-    );
+    
+    console.log('[NoteCard] Delete initiated');
   };
 
   const renderRightActions = () => {
