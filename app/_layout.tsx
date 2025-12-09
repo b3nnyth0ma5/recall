@@ -206,6 +206,7 @@ function RootLayoutNav() {
     const inNoteEditor = segments[0] === 'note-editor';
     const inModalScreens = segments[0] === 'modal' || segments[0] === 'formsheet' || segments[0] === 'transparent-modal';
     const inPasswordResetScreens = segments[0] === 'reset-password' || segments[0] === 'update-password';
+    const inEmailConfirmedScreen = segments[0] === 'email-confirmed';
     const inOtherScreens = segments[0] === 'search' || segments[0] === 'location-search' || segments[0] === 'map-view' || segments[0] === 'shared-recall' || segments[0] === 'person-recalls' || segments[0] === 'people-word-cloud';
 
     console.log('[Routing] Current state:', { 
@@ -217,6 +218,7 @@ function RootLayoutNav() {
       inNoteEditor,
       inModalScreens,
       inPasswordResetScreens,
+      inEmailConfirmedScreen,
       inOtherScreens,
       needsOnboarding,
       segments,
@@ -225,7 +227,7 @@ function RootLayoutNav() {
     });
 
     // Don't redirect if user is on special screens (they can navigate freely)
-    if (inShareIntentScreen || inNoteEditor || inModalScreens || inPasswordResetScreens || inOtherScreens) {
+    if (inShareIntentScreen || inNoteEditor || inModalScreens || inPasswordResetScreens || inEmailConfirmedScreen || inOtherScreens) {
       console.log('[Routing] User on special screen, not redirecting');
       return;
     }
@@ -296,6 +298,7 @@ function RootLayoutNav() {
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         <Stack.Screen name="update-password" options={{ headerShown: false }} />
+        <Stack.Screen name="email-confirmed" options={{ headerShown: false }} />
         <Stack.Screen name="note-editor" options={{ headerShown: false }} />
         <Stack.Screen name="search" options={{ headerShown: false }} />
         <Stack.Screen name="location-search" options={{ headerShown: false }} />

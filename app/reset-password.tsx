@@ -40,14 +40,14 @@ export default function ResetPasswordScreen() {
       setLoading(true);
 
       const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'https://natively.dev/update-password',
+        redirectTo: 'https://natively.dev/email-confirmed',
       });
 
       if (error) {
-        console.error('Password reset error:', error);
+        console.error('[ResetPassword] Password reset error:', error);
         Alert.alert('Error', error.message);
       } else {
-        console.log('Password reset email sent successfully');
+        console.log('[ResetPassword] Password reset email sent successfully');
         setEmailSent(true);
         Alert.alert(
           'Check Your Email',
@@ -61,7 +61,7 @@ export default function ResetPasswordScreen() {
         );
       }
     } catch (error) {
-      console.error('Password reset exception:', error);
+      console.error('[ResetPassword] Password reset exception:', error);
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);

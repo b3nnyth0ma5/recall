@@ -38,12 +38,12 @@ export default function LoginScreen() {
         ]);
 
       if (error) {
-        console.error('Error logging login:', error);
+        console.error('[Login] Error logging login:', error);
       } else {
-        console.log('Login logged successfully');
+        console.log('[Login] Login logged successfully');
       }
     } catch (error) {
-      console.error('Error logging login:', error);
+      console.error('[Login] Error logging login:', error);
     }
   };
 
@@ -74,7 +74,7 @@ export default function LoginScreen() {
         setEmail('');
       }
     } catch (error) {
-      console.error('Magic link error:', error);
+      console.error('[Login] Magic link error:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setLoading(false);
@@ -125,7 +125,7 @@ export default function LoginScreen() {
         }
       }
     } catch (error) {
-      console.error('Auth error:', error);
+      console.error('[Login] Auth error:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setLoading(false);
@@ -209,7 +209,12 @@ export default function LoginScreen() {
           {/* Input Fields */}
           <View style={styles.inputContainer}>
             <View style={styles.inputWrapper}>
-              <IconSymbol name="envelope.fill" size={20} color={colors.textSecondary} />
+              <IconSymbol
+                ios_icon_name="envelope.fill"
+                android_material_icon_name="email"
+                size={20}
+                color={colors.textSecondary}
+              />
               <TextInput
                 style={styles.input}
                 placeholder="Email"
@@ -224,7 +229,12 @@ export default function LoginScreen() {
 
             {!useMagicLink && (
               <View style={styles.inputWrapper}>
-                <IconSymbol name="lock.fill" size={20} color={colors.textSecondary} />
+                <IconSymbol
+                  ios_icon_name="lock.fill"
+                  android_material_icon_name="lock"
+                  size={20}
+                  color={colors.textSecondary}
+                />
                 <TextInput
                   style={styles.input}
                   placeholder="Password"
@@ -291,7 +301,8 @@ export default function LoginScreen() {
           {useMagicLink && (
             <View style={styles.infoContainer}>
               <IconSymbol
-                name="info.circle.fill"
+                ios_icon_name="info.circle.fill"
+                android_material_icon_name="info"
                 size={16}
                 color={colors.textSecondary}
               />

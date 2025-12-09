@@ -32,7 +32,7 @@ export default function UpdatePasswordScreen() {
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('Error checking session:', error);
+          console.error('[UpdatePassword] Error checking session:', error);
           Alert.alert(
             'Invalid Link',
             'This password reset link is invalid or has expired. Please request a new one.',
@@ -45,10 +45,10 @@ export default function UpdatePasswordScreen() {
           );
           setIsValidSession(false);
         } else if (session) {
-          console.log('Valid recovery session found');
+          console.log('[UpdatePassword] Valid recovery session found');
           setIsValidSession(true);
         } else {
-          console.log('No session found');
+          console.log('[UpdatePassword] No session found');
           Alert.alert(
             'Invalid Link',
             'This password reset link is invalid or has expired. Please request a new one.',
@@ -62,7 +62,7 @@ export default function UpdatePasswordScreen() {
           setIsValidSession(false);
         }
       } catch (error) {
-        console.error('Exception checking session:', error);
+        console.error('[UpdatePassword] Exception checking session:', error);
         setIsValidSession(false);
       } finally {
         setCheckingSession(false);
@@ -96,10 +96,10 @@ export default function UpdatePasswordScreen() {
       });
 
       if (error) {
-        console.error('Password update error:', error);
+        console.error('[UpdatePassword] Password update error:', error);
         Alert.alert('Error', error.message);
       } else {
-        console.log('Password updated successfully');
+        console.log('[UpdatePassword] Password updated successfully');
         Alert.alert(
           'Success',
           'Your password has been updated successfully. You can now sign in with your new password.',
@@ -111,7 +111,7 @@ export default function UpdatePasswordScreen() {
                 supabase.auth.signOut().then(() => {
                   router.replace('/login');
                 }).catch((err) => {
-                  console.error('Error signing out:', err);
+                  console.error('[UpdatePassword] Error signing out:', err);
                   router.replace('/login');
                 });
               },
@@ -120,7 +120,7 @@ export default function UpdatePasswordScreen() {
         );
       }
     } catch (error) {
-      console.error('Password update exception:', error);
+      console.error('[UpdatePassword] Password update exception:', error);
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
