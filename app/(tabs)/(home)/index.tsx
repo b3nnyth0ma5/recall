@@ -1,8 +1,8 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform, Alert, Keyboard, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform, Alert, Keyboard } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
@@ -14,8 +14,6 @@ import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
 import { supabase } from '@/utils/supabase';
 import { uploadImageToDatabase } from '@/utils/supabase';
 import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
-import { removeCachedImage } from '@/utils/imageCache';
-import { deleteImageFromCloudflare } from '@/utils/cloudflareCDN';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
@@ -34,23 +32,6 @@ export default function HomeScreen() {
   const [hasRecalls, setHasRecalls] = useState(false);
   // NEW: Track pending image uploads per recall
   const pendingImageUploadsRef = useRef<Map<string, number>>(new Map());
-  
-  // Get safe area insets for Dynamic Island / notch
-  const insets = useSafeAreaInsets();
-  
-  // Header scroll animation
-  const scrollY = useRef(new Animated.Value(0)).current;
-  
-  // Calculate header height including safe area
-  const HEADER_HEIGHT = 60;
-  const HEADER_WITH_SAFE_AREA = HEADER_HEIGHT + insets.top;
-  
-  // Animate header translation - starts at 0 (visible with safe area), scrolls up to hide
-  const headerTranslateY = scrollY.interpolate({
-    inputRange: [0, HEADER_WITH_SAFE_AREA],
-    outputRange: [0, -HEADER_WITH_SAFE_AREA],
-    extrapolate: 'clamp',
-  });
 
   // Check if user has any recalls
   useEffect(() => {
@@ -242,9 +223,6 @@ export default function HomeScreen() {
       
       // Save scroll position to ref (doesn't trigger re-render)
       scrollPositionRef.current = contentOffset.y;
-      
-      // Update animated value for header
-      scrollY.setValue(contentOffset.y);
 
       // Dismiss keyboard when scrolling
       Keyboard.dismiss();
@@ -260,7 +238,7 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Error handling scroll:', error);
     }
-  }, [hasMore, isLoadingMore, loading, loadMoreNotes, scrollY]);
+  }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
 
   const handleCreateRecallFromCombined = async (data: {
     text: string;
@@ -410,67 +388,6 @@ export default function HomeScreen() {
     }
   };
 
-  // UPDATED: Handle deletion with image cache removal and async edge functions
-  const handleNoteDelete = async (noteId: string) => {
-    console.log('[handleNoteDelete] ===== SWIPE-TO-DELETE HANDLER =====');
-    console.log('[handleNoteDelete] Deleting recall:', noteId);
-    
-    try {
-      // Get all images for this recall BEFORE deletion
-      console.log('[handleNoteDelete] Fetching images for recall:', noteId);
-      const { data: imagesData } = await supabase
-        .from('recall_images')
-        .select('id, cdn_url')
-        .eq('recall_id', noteId);
-
-      // Remove images from cache immediately
-      if (imagesData && imagesData.length > 0) {
-        console.log(`[handleNoteDelete] Removing ${imagesData.length} images from cache`);
-        for (const img of imagesData) {
-          removeCachedImage(img.id);
-          console.log(`[handleNoteDelete] Removed image ${img.id} from cache`);
-        }
-      }
-
-      // Call the deleteNote function from useNotes hook
-      // This will handle the optimistic UI update and async deletion
-      console.log('[handleNoteDelete] Calling deleteNote from useNotes hook');
-      const { deleteNote } = useNotes();
-      await deleteNote(noteId);
-      
-      // Run edge functions ASYNCHRONOUSLY (fire and forget)
-      console.log('[handleNoteDelete] Starting async edge function execution...');
-      (async () => {
-        try {
-          // Delete images from CDN asynchronously
-          if (imagesData && imagesData.length > 0) {
-            console.log(`[handleNoteDelete] [ASYNC] Deleting ${imagesData.length} images from CDN`);
-            for (const img of imagesData) {
-              if (img.cdn_url) {
-                console.log(`[handleNoteDelete] [ASYNC] Deleting image from CDN:`, img.cdn_url);
-                await deleteImageFromCloudflare(img.cdn_url);
-              }
-            }
-            console.log(`[handleNoteDelete] [ASYNC] All images deleted from CDN`);
-          }
-          
-          console.log('[handleNoteDelete] [ASYNC] Edge functions complete');
-        } catch (asyncError) {
-          console.error('[handleNoteDelete] [ASYNC] Error in async edge functions:', asyncError);
-        }
-      })();
-      
-      console.log('[handleNoteDelete] Deletion initiated, edge functions running asynchronously');
-      
-      // Refresh the notes list to ensure UI is up to date
-      await refreshNotes();
-      
-    } catch (error) {
-      console.error('[handleNoteDelete] Error in deletion handler:', error);
-      Alert.alert('Error', 'Failed to delete recall');
-    }
-  };
-
   const renderEmptyState = () => {
     const { ZeroState } = require('@/components/ZeroState');
     return (
@@ -527,16 +444,8 @@ export default function HomeScreen() {
         }}
       />
 
-      {/* Custom Header with SafeAreaView and Scroll Animation */}
-      <Animated.View 
-        style={[
-          styles.headerContainer,
-          {
-            transform: [{ translateY: headerTranslateY }],
-            paddingTop: insets.top,
-          },
-        ]}
-      >
+      {/* Custom Header with SafeAreaView - Prevents obscuring by dynamic island/status bar */}
+      <SafeAreaView edges={['top']} style={styles.safeAreaHeader}>
         <View style={styles.customHeader}>
           <Pressable 
             onPress={handleRecallIconPress} 
@@ -564,34 +473,24 @@ export default function HomeScreen() {
             />
           </Pressable>
         </View>
-      </Animated.View>
+      </SafeAreaView>
 
       {/* Main Content ScrollView - Category Carousel is now inside and scrolls with content */}
-      <Animated.ScrollView
+      <ScrollView
         ref={scrollViewRef}
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
           combinedAddSearchEnabled && styles.scrollContentWithCombined,
-          // Add top padding to account for header
-          { paddingTop: HEADER_WITH_SAFE_AREA },
         ]}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { 
-            useNativeDriver: true,
-            listener: handleScroll,
-          }
-        )}
-        scrollEventThrottle={16}
+        onScroll={handleScroll}
+        scrollEventThrottle={400}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
             tintColor={colors.primary}
             colors={[colors.primary]}
-            // Add top offset to account for header
-            progressViewOffset={HEADER_WITH_SAFE_AREA}
           />
         }
       >
@@ -618,7 +517,6 @@ export default function HomeScreen() {
                   key={`${note.id}-${index}`}
                   note={note}
                   onPress={() => handleNotePress(note.id)}
-                  onDelete={() => handleNoteDelete(note.id)}
                   loading={false}
                   expectedImageCount={getExpectedImageCount(note.id)}
                 />
@@ -638,7 +536,7 @@ export default function HomeScreen() {
             )}
           </View>
         ) : null}
-      </Animated.ScrollView>
+      </ScrollView>
 
       {/* Combined Search/Add Component - Now at bottom of screen */}
       {combinedAddSearchEnabled && user && !loadingPreferences && (
@@ -684,15 +582,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  headerContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+  safeAreaHeader: {
     backgroundColor: colors.background,
-    zIndex: 100,
-    elevation: 4,
-    boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
   },
   customHeader: {
     flexDirection: 'row',
@@ -701,7 +592,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    height: 60,
   },
   headerTitle: {
     fontSize: 32,
