@@ -12,19 +12,22 @@ import { PeopleAvatars } from './PeopleAvatars';
 import * as Haptics from 'expo-haptics';
 import { NoteCardSkeleton } from './NoteCardSkeleton';
 import { SkeletonLoader } from './SkeletonLoader';
+import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 interface NoteCardProps {
   note: Note;
   onPress: () => void;
   onImagePress?: () => void;
+  onDelete?: () => void;
   loading?: boolean;
   expectedImageCount?: number;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 8;
-const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 5);
-const IMAGE_HEIGHT = IMAGE_WIDTH * 1.1;
+const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 4.8);
+const IMAGE_HEIGHT = IMAGE_WIDTH * 1.08;
 const IMAGE_SPACING = 3;
 
 // Helper function to check if text contains URLs
@@ -33,8 +36,13 @@ const hasUrl = (text: string): boolean => {
   return urlRegex.test(text);
 };
 
+// Helper function to count newline characters
+const countNewlines = (text: string): number => {
+  return (text.match(/\n/g) || []).length;
+};
+
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, loading = false, expectedImageCount }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount }: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -43,6 +51,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
   const [imageLoadedStates, setImageLoadedStates] = useState<{ [key: number]: boolean }>({});
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const imageScrollRef = useRef<ScrollView>(null);
+  const swipeableRef = useRef<Swipeable>(null);
   
   // Optimized lazy loading state for images
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
@@ -191,8 +200,13 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     return note.text.substring(0, maxLength) + '...';
   };
 
+  // Updated: Check for text length > 125 OR more than 6 newlines
   const shouldShowToggle = () => {
-    return note.text && note.text.length > 125;
+    if (!note.text) {
+      return false;
+    }
+    const newlineCount = countNewlines(note.text);
+    return note.text.length > 125 || newlineCount > 6;
   };
 
   const handleImageError = (index: number) => {
@@ -283,6 +297,55 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
     }
   };
 
+  const handleDelete = async () => {
+    if (Platform.OS !== 'web') {
+      try {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
+    }
+
+    Alert.alert(
+      'Delete Recall',
+      'Are you sure you want to delete this recall?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => {
+            // Close the swipeable
+            swipeableRef.current?.close();
+          },
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            if (onDelete) {
+              onDelete();
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const renderRightActions = () => {
+    return (
+      <View style={styles.deleteActionContainer}>
+        <Pressable
+          style={styles.deleteAction}
+          onPress={handleDelete}
+        >
+          <IconSymbol name="trash.fill" size={24} color="#FFFFFF" />
+          <Text style={styles.deleteActionText}>Delete</Text>
+        </Pressable>
+      </View>
+    );
+  };
+
   // Create display array with placeholders based on totalImageCount
   const displayImages = totalImageCount > 0 
     ? Array.from({ length: totalImageCount }, (_, index) => {
@@ -304,150 +367,159 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, lo
 
   return (
     <View style={styles.card}>
-      <Pressable onPress={onPress} style={styles.cardContent}>
-        {/* People Avatars - Top Right Edge (Superscript Position) */}
-        {hasPeople && (
-          <View style={styles.peopleAvatarsContainer}>
-            <PeopleAvatars 
-              people={note.people || []} 
-              maxVisible={5}
-              avatarSize={32}
-              overlapOffset={8}
-            />
-          </View>
-        )}
+      {/* People Avatars - Top Right Edge (Superscript Position) */}
+      {hasPeople && (
+        <View style={styles.peopleAvatarsContainer}>
+          <PeopleAvatars 
+            people={note.people || []} 
+            maxVisible={5}
+            avatarSize={32}
+            overlapOffset={8}
+          />
+        </View>
+      )}
 
-        {/* Images - Now displayed FIRST */}
-        {displayImages && displayImages.length > 0 && (
-          <View style={styles.imagesContainer}>
-            <ScrollView
-              ref={imageScrollRef}
-              horizontal
-              pagingEnabled={false}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.imagesScrollContent}
-              onScroll={handleImageScroll}
-              scrollEventThrottle={16}
-              decelerationRate={0.9}
-              snapToInterval={IMAGE_WIDTH + IMAGE_SPACING}
-              snapToAlignment="start"
-            >
-              {displayImages.map((imageUrl, index) => (
-                <Pressable 
-                  key={`${note.id}-image-${index}`}
-                  onPress={() => handleImagePress(index)}
-                  style={styles.imageWrapper}
-                >
-                  {!imageUrl ? (
-                    <View style={styles.imageLoadingContainer}>
-                      <SkeletonLoader
-                        width={IMAGE_WIDTH}
-                        height={IMAGE_HEIGHT}
-                        borderRadius={12}
-                        variant="wave"
-                      />
-                    </View>
-                  ) : (
-                    <>
-                      {imageLoadingStates[index] && !imageErrorStates[index] && !imageLoadedStates[index] && (
-                        <View style={styles.imageLoadingContainer}>
-                          <SkeletonLoader
-                            width={IMAGE_WIDTH}
-                            height={IMAGE_HEIGHT}
-                            borderRadius={12}
-                            variant="wave"
-                          />
-                        </View>
-                      )}
-                      {imageErrorStates[index] ? (
-                        <View style={styles.imageErrorContainer}>
-                          <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
-                          <Text style={styles.imageErrorText}>Failed to load image</Text>
-                        </View>
-                      ) : (
-                        <Image
-                          source={{ uri: imageUrl }}
-                          style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
-                          resizeMode="cover"
-                          onLoadStart={() => handleImageLoadStart(index)}
-                          onLoad={() => handleImageLoad(index)}
-                          onError={() => handleImageError(index)}
-                        />
-                      )}
-                    </>
-                  )}
-                </Pressable>
-              ))}
-            </ScrollView>
-            {/* Image counter with busy spinner - visible immediately */}
-            {totalImageCount > 0 && (
-              <View style={styles.imageCounter}>
-                {isUploadingImages && (
-                  <ActivityIndicator 
-                    size="small" 
-                    color="#FFFFFF" 
-                    style={styles.imageCounterSpinner}
-                  />
-                )}
-                <Text style={styles.imageCounterText}>
-                  {totalImageCount > 1 ? `${currentImageIndex + 1} / ${totalImageCount}` : `1 / ${totalImageCount}`}
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Text Content - Now displayed AFTER images */}
-        {note.text && (
-          <Pressable onPress={handleTextPress}>
-            <Text style={styles.text}>
-              {hasUrl(note.text) ? (
-                renderTextWithLinks(isExpanded ? note.text : getPreviewText())
-              ) : (
-                isExpanded ? note.text : getPreviewText()
-              )}
-            </Text>
-            {shouldShowToggle() && (
+      {/* Images - Displayed FIRST, NOT swipeable */}
+      {displayImages && displayImages.length > 0 && (
+        <View style={styles.imagesContainer}>
+          <ScrollView
+            ref={imageScrollRef}
+            horizontal
+            pagingEnabled={false}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.imagesScrollContent}
+            onScroll={handleImageScroll}
+            scrollEventThrottle={16}
+            decelerationRate={0.9}
+            snapToInterval={IMAGE_WIDTH + IMAGE_SPACING}
+            snapToAlignment="start"
+          >
+            {displayImages.map((imageUrl, index) => (
               <Pressable 
-                onPress={handleToggleExpand}
-                style={styles.toggleContainer}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                key={`${note.id}-image-${index}`}
+                onPress={() => handleImagePress(index)}
+                style={styles.imageWrapper}
               >
-                <Text style={styles.toggleText}>
-                  {isExpanded ? 'Show less' : 'Show more'}
-                </Text>
+                {!imageUrl ? (
+                  <View style={styles.imageLoadingContainer}>
+                    <SkeletonLoader
+                      width={IMAGE_WIDTH}
+                      height={IMAGE_HEIGHT}
+                      borderRadius={12}
+                      variant="wave"
+                    />
+                  </View>
+                ) : (
+                  <>
+                    {imageLoadingStates[index] && !imageErrorStates[index] && !imageLoadedStates[index] && (
+                      <View style={styles.imageLoadingContainer}>
+                        <SkeletonLoader
+                          width={IMAGE_WIDTH}
+                          height={IMAGE_HEIGHT}
+                          borderRadius={12}
+                          variant="wave"
+                        />
+                      </View>
+                    )}
+                    {imageErrorStates[index] ? (
+                      <View style={styles.imageErrorContainer}>
+                        <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
+                        <Text style={styles.imageErrorText}>Failed to load image</Text>
+                      </View>
+                    ) : (
+                      <Image
+                        source={{ uri: imageUrl }}
+                        style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
+                        resizeMode="cover"
+                        onLoadStart={() => handleImageLoadStart(index)}
+                        onLoad={() => handleImageLoad(index)}
+                        onError={() => handleImageError(index)}
+                      />
+                    )}
+                  </>
+                )}
               </Pressable>
-            )}
-          </Pressable>
-        )}
+            ))}
+          </ScrollView>
+          {/* Image counter with busy spinner - visible immediately */}
+          {totalImageCount > 0 && (
+            <View style={styles.imageCounter}>
+              {isUploadingImages && (
+                <ActivityIndicator 
+                  size="small" 
+                  color="#FFFFFF" 
+                  style={styles.imageCounterSpinner}
+                />
+              )}
+              <Text style={styles.imageCounterText}>
+                {totalImageCount > 1 ? `${currentImageIndex + 1} / ${totalImageCount}` : `1 / ${totalImageCount}`}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
 
-        {/* Location and Time on the same line - REMOVED BORDER */}
-        <View style={styles.locationTimeContainer}>
-          {/* Location - Left-aligned, occupies 75% of space */}
-          {note.location && (
-            <Pressable 
-              onPress={handleLocationPress}
-              style={styles.locationWrapper}
-            >
-              <IconSymbol name="location.fill" size={14} color={colors.primary} />
-              <View style={styles.locationTextChevronWrapper}>
-                <Text style={styles.location} numberOfLines={1} ellipsizeMode="tail">
-                  {note.location}
-                </Text>
-                <IconSymbol name="chevron.right" size={12} color={colors.primary} />
-              </View>
+      {/* Swipeable Content - Text, Location, Time */}
+      <Swipeable
+        ref={swipeableRef}
+        renderRightActions={renderRightActions}
+        overshootRight={false}
+        friction={2}
+        rightThreshold={40}
+      >
+        <Pressable onPress={onPress} style={styles.cardContent}>
+          {/* Text Content */}
+          {note.text && (
+            <Pressable onPress={handleTextPress}>
+              <Text style={styles.text}>
+                {hasUrl(note.text) ? (
+                  renderTextWithLinks(isExpanded ? note.text : getPreviewText())
+                ) : (
+                  isExpanded ? note.text : getPreviewText()
+                )}
+              </Text>
+              {shouldShowToggle() && (
+                <Pressable 
+                  onPress={handleToggleExpand}
+                  style={styles.toggleContainer}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Text style={styles.toggleText}>
+                    {isExpanded ? 'Show less' : 'Show more'}
+                  </Text>
+                </Pressable>
+              )}
             </Pressable>
           )}
-          
-          {/* Time Ago - Right-aligned, occupies remaining space */}
-          <View style={styles.timeAgoWrapper}>
-            <TimeAgo 
-              date={note.created_at} 
-              style={styles.date}
-            />
+
+          {/* Location and Time on the same line */}
+          <View style={styles.locationTimeContainer}>
+            {/* Location - Left-aligned, occupies 75% of space */}
+            {note.location && (
+              <Pressable 
+                onPress={handleLocationPress}
+                style={styles.locationWrapper}
+              >
+                <IconSymbol name="location.fill" size={14} color={colors.primary} />
+                <View style={styles.locationTextChevronWrapper}>
+                  <Text style={styles.location} numberOfLines={1} ellipsizeMode="tail">
+                    {note.location}
+                  </Text>
+                  <IconSymbol name="chevron.right" size={12} color={colors.primary} />
+                </View>
+              </Pressable>
+            )}
+            
+            {/* Time Ago - Right-aligned, occupies remaining space */}
+            <View style={styles.timeAgoWrapper}>
+              <TimeAgo 
+                date={note.created_at} 
+                style={styles.date}
+              />
+            </View>
           </View>
-        </View>
-      </Pressable>
+        </Pressable>
+      </Swipeable>
 
       {/* Full Screen Image Component - Pass original images array, not lazy loaded */}
       {note.images && note.images.length > 0 && (
@@ -486,8 +558,7 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     padding: 4,
-    position: 'relative',
-    overflow: 'visible',
+    backgroundColor: colors.card,
     borderRadius: 16,
   },
   peopleAvatarsContainer: {
@@ -639,5 +710,26 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '500',
     textAlign: 'right',
+  },
+  deleteActionContainer: {
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    paddingRight: 0,
+  },
+  deleteAction: {
+    backgroundColor: colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 90,
+    height: '100%',
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
+    paddingHorizontal: 16,
+  },
+  deleteActionText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 4,
   },
 });

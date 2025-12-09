@@ -330,6 +330,11 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       // Dismiss keyboard after creating recall
       console.log('[CombinedSearchAdd] Dismissing keyboard after recall creation');
       Keyboard.dismiss();
+      
+      // Blur the text input to ensure keyboard is dismissed
+      if (textInputRef.current) {
+        textInputRef.current.blur();
+      }
     } catch (error) {
       console.error('Error creating recall:', error);
       Alert.alert('Error', 'Failed to create recall');
@@ -403,7 +408,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 </ScrollView>
               )}
 
-              {/* Text Input - Now above the button row */}
+              {/* Text Input - Now above the button row, multiline enabled with newline support */}
               <TextInput
                 ref={textInputRef}
                 style={styles.textInput}
@@ -413,9 +418,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 onChangeText={handleTextChange}
                 multiline
                 maxLength={1000}
-                returnKeyType="done"
-                blurOnSubmit={true}
-                enablesReturnKeyAutomatically={true}
+                returnKeyType="default"
+                blurOnSubmit={false}
+                enablesReturnKeyAutomatically={false}
               />
 
               {/* Button Row */}
