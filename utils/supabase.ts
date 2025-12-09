@@ -7,7 +7,7 @@ import { File } from 'expo-file-system';
 const supabaseUrl = 'https://cesmsdnblkdjkskmiqib.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4';
 
-// Create and export supabase client at module scope
+// Create and export supabase client at module scope with improved error handling
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: AsyncStorage,
@@ -16,6 +16,46 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+// Add global error handler for auth errors
+supabase.auth.onAuthStateChange((event, session) => {
+  console.log('[Supabase Auth] Event:', event);
+  
+  if (event === 'TOKEN_REFRESHED') {
+    console.log('[Supabase Auth] Token refreshed successfully');
+  } else if (event === 'SIGNED_OUT') {
+    console.log('[Supabase Auth] User signed out');
+  } else if (event === 'SIGNED_IN') {
+    console.log('[Supabase Auth] User signed in');
+  }
+});
+
+// Add error logging for refresh token issues
+const originalRefreshSession = supabase.auth.refreshSession.bind(supabase.auth);
+supabase.auth.refreshSession = async () => {
+  try {
+    console.log('[Supabase Auth] Attempting to refresh session...');
+    const result = await originalRefreshSession();
+    
+    if (result.error) {
+      console.error('[Supabase Auth] Refresh session error:', result.error);
+      
+      // If refresh token is invalid, clear the session
+      if (result.error.message?.includes('Invalid Refresh Token') || 
+          result.error.message?.includes('Refresh Token Not Found')) {
+        console.log('[Supabase Auth] Invalid refresh token detected - clearing session');
+        await supabase.auth.signOut();
+      }
+    } else {
+      console.log('[Supabase Auth] Session refreshed successfully');
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('[Supabase Auth] Exception during session refresh:', error);
+    throw error;
+  }
+};
 
 export async function uploadImageToDatabase(
   uri: string,

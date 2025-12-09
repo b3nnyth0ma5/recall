@@ -25,7 +25,6 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
-  const [useMagicLink, setUseMagicLink] = useState(false);
 
   const logLogin = async (userId: string) => {
     try {
@@ -45,40 +44,6 @@ export default function LoginScreen() {
       }
     } catch (error) {
       console.error('[Login] Error logging login:', error);
-    }
-  };
-
-  const handleMagicLinkAuth = async () => {
-    if (!email) {
-      Alert.alert('Error', 'Please enter your email address');
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      const { data, error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: AUTH_REDIRECT_URLS.EMAIL_CONFIRMED,
-        },
-      });
-
-      if (error) {
-        Alert.alert('Error', error.message);
-      } else {
-        Alert.alert(
-          'Check your email',
-          'We sent you a magic link! Click the link in your email to sign in.',
-          [{ text: 'OK' }]
-        );
-        setEmail('');
-      }
-    } catch (error) {
-      console.error('[Login] Magic link error:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -167,46 +132,6 @@ export default function LoginScreen() {
             {isSignUp ? 'Create your account' : 'Welcome back'}
           </Text>
 
-          {/* Auth Method Toggle */}
-          {!isSignUp && (
-            <View style={styles.authMethodToggle}>
-              <Pressable
-                onPress={() => setUseMagicLink(false)}
-                style={[
-                  styles.authMethodButton,
-                  !useMagicLink && styles.authMethodButtonActive,
-                ]}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text
-                  style={[
-                    styles.authMethodText,
-                    !useMagicLink && styles.authMethodTextActive,
-                  ]}
-                >
-                  Password
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setUseMagicLink(true)}
-                style={[
-                  styles.authMethodButton,
-                  useMagicLink && styles.authMethodButtonActive,
-                ]}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text
-                  style={[
-                    styles.authMethodText,
-                    useMagicLink && styles.authMethodTextActive,
-                  ]}
-                >
-                  Magic Link
-                </Text>
-              </Pressable>
-            </View>
-          )}
-
           {/* Input Fields */}
           <View style={styles.inputContainer}>
             <View style={styles.inputWrapper}>
@@ -228,29 +153,27 @@ export default function LoginScreen() {
               />
             </View>
 
-            {!useMagicLink && (
-              <View style={styles.inputWrapper}>
-                <IconSymbol
-                  ios_icon_name="lock.fill"
-                  android_material_icon_name="lock"
-                  size={20}
-                  color={colors.textSecondary}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Password"
-                  placeholderTextColor={colors.textTertiary}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                  autoComplete="password"
-                />
-              </View>
-            )}
+            <View style={styles.inputWrapper}>
+              <IconSymbol
+                ios_icon_name="lock.fill"
+                android_material_icon_name="lock"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                placeholderTextColor={colors.textTertiary}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoComplete="password"
+              />
+            </View>
           </View>
 
-          {/* Forgot Password Link - Only show when using password and not in sign up mode */}
-          {!isSignUp && !useMagicLink && (
+          {/* Forgot Password Link - Only show when not in sign up mode */}
+          {!isSignUp && (
             <Pressable
               onPress={handleForgotPassword}
               disabled={loading}
@@ -264,7 +187,7 @@ export default function LoginScreen() {
           {/* Auth Button */}
           <View style={styles.buttonContainer}>
             <Pressable
-              onPress={useMagicLink ? handleMagicLinkAuth : handlePasswordAuth}
+              onPress={handlePasswordAuth}
               disabled={loading}
               style={[styles.button, loading && styles.buttonDisabled]}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -273,45 +196,24 @@ export default function LoginScreen() {
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <Text style={styles.buttonText}>
-                  {useMagicLink
-                    ? 'Send Magic Link'
-                    : isSignUp
-                    ? 'Sign Up'
-                    : 'Sign In'}
+                  {isSignUp ? 'Sign Up' : 'Sign In'}
                 </Text>
               )}
             </Pressable>
 
-            {!useMagicLink && (
-              <Pressable
-                onPress={() => setIsSignUp(!isSignUp)}
-                disabled={loading}
-                style={styles.switchButton}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={styles.switchButtonText}>
-                  {isSignUp
-                    ? 'Already have an account? Sign In'
-                    : "Don't have an account? Sign Up"}
-                </Text>
-              </Pressable>
-            )}
-          </View>
-
-          {/* Magic Link Info */}
-          {useMagicLink && (
-            <View style={styles.infoContainer}>
-              <IconSymbol
-                ios_icon_name="info.circle.fill"
-                android_material_icon_name="info"
-                size={16}
-                color={colors.textSecondary}
-              />
-              <Text style={styles.infoText}>
-                We&apos;ll send you a secure link to sign in without a password
+            <Pressable
+              onPress={() => setIsSignUp(!isSignUp)}
+              disabled={loading}
+              style={styles.switchButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.switchButtonText}>
+                {isSignUp
+                  ? 'Already have an account? Sign In'
+                  : "Don't have an account? Sign Up"}
               </Text>
-            </View>
-          )}
+            </Pressable>
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -355,34 +257,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: colors.textSecondary,
     marginBottom: 32,
-  },
-  authMethodToggle: {
-    flexDirection: 'row',
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 24,
-    width: '100%',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  authMethodButton: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  authMethodButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  authMethodText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  authMethodTextActive: {
-    color: '#FFFFFF',
   },
   inputContainer: {
     width: '100%',
@@ -447,18 +321,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: '500',
-  },
-  infoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 16,
-    paddingHorizontal: 16,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 18,
   },
 });

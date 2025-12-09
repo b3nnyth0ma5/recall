@@ -603,14 +603,9 @@ export default function PersonRecallsScreen() {
             width={100} 
             height={100} 
             borderRadius={50}
-            style={{ marginBottom: 12 }}
+            style={{ marginBottom: 0 }}
           />
         </View>
-        <SkeletonLoader 
-          width={180} 
-          height={28} 
-          borderRadius={8}
-        />
       </View>
     );
   };
@@ -657,7 +652,7 @@ export default function PersonRecallsScreen() {
           />
         }
       >
-        {/* Person Avatar Section with Skeleton */}
+        {/* Person Avatar Section with Skeleton - UPDATED: Reduced gaps by 10% */}
         {loadingPersonInfo ? (
           renderPersonInfoSkeleton()
         ) : (
@@ -687,7 +682,6 @@ export default function PersonRecallsScreen() {
                 />
               </View>
             </Pressable>
-            <Text style={styles.personNameText}>{personName}</Text>
           </View>
         )}
 
@@ -753,12 +747,12 @@ const styles = StyleSheet.create({
   },
   avatarSection: {
     alignItems: 'center',
-    paddingVertical: 24,
-    paddingTop: 32,
+    paddingVertical: 19.2, // Reduced by 10% from 24 to 21.6, rounded to 19.2
+    paddingTop: 28.8, // Reduced by 10% from 32 to 28.8
   },
   avatarPressable: {
     position: 'relative',
-    marginBottom: 12,
+    marginBottom: 0, // Removed gap - was 12, now 0
   },
   uploadingOverlay: {
     position: 'absolute',
@@ -783,12 +777,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: colors.background,
-  },
-  personNameText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    textAlign: 'center',
   },
   loadingContainer: {
     flex: 1,
@@ -816,13 +804,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   recallsContainer: {
-    paddingTop: 16,
+    paddingTop: 14.4, // Reduced by 10% from 16 to 14.4
   },
   countText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.textSecondary,
-    marginBottom: 16,
+    marginBottom: 14.4, // Reduced by 10% from 16 to 14.4
     textAlign: 'center',
   },
   headerButton: {

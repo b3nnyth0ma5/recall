@@ -2,6 +2,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform, Alert, Keyboard } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
@@ -443,26 +444,36 @@ export default function HomeScreen() {
         }}
       />
 
-      {/* Custom Header - Now scrolls with content */}
-      <View style={styles.customHeader}>
-        <Pressable onPress={handleRecallIconPress} style={styles.headerIconButton}>
-          <Image
-            source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-            style={styles.headerIcon}
-            resizeMode="contain"
-          />
-        </Pressable>
-        
-        <Text style={styles.headerTitle}>Recall</Text>
-        
-        <Pressable onPress={handleProfile} style={styles.headerIconButton}>
-          <IconSymbol 
-            name="person.circle.fill" 
-            size={32} 
-            color={colors.text} 
-          />
-        </Pressable>
-      </View>
+      {/* Custom Header with SafeAreaView - Prevents obscuring by dynamic island/status bar */}
+      <SafeAreaView edges={['top']} style={styles.safeAreaHeader}>
+        <View style={styles.customHeader}>
+          <Pressable 
+            onPress={handleRecallIconPress} 
+            style={styles.headerIconButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Image
+              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+              style={styles.headerIcon}
+              resizeMode="contain"
+            />
+          </Pressable>
+          
+          <Text style={styles.headerTitle}>Recall</Text>
+          
+          <Pressable 
+            onPress={handleProfile} 
+            style={styles.headerIconButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <IconSymbol 
+              name="person.circle.fill" 
+              size={32} 
+              color={colors.text} 
+            />
+          </Pressable>
+        </View>
+      </SafeAreaView>
 
       {/* Main Content ScrollView - Category Carousel is now inside and scrolls with content */}
       <ScrollView
@@ -571,15 +582,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  safeAreaHeader: {
+    backgroundColor: colors.background,
+  },
   customHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: colors.background,
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 48 : 12,
-    paddingBottom: 12,
-    height: Platform.OS === 'android' ? 90 : 54,
+    paddingVertical: 12,
   },
   headerTitle: {
     fontSize: 32,
@@ -587,7 +599,7 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   headerIconButton: {
-    padding: 0,
+    padding: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
