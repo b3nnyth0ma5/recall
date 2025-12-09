@@ -7,7 +7,6 @@ import { PeopleGraphProvider, usePeopleGraph } from '@/contexts/PeopleGraphConte
 import { PeopleGraph } from '@/components/PeopleGraph';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet, View } from 'react-native';
-import { getInitialShareData, listenForShareIntents, ReceivedShareData } from '@/utils/nativeShareReceiver';
 import { supabase } from '@/utils/supabase';
 
 const PeopleGraphOverlay = memo(() => {
@@ -42,7 +41,6 @@ function RootLayoutNav() {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
-  const [pendingShareData, setPendingShareData] = useState<ReceivedShareData | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
   
@@ -98,93 +96,6 @@ function RootLayoutNav() {
     checkOnboardingStatus();
   }, [user?.id, loading]);
 
-  // Handle initial share data when app launches
-  useEffect(() => {
-    const handleInitialShare = async () => {
-      if (loading) {
-        console.log('[Share] Still loading, waiting...');
-        return;
-      }
-
-      try {
-        console.log('[Share] Checking for initial share data...');
-        const shareData = await getInitialShareData();
-        
-        if (shareData) {
-          console.log('[Share] Initial share data detected:', shareData);
-          setPendingShareData(shareData);
-        } else {
-          console.log('[Share] No initial share data found');
-        }
-      } catch (error) {
-        console.error('[Share] Error handling initial share:', error);
-      }
-    };
-
-    handleInitialShare();
-  }, [loading]);
-
-  // Listen for share intents while app is running
-  useEffect(() => {
-    console.log('[Share] Setting up share intent listener');
-    
-    const unsubscribe = listenForShareIntents((shareData) => {
-      console.log('[Share] Share intent received:', shareData);
-      
-      // Check if user is authenticated
-      if (!user) {
-        console.log('[Share] User not authenticated, storing share data for later');
-        setPendingShareData(shareData);
-        return;
-      }
-      
-      // Navigate to share-intent screen with the data
-      console.log('[Share] Navigating to share-intent screen');
-      try {
-        router.push({
-          pathname: '/share-intent',
-          params: {
-            text: shareData.text || '',
-            images: shareData.images ? JSON.stringify(shareData.images) : '[]',
-          },
-        });
-      } catch (error) {
-        console.error('[Share] Error navigating to share-intent:', error);
-      }
-    });
-
-    return () => {
-      console.log('[Share] Cleaning up share intent listener');
-      unsubscribe();
-    };
-  }, [user, router]);
-
-  // Handle pending share data after user authentication
-  useEffect(() => {
-    if (user && pendingShareData && !loading && !checkingOnboarding) {
-      console.log('[Share] User authenticated, processing pending share data:', pendingShareData);
-      
-      // Navigate to share-intent screen with the pending data
-      setTimeout(() => {
-        console.log('[Share] Navigating to share-intent with pending data');
-        try {
-          router.push({
-            pathname: '/share-intent',
-            params: {
-              text: pendingShareData.text || '',
-              images: pendingShareData.images ? JSON.stringify(pendingShareData.images) : '[]',
-            },
-          });
-          
-          // Clear pending share data after navigation
-          setPendingShareData(null);
-        } catch (error) {
-          console.error('[Share] Error navigating with pending share data:', error);
-        }
-      }, 300);
-    }
-  }, [user, pendingShareData, loading, checkingOnboarding, router]);
-
   // Handle authentication and onboarding routing - FIXED to prevent infinite loops
   useEffect(() => {
     // Don't do anything while loading or checking onboarding
@@ -193,16 +104,9 @@ function RootLayoutNav() {
       return;
     }
 
-    // Don't navigate if we have pending share data (let the share handler deal with it)
-    if (pendingShareData) {
-      console.log('[Routing] Pending share data exists, not redirecting');
-      return;
-    }
-
     const inAuthGroup = segments[0] === 'login';
     const inOnboardingGroup = segments[0] === 'onboarding';
     const inTabsGroup = segments[0] === '(tabs)';
-    const inShareIntentScreen = segments[0] === 'share-intent';
     const inNoteEditor = segments[0] === 'note-editor';
     const inModalScreens = segments[0] === 'modal' || segments[0] === 'formsheet' || segments[0] === 'transparent-modal';
     const inPasswordResetScreens = segments[0] === 'reset-password' || segments[0] === 'update-password';
@@ -214,7 +118,6 @@ function RootLayoutNav() {
       inAuthGroup, 
       inOnboardingGroup, 
       inTabsGroup,
-      inShareIntentScreen,
       inNoteEditor,
       inModalScreens,
       inPasswordResetScreens,
@@ -227,7 +130,7 @@ function RootLayoutNav() {
     });
 
     // Don't redirect if user is on special screens (they can navigate freely)
-    if (inShareIntentScreen || inNoteEditor || inModalScreens || inPasswordResetScreens || inEmailConfirmedScreen || inOtherScreens) {
+    if (inNoteEditor || inModalScreens || inPasswordResetScreens || inEmailConfirmedScreen || inOtherScreens) {
       console.log('[Routing] User on special screen, not redirecting');
       return;
     }
@@ -283,7 +186,7 @@ function RootLayoutNav() {
       hasInitializedRef.current = true;
       console.log('[Routing] No navigation needed, marking as initialized');
     }
-  }, [user, loading, checkingOnboarding, needsOnboarding, pendingShareData, segments[0], router]);
+  }, [user, loading, checkingOnboarding, needsOnboarding, segments[0], router]);
 
   return (
     <View style={styles.container}>
@@ -303,7 +206,6 @@ function RootLayoutNav() {
         <Stack.Screen name="search" options={{ headerShown: false }} />
         <Stack.Screen name="location-search" options={{ headerShown: false }} />
         <Stack.Screen name="map-view" options={{ headerShown: false }} />
-        <Stack.Screen name="share-intent" options={{ headerShown: false }} />
         <Stack.Screen name="shared-recall" options={{ headerShown: false }} />
         <Stack.Screen name="person-recalls" options={{ headerShown: false }} />
         <Stack.Screen name="people-word-cloud" options={{ headerShown: false }} />
