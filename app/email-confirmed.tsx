@@ -5,6 +5,7 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/utils/supabase';
@@ -15,7 +16,9 @@ export default function EmailConfirmedScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
-  const [message, setMessage] = useState('Verifying...');
+  const [message, setMessage] = useState('Verifying your email...');
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [scaleAnim] = useState(new Animated.Value(0.8));
 
   useEffect(() => {
     const handleEmailConfirmation = async () => {
@@ -40,6 +43,21 @@ export default function EmailConfirmedScreen() {
             setStatus('error');
             setMessage(error.message || 'Verification failed. Please try again.');
             
+            // Animate error state
+            Animated.parallel([
+              Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+              Animated.spring(scaleAnim, {
+                toValue: 1,
+                friction: 8,
+                tension: 40,
+                useNativeDriver: true,
+              }),
+            ]).start();
+            
             // Redirect to login after 3 seconds
             setTimeout(() => {
               router.replace('/login');
@@ -53,28 +71,92 @@ export default function EmailConfirmedScreen() {
           if (type === 'recovery' || type === 'email_change') {
             // For password recovery, redirect to update-password
             setStatus('success');
-            setMessage('Email verified! Redirecting...');
+            setMessage('Email verified successfully!');
+            
+            // Animate success state
+            Animated.parallel([
+              Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+              Animated.spring(scaleAnim, {
+                toValue: 1,
+                friction: 8,
+                tension: 40,
+                useNativeDriver: true,
+              }),
+            ]).start();
+            
             setTimeout(() => {
               router.replace('/update-password');
             }, 1500);
           } else if (type === 'signup' || type === 'email') {
             // For email confirmation, redirect to home
             setStatus('success');
-            setMessage('Email confirmed! Redirecting to app...');
+            setMessage('Email confirmed! Welcome to Recall.');
+            
+            // Animate success state
+            Animated.parallel([
+              Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+              Animated.spring(scaleAnim, {
+                toValue: 1,
+                friction: 8,
+                tension: 40,
+                useNativeDriver: true,
+              }),
+            ]).start();
+            
             setTimeout(() => {
               router.replace('/(tabs)/(home)');
             }, 1500);
           } else if (type === 'magiclink') {
             // For magic link, redirect to home
             setStatus('success');
-            setMessage('Signed in successfully! Redirecting...');
+            setMessage('Signed in successfully!');
+            
+            // Animate success state
+            Animated.parallel([
+              Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+              Animated.spring(scaleAnim, {
+                toValue: 1,
+                friction: 8,
+                tension: 40,
+                useNativeDriver: true,
+              }),
+            ]).start();
+            
             setTimeout(() => {
               router.replace('/(tabs)/(home)');
             }, 1500);
           } else {
             // Unknown type, redirect to home
             setStatus('success');
-            setMessage('Verification successful! Redirecting...');
+            setMessage('Verification successful!');
+            
+            // Animate success state
+            Animated.parallel([
+              Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+              Animated.spring(scaleAnim, {
+                toValue: 1,
+                friction: 8,
+                tension: 40,
+                useNativeDriver: true,
+              }),
+            ]).start();
+            
             setTimeout(() => {
               router.replace('/(tabs)/(home)');
             }, 1500);
@@ -87,6 +169,22 @@ export default function EmailConfirmedScreen() {
             console.error('[EmailConfirmed] Error getting session:', sessionError);
             setStatus('error');
             setMessage('Session error. Please try again.');
+            
+            // Animate error state
+            Animated.parallel([
+              Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+              Animated.spring(scaleAnim, {
+                toValue: 1,
+                friction: 8,
+                tension: 40,
+                useNativeDriver: true,
+              }),
+            ]).start();
+            
             setTimeout(() => {
               router.replace('/login');
             }, 3000);
@@ -96,7 +194,23 @@ export default function EmailConfirmedScreen() {
           if (session) {
             console.log('[EmailConfirmed] User already has session, redirecting to home');
             setStatus('success');
-            setMessage('Already signed in! Redirecting...');
+            setMessage('Already signed in!');
+            
+            // Animate success state
+            Animated.parallel([
+              Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+              Animated.spring(scaleAnim, {
+                toValue: 1,
+                friction: 8,
+                tension: 40,
+                useNativeDriver: true,
+              }),
+            ]).start();
+            
             setTimeout(() => {
               router.replace('/(tabs)/(home)');
             }, 1500);
@@ -104,6 +218,22 @@ export default function EmailConfirmedScreen() {
             console.log('[EmailConfirmed] No token_hash and no session, redirecting to login');
             setStatus('error');
             setMessage('Invalid or expired link. Please try again.');
+            
+            // Animate error state
+            Animated.parallel([
+              Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+              Animated.spring(scaleAnim, {
+                toValue: 1,
+                friction: 8,
+                tension: 40,
+                useNativeDriver: true,
+              }),
+            ]).start();
+            
             setTimeout(() => {
               router.replace('/login');
             }, 3000);
@@ -113,6 +243,22 @@ export default function EmailConfirmedScreen() {
         console.error('[EmailConfirmed] Exception handling email confirmation:', error);
         setStatus('error');
         setMessage('An unexpected error occurred. Please try again.');
+        
+        // Animate error state
+        Animated.parallel([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.spring(scaleAnim, {
+            toValue: 1,
+            friction: 8,
+            tension: 40,
+            useNativeDriver: true,
+          }),
+        ]).start();
+        
         setTimeout(() => {
           router.replace('/login');
         }, 3000);
@@ -120,7 +266,7 @@ export default function EmailConfirmedScreen() {
     };
 
     handleEmailConfirmation();
-  }, [params, router]);
+  }, [params, router, fadeAnim, scaleAnim]);
 
   return (
     <View style={styles.container}>
@@ -132,38 +278,64 @@ export default function EmailConfirmedScreen() {
       
       <View style={styles.content}>
         {status === 'loading' && (
-          <>
+          <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.message}>{message}</Text>
-          </>
+            <Text style={styles.loadingMessage}>{message}</Text>
+          </View>
         )}
         
         {status === 'success' && (
-          <>
-            <View style={styles.iconContainer}>
+          <Animated.View
+            style={[
+              styles.statusContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }],
+              },
+            ]}
+          >
+            <View style={[styles.iconCircle, styles.successCircle]}>
               <IconSymbol
-                ios_icon_name="checkmark.circle.fill"
-                android_material_icon_name="check_circle"
-                size={64}
-                color={colors.primary}
+                ios_icon_name="checkmark"
+                android_material_icon_name="check"
+                size={48}
+                color="#FFFFFF"
               />
             </View>
+            <Text style={styles.successTitle}>Success!</Text>
             <Text style={styles.successMessage}>{message}</Text>
-          </>
+            <View style={styles.redirectIndicator}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.redirectText}>Redirecting...</Text>
+            </View>
+          </Animated.View>
         )}
         
         {status === 'error' && (
-          <>
-            <View style={styles.iconContainer}>
+          <Animated.View
+            style={[
+              styles.statusContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }],
+              },
+            ]}
+          >
+            <View style={[styles.iconCircle, styles.errorCircle]}>
               <IconSymbol
-                ios_icon_name="xmark.circle.fill"
-                android_material_icon_name="error"
-                size={64}
-                color="#EF4444"
+                ios_icon_name="xmark"
+                android_material_icon_name="close"
+                size={48}
+                color="#FFFFFF"
               />
             </View>
+            <Text style={styles.errorTitle}>Verification Failed</Text>
             <Text style={styles.errorMessage}>{message}</Text>
-          </>
+            <View style={styles.redirectIndicator}>
+              <ActivityIndicator size="small" color={colors.textSecondary} />
+              <Text style={styles.redirectText}>Redirecting to login...</Text>
+            </View>
+          </Animated.View>
         )}
       </View>
     </View>
@@ -179,27 +351,87 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    gap: 16,
+    paddingHorizontal: 32,
   },
-  iconContainer: {
-    marginBottom: 8,
+  loadingContainer: {
+    alignItems: 'center',
+    gap: 20,
   },
-  message: {
+  loadingMessage: {
     fontSize: 16,
     color: colors.textSecondary,
     textAlign: 'center',
+    marginTop: 8,
+  },
+  statusContainer: {
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 400,
+  },
+  iconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  successCircle: {
+    backgroundColor: colors.primary,
+  },
+  errorCircle: {
+    backgroundColor: colors.error,
+  },
+  successTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
+    textAlign: 'center',
   },
   successMessage: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  errorTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
     color: colors.text,
+    marginBottom: 12,
     textAlign: 'center',
   },
   errorMessage: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#EF4444',
+    fontSize: 16,
+    color: colors.textSecondary,
     textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  redirectIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  redirectText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
 });
