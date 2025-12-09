@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, memo } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Alert, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
@@ -37,8 +37,17 @@ const hasUrl = (text: string): boolean => {
 };
 
 // Helper function to count newline characters
+// Updated to include all NSCharacterSet.newlines characters:
+// U+000A (Line Feed - \n)
+// U+000D (Carriage Return - \r)
+// U+0085 (Next Line)
+// U+2028 (Line Separator)
+// U+2029 (Paragraph Separator)
 const countNewlines = (text: string): number => {
-  return (text.match(/\n/g) || []).length;
+  // Match all newline characters from NSCharacterSet.newlines
+  const newlineRegex = /[\n\r\u0085\u2028\u2029]/g;
+  const matches = text.match(newlineRegex);
+  return matches ? matches.length : 0;
 };
 
 // Memoized component for better performance
@@ -293,43 +302,29 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       await shareRecall(note, currentImageIndex);
     } catch (error) {
       console.error('Error sharing recall:', error);
-      Alert.alert('Error', 'Failed to share recall. Please try again.');
     }
   };
 
   const handleDelete = async () => {
-    if (Platform.OS !== 'web') {
-      try {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
+    console.log('[NoteCard] Delete action triggered - immediate deletion without confirmation');
+    
+    // Close the swipeable immediately
+    swipeableRef.current?.close();
+    
+    // Call onDelete callback immediately
+    if (onDelete) {
+      onDelete();
+      
+      // Trigger success haptic feedback after deletion
+      if (Platform.OS !== 'web') {
+        try {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          console.log('[NoteCard] Success haptic feedback triggered');
+        } catch (error) {
+          console.error('[NoteCard] Error triggering haptic feedback:', error);
+        }
       }
     }
-
-    Alert.alert(
-      'Delete Recall',
-      'Are you sure you want to delete this recall?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: () => {
-            // Close the swipeable
-            swipeableRef.current?.close();
-          },
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            if (onDelete) {
-              onDelete();
-            }
-          },
-        },
-      ],
-      { cancelable: true }
-    );
   };
 
   const renderRightActions = () => {
@@ -579,7 +574,7 @@ const styles = StyleSheet.create({
   },
   imageWrapper: {
     marginRight: IMAGE_SPACING,
-		marginLeft: IMAGE_SPACING - 3,
+    marginLeft: IMAGE_SPACING - 3,
     borderRadius: 10,
     overflow: 'hidden',
     backgroundColor: colors.cardDark,
@@ -646,8 +641,8 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.text,
     marginBottom: 2,
-		marginTop: 4,
-		marginLeft: 6,
+    marginTop: 4,
+    marginLeft: 6,
     zIndex: 1,
   },
   normalText: {
@@ -673,10 +668,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-		paddingHorizontal: 6,
+    paddingHorizontal: 6,
     marginTop: 8,
     paddingTop: 8,
-		paddingBottom: 6,
+    paddingBottom: 6,
     gap: 8,
     zIndex: 1,
   },

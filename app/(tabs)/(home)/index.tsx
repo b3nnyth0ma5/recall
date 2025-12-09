@@ -16,7 +16,7 @@ import { uploadImageToDatabase } from '@/utils/supabase';
 import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote } = useNotes();
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote } = useNotes();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -388,6 +388,17 @@ export default function HomeScreen() {
     }
   };
 
+  const handleDeleteNote = async (noteId: string) => {
+    console.log('[handleDeleteNote] Deleting note:', noteId);
+    try {
+      await deleteNote(noteId);
+      console.log('[handleDeleteNote] Note deleted successfully');
+    } catch (error) {
+      console.error('[handleDeleteNote] Error deleting note:', error);
+      Alert.alert('Error', 'Failed to delete recall. Please try again.');
+    }
+  };
+
   const renderEmptyState = () => {
     const { ZeroState } = require('@/components/ZeroState');
     return (
@@ -517,6 +528,7 @@ export default function HomeScreen() {
                   key={`${note.id}-${index}`}
                   note={note}
                   onPress={() => handleNotePress(note.id)}
+                  onDelete={() => handleDeleteNote(note.id)}
                   loading={false}
                   expectedImageCount={getExpectedImageCount(note.id)}
                 />
