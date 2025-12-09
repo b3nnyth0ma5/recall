@@ -95,6 +95,10 @@ export default function LoginScreen() {
     }
   };
 
+  const handleForgotPassword = () => {
+    router.push('/reset-password');
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -154,6 +158,17 @@ export default function LoginScreen() {
               />
             </View>
           </View>
+
+          {/* Forgot Password Link - Only show when not in sign up mode */}
+          {!isSignUp && (
+            <Pressable
+              onPress={handleForgotPassword}
+              disabled={loading}
+              style={styles.forgotPasswordButton}
+            >
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            </Pressable>
+          )}
 
           {/* Auth Button */}
           <View style={styles.buttonContainer}>
@@ -230,7 +245,7 @@ const styles = StyleSheet.create({
   inputContainer: {
     width: '100%',
     gap: 16,
-    marginBottom: 24,
+    marginBottom: 8,
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -247,6 +262,17 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: colors.text,
+  },
+  forgotPasswordButton: {
+    alignSelf: 'flex-end',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    marginBottom: 16,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '500',
   },
   buttonContainer: {
     width: '100%',
