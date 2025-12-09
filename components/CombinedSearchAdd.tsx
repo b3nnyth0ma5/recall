@@ -52,6 +52,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const translateY = useSharedValue(0);
+  
+  // FIXED: Track if we've already processed these params to prevent infinite loops
+  const processedParamsRef = useRef<string>('');
 
   // Get current location on mount
   useEffect(() => {
@@ -118,22 +121,37 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     }
   };
 
-  // Listen for location selection from location-search screen
+  // FIXED: Listen for location selection from location-search screen with proper deduplication
   useEffect(() => {
     if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
+      // Create a unique key for these params
+      const paramsKey = `${params.selectedLatitude}-${params.selectedLongitude}-${params.selectedLocationName}`;
+      
+      // Check if we've already processed these exact params
+      if (processedParamsRef.current === paramsKey) {
+        console.log('[CombinedSearchAdd] Already processed these params, skipping');
+        return;
+      }
+      
+      // Mark these params as processed
+      processedParamsRef.current = paramsKey;
+      
       const selectedLocation = {
         latitude: parseFloat(params.selectedLatitude as string),
         longitude: parseFloat(params.selectedLongitude as string),
         name: params.selectedLocationName as string,
       };
       
-      console.log('Location selected from location-search:', selectedLocation);
+      console.log('[CombinedSearchAdd] Location selected from location-search:', selectedLocation);
       setLocation(selectedLocation);
       setShowDrawer(false);
       
-      // Clear the params after processing - use setTimeout to prevent recursion
+      // FIXED: Clear the params after processing - use setTimeout to break call stack
+      // This prevents the infinite loop by ensuring the param clearing happens
+      // in a separate event loop tick
       setTimeout(() => {
         try {
+          console.log('[CombinedSearchAdd] Clearing location params');
           router.setParams({
             selectedLatitude: undefined,
             selectedLongitude: undefined,
@@ -142,6 +160,11 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
             selectedFullAddress: undefined,
             selectedPrimaryType: undefined,
           });
+          
+          // Reset the processed params ref after a delay to allow for new selections
+          setTimeout(() => {
+            processedParamsRef.current = '';
+          }, 1000);
         } catch (error) {
           console.error('[CombinedSearchAdd] Error clearing params:', error);
         }
@@ -170,11 +193,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     // If there's no search query, just navigate to search screen to show history
     if (!searchQuery) {
       console.log('[CombinedSearchAdd] Empty search query - navigating to search screen to show history');
-      try {
-        router.push('/search');
-      } catch (error) {
-        console.error('[CombinedSearchAdd] Error navigating to search:', error);
-      }
+      
+      // FIXED: Use setTimeout to break the call stack and prevent recursion
+      setTimeout(() => {
+        try {
+          router.push('/search');
+        } catch (error) {
+          console.error('[CombinedSearchAdd] Error navigating to search:', error);
+        }
+      }, 0);
       return;
     }
 
@@ -187,7 +214,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     
     console.log('[CombinedSearchAdd] Navigating to search screen:', searchRoute);
     
-    // Use setTimeout to break the call stack and prevent recursion
+    // FIXED: Use setTimeout to break the call stack and prevent recursion
     setTimeout(() => {
       try {
         router.push(searchRoute);
@@ -266,11 +293,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
   const handleLocationPress = () => {
     setShowDrawer(false);
-    try {
-      router.push('/location-search');
-    } catch (error) {
-      console.error('[CombinedSearchAdd] Error navigating to location search:', error);
-    }
+    
+    // FIXED: Use setTimeout to break the call stack and prevent recursion
+    setTimeout(() => {
+      try {
+        router.push('/location-search');
+      } catch (error) {
+        console.error('[CombinedSearchAdd] Error navigating to location search:', error);
+      }
+    }, 0);
   };
 
   const handleCreateRecall = async () => {
@@ -342,7 +373,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 </Animated.View>
               )}
 
-              {/* Images Display - Horizontal Scrollable - FIXED: Removed pointerEvents="box-none" wrapper */}
+              {/* Images Display - Horizontal Scrollable */}
               {images.length > 0 && (
                 <ScrollView 
                   horizontal 

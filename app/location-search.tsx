@@ -179,7 +179,7 @@ export default function LocationSearchScreen() {
         location.locality
       );
       
-      console.log('Selected location data:', {
+      console.log('[LocationSearch] Selected location data:', {
         latitude: location.latitude,
         longitude: location.longitude,
         displayName: location.displayName,
@@ -192,7 +192,7 @@ export default function LocationSearchScreen() {
 
       if (params.id) {
         const noteId = params.id as string;
-        console.log('Updating location for note:', noteId);
+        console.log('[LocationSearch] Updating location for note:', noteId);
 
         // Update location-related fields including primary type
         const { error } = await supabase
@@ -207,28 +207,35 @@ export default function LocationSearchScreen() {
           .eq('id', noteId);
 
         if (error) {
-          console.error('Error updating location in database:', error);
+          console.error('[LocationSearch] Error updating location in database:', error);
           Alert.alert('Error', 'Failed to update location');
         } else {
-          console.log('Location updated successfully in database with formatted name:', formattedLocationName);
-          console.log('Primary type:', location.primaryTypeDisplayName || 'Not available');
+          console.log('[LocationSearch] Location updated successfully in database with formatted name:', formattedLocationName);
+          console.log('[LocationSearch] Primary type:', location.primaryTypeDisplayName || 'Not available');
         }
       }
 
+      // FIXED: Navigate back first, then set params in a separate event loop tick
       router.back();
       
+      // FIXED: Use setTimeout to break the call stack and prevent recursion
       setTimeout(() => {
-        router.setParams({
-          selectedLatitude: location.latitude.toString(),
-          selectedLongitude: location.longitude.toString(),
-          selectedLocationName: formattedLocationName,
-          selectedDisplayName: location.displayName,
-          selectedFullAddress: location.formattedAddress,
-          selectedPrimaryType: location.primaryTypeDisplayName || '',
-        });
+        try {
+          console.log('[LocationSearch] Setting location params');
+          router.setParams({
+            selectedLatitude: location.latitude.toString(),
+            selectedLongitude: location.longitude.toString(),
+            selectedLocationName: formattedLocationName,
+            selectedDisplayName: location.displayName,
+            selectedFullAddress: location.formattedAddress,
+            selectedPrimaryType: location.primaryTypeDisplayName || '',
+          });
+        } catch (error) {
+          console.error('[LocationSearch] Error setting params:', error);
+        }
       }, 100);
     } catch (error) {
-      console.error('Error processing location:', error);
+      console.error('[LocationSearch] Error processing location:', error);
       Alert.alert('Error', 'Failed to process location');
     }
   };

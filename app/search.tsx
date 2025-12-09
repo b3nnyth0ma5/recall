@@ -71,7 +71,7 @@ export default function SearchScreen() {
     };
   }, [loadSearchHistory]);
 
-  // Handle auto-search from CombinedSearchAdd
+  // FIXED: Handle auto-search from CombinedSearchAdd with proper deduplication
   useEffect(() => {
     const queryParam = params.q;
     const autoSearchParam = params.autoSearch;
@@ -98,9 +98,10 @@ export default function SearchScreen() {
         setIsSearching(false);
       });
       
-      // Clear the autoSearch parameter to prevent re-triggering - use setTimeout to break call stack
+      // FIXED: Clear the autoSearch parameter to prevent re-triggering - use setTimeout to break call stack
       setTimeout(() => {
         try {
+          console.log('[SearchScreen] Clearing autoSearch param');
           router.setParams({ autoSearch: undefined });
         } catch (error) {
           console.error('[SearchScreen] Error clearing autoSearch param:', error);
@@ -163,7 +164,14 @@ export default function SearchScreen() {
   }, [searchNotes]);
 
   const handleNotePress = useCallback((noteId: string) => {
-    router.push(`/note-editor?id=${noteId}`);
+    // FIXED: Use setTimeout to break the call stack and prevent recursion
+    setTimeout(() => {
+      try {
+        router.push(`/note-editor?id=${noteId}`);
+      } catch (error) {
+        console.error('[SearchScreen] Error navigating to note editor:', error);
+      }
+    }, 0);
   }, [router]);
 
   const handleClear = useCallback(() => {
@@ -186,23 +194,25 @@ export default function SearchScreen() {
     setIsSearching(false);
     searchNotes('');
     
-    // Navigate back with error handling
-    try {
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        // If can't go back, navigate to home
-        router.replace('/(tabs)/(home)');
-      }
-    } catch (error) {
-      console.error('[SearchScreen] Error navigating back:', error);
-      // Fallback to home
+    // FIXED: Navigate back with error handling and setTimeout to break call stack
+    setTimeout(() => {
       try {
-        router.replace('/(tabs)/(home)');
-      } catch (fallbackError) {
-        console.error('[SearchScreen] Error in fallback navigation:', fallbackError);
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          // If can't go back, navigate to home
+          router.replace('/(tabs)/(home)');
+        }
+      } catch (error) {
+        console.error('[SearchScreen] Error navigating back:', error);
+        // Fallback to home
+        try {
+          router.replace('/(tabs)/(home)');
+        } catch (fallbackError) {
+          console.error('[SearchScreen] Error in fallback navigation:', fallbackError);
+        }
       }
-    }
+    }, 0);
   }, [searchNotes, router]);
 
   const toggleKeyboard = useCallback(() => {
@@ -551,7 +561,14 @@ export default function SearchScreen() {
           if (Platform.OS !== 'web') {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           }
-          router.push(`/map-view?hasSearch=${hasSearched ? 'true' : 'false'}`);
+          // FIXED: Use setTimeout to break the call stack and prevent recursion
+          setTimeout(() => {
+            try {
+              router.push(`/map-view?hasSearch=${hasSearched ? 'true' : 'false'}`);
+            } catch (error) {
+              console.error('[SearchScreen] Error navigating to map view:', error);
+            }
+          }, 0);
         }}
         style={styles.mapFab}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
