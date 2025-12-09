@@ -1,17 +1,25 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform, TextInput, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { CacheManager } from '@/utils/memoryCache';
+import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
   const [cacheStats, setCacheStats] = useState<any[]>([]);
+  
+  // Password change state
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   // Load cache statistics
   useEffect(() => {
@@ -68,6 +76,82 @@ export default function ProfileScreen() {
         },
       ]
     );
+  };
+
+  const handleChangePassword = async () => {
+    // Validation
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      Alert.alert('Error', 'Please fill in all password fields');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      Alert.alert('Error', 'New password must be at least 6 characters long');
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      Alert.alert('Error', 'New passwords do not match');
+      return;
+    }
+
+    try {
+      setPasswordLoading(true);
+
+      // First, verify the current password by attempting to sign in
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user?.email || '',
+        password: currentPassword,
+      });
+
+      if (signInError) {
+        Alert.alert('Error', 'Current password is incorrect');
+        return;
+      }
+
+      // Update the password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        console.error('[Profile] Password update error:', updateError);
+        Alert.alert('Error', updateError.message);
+      } else {
+        console.log('[Profile] Password updated successfully');
+        
+        // Haptic feedback
+        if (Platform.OS !== 'web') {
+          try {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          } catch (error) {
+            console.error('Error triggering haptic feedback:', error);
+          }
+        }
+
+        Alert.alert(
+          'Success',
+          'Your password has been updated successfully.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Reset form
+                setCurrentPassword('');
+                setNewPassword('');
+                setConfirmNewPassword('');
+                setShowPasswordChange(false);
+              },
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('[Profile] Password update exception:', error);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+    } finally {
+      setPasswordLoading(false);
+    }
   };
 
   const handleClearCache = () => {
@@ -186,6 +270,120 @@ export default function ProfileScreen() {
             </View>
             <Text style={styles.userEmail}>{user?.email || 'Not signed in'}</Text>
           </View>
+        </View>
+
+        {/* Security Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <IconSymbol name="lock.shield" size={24} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Security</Text>
+          </View>
+
+          {/* Change Password Toggle */}
+          <Pressable 
+            onPress={() => {
+              setShowPasswordChange(!showPasswordChange);
+              if (showPasswordChange) {
+                // Reset form when closing
+                setCurrentPassword('');
+                setNewPassword('');
+                setConfirmNewPassword('');
+              }
+            }}
+            style={styles.passwordToggleButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <View style={styles.passwordToggleLeft}>
+              <IconSymbol name="key.fill" size={20} color={colors.primary} />
+              <Text style={styles.passwordToggleText}>Change Password</Text>
+            </View>
+            <IconSymbol 
+              name={showPasswordChange ? "chevron.up" : "chevron.down"} 
+              size={20} 
+              color={colors.textSecondary} 
+            />
+          </Pressable>
+
+          {/* Password Change Form */}
+          {showPasswordChange && (
+            <View style={styles.passwordChangeForm}>
+              <Text style={styles.passwordFormDescription}>
+                Update your password to keep your account secure
+              </Text>
+
+              <View style={styles.passwordInputContainer}>
+                <View style={styles.inputWrapper}>
+                  <IconSymbol
+                    ios_icon_name="lock.fill"
+                    android_material_icon_name="lock"
+                    size={18}
+                    color={colors.textSecondary}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Current Password"
+                    placeholderTextColor={colors.textTertiary}
+                    value={currentPassword}
+                    onChangeText={setCurrentPassword}
+                    secureTextEntry
+                    autoComplete="password"
+                  />
+                </View>
+
+                <View style={styles.inputWrapper}>
+                  <IconSymbol
+                    ios_icon_name="lock.fill"
+                    android_material_icon_name="lock"
+                    size={18}
+                    color={colors.textSecondary}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="New Password"
+                    placeholderTextColor={colors.textTertiary}
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    secureTextEntry
+                    autoComplete="password-new"
+                  />
+                </View>
+
+                <View style={styles.inputWrapper}>
+                  <IconSymbol
+                    ios_icon_name="lock.fill"
+                    android_material_icon_name="lock"
+                    size={18}
+                    color={colors.textSecondary}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Confirm New Password"
+                    placeholderTextColor={colors.textTertiary}
+                    value={confirmNewPassword}
+                    onChangeText={setConfirmNewPassword}
+                    secureTextEntry
+                    autoComplete="password-new"
+                  />
+                </View>
+              </View>
+
+              <Pressable
+                onPress={handleChangePassword}
+                disabled={passwordLoading}
+                style={[styles.updatePasswordButton, passwordLoading && styles.buttonDisabled]}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                {passwordLoading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <IconSymbol name="checkmark.circle.fill" size={18} color="#FFFFFF" />
+                    <Text style={styles.updatePasswordButtonText}>Update Password</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          )}
         </View>
 
         {/* Cache Statistics Section */}
@@ -350,6 +548,80 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
+  },
+  passwordToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  passwordToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  passwordToggleText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  passwordChangeForm: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  passwordFormDescription: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  passwordInputContainer: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  input: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
+    minHeight: 20,
+  },
+  updatePasswordButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  updatePasswordButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   cacheCard: {
     backgroundColor: colors.card,

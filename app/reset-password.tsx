@@ -40,7 +40,7 @@ export default function ResetPasswordScreen() {
       setLoading(true);
 
       const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'https://natively.dev/email-confirmed',
+        redirectTo: 'https://natively.dev/update-password',
       });
 
       if (error) {
