@@ -131,15 +131,21 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       setLocation(selectedLocation);
       setShowDrawer(false);
       
-      // Clear the params after processing
-      router.setParams({
-        selectedLatitude: undefined,
-        selectedLongitude: undefined,
-        selectedLocationName: undefined,
-        selectedDisplayName: undefined,
-        selectedFullAddress: undefined,
-        selectedPrimaryType: undefined,
-      });
+      // Clear the params after processing - use setTimeout to prevent recursion
+      setTimeout(() => {
+        try {
+          router.setParams({
+            selectedLatitude: undefined,
+            selectedLongitude: undefined,
+            selectedLocationName: undefined,
+            selectedDisplayName: undefined,
+            selectedFullAddress: undefined,
+            selectedPrimaryType: undefined,
+          });
+        } catch (error) {
+          console.error('[CombinedSearchAdd] Error clearing params:', error);
+        }
+      }, 0);
     }
   }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, router]);
 
@@ -164,7 +170,11 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     // If there's no search query, just navigate to search screen to show history
     if (!searchQuery) {
       console.log('[CombinedSearchAdd] Empty search query - navigating to search screen to show history');
-      router.push('/search');
+      try {
+        router.push('/search');
+      } catch (error) {
+        console.error('[CombinedSearchAdd] Error navigating to search:', error);
+      }
       return;
     }
 
@@ -176,7 +186,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     const searchRoute = `/search?q=${encodedQuery}&autoSearch=true`;
     
     console.log('[CombinedSearchAdd] Navigating to search screen:', searchRoute);
-    router.push(searchRoute);
+    
+    // Use setTimeout to break the call stack and prevent recursion
+    setTimeout(() => {
+      try {
+        router.push(searchRoute);
+      } catch (error) {
+        console.error('[CombinedSearchAdd] Error navigating to search:', error);
+      }
+    }, 0);
 
     // Clear the text input after navigation
     setText('');
@@ -248,7 +266,11 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
   const handleLocationPress = () => {
     setShowDrawer(false);
-    router.push('/location-search');
+    try {
+      router.push('/location-search');
+    } catch (error) {
+      console.error('[CombinedSearchAdd] Error navigating to location search:', error);
+    }
   };
 
   const handleCreateRecall = async () => {

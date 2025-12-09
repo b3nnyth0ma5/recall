@@ -98,8 +98,14 @@ export default function SearchScreen() {
         setIsSearching(false);
       });
       
-      // Clear the autoSearch parameter to prevent re-triggering
-      router.setParams({ autoSearch: undefined });
+      // Clear the autoSearch parameter to prevent re-triggering - use setTimeout to break call stack
+      setTimeout(() => {
+        try {
+          router.setParams({ autoSearch: undefined });
+        } catch (error) {
+          console.error('[SearchScreen] Error clearing autoSearch param:', error);
+        }
+      }, 0);
     }
   }, [params.q, params.autoSearch, searchNotes, router]);
 
@@ -180,8 +186,23 @@ export default function SearchScreen() {
     setIsSearching(false);
     searchNotes('');
     
-    // Navigate back
-    router.back();
+    // Navigate back with error handling
+    try {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        // If can't go back, navigate to home
+        router.replace('/(tabs)/(home)');
+      }
+    } catch (error) {
+      console.error('[SearchScreen] Error navigating back:', error);
+      // Fallback to home
+      try {
+        router.replace('/(tabs)/(home)');
+      } catch (fallbackError) {
+        console.error('[SearchScreen] Error in fallback navigation:', fallbackError);
+      }
+    }
   }, [searchNotes, router]);
 
   const toggleKeyboard = useCallback(() => {
