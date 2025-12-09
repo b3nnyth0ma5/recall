@@ -16,6 +16,7 @@ import { Stack, useRouter } from 'expo-router';
 import { supabase } from '@/utils/supabase';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { AUTH_REDIRECT_URLS } from '@/constants/config';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
@@ -40,7 +41,7 @@ export default function ResetPasswordScreen() {
       setLoading(true);
 
       const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'https://natively.dev/update-password',
+        redirectTo: AUTH_REDIRECT_URLS.UPDATE_PASSWORD,
       });
 
       if (error) {

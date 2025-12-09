@@ -17,6 +17,7 @@ import { Stack, useRouter } from 'expo-router';
 import { supabase } from '@/utils/supabase';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { AUTH_REDIRECT_URLS } from '@/constants/config';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -59,7 +60,7 @@ export default function LoginScreen() {
       const { data, error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: 'https://natively.dev/email-confirmed',
+          emailRedirectTo: AUTH_REDIRECT_URLS.EMAIL_CONFIRMED,
         },
       });
 
@@ -95,7 +96,7 @@ export default function LoginScreen() {
           email,
           password,
           options: {
-            emailRedirectTo: 'https://natively.dev/email-confirmed'
+            emailRedirectTo: AUTH_REDIRECT_URLS.EMAIL_CONFIRMED
           }
         });
 
