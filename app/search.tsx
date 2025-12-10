@@ -236,6 +236,20 @@ export default function SearchScreen() {
     return lines.length > 3;
   }, []);
 
+  const handleMapPress = useCallback(() => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    // FIXED: Use setTimeout to break the call stack and prevent recursion
+    setTimeout(() => {
+      try {
+        router.push(`/map-view?hasSearch=${hasSearched ? 'true' : 'false'}`);
+      } catch (error) {
+        console.error('[SearchScreen] Error navigating to map view:', error);
+      }
+    }, 0);
+  }, [hasSearched, router]);
+
   // Render skeleton loaders for recent search history
   const renderHistorySkeletons = useMemo(() => {
     return (
@@ -557,19 +571,7 @@ export default function SearchScreen() {
 
       {/* Map FAB - Bottom Right */}
       <Pressable
-        onPress={() => {
-          if (Platform.OS !== 'web') {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          }
-          // FIXED: Use setTimeout to break the call stack and prevent recursion
-          setTimeout(() => {
-            try {
-              router.push(`/map-view?hasSearch=${hasSearched ? 'true' : 'false'}`);
-            } catch (error) {
-              console.error('[SearchScreen] Error navigating to map view:', error);
-            }
-          }, 0);
-        }}
+        onPress={handleMapPress}
         style={styles.mapFab}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >

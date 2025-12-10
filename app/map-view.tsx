@@ -10,6 +10,7 @@ import {
   Modal,
   Image,
   ScrollView,
+  Dimensions,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -17,459 +18,535 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
+import { supabase, getImageDataUrl } from '@/utils/supabase';
+import ExpoMaps, { Marker, Region } from 'expo-maps';
+
+interface RecallMarker {
+  id: string;
+  latitude: number;
+  longitude: number;
+  text?: string;
+  location?: string;
+  created_at: string;
+  images?: string[];
+}
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function MapViewScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { notes, searchQuery } = useNotes();
   const [loading, setLoading] = useState(true);
-  const [mapNotes, setMapNotes] = useState<Note[]>([]);
-  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+  const [mapRecalls, setMapRecalls] = useState<RecallMarker[]>([]);
+  const [selectedRecall, setSelectedRecall] = useState<RecallMarker | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
+  const [region, setRegion] = useState<Region | null>(null);
+  const [loadingLocation, setLoadingLocation] = useState(true);
   const mapRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
 
   // Determine if we're showing search results or all notes
   const hasSearchResults = params.hasSearch === 'true';
 
-  // Filter notes that have location data
+  // Request location permissions and get user location
   useEffect(() => {
-    const notesWithLocation = notes.filter(
-      note => note.latitude && note.longitude
-    );
-    setMapNotes(notesWithLocation);
-    setLoading(false);
-  }, [notes]);
-
-  // Add markers to map
-  const addMarkers = useCallback((map: any) => {
-    if (Platform.OS !== 'web' || !window.google) return;
-
-    // Clear existing markers
-    markersRef.current.forEach(marker => marker.setMap(null));
-    markersRef.current = [];
-
-    const handleMarkerClick = (note: Note) => {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
-      setSelectedNote(note);
-      setShowPreview(true);
-    };
-
-    mapNotes.forEach(note => {
-      if (!note.latitude || !note.longitude) return;
-
-      // Create custom marker with preview
-      const markerDiv = document.createElement('div');
-      markerDiv.style.cssText = `
-        width: 48px;
-        height: 48px;
-        background: ${colors.primary};
-        border: 3px solid #FFFFFF;
-        border-radius: 24px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3);
-        overflow: hidden;
-        position: relative;
-      `;
-
-      // Add preview content
-      if (note.images && note.images.length > 0) {
-        const img = document.createElement('img');
-        img.src = note.images[0];
-        img.style.cssText = `
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        `;
-        markerDiv.appendChild(img);
-      } else if (note.text) {
-        const textPreview = document.createElement('div');
-        textPreview.textContent = note.text.substring(0, 2);
-        textPreview.style.cssText = `
-          color: #FFFFFF;
-          font-size: 14px;
-          font-weight: bold;
-          text-align: center;
-        `;
-        markerDiv.appendChild(textPreview);
-      }
-
-      // Create custom overlay
-      class CustomMarker extends window.google.maps.OverlayView {
-        position: any;
-        div: any;
-
-        constructor(position: any, div: any) {
-          super();
-          this.position = position;
-          this.div = div;
-        }
-
-        onAdd() {
-          const panes = this.getPanes();
-          panes.overlayMouseTarget.appendChild(this.div);
-
-          // Add click listener
-          this.div.addEventListener('click', () => {
-            handleMarkerClick(note);
+    (async () => {
+      try {
+        console.log('[MapView] Requesting location permissions...');
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        
+        if (status !== 'granted') {
+          console.log('[MapView] Location permission denied');
+          setLoadingLocation(false);
+          // Default to Melbourne
+          setRegion({
+            latitude: -37.8136,
+            longitude: 144.9631,
+            latitudeDelta: 0.1,
+            longitudeDelta: 0.1,
           });
+          return;
         }
 
-        draw() {
-          const overlayProjection = this.getProjection();
-          const position = overlayProjection.fromLatLngToDivPixel(this.position);
-          
-          if (position) {
-            this.div.style.left = (position.x - 24) + 'px';
-            this.div.style.top = (position.y - 24) + 'px';
-            this.div.style.position = 'absolute';
-          }
-        }
-
-        onRemove() {
-          if (this.div.parentNode) {
-            this.div.parentNode.removeChild(this.div);
-          }
-        }
+        console.log('[MapView] Getting current location...');
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        
+        console.log('[MapView] User location:', location.coords);
+        setUserLocation(location);
+        
+        // Set initial region to user location
+        setRegion({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        });
+        
+        setLoadingLocation(false);
+      } catch (error) {
+        console.error('[MapView] Error getting location:', error);
+        setLoadingLocation(false);
+        // Default to Melbourne
+        setRegion({
+          latitude: -37.8136,
+          longitude: 144.9631,
+          latitudeDelta: 0.1,
+          longitudeDelta: 0.1,
+        });
       }
+    })();
+  }, []);
 
-      const marker = new CustomMarker(
-        { lat: note.latitude, lng: note.longitude },
-        markerDiv
-      );
-
-      marker.setMap(map);
-      markersRef.current.push(marker);
-    });
-  }, [mapNotes]);
-
-  // Initialize Google Map
-  const initializeMap = useCallback(() => {
-    if (Platform.OS !== 'web' || !window.google) return;
-
-    const mapElement = document.getElementById('google-map');
-    if (!mapElement) return;
-
-    // Calculate center and zoom based on notes
-    let center = { lat: -37.8136, lng: 144.9631 }; // Default: Melbourne
-    let zoom = 12;
-
-    if (mapNotes.length > 0) {
-      // Calculate bounds to fit all markers
-      const bounds = new window.google.maps.LatLngBounds();
-      mapNotes.forEach(note => {
-        if (note.latitude && note.longitude) {
-          bounds.extend({ lat: note.latitude, lng: note.longitude });
-        }
-      });
-
-      // Create map
-      const map = new window.google.maps.Map(mapElement, {
-        center: bounds.getCenter(),
-        zoom: 12,
-        styles: [
-          {
-            elementType: 'geometry',
-            stylers: [{ color: '#242424' }],
-          },
-          {
-            elementType: 'labels.text.stroke',
-            stylers: [{ color: '#1A1A1A' }],
-          },
-          {
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#B0B0B0' }],
-          },
-          {
-            featureType: 'administrative.locality',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#FFFFFF' }],
-          },
-          {
-            featureType: 'poi',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#B0B0B0' }],
-          },
-          {
-            featureType: 'poi.park',
-            elementType: 'geometry',
-            stylers: [{ color: '#2A3A2A' }],
-          },
-          {
-            featureType: 'poi.park',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#6B9A6B' }],
-          },
-          {
-            featureType: 'road',
-            elementType: 'geometry',
-            stylers: [{ color: '#3A3A3A' }],
-          },
-          {
-            featureType: 'road',
-            elementType: 'geometry.stroke',
-            stylers: [{ color: '#2A2A2A' }],
-          },
-          {
-            featureType: 'road.highway',
-            elementType: 'geometry',
-            stylers: [{ color: '#4A4A4A' }],
-          },
-          {
-            featureType: 'road.highway',
-            elementType: 'geometry.stroke',
-            stylers: [{ color: '#3A3A3A' }],
-          },
-          {
-            featureType: 'water',
-            elementType: 'geometry',
-            stylers: [{ color: '#1A2A3A' }],
-          },
-          {
-            featureType: 'water',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#4A6A8A' }],
-          },
-        ],
-      });
-
-      mapRef.current = map;
-
-      // Fit bounds after map is loaded
-      map.fitBounds(bounds);
-
-      // Add markers
-      addMarkers(map);
-    } else {
-      // No notes with location, show default map
-      const map = new window.google.maps.Map(mapElement, {
-        center,
-        zoom,
-        styles: [
-          {
-            elementType: 'geometry',
-            stylers: [{ color: '#242424' }],
-          },
-          {
-            elementType: 'labels.text.stroke',
-            stylers: [{ color: '#1A1A1A' }],
-          },
-          {
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#B0B0B0' }],
-          },
-          {
-            featureType: 'water',
-            elementType: 'geometry',
-            stylers: [{ color: '#1A2A3A' }],
-          },
-        ],
-      });
-
-      mapRef.current = map;
-    }
-
-    setLoading(false);
-  }, [mapNotes, addMarkers]);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web') {
-      setLoading(false);
+  // Load recalls within 2km of user location on initial load (if no search)
+  const loadNearbyRecalls = useCallback(async () => {
+    if (!userLocation || hasSearchResults) {
       return;
     }
 
-    // Load Google Maps script
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48&libraries=places`;
-    script.async = true;
-    script.defer = true;
-    script.onload = initializeMap;
-    document.head.appendChild(script);
+    try {
+      console.log('[MapView] Loading recalls within 2km of user location...');
+      setLoading(true);
 
-    return () => {
-      // Cleanup
-      if (script.parentNode) {
-        script.parentNode.removeChild(script);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error('[MapView] No active session');
+        setLoading(false);
+        return;
       }
-    };
-  }, [initializeMap]);
 
-  // Re-add markers when mapNotes changes
+      const { data, error } = await supabase.functions.invoke('get-recalls-in-bounds', {
+        body: {
+          userLocation: {
+            latitude: userLocation.coords.latitude,
+            longitude: userLocation.coords.longitude,
+          },
+          radiusKm: 2,
+        },
+      });
+
+      if (error) {
+        console.error('[MapView] Error loading nearby recalls:', error);
+        setLoading(false);
+        return;
+      }
+
+      console.log(`[MapView] Found ${data.recalls?.length || 0} recalls within 2km`);
+      
+      // Load images for recalls
+      const recallsWithImages = await loadImagesForRecalls(data.recalls || []);
+      setMapRecalls(recallsWithImages);
+      setLoading(false);
+    } catch (error) {
+      console.error('[MapView] Exception loading nearby recalls:', error);
+      setLoading(false);
+    }
+  }, [userLocation, hasSearchResults]);
+
+  // Load recalls when user location is available
   useEffect(() => {
-    if (mapRef.current && Platform.OS === 'web') {
-      addMarkers(mapRef.current);
+    if (userLocation && !hasSearchResults && !loadingLocation) {
+      loadNearbyRecalls();
     }
-  }, [mapNotes, addMarkers]);
+  }, [userLocation, hasSearchResults, loadingLocation, loadNearbyRecalls]);
 
-  const handlePreviewPress = () => {
-    if (selectedNote) {
-      setShowPreview(false);
-      router.push(`/note-editor?id=${selectedNote.id}`);
+  // Load recalls from search results
+  useEffect(() => {
+    if (hasSearchResults && notes.length > 0) {
+      console.log('[MapView] Loading search results on map...');
+      const notesWithLocation = notes.filter(
+        note => note.latitude && note.longitude
+      );
+      
+      // Convert notes to markers
+      const markers = notesWithLocation.map(note => ({
+        id: note.id,
+        latitude: note.latitude!,
+        longitude: note.longitude!,
+        text: note.text,
+        location: note.location,
+        created_at: note.created_at,
+        images: note.images,
+      }));
+      
+      setMapRecalls(markers);
+      setLoading(false);
+
+      // Fit map to show all markers
+      if (markers.length > 0 && mapRef.current) {
+        // Calculate bounds
+        const lats = markers.map(m => m.latitude);
+        const lngs = markers.map(m => m.longitude);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const minLng = Math.min(...lngs);
+        const maxLng = Math.max(...lngs);
+        
+        const centerLat = (minLat + maxLat) / 2;
+        const centerLng = (minLng + maxLng) / 2;
+        const latDelta = (maxLat - minLat) * 1.5; // Add padding
+        const lngDelta = (maxLng - minLng) * 1.5;
+        
+        setRegion({
+          latitude: centerLat,
+          longitude: centerLng,
+          latitudeDelta: Math.max(latDelta, 0.01),
+          longitudeDelta: Math.max(lngDelta, 0.01),
+        });
+      }
+    } else if (!hasSearchResults) {
+      setLoading(false);
     }
+  }, [hasSearchResults, notes]);
+
+  // Load images for recalls
+  const loadImagesForRecalls = async (recalls: any[]): Promise<RecallMarker[]> => {
+    const recallIds = recalls.map(r => r.id);
+    
+    // Batch fetch all images
+    const { data: allImagesData, error: allImagesError } = await supabase
+      .from('recall_images')
+      .select('id, recall_id, cdn_url')
+      .in('recall_id', recallIds)
+      .order('created_at', { ascending: true });
+
+    if (allImagesError) {
+      console.error('[MapView] Error fetching images:', allImagesError);
+      return recalls.map(r => ({ ...r, images: [] }));
+    }
+
+    // Group images by recall_id
+    const imagesByRecallId = new Map<string, any[]>();
+    (allImagesData || []).forEach(img => {
+      if (!imagesByRecallId.has(img.recall_id)) {
+        imagesByRecallId.set(img.recall_id, []);
+      }
+      imagesByRecallId.get(img.recall_id)!.push(img);
+    });
+
+    // Load first image for each recall
+    const recallsWithImages = await Promise.all(
+      recalls.map(async (recall) => {
+        const recallImages = imagesByRecallId.get(recall.id) || [];
+        
+        if (recallImages.length === 0) {
+          return { ...recall, images: [] };
+        }
+
+        // Load only first image for map markers
+        const firstImage = recallImages[0];
+        let imageUrl = '';
+        
+        if (firstImage.cdn_url) {
+          imageUrl = firstImage.cdn_url;
+        } else {
+          const dataUrl = await getImageDataUrl(firstImage.id);
+          imageUrl = dataUrl || '';
+        }
+        
+        return { ...recall, images: imageUrl ? [imageUrl] : [] };
+      })
+    );
+
+    return recallsWithImages;
   };
 
-  const handleBackToSearch = () => {
+  // Handle region change (when user pans/zooms)
+  const handleRegionChangeComplete = useCallback(async (newRegion: Region) => {
+    console.log('[MapView] Region changed:', newRegion);
+    setRegion(newRegion);
+
+    // Don't reload if showing search results
+    if (hasSearchResults) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error('[MapView] No active session');
+        setLoading(false);
+        return;
+      }
+
+      // Calculate bounding box from region
+      const northEast = {
+        latitude: newRegion.latitude + newRegion.latitudeDelta / 2,
+        longitude: newRegion.longitude + newRegion.longitudeDelta / 2,
+      };
+      const southWest = {
+        latitude: newRegion.latitude - newRegion.latitudeDelta / 2,
+        longitude: newRegion.longitude - newRegion.longitudeDelta / 2,
+      };
+
+      console.log('[MapView] Loading recalls in bounds:', { northEast, southWest });
+
+      const { data, error } = await supabase.functions.invoke('get-recalls-in-bounds', {
+        body: { northEast, southWest },
+      });
+
+      if (error) {
+        console.error('[MapView] Error loading recalls in bounds:', error);
+        setLoading(false);
+        return;
+      }
+
+      console.log(`[MapView] Found ${data.recalls?.length || 0} recalls in bounds`);
+      
+      // Load images for recalls
+      const recallsWithImages = await loadImagesForRecalls(data.recalls || []);
+      setMapRecalls(recallsWithImages);
+      setLoading(false);
+    } catch (error) {
+      console.error('[MapView] Exception loading recalls in bounds:', error);
+      setLoading(false);
+    }
+  }, [hasSearchResults]);
+
+  // Handle marker press
+  const handleMarkerPress = useCallback((recall: RecallMarker) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    router.back();
+    console.log('[MapView] Marker pressed:', recall.id);
+    setSelectedRecall(recall);
+    setShowPreview(true);
+  }, []);
+
+  // Handle preview press (navigate to note editor)
+  const handlePreviewPress = useCallback(() => {
+    if (selectedRecall) {
+      setShowPreview(false);
+      setTimeout(() => {
+        try {
+          router.push(`/note-editor?id=${selectedRecall.id}`);
+        } catch (error) {
+          console.error('[MapView] Error navigating to note editor:', error);
+        }
+      }, 0);
+    }
+  }, [selectedRecall, router]);
+
+  // Handle back button
+  const handleBack = useCallback(() => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setTimeout(() => {
+      try {
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/search');
+        }
+      } catch (error) {
+        console.error('[MapView] Error navigating back:', error);
+      }
+    }, 0);
+  }, [router]);
+
+  // Render marker with custom view
+  const renderMarker = (recall: RecallMarker) => {
+    return (
+      <Marker
+        key={recall.id}
+        coordinate={{
+          latitude: recall.latitude,
+          longitude: recall.longitude,
+        }}
+        onPress={() => handleMarkerPress(recall)}
+      >
+        <View style={styles.markerContainer}>
+          {recall.images && recall.images.length > 0 ? (
+            <Image
+              source={{ uri: recall.images[0] }}
+              style={styles.markerImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.markerTextContainer}>
+              <Text style={styles.markerText} numberOfLines={1}>
+                {recall.text?.substring(0, 2) || '📍'}
+              </Text>
+            </View>
+          )}
+        </View>
+      </Marker>
+    );
   };
+
+  if (loadingLocation) {
+    return (
+      <View style={styles.container}>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            headerTitle: 'Map View',
+            headerStyle: {
+              backgroundColor: colors.background,
+            },
+            headerTintColor: colors.text,
+            headerLeft: () => (
+              <Pressable onPress={handleBack} style={styles.headerButton}>
+                <IconSymbol name="chevron.left" size={24} color={colors.text} />
+              </Pressable>
+            ),
+          }}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Getting your location...</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: hasSearchResults ? 'Search Results Map' : 'Recalls Map',
+          headerTitle: hasSearchResults ? 'Search Results' : 'Nearby Recalls',
           headerStyle: {
             backgroundColor: colors.background,
           },
           headerTintColor: colors.text,
           headerLeft: () => (
-            <Pressable onPress={() => router.back()} style={styles.headerButton}>
+            <Pressable onPress={handleBack} style={styles.headerButton}>
               <IconSymbol name="chevron.left" size={24} color={colors.text} />
             </Pressable>
           ),
         }}
       />
 
-      {Platform.OS === 'web' ? (
-        <React.Fragment>
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>Loading map...</Text>
-            </View>
-          ) : mapNotes.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <IconSymbol name="map" size={80} color={colors.textTertiary} />
-              <Text style={styles.emptyTitle}>No Locations Found</Text>
-              <Text style={styles.emptyText}>
-                {hasSearchResults
-                  ? 'No search results have location data'
-                  : 'Add location data to your recalls to see them on the map'}
-              </Text>
-            </View>
-          ) : (
-            <React.Fragment>
-              <div
-                id="google-map"
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  backgroundColor: colors.background,
-                }}
-              />
+      {region && (
+        <ExpoMaps
+          ref={mapRef}
+          style={styles.map}
+          initialRegion={region}
+          onRegionChangeComplete={handleRegionChangeComplete}
+          showsUserLocation={true}
+          showsMyLocationButton={true}
+          provider="google"
+        >
+          {mapRecalls.map(renderMarker)}
+        </ExpoMaps>
+      )}
 
-              {/* Info Badge */}
-              <View style={styles.infoBadge}>
-                <IconSymbol name="map.fill" size={16} color={colors.primary} />
-                <Text style={styles.infoBadgeText}>
-                  {mapNotes.length} {mapNotes.length === 1 ? 'recall' : 'recalls'} on map
-                </Text>
-              </View>
-
-              {/* Back to Search List FAB */}
-              <Pressable onPress={handleBackToSearch} style={styles.fab}>
-                <IconSymbol name="list.bullet" size={24} color="#FFFFFF" />
-              </Pressable>
-            </React.Fragment>
-          )}
-
-          {/* Note Preview Modal */}
-          <Modal
-            visible={showPreview}
-            transparent={true}
-            animationType="slide"
-            onRequestClose={() => setShowPreview(false)}
-          >
-            <Pressable
-              style={styles.modalOverlay}
-              onPress={() => setShowPreview(false)}
-            >
-              <Pressable
-                style={styles.previewContainer}
-                onPress={(e) => e.stopPropagation()}
-              >
-                {selectedNote && (
-                  <React.Fragment>
-                    <View style={styles.previewHeader}>
-                      <Text style={styles.previewTitle}>Recall Preview</Text>
-                      <Pressable
-                        onPress={() => setShowPreview(false)}
-                        style={styles.closeButton}
-                      >
-                        <IconSymbol name="xmark" size={20} color={colors.text} />
-                      </Pressable>
-                    </View>
-
-                    <ScrollView style={styles.previewContent}>
-                      {selectedNote.images && selectedNote.images.length > 0 && (
-                        <View style={styles.previewImagesContainer}>
-                          <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            style={styles.previewImagesScroll}
-                          >
-                            {selectedNote.images.map((image, index) => (
-                              <Image
-                                key={index}
-                                source={{ uri: image }}
-                                style={styles.previewImage}
-                                resizeMode="cover"
-                              />
-                            ))}
-                          </ScrollView>
-                        </View>
-                      )}
-
-                      {selectedNote.text && (
-                        <Text style={styles.previewText}>{selectedNote.text}</Text>
-                      )}
-
-                      {selectedNote.location && (
-                        <View style={styles.previewLocationContainer}>
-                          <IconSymbol name="map.fill" size={16} color={colors.textSecondary} />
-                          <Text style={styles.previewLocation}>{selectedNote.location}</Text>
-                        </View>
-                      )}
-
-                      <Text style={styles.previewDate}>
-                        {new Date(selectedNote.created_at).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                        })}
-                      </Text>
-                    </ScrollView>
-
-                    <Pressable
-                      onPress={handlePreviewPress}
-                      style={styles.openButton}
-                    >
-                      <Text style={styles.openButtonText}>Open Recall</Text>
-                      <IconSymbol name="arrow.right" size={20} color="#FFFFFF" />
-                    </Pressable>
-                  </React.Fragment>
-                )}
-              </Pressable>
-            </Pressable>
-          </Modal>
-        </React.Fragment>
-      ) : (
-        <View style={styles.notSupportedContainer}>
-          <IconSymbol name="map" size={80} color={colors.textTertiary} />
-          <Text style={styles.notSupportedTitle}>Map View coming soon...</Text>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Text style={styles.backButtonText}>Back to Search</Text>
-          </Pressable>
+      {/* Loading indicator */}
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingBadge}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.loadingBadgeText}>Loading recalls...</Text>
+          </View>
         </View>
       )}
+
+      {/* Info badge */}
+      <View style={styles.infoBadge}>
+        <IconSymbol name="map.fill" size={16} color={colors.primary} />
+        <Text style={styles.infoBadgeText}>
+          {mapRecalls.length} {mapRecalls.length === 1 ? 'recall' : 'recalls'}
+        </Text>
+      </View>
+
+      {/* Back to list FAB */}
+      {hasSearchResults && (
+        <Pressable onPress={handleBack} style={styles.fab}>
+          <IconSymbol name="list.bullet" size={24} color="#FFFFFF" />
+        </Pressable>
+      )}
+
+      {/* Mini recall card preview modal */}
+      <Modal
+        visible={showPreview}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowPreview(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowPreview(false)}
+        >
+          <Pressable
+            style={styles.previewContainer}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {selectedRecall && (
+              <React.Fragment>
+                <View style={styles.previewHeader}>
+                  <View style={styles.previewHeaderLeft}>
+                    <IconSymbol name="mappin.circle.fill" size={24} color={colors.primary} />
+                    <Text style={styles.previewTitle}>Recall</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => setShowPreview(false)}
+                    style={styles.closeButton}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <IconSymbol name="xmark" size={20} color={colors.text} />
+                  </Pressable>
+                </View>
+
+                <ScrollView style={styles.previewContent} showsVerticalScrollIndicator={false}>
+                  {/* Prioritize images */}
+                  {selectedRecall.images && selectedRecall.images.length > 0 && (
+                    <View style={styles.previewImageContainer}>
+                      <Image
+                        source={{ uri: selectedRecall.images[0] }}
+                        style={styles.previewImage}
+                        resizeMode="cover"
+                      />
+                    </View>
+                  )}
+
+                  {/* Show text if available */}
+                  {selectedRecall.text && (
+                    <Text style={styles.previewText} numberOfLines={4}>
+                      {selectedRecall.text}
+                    </Text>
+                  )}
+
+                  {/* Location */}
+                  {selectedRecall.location && (
+                    <View style={styles.previewLocationContainer}>
+                      <IconSymbol name="mappin" size={16} color={colors.textSecondary} />
+                      <Text style={styles.previewLocation} numberOfLines={1}>
+                        {selectedRecall.location}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Date */}
+                  <Text style={styles.previewDate}>
+                    {new Date(selectedRecall.created_at).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </Text>
+                </ScrollView>
+
+                {/* Open button */}
+                <Pressable
+                  onPress={handlePreviewPress}
+                  style={styles.openButton}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Text style={styles.openButtonText}>Open Recall</Text>
+                  <IconSymbol name="arrow.right" size={20} color="#FFFFFF" />
+                </Pressable>
+              </React.Fragment>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -483,6 +560,10 @@ const styles = StyleSheet.create({
     padding: 8,
     marginHorizontal: 8,
   },
+  map: {
+    width: '100%',
+    height: '100%',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -493,23 +574,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  loadingOverlay: {
+    position: 'absolute',
+    top: 80,
+    left: 0,
+    right: 0,
     alignItems: 'center',
-    paddingHorizontal: 32,
+    zIndex: 10,
   },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+  loadingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.card,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
+    elevation: 4,
+  },
+  loadingBadgeText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
   },
   infoBadge: {
     position: 'absolute',
@@ -519,10 +606,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     backgroundColor: colors.card,
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 20,
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.3)',
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
     elevation: 4,
   },
   infoBadgeText: {
@@ -543,6 +630,35 @@ const styles = StyleSheet.create({
     boxShadow: '0px 4px 16px rgba(255, 107, 122, 0.4)',
     elevation: 8,
   },
+  markerContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.3)',
+    elevation: 5,
+  },
+  markerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  markerTextContainer: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  markerText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -552,7 +668,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '80%',
+    maxHeight: SCREEN_HEIGHT * 0.7,
     paddingBottom: 32,
   },
   previewHeader: {
@@ -562,6 +678,11 @@ const styles = StyleSheet.create({
     padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  previewHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   previewTitle: {
     fontSize: 20,
@@ -574,17 +695,15 @@ const styles = StyleSheet.create({
   previewContent: {
     padding: 20,
   },
-  previewImagesContainer: {
+  previewImageContainer: {
     marginBottom: 16,
-  },
-  previewImagesScroll: {
-    flexDirection: 'row',
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   previewImage: {
-    width: 200,
+    width: '100%',
     height: 200,
     borderRadius: 12,
-    marginRight: 12,
   },
   previewText: {
     fontSize: 16,
@@ -601,6 +720,7 @@ const styles = StyleSheet.create({
   previewLocation: {
     fontSize: 14,
     color: colors.textSecondary,
+    flex: 1,
   },
   previewDate: {
     fontSize: 12,
@@ -615,40 +735,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     paddingVertical: 16,
     borderRadius: 12,
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.3)',
+    elevation: 3,
   },
   openButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  notSupportedContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  notSupportedTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  notSupportedText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
-  },
-  backButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-  },
-  backButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
