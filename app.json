@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Recall",
@@ -24,6 +25,7 @@
         ],
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to save and share images.",
         "NSCameraUsageDescription": "This app needs access to your camera to take photos for your recalls.",
+        "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show nearby recalls on the map.",
         "UISupportsDocumentBrowser": true,
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true,
@@ -55,6 +57,10 @@
       "edgeToEdgeEnabled": false,
       "package": "com.anonymous.Natively",
       "versionCode": 1,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
       "intentFilters": [
         {
           "action": "android.intent.action.VIEW",
@@ -141,6 +147,12 @@
       "expo-font",
       "expo-router",
       "expo-web-browser",
+      [
+        "expo-maps",
+        {
+          "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY"
+        }
+      ],
       [
         "expo-build-properties",
         {
