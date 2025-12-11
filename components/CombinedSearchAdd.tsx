@@ -355,18 +355,29 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
-        {/* Search Icon - Top Right */}
-        <Pressable
-          style={styles.searchIconTopRight}
-          onPress={handleSearchPress}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <IconSymbol
-            name="magnifyingglass"
-            size={24}
-            color={colors.text}
-          />
-        </Pressable>
+        {/* Floating Action Icons - Image and Camera above the component */}
+        {showDrawer && (
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={styles.floatingActionsContainer}
+          >
+            <Pressable
+              style={styles.floatingActionButton}
+              onPress={handleImagePick}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+            </Pressable>
+
+            <Pressable
+              style={styles.floatingActionButton}
+              onPress={handleCameraPress}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+            </Pressable>
+          </Animated.View>
+        )}
 
         {/* Main Input Container - Single border only */}
         <View style={styles.containerWrapper}>
@@ -439,6 +450,20 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   </Text>
                 </Pressable>
 
+                {/* Search Icon - Top Right within component */}
+                <Pressable
+                  style={styles.searchButton}
+                  onPress={handleSearchPress}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <IconSymbol
+                    name="magnifyingglass"
+                    size={28}
+                    color={colors.text}
+                  />
+                </Pressable>
+
+                {/* Create Recall Button - Top Right */}
                 <Pressable
                   style={[styles.submitButton, (!text.trim() && images.length === 0) && styles.submitButtonDisabled]}
                   onPress={handleCreateRecall}
@@ -452,51 +477,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
           </View>
         </View>
 
-        {/* Slide-up Drawer - Location option removed */}
+        {/* Backdrop for drawer */}
         {showDrawer && (
-          <Animated.View
-            entering={SlideInDown.duration(300)}
-            exiting={SlideOutDown.duration(300)}
-            style={styles.drawerOverlay}
-          >
-            <Pressable style={styles.drawerBackdrop} onPress={() => setShowDrawer(false)} />
-            <View style={styles.drawer}>
-              <View style={styles.drawerHandle} />
-              <Text style={styles.drawerTitle}>Sources</Text>
-
-              <View style={styles.drawerOptions}>
-                <Pressable
-                  style={styles.drawerOption}
-                  onPress={handleImagePick}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <View style={styles.drawerOptionIcon}>
-                    <IconSymbol name="photo.fill" size={32} color={colors.primary} />
-                  </View>
-                  <Text style={styles.drawerOptionText}>Image</Text>
-                </Pressable>
-
-                <Pressable
-                  style={styles.drawerOption}
-                  onPress={handleCameraPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <View style={styles.drawerOptionIcon}>
-                    <IconSymbol name="camera.fill" size={32} color={colors.primary} />
-                  </View>
-                  <Text style={styles.drawerOptionText}>Camera</Text>
-                </Pressable>
-              </View>
-
-              <Pressable
-                style={styles.drawerCloseButton}
-                onPress={() => setShowDrawer(false)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <IconSymbol name="xmark.circle.fill" size={28} color={colors.textSecondary} />
-              </Pressable>
-            </View>
-          </Animated.View>
+          <Pressable 
+            style={styles.drawerBackdrop} 
+            onPress={() => setShowDrawer(false)} 
+          />
         )}
       </Animated.View>
     </TouchableWithoutFeedback>
@@ -512,18 +498,25 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 1000,
   },
-  searchIconTopRight: {
+  floatingActionsContainer: {
     position: 'absolute',
-    top: -48,
-    right: 16,
-    zIndex: 1001,
+    bottom: 95,
+    right: 24,
+    flexDirection: 'column',
+    gap: 12,
+    zIndex: 1002,
+  },
+  floatingActionButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: colors.background,
-    borderRadius: 20,
-    padding: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 2,
     borderColor: colors.primary,
-    boxShadow: '0px 2px 8px rgba(255, 107, 122, 0.3)',
-    elevation: 4,
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
+    elevation: 8,
   },
   containerWrapper: {
     position: 'relative',
@@ -545,7 +538,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 4,
     gap: 4,
-    minHeight: 70,
+    minHeight: 77, // Increased by 10% from 70
   },
   imagesScroll: {
     maxHeight: 100,
@@ -586,6 +579,7 @@ const styles = StyleSheet.create({
   },
   plusButton: {
     padding: 4,
+    paddingLeft: 8, // leftPadding: 8
   },
   locationPill: {
     flexDirection: 'row',
@@ -596,7 +590,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 16,
     flex: 1,
-    maxWidth: 200,
+    maxWidth: 160,
   },
   locationPillText: {
     fontSize: 13,
@@ -604,78 +598,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
+  searchButton: {
+    padding: 4,
+  },
   submitButton: {
     padding: 4,
+    paddingRight: 8, // rightPadding: 8
   },
   submitButtonDisabled: {
     opacity: 0.4,
   },
-  drawerOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 10,
-    right: 10,
-    bottom: -8,
-    zIndex: 1000,
-  },
   drawerBackdrop: {
     position: 'absolute',
-    top: 0,
-    left: 5,
-    right: 5,
-    bottom: -4,
+    top: -1000,
+    left: -1000,
+    right: -1000,
+    bottom: -1000,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  drawer: {
-    position: 'absolute',
-    bottom: -4,
-    left: 5,
-    right: 5,
-    backgroundColor: '#323232',
-    borderRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-  },
-  drawerHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
-  drawerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 24,
-  },
-  drawerOptions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    gap: 16,
-  },
-  drawerOption: {
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  drawerOptionIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 16,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  drawerOptionText: {
-    fontSize: 16,
-    color: colors.text,
-    fontWeight: '600',
-  },
-  drawerCloseButton: {
-    position: 'absolute',
-    top: 24,
-    right: 24,
+    zIndex: 999,
   },
 });
