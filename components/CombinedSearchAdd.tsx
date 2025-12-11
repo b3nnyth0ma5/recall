@@ -114,6 +114,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       };
 
       setCurrentLocation(locationData);
+      setLocation(locationData); // Set as default location
       console.log('Current location obtained:', locationData);
     } catch (error) {
       console.error('Error getting current location:', error);
@@ -324,7 +325,8 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       // Reset form
       setText('');
       setImages([]);
-      setLocation(null);
+      // Reset location to current location after creating recall
+      setLocation(currentLocation);
       
       // Dismiss keyboard after creating recall
       console.log('[CombinedSearchAdd] Dismissing keyboard after recall creation');
@@ -346,10 +348,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     setImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleRemoveLocation = () => {
-    setLocation(null);
-  };
-
   const dismissKeyboard = () => {
     Keyboard.dismiss();
   };
@@ -357,23 +355,23 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
+        {/* Search Icon - Top Right */}
+        <Pressable
+          style={styles.searchIconTopRight}
+          onPress={handleSearchPress}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <IconSymbol
+            name="magnifyingglass"
+            size={24}
+            color={colors.text}
+          />
+        </Pressable>
+
         {/* Main Input Container - Single border only */}
         <View style={styles.containerWrapper}>
           <View style={styles.container}>
             <View style={styles.inputContainer}>
-              {/* Location Display - Above Images */}
-              {location && (
-                <Animated.View entering={FadeIn.duration(300)} style={styles.locationChip}>
-                  <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
-                  <Text style={styles.locationText} numberOfLines={1}>
-                    {location.name}
-                  </Text>
-                  <Pressable onPress={handleRemoveLocation} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <IconSymbol name="xmark.circle.fill" size={16} color={colors.textSecondary} />
-                  </Pressable>
-                </Animated.View>
-              )}
-
               {/* Images Display - Horizontal Scrollable */}
               {images.length > 0 && (
                 <ScrollView 
@@ -429,18 +427,16 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   <IconSymbol name="plus.circle.fill" size={32} color={colors.text} />
                 </Pressable>
 
-                <View style={styles.spacer} />
-
+                {/* Location Pill - Always visible between + and create icons */}
                 <Pressable
-                  style={styles.searchButton}
-                  onPress={handleSearchPress}
+                  style={styles.locationPill}
+                  onPress={handleLocationPress}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <IconSymbol
-                    name="magnifyingglass"
-                    size={24}
-                    color={colors.text}
-                  />
+                  <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
+                  <Text style={styles.locationPillText} numberOfLines={1}>
+                    {location?.name || currentLocation?.name || 'Add Location'}
+                  </Text>
                 </Pressable>
 
                 <Pressable
@@ -456,7 +452,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
           </View>
         </View>
 
-        {/* Slide-up Drawer */}
+        {/* Slide-up Drawer - Location option removed */}
         {showDrawer && (
           <Animated.View
             entering={SlideInDown.duration(300)}
@@ -490,17 +486,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   </View>
                   <Text style={styles.drawerOptionText}>Camera</Text>
                 </Pressable>
-
-                <Pressable
-                  style={styles.drawerOption}
-                  onPress={handleLocationPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <View style={styles.drawerOptionIcon}>
-                    <IconSymbol name="mappin.circle.fill" size={32} color={colors.primary} />
-                  </View>
-                  <Text style={styles.drawerOptionText}>Location</Text>
-                </Pressable>
               </View>
 
               <Pressable
@@ -527,6 +512,19 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 1000,
   },
+  searchIconTopRight: {
+    position: 'absolute',
+    top: -48,
+    right: 16,
+    zIndex: 1001,
+    backgroundColor: colors.background,
+    borderRadius: 20,
+    padding: 8,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    boxShadow: '0px 2px 8px rgba(255, 107, 122, 0.3)',
+    elevation: 4,
+  },
   containerWrapper: {
     position: 'relative',
     marginHorizontal: 16,
@@ -548,22 +546,6 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
     gap: 4,
     minHeight: 70,
-  },
-  locationChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: `${colors.primary}20`,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    alignSelf: 'flex-start',
-  },
-  locationText: {
-    fontSize: 13,
-    color: colors.primary,
-    fontWeight: '600',
-    maxWidth: 200,
   },
   imagesScroll: {
     maxHeight: 100,
@@ -605,11 +587,22 @@ const styles = StyleSheet.create({
   plusButton: {
     padding: 4,
   },
-  spacer: {
+  locationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: `${colors.primary}20`,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
     flex: 1,
+    maxWidth: 200,
   },
-  searchButton: {
-    padding: 4,
+  locationPillText: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '600',
+    flex: 1,
   },
   submitButton: {
     padding: 4,
