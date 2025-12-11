@@ -27,7 +27,6 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { BlurView } from 'expo-blur';
 import { supabase } from '@/utils/supabase';
 
 interface CombinedSearchAddProps {
@@ -358,11 +357,8 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
-        {/* Main Input Container with Enhanced Border */}
+        {/* Main Input Container - Single border only */}
         <View style={styles.containerWrapper}>
-          <View style={styles.borderGlow} pointerEvents="none">
-            <BlurView intensity={30} tint="light" style={StyleSheet.absoluteFill} />
-          </View>
           <View style={styles.container}>
             <View style={styles.inputContainer}>
               {/* Location Display - Above Images */}
@@ -535,30 +531,14 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginHorizontal: 16,
   },
-  borderGlow: {
-    position: 'absolute',
-    top: -3,
-    left: -3,
-    right: -3,
-    bottom: -3,
-    borderRadius: 22,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: colors.primary,
-    zIndex: 1,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 8,
-    elevation: 8,
-  },
   container: {
     backgroundColor: colors.background,
     borderRadius: 18,
     borderWidth: 2,
     borderColor: colors.primary,
     overflow: 'hidden',
-    zIndex: 2,
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.3)',
+    elevation: 8,
   },
   inputContainer: {
     backgroundColor: '#333333',

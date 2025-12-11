@@ -530,16 +530,17 @@ export default function SearchScreen() {
                 </Text>
                 {notes.map((note) => (
                   <View key={note.id} style={styles.noteWrapper}>
-                    <View style={styles.badgeRow}>
-                      <View style={styles.badgeRowLeft}>
-                        {note.used_for_answer && (
+                    {/* FIXED: Increased z-index to ensure badge is above image */}
+                    {note.used_for_answer && (
+                      <View style={styles.badgeRow}>
+                        <View style={styles.badgeRowLeft}>
                           <View style={styles.answerSourceBadge}>
                             <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
                             <Text style={styles.answerSourceText}>Used for answer</Text>
                           </View>
-                        )}
+                        </View>
                       </View>
-                    </View>
+                    )}
                     <View style={styles.noteCardContainer}>
                       <NoteCard
                         note={note}
@@ -863,6 +864,7 @@ const styles = StyleSheet.create({
   },
   noteWrapper: {
     marginBottom: 16,
+    position: 'relative',
   },
   badgeRow: {
     flexDirection: 'row',
@@ -871,7 +873,8 @@ const styles = StyleSheet.create({
     marginBottom: -12,
     marginLeft: 12,
     marginRight: 12,
-    zIndex: 1,
+    zIndex: 100,
+    elevation: 100,
   },
   badgeRowLeft: {
     flexDirection: 'row',
@@ -886,6 +889,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12 * 1.15,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
+    zIndex: 100,
+    elevation: 100,
   },
   answerSourceText: {
     fontSize: 12,
@@ -894,6 +899,7 @@ const styles = StyleSheet.create({
   },
   noteCardContainer: {
     position: 'relative',
+    zIndex: 1,
   },
   mapFab: {
     position: 'absolute',

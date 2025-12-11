@@ -285,8 +285,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   container: {
-    marginBottom: 8,
-    paddingTop: 8,
+    marginBottom: 0,
+    paddingTop: 0,
   },
   scrollContent: {
     paddingHorizontal: 8,

@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform, Alert, Keyboard } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
@@ -30,6 +30,7 @@ export default function HomeScreen() {
   const [loadingPreferences, setLoadingPreferences] = useState(true);
   const [hasCheckedForRecalls, setHasCheckedForRecalls] = useState(false);
   const [hasRecalls, setHasRecalls] = useState(false);
+  const insets = useSafeAreaInsets();
   // NEW: Track pending image uploads per recall
   const pendingImageUploadsRef = useRef<Map<string, number>>(new Map());
 
@@ -455,9 +456,27 @@ export default function HomeScreen() {
         }}
       />
 
-      {/* Custom Header with SafeAreaView - Prevents obscuring by dynamic island/status bar */}
-      <SafeAreaView edges={['top']} style={styles.safeAreaHeader}>
-        <View style={styles.customHeader}>
+      {/* Main Content ScrollView - Header now scrolls with content */}
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.scrollContent,
+          combinedAddSearchEnabled && styles.scrollContentWithCombined,
+        ]}
+        onScroll={handleScroll}
+        scrollEventThrottle={400}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
+        {/* Custom Header - Now inside ScrollView so it scrolls with content */}
+        <View style={[styles.customHeader, { paddingTop: insets.top }]}>
           <Pressable 
             onPress={handleRecallIconPress} 
             style={styles.headerIconButton}
@@ -484,28 +503,8 @@ export default function HomeScreen() {
             />
           </Pressable>
         </View>
-      </SafeAreaView>
 
-      {/* Main Content ScrollView - Category Carousel is now inside and scrolls with content */}
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          combinedAddSearchEnabled && styles.scrollContentWithCombined,
-        ]}
-        onScroll={handleScroll}
-        scrollEventThrottle={400}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
-        }
-      >
-        {/* Category Carousel - Now scrolls with content */}
+        {/* Category Carousel - Reduced gap by 25% (from 8 to 6) */}
         {user && (
           <View style={styles.categoryCarouselContainer}>
             <CategoryCarousel
@@ -594,16 +593,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  safeAreaHeader: {
-    backgroundColor: colors.background,
-  },
   customHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: colors.background,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 12,
   },
   headerTitle: {
     fontSize: 32,
@@ -629,8 +625,8 @@ const styles = StyleSheet.create({
     paddingBottom: 200,
   },
   categoryCarouselContainer: {
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: 6,
+    paddingBottom: 6,
   },
   loadingContainer: {
     flex: 1,

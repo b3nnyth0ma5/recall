@@ -27,7 +27,8 @@ interface NoteCardProps {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 8;
 const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 4.8);
-const IMAGE_HEIGHT = IMAGE_WIDTH * 1.08;
+// FIXED: Reduced image height by 10% (from 1.08 to 0.972)
+const IMAGE_HEIGHT = IMAGE_WIDTH * 0.972;
 const IMAGE_SPACING = 3;
 
 // Helper function to check if text contains URLs
