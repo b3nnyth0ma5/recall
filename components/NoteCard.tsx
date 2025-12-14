@@ -13,7 +13,15 @@ import * as Haptics from 'expo-haptics';
 import { NoteCardSkeleton } from './NoteCardSkeleton';
 import { SkeletonLoader } from './SkeletonLoader';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { 
+  useAnimatedStyle, 
+  useSharedValue, 
+  withTiming, 
+  withSequence,
+  runOnJS,
+  FadeOut,
+  SlideOutLeft,
+} from 'react-native-reanimated';
 
 interface NoteCardProps {
   note: Note;
@@ -73,6 +81,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   
   // Track if images are currently being uploaded
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+
+  // Animation values for deletion
+  const opacity = useSharedValue(1);
+  const scale = useSharedValue(1);
+  const height = useSharedValue(1);
 
   // Initialize with first TWO images for better performance
   useEffect(() => {
@@ -307,23 +320,33 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   const handleDelete = async () => {
-    console.log('[NoteCard] Delete action triggered - immediate deletion without confirmation');
+    console.log('[NoteCard] Delete action triggered - starting deletion animation');
     
     // Close the swipeable immediately
     swipeableRef.current?.close();
     
-    // Call onDelete callback immediately
-    if (onDelete) {
-      onDelete();
-      
-      // Trigger success haptic feedback after deletion
-      if (Platform.OS !== 'web') {
-        try {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          console.log('[NoteCard] Success haptic feedback triggered');
-        } catch (error) {
-          console.error('[NoteCard] Error triggering haptic feedback:', error);
+    // Animate deletion: fade out and scale down
+    opacity.value = withTiming(0, { duration: 300 });
+    scale.value = withSequence(
+      withTiming(0.95, { duration: 150 }),
+      withTiming(0, { duration: 150 })
+    );
+    height.value = withTiming(0, { duration: 300 }, (finished) => {
+      if (finished) {
+        // Call onDelete callback after animation completes
+        if (onDelete) {
+          runOnJS(onDelete)();
         }
+      }
+    });
+    
+    // Trigger success haptic feedback
+    if (Platform.OS !== 'web') {
+      try {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        console.log('[NoteCard] Success haptic feedback triggered');
+      } catch (error) {
+        console.error('[NoteCard] Error triggering haptic feedback:', error);
       }
     }
   };
@@ -361,8 +384,19 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   // Check if note has people mentioned
   const hasPeople = note.people && note.people.length > 0;
 
+  // Animated style for deletion
+  const animatedCardStyle = useAnimatedStyle(() => {
+    return {
+      opacity: opacity.value,
+      transform: [{ scale: scale.value }],
+      height: height.value === 0 ? 0 : undefined,
+      marginBottom: height.value === 0 ? 0 : 16,
+      overflow: 'hidden',
+    };
+  });
+
   return (
-    <View style={styles.card}>
+    <Animated.View style={[styles.card, animatedCardStyle]}>
       {/* People Avatars - Top Right Edge (Superscript Position) */}
       {hasPeople && (
         <View style={styles.peopleAvatarsContainer}>
@@ -528,7 +562,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           onClose={() => setShowFullScreenImage(false)}
         />
       )}
-    </View>
+    </Animated.View>
   );
 }, (prevProps, nextProps) => {
   // Custom comparison function for memo
@@ -716,7 +750,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'flex-end',
     paddingRight: 0,
-    width: '100%',
+    width: '25%',
   },
   deleteAction: {
     backgroundColor: colors.error,

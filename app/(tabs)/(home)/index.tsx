@@ -504,7 +504,7 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        {/* Category Carousel - Reduced gap by 25% (from 8 to 6) */}
+        {/* Category Carousel - Reduced gap by 10% (from 5.4 to 4.86) */}
         {user && (
           <View style={styles.categoryCarouselContainer}>
             <CategoryCarousel
@@ -625,8 +625,8 @@ const styles = StyleSheet.create({
     paddingBottom: 200,
   },
   categoryCarouselContainer: {
-    paddingTop: 6,
-    paddingBottom: 6,
+    paddingTop: 4.86,
+    paddingBottom: 4.86,
   },
   loadingContainer: {
     flex: 1,

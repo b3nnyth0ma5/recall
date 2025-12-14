@@ -357,7 +357,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
-        {/* Floating Action Icons - Image and Camera above the component */}
+        {/* Floating Action Icons - Image and Camera above the component, aligned with plus button */}
         {showDrawer && (
           <Animated.View
             entering={FadeIn.duration(200)}
@@ -430,9 +430,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 enablesReturnKeyAutomatically={false}
               />
 
-              {/* Button Row - UPDATED: Icons swapped positions */}
+              {/* Button Row - UPDATED: New layout with locationPill taking available width */}
               <View style={styles.inputRow}>
-                {/* Search Icon - Now on the left (where plus was) */}
+                {/* Search Icon - Left side */}
                 <Pressable
                   style={styles.searchButton}
                   onPress={handleSearchPress}
@@ -445,7 +445,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   />
                 </Pressable>
 
-                {/* Location Pill - Always visible between search and create icons */}
+                {/* Location Pill - Takes available width between search and buttons */}
                 <Pressable
                   style={styles.locationPill}
                   onPress={handleLocationPress}
@@ -457,7 +457,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   </Text>
                 </Pressable>
 
-                {/* Create Recall Button - Now in the middle (where search was) */}
+                {/* Submit Button - Next to plus button on the right */}
                 <Pressable
                   style={[styles.submitButton, (!text.trim() && images.length === 0) && styles.submitButtonDisabled]}
                   onPress={handleCreateRecall}
@@ -467,7 +467,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   <IconSymbol name="arrow.up.circle.fill" size={32} color={colors.primary} />
                 </Pressable>
 
-                {/* Plus Button - Now on the right (where create recall was) */}
+                {/* Plus Button - Far right, vertically aligned with camera FABs */}
                 <Pressable
                   style={styles.plusButton}
                   onPress={handlePlusPress}
@@ -504,7 +504,7 @@ const styles = StyleSheet.create({
   floatingActionsContainer: {
     position: 'absolute',
     bottom: 95,
-    right: 24,
+    right: 8,
     flexDirection: 'column',
     gap: 12,
     zIndex: 1002,
@@ -541,10 +541,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 4,
     gap: 4,
-    minHeight: 81, // Increased by 5% from 77 (77 * 1.05 = 80.85 ≈ 81)
+    minHeight: 90,
   },
   imagesScroll: {
-    maxHeight: 100,
+    maxHeight: 150,
   },
   imagesScrollContent: {
     paddingRight: 8,
@@ -569,7 +569,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     minHeight: 38,
-    maxHeight: 100,
+    maxHeight: 150,
     paddingVertical: 8,
     paddingHorizontal: 4,
     zIndex: 1,
@@ -581,19 +581,19 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   searchButton: {
-    padding: 4,
-    paddingLeft: 4, // Reduced left padding for icon near border
+    padding: 8,
+    paddingLeft: 0,
   },
   locationPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     backgroundColor: `${colors.primary}20`,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     paddingVertical: 8,
     borderRadius: 16,
     flex: 1,
-    maxWidth: 160,
+    minWidth: 0,
   },
   locationPillText: {
     fontSize: 13,
@@ -602,14 +602,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   submitButton: {
-    padding: 4,
+    padding: 0,
   },
   submitButtonDisabled: {
     opacity: 0.4,
   },
   plusButton: {
     padding: 4,
-    paddingRight: 4, // Reduced right padding for icon near border
+    paddingRight: 0,
   },
   drawerBackdrop: {
     position: 'absolute',
