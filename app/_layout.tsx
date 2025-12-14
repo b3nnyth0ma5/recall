@@ -6,8 +6,9 @@ import { WidgetProvider } from '@/contexts/WidgetContext';
 import { PeopleGraphProvider, usePeopleGraph } from '@/contexts/PeopleGraphContext';
 import { PeopleGraph } from '@/components/PeopleGraph';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Platform } from 'react-native';
 import { supabase } from '@/utils/supabase';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const PeopleGraphOverlay = memo(() => {
   const { showGraph, people, anchorPosition, closeGraph } = usePeopleGraph();
@@ -36,6 +37,27 @@ const PeopleGraphOverlay = memo(() => {
 });
 
 PeopleGraphOverlay.displayName = 'PeopleGraphOverlay';
+
+// iOS Status Bar Background Component
+const IOSStatusBarBackground = memo(() => {
+  const insets = useSafeAreaInsets();
+  
+  // Only show on iOS
+  if (Platform.OS !== 'ios') {
+    return null;
+  }
+
+  return (
+    <View 
+      style={[
+        styles.iosStatusBarBackground, 
+        { height: insets.top }
+      ]} 
+    />
+  );
+});
+
+IOSStatusBarBackground.displayName = 'IOSStatusBarBackground';
 
 function RootLayoutNav() {
   const { user, loading } = useAuth();
@@ -190,6 +212,9 @@ function RootLayoutNav() {
 
   return (
     <View style={styles.container}>
+      {/* iOS Status Bar Background - Thin black bar */}
+      <IOSStatusBarBackground />
+      
       <Stack
         screenOptions={{
           headerShown: false,
@@ -260,5 +285,14 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 999999,
     elevation: 999999,
+  },
+  iosStatusBarBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#000000',
+    zIndex: 999998,
+    elevation: 999998,
   },
 });

@@ -190,13 +190,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    // If there's no search query, just navigate to search screen to show history
+    // FIXED: Navigate to search screen WITHOUT showing zero state by default
+    // If there's no search query, navigate to search screen to show history (not zero state)
     if (!searchQuery) {
       console.log('[CombinedSearchAdd] Empty search query - navigating to search screen to show history');
       
-      // FIXED: Use setTimeout to break the call stack and prevent recursion
+      // Use setTimeout to break the call stack and prevent recursion
       setTimeout(() => {
         try {
+          // Navigate without any query parameter - search screen will show history, not zero state
           router.push('/search');
         } catch (error) {
           console.error('[CombinedSearchAdd] Error navigating to search:', error);
@@ -214,7 +216,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     
     console.log('[CombinedSearchAdd] Navigating to search screen:', searchRoute);
     
-    // FIXED: Use setTimeout to break the call stack and prevent recursion
+    // Use setTimeout to break the call stack and prevent recursion
     setTimeout(() => {
       try {
         router.push(searchRoute);
@@ -294,7 +296,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const handleLocationPress = () => {
     setShowDrawer(false);
     
-    // FIXED: Use setTimeout to break the call stack and prevent recursion
+    // Use setTimeout to break the call stack and prevent recursion
     setTimeout(() => {
       try {
         router.push('/location-search');
@@ -428,29 +430,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 enablesReturnKeyAutomatically={false}
               />
 
-              {/* Button Row */}
+              {/* Button Row - UPDATED: Icons swapped positions */}
               <View style={styles.inputRow}>
-                <Pressable
-                  style={styles.plusButton}
-                  onPress={handlePlusPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol name="plus.circle.fill" size={32} color={colors.text} />
-                </Pressable>
-
-                {/* Location Pill - Always visible between + and create icons */}
-                <Pressable
-                  style={styles.locationPill}
-                  onPress={handleLocationPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
-                  <Text style={styles.locationPillText} numberOfLines={1}>
-                    {location?.name || currentLocation?.name || 'Add Location'}
-                  </Text>
-                </Pressable>
-
-                {/* Search Icon - Top Right within component */}
+                {/* Search Icon - Now on the left (where plus was) */}
                 <Pressable
                   style={styles.searchButton}
                   onPress={handleSearchPress}
@@ -463,7 +445,19 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   />
                 </Pressable>
 
-                {/* Create Recall Button - Top Right */}
+                {/* Location Pill - Always visible between search and create icons */}
+                <Pressable
+                  style={styles.locationPill}
+                  onPress={handleLocationPress}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
+                  <Text style={styles.locationPillText} numberOfLines={1}>
+                    {location?.name || currentLocation?.name || 'Add Location'}
+                  </Text>
+                </Pressable>
+
+                {/* Create Recall Button - Now in the middle (where search was) */}
                 <Pressable
                   style={[styles.submitButton, (!text.trim() && images.length === 0) && styles.submitButtonDisabled]}
                   onPress={handleCreateRecall}
@@ -471,6 +465,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <IconSymbol name="arrow.up.circle.fill" size={32} color={colors.primary} />
+                </Pressable>
+
+                {/* Plus Button - Now on the right (where create recall was) */}
+                <Pressable
+                  style={styles.plusButton}
+                  onPress={handlePlusPress}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <IconSymbol name="plus.circle.fill" size={32} color={colors.text} />
                 </Pressable>
               </View>
             </View>
@@ -538,7 +541,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 4,
     gap: 4,
-    minHeight: 77, // Increased by 10% from 70
+    minHeight: 81, // Increased by 5% from 77 (77 * 1.05 = 80.85 ≈ 81)
   },
   imagesScroll: {
     maxHeight: 100,
@@ -577,9 +580,9 @@ const styles = StyleSheet.create({
     gap: 8,
     zIndex: 1,
   },
-  plusButton: {
+  searchButton: {
     padding: 4,
-    paddingLeft: 8, // leftPadding: 8
+    paddingLeft: 4, // Reduced left padding for icon near border
   },
   locationPill: {
     flexDirection: 'row',
@@ -598,15 +601,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
-  searchButton: {
-    padding: 4,
-  },
   submitButton: {
     padding: 4,
-    paddingRight: 8, // rightPadding: 8
   },
   submitButtonDisabled: {
     opacity: 0.4,
+  },
+  plusButton: {
+    padding: 4,
+    paddingRight: 4, // Reduced right padding for icon near border
   },
   drawerBackdrop: {
     position: 'absolute',

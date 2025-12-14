@@ -455,13 +455,14 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         </View>
       )}
 
-      {/* Swipeable Content - Text, Location, Time */}
+      {/* Swipeable Content - Text, Location, Time - FULL WIDTH DELETE UI */}
       <Swipeable
         ref={swipeableRef}
         renderRightActions={renderRightActions}
         overshootRight={false}
         friction={2}
         rightThreshold={40}
+        containerStyle={styles.swipeableContainer}
       >
         <Pressable onPress={onPress} style={styles.cardContent}>
           {/* Text Content */}
@@ -551,6 +552,10 @@ const styles = StyleSheet.create({
     overflow: 'visible',
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
     elevation: 2,
+  },
+  swipeableContainer: {
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   cardContent: {
     padding: 4,
@@ -711,6 +716,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'flex-end',
     paddingRight: 0,
+    width: '100%',
   },
   deleteAction: {
     backgroundColor: colors.error,
