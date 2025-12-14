@@ -135,6 +135,8 @@ function RootLayoutNav() {
     const inEmailConfirmedScreen = segments[0] === 'email-confirmed';
     const inOtherScreens = segments[0] === 'search' || segments[0] === 'location-search' || segments[0] === 'map-view' || segments[0] === 'shared-recall' || segments[0] === 'person-recalls' || segments[0] === 'people-word-cloud';
 
+    const currentSegment = segments[0];
+
     console.log('[Routing] Current state:', { 
       user: !!user, 
       inAuthGroup, 
@@ -208,7 +210,7 @@ function RootLayoutNav() {
       hasInitializedRef.current = true;
       console.log('[Routing] No navigation needed, marking as initialized');
     }
-  }, [user, loading, checkingOnboarding, needsOnboarding, segments[0], router]);
+  }, [user, loading, checkingOnboarding, needsOnboarding, segments, router]);
 
   return (
     <View style={styles.container}>

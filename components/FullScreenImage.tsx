@@ -135,7 +135,7 @@ export function FullScreenImage({
         });
       }, 100);
     }
-  }, [visible, initialIndex, images, imageIds]);
+  }, [visible, initialIndex, images, imageIds, translateY, contextY]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;

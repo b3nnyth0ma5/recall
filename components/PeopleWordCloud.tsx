@@ -42,7 +42,7 @@ export function PeopleWordCloud({
     if (visible && user) {
       loadPeople();
     }
-  }, [visible, user]);
+  }, [visible, user, loadPeople]);
 
   useEffect(() => {
     setSelectedPeople(initialSelectedPeople);

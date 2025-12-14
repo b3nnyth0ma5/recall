@@ -461,7 +461,7 @@ export default function PersonRecallsScreen() {
     } catch (error) {
       console.error('Error handling photo press:', error);
     }
-  }, [personPhotoUrl]);
+  }, [personPhotoUrl, handlePhotoUpload, handlePhotoRemove]);
 
   const handlePhotoUpload = async (uri: string) => {
     try {

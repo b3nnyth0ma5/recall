@@ -127,6 +127,17 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     }
   }, [note.id, note.images, note.imageIds, loading, expectedImageCount]);
 
+  // Animated style for deletion - MUST be called before any conditional returns
+  const animatedCardStyle = useAnimatedStyle(() => {
+    return {
+      opacity: opacity.value,
+      transform: [{ scale: scale.value }],
+      height: height.value === 0 ? 0 : undefined,
+      marginBottom: height.value === 0 ? 0 : 16,
+      overflow: 'hidden',
+    };
+  });
+
   // Show skeleton if loading
   if (loading) {
     return <NoteCardSkeleton />;
@@ -383,17 +394,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   // Check if note has people mentioned
   const hasPeople = note.people && note.people.length > 0;
-
-  // Animated style for deletion
-  const animatedCardStyle = useAnimatedStyle(() => {
-    return {
-      opacity: opacity.value,
-      transform: [{ scale: scale.value }],
-      height: height.value === 0 ? 0 : undefined,
-      marginBottom: height.value === 0 ? 0 : 16,
-      overflow: 'hidden',
-    };
-  });
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>

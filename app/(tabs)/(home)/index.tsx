@@ -14,6 +14,7 @@ import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
 import { supabase } from '@/utils/supabase';
 import { uploadImageToDatabase } from '@/utils/supabase';
 import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
+import { ZeroState } from '@/components/ZeroState';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote } = useNotes();
@@ -401,7 +402,6 @@ export default function HomeScreen() {
   };
 
   const renderEmptyState = () => {
-    const { ZeroState } = require('@/components/ZeroState');
     return (
       <ZeroState
         icon="doc.text"

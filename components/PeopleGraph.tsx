@@ -89,7 +89,7 @@ const calculateNodePositions = (
   const centerX = SCREEN_WIDTH / 2;
   const centerY = SCREEN_HEIGHT / 2;
 
-  const positions: Array<{
+  const positions: {
     id: string;
     name: string;
     photoUrl: string | null;
@@ -97,7 +97,7 @@ const calculateNodePositions = (
     y: number;
     color: string;
     width: number;
-  }> = [];
+  }[] = [];
 
   const count = people.length;
   const angleStep = (2 * Math.PI) / count;
@@ -209,7 +209,7 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
   const graphOpacity = useRef(new Animated.Value(0)).current;
 
   // Node positions and root position
-  const [nodePositions, setNodePositions] = useState<Array<{
+  const [nodePositions, setNodePositions] = useState<{
     id: string;
     name: string;
     photoUrl: string | null;
@@ -217,7 +217,7 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     y: number;
     color: string;
     width: number;
-  }>>([]);
+  }[]>([]);
   const [rootPosition, setRootPosition] = useState({ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT / 2 });
   const [recallCounts, setRecallCounts] = useState<{ [personId: string]: number }>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -279,7 +279,7 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     ]).start(() => {
       console.log('[PeopleGraph] Entrance animation complete');
     });
-  }, [people]);
+  }, [people, backdropOpacity, graphScale, graphOpacity]);
 
   const handleClose = () => {
     console.log('[PeopleGraph] Closing graph - starting exit animation');

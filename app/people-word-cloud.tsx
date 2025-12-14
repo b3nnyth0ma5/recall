@@ -55,7 +55,7 @@ export default function PeopleWordCloudScreen() {
     if (user) {
       loadPeople();
     }
-  }, [user]);
+  }, [user, loadPeople]);
 
   const loadPeople = async () => {
     if (!user) return;

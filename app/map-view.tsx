@@ -99,46 +99,41 @@ export default function MapViewScreen() {
         markerDiv.appendChild(textPreview);
       }
 
-      // Create custom overlay
-      class CustomMarker extends window.google.maps.OverlayView {
-        position: any;
-        div: any;
-
-        constructor(position: any, div: any) {
-          super();
-          this.position = position;
-          this.div = div;
-        }
-
-        onAdd() {
+      // Create custom overlay using a factory function instead of class
+      const createCustomMarker = (position: any, div: any) => {
+        const marker = new window.google.maps.OverlayView();
+        
+        marker.onAdd = function() {
           const panes = this.getPanes();
-          panes.overlayMouseTarget.appendChild(this.div);
+          panes.overlayMouseTarget.appendChild(div);
 
           // Add click listener
-          this.div.addEventListener('click', () => {
+          div.addEventListener('click', () => {
             handleMarkerClick(note);
           });
-        }
+        };
 
-        draw() {
+        marker.draw = function() {
           const overlayProjection = this.getProjection();
-          const position = overlayProjection.fromLatLngToDivPixel(this.position);
+          const pos = overlayProjection.fromLatLngToDivPixel(position);
           
-          if (position) {
-            this.div.style.left = (position.x - 24) + 'px';
-            this.div.style.top = (position.y - 24) + 'px';
-            this.div.style.position = 'absolute';
+          if (pos) {
+            div.style.left = (pos.x - 24) + 'px';
+            div.style.top = (pos.y - 24) + 'px';
+            div.style.position = 'absolute';
           }
-        }
+        };
 
-        onRemove() {
-          if (this.div.parentNode) {
-            this.div.parentNode.removeChild(this.div);
+        marker.onRemove = function() {
+          if (div.parentNode) {
+            div.parentNode.removeChild(div);
           }
-        }
-      }
+        };
 
-      const marker = new CustomMarker(
+        return marker;
+      };
+
+      const marker = createCustomMarker(
         { lat: note.latitude, lng: note.longitude },
         markerDiv
       );
