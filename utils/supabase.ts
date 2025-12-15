@@ -13,7 +13,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: false, // We handle URL-based sessions manually in update-password.tsx
   },
 });
 
@@ -23,10 +23,29 @@ supabase.auth.onAuthStateChange((event, session) => {
   
   if (event === 'TOKEN_REFRESHED') {
     console.log('[Supabase Auth] Token refreshed successfully');
+    if (session) {
+      console.log('[Supabase Auth] Session expires at:', new Date(session.expires_at || 0).toISOString());
+    }
   } else if (event === 'SIGNED_OUT') {
     console.log('[Supabase Auth] User signed out');
   } else if (event === 'SIGNED_IN') {
     console.log('[Supabase Auth] User signed in');
+    if (session) {
+      console.log('[Supabase Auth] Session expires at:', new Date(session.expires_at || 0).toISOString());
+    }
+  } else if (event === 'PASSWORD_RECOVERY') {
+    console.log('[Supabase Auth] Password recovery session established');
+    if (session) {
+      console.log('[Supabase Auth] Recovery session expires at:', new Date(session.expires_at || 0).toISOString());
+    }
+  } else if (event === 'INITIAL_SESSION') {
+    console.log('[Supabase Auth] Initial session loaded');
+    if (session) {
+      console.log('[Supabase Auth] Session user:', session.user?.email);
+      console.log('[Supabase Auth] Session expires at:', new Date(session.expires_at || 0).toISOString());
+    } else {
+      console.log('[Supabase Auth] No initial session found');
+    }
   }
 });
 

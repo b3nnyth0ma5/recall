@@ -31,6 +31,10 @@ export default function UpdatePasswordScreen() {
     const checkSession = async () => {
       try {
         console.log('[UpdatePassword] Checking session with params:', params);
+        console.log('[UpdatePassword] URL params:', {
+          token_hash: params.token_hash ? 'present' : 'missing',
+          type: params.type,
+        });
         
         // First, check if we have token_hash and type in the URL
         const tokenHash = params.token_hash as string;
@@ -38,10 +42,11 @@ export default function UpdatePasswordScreen() {
 
         if (tokenHash && type) {
           console.log('[UpdatePassword] Found token_hash in URL, verifying OTP...');
-          console.log('[UpdatePassword] Token hash:', tokenHash);
+          console.log('[UpdatePassword] Token hash length:', tokenHash.length);
           console.log('[UpdatePassword] Type:', type);
           
           // Verify the OTP token to establish a session
+          // This is the critical step that creates a session from the password reset token
           const { data, error } = await supabase.auth.verifyOtp({
             token_hash: tokenHash,
             type: type as any,
@@ -49,6 +54,10 @@ export default function UpdatePasswordScreen() {
 
           if (error) {
             console.error('[UpdatePassword] Error verifying OTP:', error);
+            console.error('[UpdatePassword] Error code:', error.code);
+            console.error('[UpdatePassword] Error message:', error.message);
+            console.error('[UpdatePassword] Error status:', error.status);
+            
             Alert.alert(
               'Invalid Link',
               'This password reset link is invalid or has expired. Please request a new one.',
@@ -64,9 +73,41 @@ export default function UpdatePasswordScreen() {
             return;
           }
 
+          if (!data.session) {
+            console.error('[UpdatePassword] OTP verified but no session returned');
+            Alert.alert(
+              'Session Error',
+              'Unable to establish a session. Please request a new password reset link.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => router.replace('/login'),
+                },
+              ]
+            );
+            setIsValidSession(false);
+            setCheckingSession(false);
+            return;
+          }
+
           console.log('[UpdatePassword] OTP verified successfully, session established');
-          console.log('[UpdatePassword] Session data:', data.session);
-          console.log('[UpdatePassword] Session expires at:', new Date(data.session?.expires_at || 0).toISOString());
+          console.log('[UpdatePassword] Session user:', data.session.user.email);
+          console.log('[UpdatePassword] Session access token present:', !!data.session.access_token);
+          console.log('[UpdatePassword] Session refresh token present:', !!data.session.refresh_token);
+          console.log('[UpdatePassword] Session expires at:', new Date(data.session.expires_at || 0).toISOString());
+          console.log('[UpdatePassword] Session expires in:', Math.round((data.session.expires_at || 0) - Date.now() / 1000), 'seconds');
+          
+          // Verify the session was properly stored
+          const { data: { session: storedSession }, error: sessionCheckError } = await supabase.auth.getSession();
+          
+          if (sessionCheckError) {
+            console.error('[UpdatePassword] Error checking stored session:', sessionCheckError);
+          } else if (storedSession) {
+            console.log('[UpdatePassword] Session successfully stored and retrieved');
+            console.log('[UpdatePassword] Stored session user:', storedSession.user.email);
+          } else {
+            console.warn('[UpdatePassword] Session was not stored properly');
+          }
           
           // Session is now established and will be valid for the configured JWT expiry time
           // By default, this is 3600 seconds (60 minutes)
@@ -82,8 +123,8 @@ export default function UpdatePasswordScreen() {
         if (sessionError) {
           console.error('[UpdatePassword] Error checking session:', sessionError);
           Alert.alert(
-            'Invalid Link',
-            'This password reset link is invalid or has expired. Please request a new one.',
+            'Session Error',
+            'Unable to verify your session. Please request a new password reset link.',
             [
               {
                 text: 'OK',
@@ -94,7 +135,9 @@ export default function UpdatePasswordScreen() {
           setIsValidSession(false);
         } else if (session) {
           console.log('[UpdatePassword] Valid session found');
+          console.log('[UpdatePassword] Session user:', session.user.email);
           console.log('[UpdatePassword] Session expires at:', new Date(session.expires_at || 0).toISOString());
+          console.log('[UpdatePassword] Session expires in:', Math.round((session.expires_at || 0) - Date.now() / 1000), 'seconds');
           setIsValidSession(true);
         } else {
           console.log('[UpdatePassword] No session found');
@@ -112,6 +155,11 @@ export default function UpdatePasswordScreen() {
         }
       } catch (error) {
         console.error('[UpdatePassword] Exception checking session:', error);
+        if (error instanceof Error) {
+          console.error('[UpdatePassword] Error name:', error.name);
+          console.error('[UpdatePassword] Error message:', error.message);
+          console.error('[UpdatePassword] Error stack:', error.stack);
+        }
         Alert.alert(
           'Error',
           'An unexpected error occurred. Please try again.',
@@ -151,15 +199,41 @@ export default function UpdatePasswordScreen() {
       setLoading(true);
 
       console.log('[UpdatePassword] Updating password...');
+      
+      // Verify session is still valid before updating
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.error('[UpdatePassword] Session invalid or expired:', sessionError);
+        Alert.alert(
+          'Session Expired',
+          'Your session has expired. Please request a new password reset link.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/login'),
+            },
+          ]
+        );
+        return;
+      }
+      
+      console.log('[UpdatePassword] Session valid, proceeding with password update');
+      console.log('[UpdatePassword] Session user:', session.user.email);
+      
       const { data, error } = await supabase.auth.updateUser({
         password: password,
       });
 
       if (error) {
         console.error('[UpdatePassword] Password update error:', error);
+        console.error('[UpdatePassword] Error code:', error.code);
+        console.error('[UpdatePassword] Error message:', error.message);
+        console.error('[UpdatePassword] Error status:', error.status);
         Alert.alert('Error', error.message);
       } else {
         console.log('[UpdatePassword] Password updated successfully');
+        console.log('[UpdatePassword] Updated user:', data.user?.email);
         Alert.alert(
           'Success',
           'Your password has been updated successfully. You can now sign in with your new password.',
@@ -183,6 +257,11 @@ export default function UpdatePasswordScreen() {
       }
     } catch (error) {
       console.error('[UpdatePassword] Password update exception:', error);
+      if (error instanceof Error) {
+        console.error('[UpdatePassword] Error name:', error.name);
+        console.error('[UpdatePassword] Error message:', error.message);
+        console.error('[UpdatePassword] Error stack:', error.stack);
+      }
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
