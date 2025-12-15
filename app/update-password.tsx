@@ -228,6 +228,93 @@ export default function UpdatePasswordScreen() {
     checkSession();
   }, []); // Empty dependency array - only run once on mount
 
+  // Helper function to get user-friendly error message based on error code and message
+  const getPasswordUpdateErrorMessage = (error: any): string => {
+    console.log('[UpdatePassword] Processing error:', {
+      code: error.code,
+      message: error.message,
+      status: error.status,
+    });
+
+    // Check error code first (most reliable)
+    if (error.code) {
+      switch (error.code) {
+        case 'weak_password':
+        case 'password_too_short':
+          return 'Your password is too weak. Please choose a stronger password with at least 6 characters.';
+        
+        case 'same_password':
+          return 'Your new password cannot be the same as your current password. Please choose a different password.';
+        
+        case 'session_not_found':
+        case 'invalid_credentials':
+          return 'Your session has expired. Please request a new password reset link.';
+        
+        case 'over_request_rate_limit':
+        case 'too_many_requests':
+          return 'Too many password update attempts. Please wait a few minutes and try again.';
+        
+        case 'user_not_found':
+          return 'User account not found. Please contact support if this issue persists.';
+        
+        case 'otp_expired':
+        case 'otp_disabled':
+          return 'Your password reset link has expired. Please request a new one.';
+        
+        default:
+          // Fall through to message-based matching
+          break;
+      }
+    }
+
+    // Check error message for common patterns
+    const message = error.message?.toLowerCase() || '';
+    
+    if (message.includes('password') && (message.includes('short') || message.includes('6 character'))) {
+      return 'Password must be at least 6 characters long.';
+    }
+    
+    if (message.includes('weak') || message.includes('strength')) {
+      return 'Your password is too weak. Please choose a stronger password.';
+    }
+    
+    if (message.includes('same') && message.includes('password')) {
+      return 'Your new password cannot be the same as your current password.';
+    }
+    
+    if (message.includes('session') && (message.includes('expired') || message.includes('invalid'))) {
+      return 'Your session has expired. Please request a new password reset link.';
+    }
+    
+    if (message.includes('rate limit') || message.includes('too many')) {
+      return 'Too many password update attempts. Please wait a few minutes and try again.';
+    }
+    
+    if (message.includes('expired') || message.includes('invalid')) {
+      return 'Your password reset link has expired or is invalid. Please request a new one.';
+    }
+
+    // Check HTTP status codes
+    if (error.status === 422) {
+      return 'Unable to process your password update. Please ensure your password meets all requirements.';
+    }
+    
+    if (error.status === 429) {
+      return 'Too many password update attempts. Please wait a few minutes and try again.';
+    }
+    
+    if (error.status === 403) {
+      return 'Your password reset link has expired. Please request a new one.';
+    }
+    
+    if (error.status === 500) {
+      return 'A server error occurred. Please try again later or contact support.';
+    }
+
+    // Default fallback with the original error message
+    return error.message || 'Failed to update password. Please try again.';
+  };
+
   const handleUpdatePassword = async () => {
     if (!password || !confirmPassword) {
       Alert.alert('Error', 'Please enter and confirm your new password');
@@ -279,10 +366,15 @@ export default function UpdatePasswordScreen() {
         console.error('[UpdatePassword] Error code:', error.code);
         console.error('[UpdatePassword] Error message:', error.message);
         console.error('[UpdatePassword] Error status:', error.status);
-        Alert.alert('Error', error.message);
+        
+        // Get user-friendly error message
+        const friendlyErrorMessage = getPasswordUpdateErrorMessage(error);
+        
+        Alert.alert('Password Update Failed', friendlyErrorMessage);
       } else {
         console.log('[UpdatePassword] Password updated successfully');
         console.log('[UpdatePassword] Updated user:', data.user?.email);
+        
         Alert.alert(
           'Success',
           'Your password has been updated successfully. You can now sign in with your new password.',
@@ -297,6 +389,7 @@ export default function UpdatePasswordScreen() {
                   router.replace('/login');
                 }).catch((err) => {
                   console.error('[UpdatePassword] Error signing out:', err);
+                  // Still redirect to login even if sign out fails
                   router.replace('/login');
                 });
               },
