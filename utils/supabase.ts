@@ -1,7 +1,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { File } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 // Initialize constants at module scope
 const supabaseUrl = 'https://cesmsdnblkdjkskmiqib.supabase.co';
@@ -95,9 +95,10 @@ export async function uploadImageToDatabase(
     console.log('User authenticated:', session.user.id);
 
     console.log('Converting image to base64...');
-    // Use the new File API from expo-file-system
-    const file = new File(uri);
-    const base64 = await file.base64();
+    // Use the legacy File API from expo-file-system
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
     console.log('Base64 conversion successful, length:', base64.length);
 
     // Upload to Cloudflare CDN
