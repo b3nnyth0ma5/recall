@@ -12,13 +12,14 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/utils/supabase';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 
 export default function UpdatePasswordScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -29,10 +30,57 @@ export default function UpdatePasswordScreen() {
     // Check if user has a valid recovery session
     const checkSession = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        console.log('[UpdatePassword] Checking session with params:', params);
         
-        if (error) {
-          console.error('[UpdatePassword] Error checking session:', error);
+        // First, check if we have token_hash and type in the URL
+        const tokenHash = params.token_hash as string;
+        const type = params.type as string;
+
+        if (tokenHash && type) {
+          console.log('[UpdatePassword] Found token_hash in URL, verifying OTP...');
+          console.log('[UpdatePassword] Token hash:', tokenHash);
+          console.log('[UpdatePassword] Type:', type);
+          
+          // Verify the OTP token to establish a session
+          const { data, error } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: type as any,
+          });
+
+          if (error) {
+            console.error('[UpdatePassword] Error verifying OTP:', error);
+            Alert.alert(
+              'Invalid Link',
+              'This password reset link is invalid or has expired. Please request a new one.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => router.replace('/login'),
+                },
+              ]
+            );
+            setIsValidSession(false);
+            setCheckingSession(false);
+            return;
+          }
+
+          console.log('[UpdatePassword] OTP verified successfully, session established');
+          console.log('[UpdatePassword] Session data:', data.session);
+          console.log('[UpdatePassword] Session expires at:', new Date(data.session?.expires_at || 0).toISOString());
+          
+          // Session is now established and will be valid for the configured JWT expiry time
+          // By default, this is 3600 seconds (60 minutes)
+          setIsValidSession(true);
+          setCheckingSession(false);
+          return;
+        }
+
+        // If no token_hash in URL, check if there's already a valid session
+        console.log('[UpdatePassword] No token_hash in URL, checking existing session...');
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('[UpdatePassword] Error checking session:', sessionError);
           Alert.alert(
             'Invalid Link',
             'This password reset link is invalid or has expired. Please request a new one.',
@@ -45,7 +93,8 @@ export default function UpdatePasswordScreen() {
           );
           setIsValidSession(false);
         } else if (session) {
-          console.log('[UpdatePassword] Valid recovery session found');
+          console.log('[UpdatePassword] Valid session found');
+          console.log('[UpdatePassword] Session expires at:', new Date(session.expires_at || 0).toISOString());
           setIsValidSession(true);
         } else {
           console.log('[UpdatePassword] No session found');
@@ -63,6 +112,16 @@ export default function UpdatePasswordScreen() {
         }
       } catch (error) {
         console.error('[UpdatePassword] Exception checking session:', error);
+        Alert.alert(
+          'Error',
+          'An unexpected error occurred. Please try again.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/login'),
+            },
+          ]
+        );
         setIsValidSession(false);
       } finally {
         setCheckingSession(false);
@@ -70,7 +129,7 @@ export default function UpdatePasswordScreen() {
     };
 
     checkSession();
-  }, [router]);
+  }, [params, router]);
 
   const handleUpdatePassword = async () => {
     if (!password || !confirmPassword) {
@@ -91,6 +150,7 @@ export default function UpdatePasswordScreen() {
     try {
       setLoading(true);
 
+      console.log('[UpdatePassword] Updating password...');
       const { data, error } = await supabase.auth.updateUser({
         password: password,
       });
@@ -108,7 +168,9 @@ export default function UpdatePasswordScreen() {
               text: 'OK',
               onPress: () => {
                 // Sign out the user so they can sign in with new password
+                console.log('[UpdatePassword] Signing out user...');
                 supabase.auth.signOut().then(() => {
+                  console.log('[UpdatePassword] User signed out, redirecting to login');
                   router.replace('/login');
                 }).catch((err) => {
                   console.error('[UpdatePassword] Error signing out:', err);

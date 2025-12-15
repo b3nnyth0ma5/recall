@@ -1,185 +1,142 @@
 
-# Password Reset Authentication Summary
+# Password Reset Authentication Fix - Summary
 
-## Date: December 9, 2025
+## Problem
+The password reset flow was failing with "[UpdatePassword] No session found" error because:
+1. The password reset email wasn't properly configured to pass authentication tokens
+2. The `/update-password` route wasn't extracting and verifying the token from the URL
+3. No session was being established before attempting to update the password
 
-## Overview
-This document summarizes the findings from checking Supabase password reset authentication logs and verifying the implementation.
+## Solution
 
----
+### 1. Updated `/update-password` Route
+The `app/update-password.tsx` file now:
+- Extracts `token_hash` and `type` parameters from the URL
+- Uses `supabase.auth.verifyOtp()` to verify the token and establish a session
+- Falls back to checking for an existing session if no token is in the URL
+- Provides detailed logging for debugging
+- Shows appropriate error messages if the link is invalid or expired
 
-## ✅ Password Reset Functionality Status: **WORKING CORRECTLY**
+### 2. Supabase Email Template Configuration
+You need to configure the **Password Reset** email template in your Supabase project to include the correct redirect URL with token parameters.
 
-### Evidence from Supabase Auth Logs
+#### Steps to Configure:
+1. Go to your Supabase Dashboard
+2. Navigate to **Authentication** → **Email Templates**
+3. Select the **Reset Password** template (also called "Recovery" template)
+4. Update the template to use the following format:
 
-The authentication logs show that password reset is functioning as expected:
+```html
+<h2>Reset Your Password</h2>
 
-1. **Password Recovery Requests**: Multiple successful `/recover` endpoint calls with status 200
-   ```
-   "path": "/recover"
-   "status": 200
-   "auth_event": "user_recovery_requested"
-   ```
+<p>Follow this link to reset the password for your user:</p>
+<p>
+  <a href="{{ .SiteURL }}/update-password?token_hash={{ .TokenHash }}&type=recovery">
+    Reset Password
+  </a>
+</p>
 
-2. **Email Delivery**: Confirmation of recovery emails being sent
-   ```
-   "event": "mail.send"
-   "mail_type": "recovery"
-   "mail_to": "benny_thomas21@yahoo.co.in"
-   ```
-
-3. **Verification Success**: Users successfully accessing the `/verify` endpoint with status 303 (redirect)
-   ```
-   "path": "/verify"
-   "status": 303
-   "referer": "https://recall.expo.app/update-password"
-   ```
-
-4. **Successful Logins**: Users successfully logging in after password reset
-   ```
-   "action": "login"
-   "login_method": "implicit"
-   ```
-
----
-
-## 🔍 Investigation of "No Session Found" Errors
-
-### Finding
-The "no session found" errors mentioned in the user request are **NOT** related to the password reset flow. Instead, they are caused by:
-
-**Invalid Refresh Token Errors**:
-```
-"error": "400: Invalid Refresh Token: Refresh Token Not Found"
-"error_code": "refresh_token_not_found"
+<p>Or copy and paste this URL into your browser:</p>
+<p>{{ .SiteURL }}/update-password?token_hash={{ .TokenHash }}&type=recovery</p>
 ```
 
-### Root Cause
-These errors occur when:
-- A user's refresh token has expired or been invalidated
-- The app attempts to refresh the session with an invalid token
-- This is a normal part of session management and doesn't affect password reset
+**Important:** Replace `{{ .SiteURL }}` with your actual app URL if needed. The current configuration uses:
+- Production: `https://recall.expo.app`
+- The `{{ .SiteURL }}` variable should be configured in your Supabase project settings
 
-### Impact
-- **No impact on password reset functionality**
-- Users can still reset passwords successfully
-- The app handles these errors gracefully by redirecting to login
+### 3. Supabase Project Settings
+Ensure the following settings are configured in your Supabase project:
 
----
+#### Site URL Configuration
+1. Go to **Authentication** → **URL Configuration**
+2. Set **Site URL** to: `https://recall.expo.app`
 
-## ✅ Route Accessibility Verification
+#### Redirect URLs
+Add the following to your **Redirect URLs** allowlist:
+- `https://recall.expo.app/update-password`
+- `https://recall.expo.app/email-confirmed`
+- `https://recall.expo.app/*` (wildcard for all routes)
 
-### `/update-password` Route
-- **Status**: ✅ Accessible
-- **Configuration**: Properly configured in `app/_layout.tsx`
-- **Redirects**: No unintended redirects away from this route
-- **Session Handling**: Correctly checks for valid recovery session
+#### JWT Expiry
+1. Go to **Authentication** → **Settings**
+2. Check **JWT Expiry Limit** - it should be set to at least **3600 seconds (60 minutes)**
+3. This ensures the session remains active for at least 60 minutes after the user clicks the reset link
 
-### `/email-confirmed` Route
-- **Status**: ✅ Accessible
-- **Configuration**: Properly configured in `app/_layout.tsx`
-- **Functionality**: Handles email verification and password reset redirects
+### 4. How It Works
 
-### `/reset-password` Route
-- **Status**: ✅ Accessible
-- **Configuration**: Properly configured in `app/_layout.tsx`
-- **Functionality**: Allows users to request password reset emails
+#### Password Reset Flow:
+1. User clicks "Forgot Password" on login screen
+2. User enters their email in `/reset-password`
+3. `supabase.auth.resetPasswordForEmail()` is called with `redirectTo: AUTH_REDIRECT_URLS.UPDATE_PASSWORD`
+4. Supabase sends an email with a link like:
+   ```
+   https://recall.expo.app/update-password?token_hash=abc123...&type=recovery
+   ```
+5. User clicks the link in their email
+6. The app opens to `/update-password` with the token parameters
+7. The `update-password` screen:
+   - Extracts `token_hash` and `type` from URL
+   - Calls `supabase.auth.verifyOtp({ token_hash, type })` to verify the token
+   - This establishes a valid session that lasts for the JWT expiry time (60+ minutes)
+8. User enters their new password
+9. `supabase.auth.updateUser({ password })` is called to update the password
+10. User is signed out and redirected to login to sign in with new password
 
----
+### 5. Session Duration
+The session established by `verifyOtp()` will remain active for the duration specified in your Supabase project's **JWT Expiry Limit** setting. By default, this is:
+- **3600 seconds (60 minutes)** for access tokens
+- Refresh tokens never expire and can be used to get new access tokens
 
-## 🔐 Authentication Flow
+This means users have at least 60 minutes to update their password after clicking the reset link.
 
-### Password Reset Flow (Working Correctly)
-1. User clicks "Forgot Password" → navigates to `/reset-password`
-2. User enters email → `supabase.auth.resetPasswordForEmail()` called
-3. Supabase sends recovery email with link to `https://recall.expo.app/update-password`
-4. User clicks link → redirected to `/update-password` with recovery token
-5. App verifies session using `supabase.auth.getSession()`
-6. User enters new password → `supabase.auth.updateUser()` called
-7. Password updated successfully → user signed out and redirected to login
+### 6. Testing the Flow
 
-### Session Authentication
-- Recovery tokens are properly validated before allowing password updates
-- Invalid or expired links show appropriate error messages
-- Users are redirected to login if session is invalid
+#### Test Password Reset:
+1. Go to the login screen
+2. Click "Forgot Password?"
+3. Enter your email address
+4. Check your email for the password reset link
+5. Click the link in the email
+6. You should be taken to the update password screen
+7. Enter a new password (at least 6 characters)
+8. Click "Update Password"
+9. You should see a success message and be redirected to login
+10. Sign in with your new password
 
----
+#### Debugging:
+Check the console logs for detailed information:
+- `[UpdatePassword]` - Logs from the update password screen
+- `[ResetPassword]` - Logs from the reset password request
+- `[Supabase Auth]` - Logs from the Supabase auth client
 
-## 📊 Configuration Status
+### 7. Error Handling
+The implementation includes comprehensive error handling:
+- Invalid or expired tokens show an appropriate error message
+- Network errors are caught and displayed to the user
+- Session verification failures redirect to login with an explanation
+- All errors are logged to the console for debugging
 
-### Supabase Configuration
-- **Site URL**: `https://recall.expo.app` ✅
-- **Redirect URLs**: 
-  - `https://recall.expo.app/email-confirmed` ✅
-  - `https://recall.expo.app/update-password` ✅
-- **Email Templates**: Properly configured ✅
+### 8. Security Considerations
+- Tokens are single-use only (once verified, they cannot be reused)
+- Tokens expire after 24 hours by default (configurable in Supabase)
+- Sessions expire after 60 minutes (configurable via JWT Expiry Limit)
+- Users are signed out after password update to ensure they use the new password
+- All password reset attempts are rate-limited by Supabase
 
-### App Configuration (`constants/config.ts`)
-```typescript
-export const APP_BASE_URL = 'https://recall.expo.app';
-export const AUTH_REDIRECT_URLS = {
-  EMAIL_CONFIRMED: `${APP_BASE_URL}/email-confirmed`,
-  UPDATE_PASSWORD: `${APP_BASE_URL}/update-password`,
-};
-```
+## Files Modified
+1. `app/update-password.tsx` - Complete rewrite to handle token verification
+2. `constants/config.ts` - Already had correct redirect URLs configured
+3. `app/reset-password.tsx` - Already correctly configured to use `AUTH_REDIRECT_URLS.UPDATE_PASSWORD`
 
----
+## Next Steps
+1. **Configure the Supabase email template** as described above
+2. **Verify the Site URL** in Supabase project settings
+3. **Add redirect URLs** to the allowlist
+4. **Test the complete flow** end-to-end
+5. **Monitor logs** for any issues
 
-## 🎯 Recommendations
-
-### No Action Required
-The password reset functionality is working correctly. The "no session found" errors are:
-1. Not related to password reset
-2. Caused by expired refresh tokens (normal behavior)
-3. Handled gracefully by the app
-
-### Optional Improvements
-If you want to reduce refresh token errors, consider:
-1. Implementing better token refresh logic in `AuthContext.tsx`
-2. Adding retry logic for failed token refreshes
-3. Clearing invalid tokens from storage automatically
-
----
-
-## 📝 Testing Checklist
-
-All items verified and working:
-- ✅ User can request password reset from `/reset-password`
-- ✅ Recovery email is sent successfully
-- ✅ Email contains correct redirect URL
-- ✅ `/update-password` route is accessible
-- ✅ Recovery session is validated correctly
-- ✅ User can update password successfully
-- ✅ User is redirected to login after password update
-- ✅ User can login with new password
-
----
-
-## 🔧 Recent Changes
-
-### Native Share Receiver Removal
-As part of this update, all native share receiver functionality has been removed:
-- Deleted `utils/nativeShareReceiver.ts`
-- Deleted `utils/shareExtensionModule.ts`
-- Deleted `utils/shareIntentHandler.ts`
-- Deleted `app/share-intent.tsx`
-- Deleted `targets/share-extension/` directory
-- Removed share extension configuration from `app.plugin.js`
-- Removed share-related code from `app/_layout.tsx`
-
-This removal does not affect password reset functionality.
-
----
-
-## 📞 Support
-
-If you encounter any issues with password reset:
-1. Check Supabase auth logs for specific error messages
-2. Verify email delivery in Supabase dashboard
-3. Ensure redirect URLs are correctly configured
-4. Test with a fresh password reset request
-
----
-
-**Status**: ✅ All password reset functionality verified and working correctly
-**Last Updated**: December 9, 2025
+## Additional Notes
+- The `email-confirmed.tsx` route also handles password reset tokens and can redirect to `/update-password` if needed
+- The `_layout.tsx` allows navigation to password reset screens without authentication
+- The implementation follows Supabase best practices for password reset flows
+- Token verification uses the `verifyOtp` method which is the recommended approach for handling email links
