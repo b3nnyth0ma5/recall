@@ -440,7 +440,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 >
                   <IconSymbol
                     name="magnifyingglass"
-                    size={28}
+                    size={24}
                     color={colors.text}
                   />
                 </Pressable>
@@ -458,22 +458,22 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 </Pressable>
 
                 {/* Submit Button - Next to plus button on the right */}
-                <Pressable
-                  style={[styles.submitButton, (!text.trim() && images.length === 0) && styles.submitButtonDisabled]}
-                  onPress={handleCreateRecall}
-                  disabled={(!text.trim() && images.length === 0) || isCreating}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol name="arrow.up.circle.fill" size={32} color={colors.primary} />
-                </Pressable>
-
                 {/* Plus Button - Far right, vertically aligned with camera FABs */}
                 <Pressable
                   style={styles.plusButton}
                   onPress={handlePlusPress}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <IconSymbol name="plus.circle.fill" size={32} color={colors.text} />
+                  <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+                </Pressable>
+								
+								<Pressable
+                  style={[styles.submitButton, (!text.trim() && images.length === 0) && styles.submitButtonDisabled]}
+                  onPress={handleCreateRecall}
+                  disabled={(!text.trim() && images.length === 0) || isCreating}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <IconSymbol name="arrow.up.circle.fill" size={28} color={colors.primary} />
                 </Pressable>
               </View>
             </View>
@@ -577,7 +577,7 @@ const styles = StyleSheet.create({
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
     zIndex: 1,
   },
   searchButton: {
@@ -587,10 +587,11 @@ const styles = StyleSheet.create({
   locationPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
     backgroundColor: `${colors.primary}20`,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingVertical: 6,
+		paddingRight: 8,
+		paddingLeft: 8,
     borderRadius: 16,
     flex: 1,
     minWidth: 0,
@@ -609,7 +610,6 @@ const styles = StyleSheet.create({
   },
   plusButton: {
     padding: 4,
-    paddingRight: 0,
   },
   drawerBackdrop: {
     position: 'absolute',
