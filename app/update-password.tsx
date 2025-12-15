@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -25,15 +25,26 @@ export default function UpdatePasswordScreen() {
   const [loading, setLoading] = useState(false);
   const [isValidSession, setIsValidSession] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
+  
+  // Use ref to prevent multiple verifications
+  const hasVerifiedRef = useRef(false);
+  const isVerifyingRef = useRef(false);
 
   useEffect(() => {
+    // Prevent multiple simultaneous verifications
+    if (hasVerifiedRef.current || isVerifyingRef.current) {
+      console.log('[UpdatePassword] Already verified or verifying, skipping...');
+      return;
+    }
+
     // Check if user has a valid recovery session
     const checkSession = async () => {
       try {
-        console.log('[UpdatePassword] Checking session with params:', params);
-        console.log('[UpdatePassword] URL params:', {
-          token_hash: params.token_hash ? 'present' : 'missing',
-          type: params.type,
+        isVerifyingRef.current = true;
+        
+        console.log('[UpdatePassword] Checking session with params:', {
+          hasTokenHash: !!params.token_hash,
+          hasType: !!params.type,
         });
         
         // First, check if we have token_hash and type in the URL
@@ -58,6 +69,9 @@ export default function UpdatePasswordScreen() {
             console.error('[UpdatePassword] Error message:', error.message);
             console.error('[UpdatePassword] Error status:', error.status);
             
+            // Mark as verified to prevent retries
+            hasVerifiedRef.current = true;
+            
             Alert.alert(
               'Invalid Link',
               'This password reset link is invalid or has expired. Please request a new one.',
@@ -75,6 +89,10 @@ export default function UpdatePasswordScreen() {
 
           if (!data.session) {
             console.error('[UpdatePassword] OTP verified but no session returned');
+            
+            // Mark as verified to prevent retries
+            hasVerifiedRef.current = true;
+            
             Alert.alert(
               'Session Error',
               'Unable to establish a session. Please request a new password reset link.',
@@ -94,8 +112,14 @@ export default function UpdatePasswordScreen() {
           console.log('[UpdatePassword] Session user:', data.session.user.email);
           console.log('[UpdatePassword] Session access token present:', !!data.session.access_token);
           console.log('[UpdatePassword] Session refresh token present:', !!data.session.refresh_token);
-          console.log('[UpdatePassword] Session expires at:', new Date(data.session.expires_at || 0).toISOString());
-          console.log('[UpdatePassword] Session expires in:', Math.round((data.session.expires_at || 0) - Date.now() / 1000), 'seconds');
+          
+          // Calculate actual expiry time
+          const expiresAt = data.session.expires_at;
+          const expiresIn = expiresAt ? expiresAt - Math.floor(Date.now() / 1000) : 0;
+          
+          console.log('[UpdatePassword] Session expires at (timestamp):', expiresAt);
+          console.log('[UpdatePassword] Session expires in:', expiresIn, 'seconds');
+          console.log('[UpdatePassword] Session expires at (date):', expiresAt ? new Date(expiresAt * 1000).toISOString() : 'unknown');
           
           // Verify the session was properly stored
           const { data: { session: storedSession }, error: sessionCheckError } = await supabase.auth.getSession();
@@ -108,6 +132,9 @@ export default function UpdatePasswordScreen() {
           } else {
             console.warn('[UpdatePassword] Session was not stored properly');
           }
+          
+          // Mark as successfully verified
+          hasVerifiedRef.current = true;
           
           // Session is now established and will be valid for the configured JWT expiry time
           // By default, this is 3600 seconds (60 minutes)
@@ -122,6 +149,10 @@ export default function UpdatePasswordScreen() {
         
         if (sessionError) {
           console.error('[UpdatePassword] Error checking session:', sessionError);
+          
+          // Mark as verified to prevent retries
+          hasVerifiedRef.current = true;
+          
           Alert.alert(
             'Session Error',
             'Unable to verify your session. Please request a new password reset link.',
@@ -136,11 +167,24 @@ export default function UpdatePasswordScreen() {
         } else if (session) {
           console.log('[UpdatePassword] Valid session found');
           console.log('[UpdatePassword] Session user:', session.user.email);
-          console.log('[UpdatePassword] Session expires at:', new Date(session.expires_at || 0).toISOString());
-          console.log('[UpdatePassword] Session expires in:', Math.round((session.expires_at || 0) - Date.now() / 1000), 'seconds');
+          
+          const expiresAt = session.expires_at;
+          const expiresIn = expiresAt ? expiresAt - Math.floor(Date.now() / 1000) : 0;
+          
+          console.log('[UpdatePassword] Session expires at (timestamp):', expiresAt);
+          console.log('[UpdatePassword] Session expires in:', expiresIn, 'seconds');
+          console.log('[UpdatePassword] Session expires at (date):', expiresAt ? new Date(expiresAt * 1000).toISOString() : 'unknown');
+          
+          // Mark as verified
+          hasVerifiedRef.current = true;
+          
           setIsValidSession(true);
         } else {
           console.log('[UpdatePassword] No session found');
+          
+          // Mark as verified to prevent retries
+          hasVerifiedRef.current = true;
+          
           Alert.alert(
             'Invalid Link',
             'This password reset link is invalid or has expired. Please request a new one.',
@@ -160,6 +204,10 @@ export default function UpdatePasswordScreen() {
           console.error('[UpdatePassword] Error message:', error.message);
           console.error('[UpdatePassword] Error stack:', error.stack);
         }
+        
+        // Mark as verified to prevent retries
+        hasVerifiedRef.current = true;
+        
         Alert.alert(
           'Error',
           'An unexpected error occurred. Please try again.',
@@ -172,12 +220,13 @@ export default function UpdatePasswordScreen() {
         );
         setIsValidSession(false);
       } finally {
+        isVerifyingRef.current = false;
         setCheckingSession(false);
       }
     };
 
     checkSession();
-  }, [params, router]);
+  }, []); // Empty dependency array - only run once on mount
 
   const handleUpdatePassword = async () => {
     if (!password || !confirmPassword) {
