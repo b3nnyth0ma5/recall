@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { PersonAvatar } from './PersonAvatar';
@@ -59,7 +59,12 @@ export function PeopleAvatarsRow({
 
   return (
     <View style={styles.container}>
-      <View style={styles.avatarsContainer}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
+      >
         {/* Plus icon - leftmost */}
         <Pressable
           onPress={handleAddPeople}
@@ -91,24 +96,25 @@ export function PeopleAvatarsRow({
             />
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 20,
     paddingVertical: 12,
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  avatarsContainer: {
-    flexDirection: 'row',
+  scrollView: {
+    flexGrow: 0,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
     alignItems: 'center',
     gap: 12,
-    flexWrap: 'wrap',
   },
   avatarWrapper: {
     // No additional styles needed

@@ -394,7 +394,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
-      {/* People Avatars - Top Right Edge (Superscript Position) with HIGH Z-INDEX */}
+      {/* People Avatars - Top Right Edge (Superscript Position) with ULTRA HIGH Z-INDEX */}
       {hasPeople && (
         <View style={styles.peopleAvatarsContainer}>
           <PeopleAvatars 
@@ -597,8 +597,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -10,
     right: 8,
-    zIndex: 9999,
-    elevation: 9999,
+    zIndex: 99999,
+    elevation: 99999,
   },
   imagesContainer: {
     marginBottom: 12,

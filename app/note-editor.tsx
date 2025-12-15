@@ -29,6 +29,7 @@ import Animated, {
   withSpring, 
   withTiming,
   runOnJS,
+  FadeIn,
 } from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
 import { useNotes } from '@/hooks/useNotes';
@@ -80,7 +81,7 @@ export default function NoteEditorScreen() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
-  const [showCameraDrawer, setShowCameraDrawer] = useState(false);
+  const [showFABs, setShowFABs] = useState(false);
   const [cameraLaunched, setCameraLaunched] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [initialPeople, setInitialPeople] = useState<Person[]>([]);
@@ -92,10 +93,6 @@ export default function NoteEditorScreen() {
   // Lazy loading state for images
   const [lazyLoadedImages, setLazyLoadedImages] = useState<ImageData[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
-
-  // Animated values for camera drawer
-  const cameraDrawerTranslateY = useSharedValue(SCREEN_HEIGHT);
-  const cameraDrawerOpacity = useSharedValue(0);
 
   const isEditing = !!params.id;
   const isSharedRecall = params.isSharedRecall === 'true';
@@ -192,42 +189,6 @@ export default function NoteEditorScreen() {
         }
       }
     }
-  };
-
-  // Animated styles for camera drawer
-  const cameraDrawerAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateY: cameraDrawerTranslateY.value }],
-    };
-  });
-
-  const cameraOverlayAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      opacity: cameraDrawerOpacity.value,
-    };
-  });
-
-  // Open camera drawer with bounce effect
-  const openCameraDrawer = () => {
-    setShowCameraDrawer(true);
-    cameraDrawerOpacity.value = withTiming(1, { duration: 300 });
-    cameraDrawerTranslateY.value = withSpring(0, {
-      damping: 15,
-      stiffness: 150,
-      mass: 0.8,
-    });
-  };
-
-  // Close camera drawer with bounce effect
-  const closeCameraDrawer = () => {
-    cameraDrawerOpacity.value = withTiming(0, { duration: 200 });
-    cameraDrawerTranslateY.value = withSpring(SCREEN_HEIGHT, {
-      damping: 20,
-      stiffness: 200,
-      mass: 0.5,
-    }, () => {
-      runOnJS(setShowCameraDrawer)(false);
-    });
   };
 
   useEffect(() => {
@@ -486,18 +447,21 @@ export default function NoteEditorScreen() {
   }, [images, location]);
 
   const handleCameraPress = () => {
-    openCameraDrawer();
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setShowFABs(!showFABs);
   };
 
   const handleTakePhoto = () => {
-    closeCameraDrawer();
+    setShowFABs(false);
     setTimeout(() => {
       takePhoto();
     }, 300);
   };
 
   const handleChooseFromLibrary = () => {
-    closeCameraDrawer();
+    setShowFABs(false);
     setTimeout(() => {
       pickImage();
     }, 300);
@@ -1255,45 +1219,6 @@ export default function NoteEditorScreen() {
     }
   };
 
-  const handleDelete = () => {
-    if (!isEditing || !params.id) {
-      return;
-    }
-
-    Alert.alert(
-      'Delete Recall',
-      'Are you sure you want to delete this recall?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('[NoteEditor] ===== ASYNC DELETE INITIATED =====');
-              console.log('[NoteEditor] User confirmed deletion, navigating back immediately');
-              
-              // Navigate back to landing page IMMEDIATELY
-              router.push('/(tabs)/(home)');
-              
-              // Delete asynchronously (fire and forget)
-              console.log('[NoteEditor] Calling deleteNote asynchronously...');
-              deleteNote(params.id as string).catch(error => {
-                console.error('[NoteEditor] Error in async deletion:', error);
-                // Note: User has already been navigated away, so we don't show an alert
-              });
-              
-              console.log('[NoteEditor] Navigation complete, deletion running in background');
-            } catch (error) {
-              console.error('[NoteEditor] Error initiating deletion:', error);
-              Alert.alert('Error', 'Failed to delete recall');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   const toggleKeyboard = () => {
     if (keyboardVisible) {
       Keyboard.dismiss();
@@ -1465,7 +1390,7 @@ export default function NoteEditorScreen() {
         <View style={styles.spacer} />
       </ScrollView>
 
-      {/* Always show people avatars row */}
+      {/* Always show people avatars row with horizontal scrolling */}
       <PeopleAvatarsRow 
         people={people} 
         avatarSize={44} 
@@ -1552,6 +1477,30 @@ export default function NoteEditorScreen() {
         </View>
       )}
 
+      {/* Floating Action Buttons - Vertically aligned with camera icon */}
+      {showFABs && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          style={styles.floatingActionsContainer}
+        >
+          <Pressable
+            style={styles.floatingActionButton}
+            onPress={handleChooseFromLibrary}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+          </Pressable>
+
+          <Pressable
+            style={styles.floatingActionButton}
+            onPress={handleTakePhoto}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+          </Pressable>
+        </Animated.View>
+      )}
+
       <View style={[
         styles.toolbar,
         keyboardVisible && Platform.OS === 'ios' && { 
@@ -1587,78 +1536,7 @@ export default function NoteEditorScreen() {
             />
           </Pressable>
         </View>
-
-        {isEditing && (
-          <Pressable
-            onPress={handleDelete}
-            style={styles.toolbarButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <IconSymbol name="trash" size={26} color={colors.error} />
-          </Pressable>
-        )}
       </View>
-
-      {/* Camera Drawer */}
-      {showCameraDrawer && (
-        <View style={styles.drawerContainer}>
-          <Animated.View style={[styles.drawerOverlay, cameraOverlayAnimatedStyle]}>
-            <Pressable 
-              style={StyleSheet.absoluteFill}
-              onPress={closeCameraDrawer}
-            />
-          </Animated.View>
-          
-          <Animated.View style={[styles.drawerContent, cameraDrawerAnimatedStyle]}>
-            <View style={styles.drawerHandle} />
-            
-            <View style={styles.drawerHeader}>
-              <IconSymbol name="camera.fill" size={24} color={colors.primary} />
-              <Text style={styles.drawerTitle}>Add Photo</Text>
-            </View>
-            
-            <Pressable
-              onPress={handleTakePhoto}
-              style={styles.drawerOption}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <View style={styles.drawerOptionIcon}>
-                <IconSymbol name="camera.fill" size={20} color={colors.primary} />
-              </View>
-              <View style={styles.drawerOptionText}>
-                <Text style={styles.drawerOptionTitle}>Take Photo</Text>
-                <Text style={styles.drawerOptionSubtitle}>Use camera with native editing</Text>
-              </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
-            </Pressable>
-
-            <View style={styles.drawerDivider} />
-
-            <Pressable
-              onPress={handleChooseFromLibrary}
-              style={styles.drawerOption}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <View style={styles.drawerOptionIcon}>
-                <IconSymbol name="photo.fill" size={20} color={colors.primary} />
-              </View>
-              <View style={styles.drawerOptionText}>
-                <Text style={styles.drawerOptionTitle}>Choose from Library</Text>
-                <Text style={styles.drawerOptionSubtitle}>Select photos from your gallery</Text>
-              </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
-            </Pressable>
-
-            <Pressable
-              onPress={closeCameraDrawer}
-              style={styles.drawerCancelButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.drawerCancelText}>Cancel</Text>
-            </Pressable>
-          </Animated.View>
-        </View>
-      )}
 
       {/* Saving Modal */}
       {saving && (
@@ -1885,6 +1763,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  floatingActionsContainer: {
+    position: 'absolute',
+    bottom: 95,
+    left: 20,
+    flexDirection: 'column',
+    gap: 12,
+    zIndex: 1002,
+  },
+  floatingActionButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.primary,
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
+    elevation: 8,
+  },
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1903,95 +1801,6 @@ const styles = StyleSheet.create({
   },
   toolbarButton: {
     padding: 8 * 1.15,
-  },
-  drawerContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 1000,
-  },
-  drawerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-  },
-  drawerContent: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: colors.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 12,
-    paddingHorizontal: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-    boxShadow: '0px -4px 20px rgba(0, 0, 0, 0.3)',
-    elevation: 10,
-  },
-  drawerHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
-  drawerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 24,
-  },
-  drawerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  drawerOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16 * 1.15,
-    gap: 12,
-  },
-  drawerOptionIcon: {
-    width: 40 * 1.15,
-    height: 40 * 1.15,
-    borderRadius: 20 * 1.15,
-    backgroundColor: colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  drawerOptionText: {
-    flex: 1,
-  },
-  drawerOptionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  drawerOptionSubtitle: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  drawerDivider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: 8,
-  },
-  drawerCancelButton: {
-    marginTop: 16,
-    paddingVertical: 14 * 1.15,
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    borderRadius: 12,
-  },
-  drawerCancelText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textSecondary,
   },
   savingModalContainer: {
     position: 'absolute',
