@@ -336,22 +336,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     // Close the swipeable immediately
     swipeableRef.current?.close();
     
-    // Animate deletion: fade out and scale down
-    opacity.value = withTiming(0, { duration: 300 });
-    scale.value = withSequence(
-      withTiming(0.95, { duration: 150 }),
-      withTiming(0, { duration: 150 })
-    );
-    height.value = withTiming(0, { duration: 300 }, (finished) => {
-      if (finished) {
-        // Call onDelete callback after animation completes
-        if (onDelete) {
-          runOnJS(onDelete)();
-        }
-      }
-    });
-    
-    // Trigger success haptic feedback
+    // Trigger success haptic feedback FIRST
     if (Platform.OS !== 'web') {
       try {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -360,6 +345,18 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         console.error('[NoteCard] Error triggering haptic feedback:', error);
       }
     }
+    
+    // Animate deletion: fade out and scale down smoothly
+    opacity.value = withTiming(0, { duration: 300 });
+    scale.value = withTiming(0.9, { duration: 300 });
+    height.value = withTiming(0, { duration: 300 }, (finished) => {
+      if (finished) {
+        // Call onDelete callback after animation completes
+        if (onDelete) {
+          runOnJS(onDelete)();
+        }
+      }
+    });
   };
 
   const renderRightActions = () => {
@@ -397,7 +394,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
-      {/* People Avatars - Top Right Edge (Superscript Position) */}
+      {/* People Avatars - Top Right Edge (Superscript Position) with HIGH Z-INDEX */}
       {hasPeople && (
         <View style={styles.peopleAvatarsContainer}>
           <PeopleAvatars 
@@ -600,8 +597,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -10,
     right: 8,
-    zIndex: 1000,
-    elevation: 10,
+    zIndex: 9999,
+    elevation: 9999,
   },
   imagesContainer: {
     marginBottom: 12,

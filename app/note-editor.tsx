@@ -50,7 +50,8 @@ interface ImageData {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const IMAGE_CAROUSEL_WIDTH = SCREEN_WIDTH - 32;
+// REDUCED BY 25%: Changed from (SCREEN_WIDTH - 32) to (SCREEN_WIDTH - 32) * 0.75
+const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 32) * 0.75;
 const IMAGE_CAROUSEL_SPACING = 12;
 
 // Helper function to check if text contains URLs - defined outside component
@@ -126,8 +127,9 @@ export default function NoteEditorScreen() {
   const hasImages = images.length > 0;
   const textHasUrl = hasUrl(text);
   
-  // Dynamic text area height based on whether there are images
-  const textInputHeight = hasImages ? 260 * 1.1 : 480 * 1.1;
+  // ADJUSTED: Dynamic text area height based on whether there are images
+  // Increased text area height since images are now smaller
+  const textInputHeight = hasImages ? 340 : 480 * 1.1;
 
   // Initialize lazy loading with first 2 images
   useEffect(() => {

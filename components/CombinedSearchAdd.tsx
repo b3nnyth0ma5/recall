@@ -445,7 +445,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   />
                 </Pressable>
 
-                {/* Location Pill - Takes available width between search and buttons */}
+                {/* Location Pill - Takes available width between search and buttons - WITH BORDER */}
                 <Pressable
                   style={styles.locationPill}
                   onPress={handleLocationPress}
@@ -595,6 +595,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     flex: 1,
     minWidth: 0,
+    borderWidth: 1,
+    borderColor: colors.primary,
   },
   locationPillText: {
     fontSize: 13,
