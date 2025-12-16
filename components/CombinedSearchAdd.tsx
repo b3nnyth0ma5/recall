@@ -312,6 +312,13 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       return;
     }
 
+    // IMMEDIATELY dismiss keyboard and blur input when user presses submit
+    console.log('[CombinedSearchAdd] Dismissing keyboard immediately on recall creation');
+    Keyboard.dismiss();
+    if (textInputRef.current) {
+      textInputRef.current.blur();
+    }
+
     try {
       setIsCreating(true);
       
@@ -329,15 +336,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       setImages([]);
       // Reset location to current location after creating recall
       setLocation(currentLocation);
-      
-      // Dismiss keyboard after creating recall
-      console.log('[CombinedSearchAdd] Dismissing keyboard after recall creation');
-      Keyboard.dismiss();
-      
-      // Blur the text input to ensure keyboard is dismissed
-      if (textInputRef.current) {
-        textInputRef.current.blur();
-      }
     } catch (error) {
       console.error('Error creating recall:', error);
       Alert.alert('Error', 'Failed to create recall');
