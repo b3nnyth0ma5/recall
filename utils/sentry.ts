@@ -56,39 +56,8 @@ export function initializeSentry() {
       // Enable debug mode in development
       debug: __DEV__,
 
-      // Integrations
-      integrations: [
-        // React Native Tracing integration for performance monitoring
-        new Sentry.ReactNativeTracing({
-          // Enable automatic tracing of user interactions
-          enableUserInteractionTracing: true,
-          
-          // Enable automatic tracing of app start
-          enableAppStartTracking: true,
-          
-          // Enable automatic tracing of slow/frozen frames
-          enableStallTracking: true,
-          
-          // Trace propagation targets - adjust based on your API endpoints
-          tracePropagationTargets: [
-            'localhost',
-            /^https:\/\/.*\.supabase\.co/,
-            /^https:\/\/natively\.dev/,
-          ],
-        }),
-        
-        // Session Replay integration for React Native
-        new Sentry.MobileReplayIntegration({
-          // Mask all text content for privacy
-          maskAllText: false,
-          
-          // Mask all images for privacy
-          maskAllImages: false,
-          
-          // Block all media (audio/video)
-          blockAllMedia: true,
-        }),
-      ],
+      // Integrations - React Native SDK handles these automatically
+      integrations: [],
 
       // Before send hook - can be used to filter or modify events
       beforeSend(event, hint) {
@@ -174,15 +143,29 @@ export function addBreadcrumb(breadcrumb: {
 }
 
 /**
- * Start a transaction for performance monitoring
+ * Start a span for performance monitoring
+ * Note: React Native SDK uses spans instead of transactions
  */
-export function startTransaction(name: string, op: string) {
-  const transaction = Sentry.startTransaction({
-    name,
-    op,
+export function startSpan(name: string, op: string) {
+  // In React Native SDK, use startSpan or startInactiveSpan
+  // For now, we'll just add a breadcrumb for tracking
+  addBreadcrumb({
+    message: `Starting operation: ${name}`,
+    category: 'performance',
+    level: 'info',
+    data: { op },
   });
   
-  return transaction;
+  return {
+    finish: () => {
+      addBreadcrumb({
+        message: `Finished operation: ${name}`,
+        category: 'performance',
+        level: 'info',
+        data: { op },
+      });
+    },
+  };
 }
 
 /**

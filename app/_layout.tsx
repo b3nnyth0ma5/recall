@@ -142,14 +142,15 @@ function RootLayoutNav() {
       return;
     }
 
-    const inAuthGroup = segments[0] === 'login';
-    const inOnboardingGroup = segments[0] === 'onboarding';
-    const inTabsGroup = segments[0] === '(tabs)';
-    const inNoteEditor = segments[0] === 'note-editor';
-    const inModalScreens = segments[0] === 'modal' || segments[0] === 'formsheet' || segments[0] === 'transparent-modal';
-    const inPasswordResetScreens = segments[0] === 'reset-password' || segments[0] === 'update-password';
-    const inEmailConfirmedScreen = segments[0] === 'email-confirmed';
-    const inOtherScreens = segments[0] === 'search' || segments[0] === 'location-search' || segments[0] === 'map-view' || segments[0] === 'shared-recall' || segments[0] === 'person-recalls' || segments[0] === 'people-word-cloud';
+    const currentSegment = segments[0];
+    const inAuthGroup = currentSegment === 'login';
+    const inOnboardingGroup = currentSegment === 'onboarding';
+    const inTabsGroup = currentSegment === '(tabs)';
+    const inNoteEditor = currentSegment === 'note-editor';
+    const inModalScreens = currentSegment === 'modal' || currentSegment === 'formsheet' || currentSegment === 'transparent-modal';
+    const inPasswordResetScreens = currentSegment === 'reset-password' || currentSegment === 'update-password';
+    const inEmailConfirmedScreen = currentSegment === 'email-confirmed';
+    const inOtherScreens = currentSegment === 'search' || currentSegment === 'location-search' || currentSegment === 'map-view' || currentSegment === 'shared-recall' || currentSegment === 'person-recalls' || currentSegment === 'people-word-cloud';
 
     console.log('[Routing] Current state:', { 
       user: !!user, 
@@ -162,7 +163,7 @@ function RootLayoutNav() {
       inEmailConfirmedScreen,
       inOtherScreens,
       needsOnboarding,
-      currentSegment: segments[0],
+      currentSegment,
       hasInitialized: hasInitializedRef.current,
       lastRoute: lastRouteRef.current
     });
@@ -225,7 +226,7 @@ function RootLayoutNav() {
       hasInitializedRef.current = true;
       console.log('[Routing] No navigation needed, marking as initialized');
     }
-  }, [user, loading, checkingOnboarding, needsOnboarding, segments[0], router]);
+  }, [user, loading, checkingOnboarding, needsOnboarding, segments, router]);
 
   return (
     <View style={styles.container}>

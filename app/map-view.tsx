@@ -49,14 +49,6 @@ export default function MapViewScreen() {
     markersRef.current.forEach(marker => marker.setMap(null));
     markersRef.current = [];
 
-    const handleMarkerClick = (note: Note) => {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
-      setSelectedNote(note);
-      setShowPreview(true);
-    };
-
     mapNotes.forEach(note => {
       if (!note.latitude || !note.longitude) return;
 
@@ -100,7 +92,7 @@ export default function MapViewScreen() {
       }
 
       // Create custom overlay using a factory function instead of class
-      const createCustomMarker = (position: any, div: any) => {
+      const createCustomMarker = (position: any, div: any, noteData: Note) => {
         const marker = new window.google.maps.OverlayView();
         
         marker.onAdd = function() {
@@ -109,7 +101,11 @@ export default function MapViewScreen() {
 
           // Add click listener
           div.addEventListener('click', () => {
-            handleMarkerClick(note);
+            if (Platform.OS !== 'web') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            }
+            setSelectedNote(noteData);
+            setShowPreview(true);
           });
         };
 
@@ -135,7 +131,8 @@ export default function MapViewScreen() {
 
       const marker = createCustomMarker(
         { lat: note.latitude, lng: note.longitude },
-        markerDiv
+        markerDiv,
+        note
       );
 
       marker.setMap(map);
