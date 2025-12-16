@@ -456,15 +456,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                     {location?.name || currentLocation?.name || 'Add Location'}
                   </Text>
                 </Pressable>
-
-                {/* Plus Button - SWAPPED: Now before submit button */}
-                <Pressable
-                  style={styles.plusButton}
-                  onPress={handlePlusPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
-                </Pressable>
 								
                 {/* Submit Button - SWAPPED: Now after plus button, far right */}
                 <Pressable
@@ -474,6 +465,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <IconSymbol name="arrow.up.circle.fill" size={28} color={colors.primary} />
+                </Pressable>
+
+								{/* Plus Button - SWAPPED: Now before submit button */}
+                <Pressable
+                  style={styles.plusButton}
+                  onPress={handlePlusPress}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
                 </Pressable>
               </View>
             </View>
