@@ -37,18 +37,19 @@ export default function UpdatePasswordScreen() {
       return;
     }
 
-    const tokenHash = params.token_hash as string;
-    const type = params.type as string;
-
     // Check if user has a valid recovery session
     const checkSession = async () => {
       try {
         isVerifyingRef.current = true;
         
         console.log('[UpdatePassword] Checking session with params:', {
-          hasTokenHash: !!tokenHash,
-          hasType: !!type,
+          hasTokenHash: !!params.token_hash,
+          hasType: !!params.type,
         });
+        
+        // First, check if we have token_hash and type in the URL
+        const tokenHash = params.token_hash as string;
+        const type = params.type as string;
 
         if (tokenHash && type) {
           console.log('[UpdatePassword] Found token_hash in URL, verifying OTP...');
@@ -225,7 +226,7 @@ export default function UpdatePasswordScreen() {
     };
 
     checkSession();
-  }, [params.token_hash, params.type, router]); // Include all dependencies
+  }, []); // Empty dependency array - only run once on mount
 
   // Helper function to get user-friendly error message based on error code and message
   const getPasswordUpdateErrorMessage = (error: any): string => {

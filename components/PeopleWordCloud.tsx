@@ -38,7 +38,17 @@ export function PeopleWordCloud({
   const [selectedPeople, setSelectedPeople] = useState<Person[]>(initialSelectedPeople);
   const [loading, setLoading] = useState(false);
 
-  const loadPeople = useCallback(async () => {
+  useEffect(() => {
+    if (visible && user) {
+      loadPeople();
+    }
+  }, [visible, user, loadPeople]);
+
+  useEffect(() => {
+    setSelectedPeople(initialSelectedPeople);
+  }, [initialSelectedPeople]);
+
+  const loadPeople = async () => {
     if (!user) return;
 
     setLoading(true);
@@ -104,17 +114,7 @@ export function PeopleWordCloud({
     } finally {
       setLoading(false);
     }
-  }, [user]);
-
-  useEffect(() => {
-    if (visible && user) {
-      loadPeople();
-    }
-  }, [visible, user, loadPeople]);
-
-  useEffect(() => {
-    setSelectedPeople(initialSelectedPeople);
-  }, [initialSelectedPeople]);
+  };
 
   const togglePerson = (person: Person) => {
     const isSelected = selectedPeople.some(p => p.id === person.id);

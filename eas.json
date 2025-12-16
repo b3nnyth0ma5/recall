@@ -1,4 +1,3 @@
-
 {
   "cli": {
     "version": ">= 5.0.0"
@@ -13,10 +12,6 @@
       },
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "SENTRY_ORG": "o4510542497447936",
-        "SENTRY_PROJECT": "4510542503280720"
       }
     },
     "preview": {
@@ -27,10 +22,6 @@
       },
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "SENTRY_ORG": "o4510542497447936",
-        "SENTRY_PROJECT": "4510542503280720"
       }
     },
     "production": {
@@ -40,10 +31,6 @@
       },
       "android": {
         "buildType": "app-bundle"
-      },
-      "env": {
-        "SENTRY_ORG": "o4510542497447936",
-        "SENTRY_PROJECT": "4510542503280720"
       }
     }
   },
