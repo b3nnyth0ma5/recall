@@ -472,7 +472,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
             </View>
           )}
           
-          {/* People Avatars - FIXED: Positioned absolutely at top right OVER the image with proper z-index */}
+          {/* People Avatars - THOROUGHLY FIXED: Positioned absolutely at top right OVER the image */}
           {hasPeople && (
             <View style={styles.peopleAvatarsContainer}>
               <PeopleAvatars 
@@ -598,8 +598,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginHorizontal: -CARD_PADDING,
     position: 'relative',
-    zIndex: 1,
+    zIndex: 10,
     marginTop: 8,
+    overflow: 'visible',
   },
   imagesScrollContent: {
     paddingHorizontal: CARD_PADDING,
@@ -655,7 +656,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    zIndex: 2,
+    zIndex: 100,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -672,9 +673,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 12,
     right: 12,
-    zIndex: 999999,
-    elevation: 999999,
+    zIndex: 1000,
+    elevation: 1000,
     pointerEvents: 'box-none',
+    backgroundColor: 'transparent',
   },
   text: {
     fontSize: 15,

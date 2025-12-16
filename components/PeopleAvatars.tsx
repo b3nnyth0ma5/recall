@@ -62,7 +62,8 @@ export function PeopleAvatars({
             styles.avatarWrapper,
             {
               marginLeft: index > 0 ? -overlapOffset : 0,
-              zIndex: visiblePeople.length - index,
+              zIndex: visiblePeople.length - index + 100,
+              elevation: visiblePeople.length - index + 100,
             },
           ]}
         >
@@ -79,7 +80,8 @@ export function PeopleAvatars({
             styles.avatarWrapper,
             {
               marginLeft: -overlapOffset,
-              zIndex: 0,
+              zIndex: 100,
+              elevation: 100,
             },
           ]}
         >
@@ -108,17 +110,20 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'transparent',
   },
   avatarWrapper: {
     position: 'relative',
+    backgroundColor: 'transparent',
   },
   moreAvatar: {
     backgroundColor: '#E0E0E0',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.25,
-    borderColor: '#776C6E',
-    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.2)',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    boxShadow: '0px 3px 8px rgba(0, 0, 0, 0.3)',
+    elevation: 8,
   },
   moreText: {
     position: 'relative',

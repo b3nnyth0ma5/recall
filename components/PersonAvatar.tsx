@@ -34,17 +34,17 @@ const getInitials = (name: string): string => {
 const getAvatarColor = (name: string): string => {
   const colors = [
     '#FF6B7A', // Primary coral
-    '#FFAFAF', // 
-		'#9E9093',
-    '#FFD0D0', // 
-		'#D4C7C8',
-    '#FF8D92', // 
-    '#FFF2F2', // 
-    '#E86B77', // 
-    '#FEC8C8', // 
-    '#C7B7B9', //
-		'#9F9194', //
-		'#EFE8E8', //'
+    '#FFAFAF',
+    '#9E9093',
+    '#FFD0D0',
+    '#D4C7C8',
+    '#FF8D92',
+    '#FFF2F2',
+    '#E86B77',
+    '#FEC8C8',
+    '#C7B7B9',
+    '#9F9194',
+    '#EFE8E8',
   ];
   
   // Simple hash function to get consistent color for same name
@@ -98,9 +98,10 @@ const styles = StyleSheet.create({
   avatar: {
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.25,
-    borderColor: '#776C6E',
-    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.2)',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    boxShadow: '0px 3px 8px rgba(0, 0, 0, 0.3)',
+    elevation: 8,
     overflow: 'hidden',
   },
   initials: {
