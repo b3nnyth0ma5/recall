@@ -1473,11 +1473,17 @@ export default function NoteEditorScreen() {
         </View>
       )}
 
-      {/* Floating Action Buttons - Vertically aligned with plus icon */}
+      {/* Floating Action Buttons - Right side, vertically aligned with plus icon */}
+      {/* Position dynamically: above keyboard when visible, otherwise at bottom */}
       {showFABs && (
         <Animated.View
           entering={FadeIn.duration(200)}
-          style={styles.floatingActionsContainer}
+          style={[
+            styles.floatingActionsContainer,
+            keyboardVisible && Platform.OS === 'ios' && {
+              bottom: keyboardHeight + 60,
+            },
+          ]}
         >
           <Pressable
             style={styles.floatingActionButton}
@@ -1506,21 +1512,23 @@ export default function NoteEditorScreen() {
           right: 0,
         }
       ]}>
+        {/* Keyboard icons - Left aligned (swapped from right) */}
         <View style={styles.toolbarLeft}>
           <Pressable
-            onPress={handlePlusPress}
-            disabled={loading}
+            onPress={toggleKeyboard}
             style={styles.toolbarButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            {loading ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
-            )}
+            <IconSymbol 
+              name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+              size={26} 
+              color={colors.primary} 
+            />
           </Pressable>
+        </View>
 
-          {/* Location Pill - Between plus and keyboard icons */}
+        {/* Location Pill - Centered with equal padding */}
+        <View style={styles.toolbarCenter}>
           <Pressable
             style={styles.locationPill}
             onPress={handleLocationSearch}
@@ -1533,18 +1541,19 @@ export default function NoteEditorScreen() {
           </Pressable>
         </View>
 
-        {/* Keyboard icons - Right aligned */}
+        {/* Plus icon - Right aligned (swapped from left) */}
         <View style={styles.toolbarRight}>
           <Pressable
-            onPress={toggleKeyboard}
+            onPress={handlePlusPress}
+            disabled={loading}
             style={styles.toolbarButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <IconSymbol 
-              name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-              size={26} 
-              color={colors.primary} 
-            />
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+            )}
           </Pressable>
         </View>
       </View>
@@ -1759,7 +1768,7 @@ const styles = StyleSheet.create({
   floatingActionsContainer: {
     position: 'absolute',
     bottom: 95,
-    left: 20,
+    right: 20,
     flexDirection: 'column',
     gap: 12,
     zIndex: 1002,
@@ -1790,13 +1799,20 @@ const styles = StyleSheet.create({
   toolbarLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    width: 60,
+  },
+  toolbarCenter: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
   },
   toolbarRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 20,
+    justifyContent: 'flex-end',
+    width: 60,
   },
   toolbarButton: {
     padding: 8 * 1.15,
@@ -1811,6 +1827,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     flex: 1,
     minWidth: 0,
+    maxWidth: 280,
     borderWidth: 1,
     borderColor: colors.primary,
   },
