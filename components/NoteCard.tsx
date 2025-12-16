@@ -394,18 +394,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
-      {/* People Avatars - Top Right Edge (Superscript Position) with ULTRA HIGH Z-INDEX */}
-      {hasPeople && (
-        <View style={styles.peopleAvatarsContainer}>
-          <PeopleAvatars 
-            people={note.people || []} 
-            maxVisible={5}
-            avatarSize={32}
-            overlapOffset={8}
-          />
-        </View>
-      )}
-
       {/* Images - Displayed FIRST, NOT swipeable */}
       {displayImages && displayImages.length > 0 && (
         <View style={styles.imagesContainer}>
@@ -481,6 +469,18 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               <Text style={styles.imageCounterText}>
                 {totalImageCount > 1 ? `${currentImageIndex + 1} / ${totalImageCount}` : `1 / ${totalImageCount}`}
               </Text>
+            </View>
+          )}
+          
+          {/* People Avatars - FIXED: Positioned absolutely at top right OVER the image with proper z-index */}
+          {hasPeople && (
+            <View style={styles.peopleAvatarsContainer}>
+              <PeopleAvatars 
+                people={note.people || []} 
+                maxVisible={5}
+                avatarSize={32}
+                overlapOffset={8}
+              />
             </View>
           )}
         </View>
@@ -583,6 +583,7 @@ const styles = StyleSheet.create({
     overflow: 'visible',
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
     elevation: 2,
+    position: 'relative',
   },
   swipeableContainer: {
     borderRadius: 16,
@@ -593,18 +594,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 16,
   },
-  peopleAvatarsContainer: {
-    position: 'absolute',
-    top: -10,
-    right: 8,
-    zIndex: 99999,
-    elevation: 99999,
-  },
   imagesContainer: {
     marginBottom: 12,
     marginHorizontal: -CARD_PADDING,
     position: 'relative',
     zIndex: 1,
+    marginTop: 8,
   },
   imagesScrollContent: {
     paddingHorizontal: CARD_PADDING,
@@ -672,6 +667,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+  peopleAvatarsContainer: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 999999,
+    elevation: 999999,
+    pointerEvents: 'box-none',
   },
   text: {
     fontSize: 15,

@@ -430,7 +430,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 enablesReturnKeyAutomatically={false}
               />
 
-              {/* Button Row - UPDATED: New layout with locationPill taking available width */}
+              {/* Button Row - SWAPPED: Plus button now before submit button */}
               <View style={styles.inputRow}>
                 {/* Search Icon - Left side */}
                 <Pressable
@@ -457,8 +457,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   </Text>
                 </Pressable>
 
-                {/* Submit Button - Next to plus button on the right */}
-                {/* Plus Button - Far right, vertically aligned with camera FABs */}
+                {/* Plus Button - SWAPPED: Now before submit button */}
                 <Pressable
                   style={styles.plusButton}
                   onPress={handlePlusPress}
@@ -467,7 +466,8 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
                 </Pressable>
 								
-								<Pressable
+                {/* Submit Button - SWAPPED: Now after plus button, far right */}
+                <Pressable
                   style={[styles.submitButton, (!text.trim() && images.length === 0) && styles.submitButtonDisabled]}
                   onPress={handleCreateRecall}
                   disabled={(!text.trim() && images.length === 0) || isCreating}
@@ -590,8 +590,8 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: `${colors.primary}20`,
     paddingVertical: 6,
-		paddingRight: 8,
-		paddingLeft: 8,
+    paddingRight: 8,
+    paddingLeft: 8,
     borderRadius: 16,
     flex: 1,
     minWidth: 0,
@@ -604,14 +604,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
+  plusButton: {
+    padding: 0,
+  },
   submitButton: {
     padding: 0,
   },
   submitButtonDisabled: {
     opacity: 0.4,
-  },
-  plusButton: {
-    padding: 4,
   },
   drawerBackdrop: {
     position: 'absolute',
