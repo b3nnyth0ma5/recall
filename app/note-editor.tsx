@@ -51,8 +51,8 @@ interface ImageData {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-// REDUCED BY 25%: Changed from (SCREEN_WIDTH - 32) to (SCREEN_WIDTH - 32) * 0.75
-const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 32) * 0.75;
+// REDUCED BY 20%: Changed from (SCREEN_WIDTH - 32) to (SCREEN_WIDTH - 32) * 0.8
+const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 32) * 0.8;
 const IMAGE_CAROUSEL_SPACING = 12;
 
 // Helper function to check if text contains URLs - defined outside component
@@ -446,7 +446,7 @@ export default function NoteEditorScreen() {
     }
   }, [images, location]);
 
-  const handleCameraPress = () => {
+  const handlePlusPress = () => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
@@ -465,6 +465,13 @@ export default function NoteEditorScreen() {
     setTimeout(() => {
       pickImage();
     }, 300);
+  };
+
+  // Handler to close FABs when tapping anywhere
+  const handleBackdropPress = () => {
+    if (showFABs) {
+      setShowFABs(false);
+    }
   };
 
   // Auto-launch camera when openCamera flag is set - FIXED: Only run once
@@ -1328,6 +1335,14 @@ export default function NoteEditorScreen() {
         }}
       />
 
+      {/* Backdrop for FABs - tap anywhere to close */}
+      {showFABs && (
+        <Pressable 
+          style={styles.fabBackdrop} 
+          onPress={handleBackdropPress}
+        />
+      )}
+
       <ScrollView 
         ref={scrollViewRef}
         style={styles.scrollView} 
@@ -1448,7 +1463,7 @@ export default function NoteEditorScreen() {
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <View style={styles.actionButtonCircle}>
-                      <IconSymbol name="xmark" size={16} color="#FFFFFF" />
+                      <IconSymbol name="xmark" size={14} color="#FFFFFF" />
                     </View>
                   </Pressable>
                 </View>
@@ -1458,26 +1473,7 @@ export default function NoteEditorScreen() {
         </View>
       )}
 
-      {locationName && (
-        <View>
-          <Pressable 
-            onPress={handleLocationPress}
-            style={styles.locationInfo}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <IconSymbol name="location.fill" size={16} color={colors.primary} />
-            <View style={styles.locationTextContainer}>
-              <Text style={styles.locationText}>{locationName}</Text>
-              {locationPrimaryType && (
-                <Text style={styles.locationTypeText}>{locationPrimaryType}</Text>
-              )}
-            </View>
-            <IconSymbol name="chevron.right" size={14} color={colors.primary} />
-          </Pressable>
-        </View>
-      )}
-
-      {/* Floating Action Buttons - Vertically aligned with camera icon */}
+      {/* Floating Action Buttons - Vertically aligned with plus icon */}
       {showFABs && (
         <Animated.View
           entering={FadeIn.duration(200)}
@@ -1512,7 +1508,7 @@ export default function NoteEditorScreen() {
       ]}>
         <View style={styles.toolbarLeft}>
           <Pressable
-            onPress={handleCameraPress}
+            onPress={handlePlusPress}
             disabled={loading}
             style={styles.toolbarButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -1520,10 +1516,25 @@ export default function NoteEditorScreen() {
             {loading ? (
               <ActivityIndicator size="small" color={colors.primary} />
             ) : (
-              <IconSymbol name="camera.fill" size={26} color={colors.primary} />
+              <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
             )}
           </Pressable>
-          
+
+          {/* Location Pill - Between plus and keyboard icons */}
+          <Pressable
+            style={styles.locationPill}
+            onPress={handleLocationSearch}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
+            <Text style={styles.locationPillText} numberOfLines={1}>
+              {locationName || 'Add Location'}
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Keyboard icons - Right aligned */}
+        <View style={styles.toolbarRight}>
           <Pressable
             onPress={toggleKeyboard}
             style={styles.toolbarButton}
@@ -1659,33 +1670,6 @@ const styles = StyleSheet.create({
   spacer: {
     flex: 1,
   },
-  locationInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 20 * 1.15,
-    paddingVertical: 12 * 1.15,
-    backgroundColor: colors.card,
-    marginHorizontal: 16,
-    borderRadius: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    minHeight: 48 * 1.1,
-  },
-  locationTextContainer: {
-    flex: 1,
-  },
-  locationText: {
-    fontSize: 14,
-    color: colors.primary,
-    fontWeight: '500',
-  },
-  locationTypeText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
   imagesContainer: {
     paddingVertical: 16,
     marginBottom: 8,
@@ -1756,12 +1740,21 @@ const styles = StyleSheet.create({
     // No additional styles needed
   },
   actionButtonCircle: {
-    width: 32 * 1.15,
-    height: 32 * 1.15,
-    borderRadius: 16 * 1.15,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  fabBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 1001,
   },
   floatingActionsContainer: {
     position: 'absolute',
@@ -1797,10 +1790,35 @@ const styles = StyleSheet.create({
   toolbarLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  toolbarRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 20,
   },
   toolbarButton: {
     padding: 8 * 1.15,
+  },
+  locationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: `${colors.primary}20`,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    flex: 1,
+    minWidth: 0,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  locationPillText: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '600',
+    flex: 1,
   },
   savingModalContainer: {
     position: 'absolute',
