@@ -396,74 +396,7 @@ export default function PersonRecallsScreen() {
     router.back();
   }, [router]);
 
-  const handlePhotoPress = useCallback(async () => {
-    try {
-      // Show action sheet
-      Alert.alert(
-        'Person Photo',
-        'Choose an option',
-        [
-          {
-            text: 'Take Photo',
-            onPress: async () => {
-              const { status } = await ImagePicker.requestCameraPermissionsAsync();
-              if (status !== 'granted') {
-                Alert.alert('Permission needed', 'Please grant camera permissions');
-                return;
-              }
-
-              const result = await ImagePicker.launchCameraAsync({
-                mediaTypes: ['images'],
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.9,
-              });
-
-              if (!result.canceled && result.assets) {
-                await handlePhotoUpload(result.assets[0].uri);
-              }
-            },
-          },
-          {
-            text: 'Choose from Library',
-            onPress: async () => {
-              const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-              if (status !== 'granted') {
-                Alert.alert('Permission needed', 'Please grant photo library permissions');
-                return;
-              }
-
-              const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ['images'],
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.9,
-              });
-
-              if (!result.canceled && result.assets) {
-                await handlePhotoUpload(result.assets[0].uri);
-              }
-            },
-          },
-          ...(personPhotoUrl ? [{
-            text: 'Remove Photo',
-            style: 'destructive' as const,
-            onPress: async () => {
-              await handlePhotoRemove();
-            },
-          }] : []),
-          {
-            text: 'Cancel',
-            style: 'cancel' as const,
-          },
-        ]
-      );
-    } catch (error) {
-      console.error('Error handling photo press:', error);
-    }
-  }, [personPhotoUrl, handlePhotoUpload, handlePhotoRemove]);
-
-  const handlePhotoUpload = async (uri: string) => {
+  const handlePhotoUpload = useCallback(async (uri: string) => {
     try {
       setUploadingPhoto(true);
       console.log('[PersonRecalls] Starting photo upload process');
@@ -534,9 +467,9 @@ export default function PersonRecallsScreen() {
     } finally {
       setUploadingPhoto(false);
     }
-  };
+  }, [personId, user]);
 
-  const handlePhotoRemove = async () => {
+  const handlePhotoRemove = useCallback(async () => {
     try {
       setUploadingPhoto(true);
       console.log('[PersonRecalls] Removing person photo');
@@ -576,7 +509,74 @@ export default function PersonRecallsScreen() {
     } finally {
       setUploadingPhoto(false);
     }
-  };
+  }, [personId, user]);
+
+  const handlePhotoPress = useCallback(async () => {
+    try {
+      // Show action sheet
+      Alert.alert(
+        'Person Photo',
+        'Choose an option',
+        [
+          {
+            text: 'Take Photo',
+            onPress: async () => {
+              const { status } = await ImagePicker.requestCameraPermissionsAsync();
+              if (status !== 'granted') {
+                Alert.alert('Permission needed', 'Please grant camera permissions');
+                return;
+              }
+
+              const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.9,
+              });
+
+              if (!result.canceled && result.assets) {
+                await handlePhotoUpload(result.assets[0].uri);
+              }
+            },
+          },
+          {
+            text: 'Choose from Library',
+            onPress: async () => {
+              const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+              if (status !== 'granted') {
+                Alert.alert('Permission needed', 'Please grant photo library permissions');
+                return;
+              }
+
+              const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.9,
+              });
+
+              if (!result.canceled && result.assets) {
+                await handlePhotoUpload(result.assets[0].uri);
+              }
+            },
+          },
+          ...(personPhotoUrl ? [{
+            text: 'Remove Photo',
+            style: 'destructive' as const,
+            onPress: async () => {
+              await handlePhotoRemove();
+            },
+          }] : []),
+          {
+            text: 'Cancel',
+            style: 'cancel' as const,
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error handling photo press:', error);
+    }
+  }, [personPhotoUrl, handlePhotoUpload, handlePhotoRemove]);
 
   // Render skeleton loaders during initial load
   const renderSkeletonLoaders = () => {

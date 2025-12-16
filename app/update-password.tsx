@@ -226,7 +226,7 @@ export default function UpdatePasswordScreen() {
     };
 
     checkSession();
-  }, []); // Empty dependency array - only run once on mount
+  }, [params.token_hash, params.type, router]); // Include all dependencies
 
   // Helper function to get user-friendly error message based on error code and message
   const getPasswordUpdateErrorMessage = (error: any): string => {

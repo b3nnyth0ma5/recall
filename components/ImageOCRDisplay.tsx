@@ -74,7 +74,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  }, [imageId, autoTriggered]);
+  }, [imageId, autoTriggered, handleProcessImage]);
 
   const handleProcessImage = useCallback(async () => {
     setIsLoading(true);
@@ -102,7 +102,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  }, [imageId, loadOCRResults]);
+  }, [imageId]);
 
   const handleRetry = async () => {
     setIsLoading(true);

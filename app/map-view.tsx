@@ -104,7 +104,7 @@ export default function MapViewScreen() {
         const marker = new window.google.maps.OverlayView();
         
         marker.onAdd = function() {
-          const panes = this.getPanes();
+          const panes = marker.getPanes();
           panes.overlayMouseTarget.appendChild(div);
 
           // Add click listener
@@ -114,7 +114,7 @@ export default function MapViewScreen() {
         };
 
         marker.draw = function() {
-          const overlayProjection = this.getProjection();
+          const overlayProjection = marker.getProjection();
           const pos = overlayProjection.fromLatLngToDivPixel(position);
           
           if (pos) {
