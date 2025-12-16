@@ -684,8 +684,8 @@ const styles = StyleSheet.create({
   },
   peopleAvatarsContainerWithImages: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: -8,
+    right: 8,
     zIndex: 1000,
     elevation: 1000,
     pointerEvents: 'box-none',
