@@ -3,7 +3,7 @@ import * as Sentry from '@sentry/react-native';
 
 /**
  * Initialize Sentry for application performance monitoring, error tracking, and session replay
- * This should be called as early as possible in the application lifecycle
+ * Following https://docs.sentry.io/platforms/react-native/manual-setup/expo/
  */
 export function initializeSentry() {
   const sentryDsn = 'https://4c2b3b4d11570a614f07073e05494eb7@o4510542497447936.ingest.de.sentry.io/4510542503280720';
@@ -14,14 +14,10 @@ export function initializeSentry() {
     Sentry.init({
       dsn: sentryDsn,
       
-      // Setting this option to true will send default PII data to Sentry
-      // For example, automatic IP address collection on events
-      sendDefaultPii: true,
-
       // Enable automatic tracing
       enableAutoSessionTracking: true,
       
-      // Session tracking
+      // Session tracking interval
       sessionTrackingIntervalMillis: 10000,
 
       // Performance Monitoring - Capture 100% of transactions in development, 10% in production
@@ -50,8 +46,14 @@ export function initializeSentry() {
       // Enable debug mode in development
       debug: __DEV__,
 
-      // Integrations - React Native SDK handles these automatically
-      integrations: [],
+      // Integrations for React Native
+      integrations: [
+        // Mobile Replay integration for session replay
+        Sentry.mobileReplayIntegration({
+          maskAllText: false,
+          maskAllImages: false,
+        }),
+      ],
 
       // Before send hook - can be used to filter or modify events
       beforeSend(event, hint) {
@@ -60,17 +62,11 @@ export function initializeSentry() {
           console.log('[Sentry] Capturing event:', event.event_id, event.message || event.exception);
         }
         
-        // Filter out events if needed
-        // For example, you might want to filter out certain errors
-        
         return event;
       },
 
       // Before breadcrumb hook - can be used to filter or modify breadcrumbs
       beforeBreadcrumb(breadcrumb, hint) {
-        // Filter out noisy breadcrumbs if needed
-        // For example, you might want to filter out console.log breadcrumbs
-        
         return breadcrumb;
       },
     });
@@ -134,32 +130,6 @@ export function addBreadcrumb(breadcrumb: {
   data?: Record<string, any>;
 }) {
   Sentry.addBreadcrumb(breadcrumb);
-}
-
-/**
- * Start a span for performance monitoring
- * Note: React Native SDK uses spans instead of transactions
- */
-export function startSpan(name: string, op: string) {
-  // In React Native SDK, use startSpan or startInactiveSpan
-  // For now, we'll just add a breadcrumb for tracking
-  addBreadcrumb({
-    message: `Starting operation: ${name}`,
-    category: 'performance',
-    level: 'info',
-    data: { op },
-  });
-  
-  return {
-    finish: () => {
-      addBreadcrumb({
-        message: `Finished operation: ${name}`,
-        category: 'performance',
-        level: 'info',
-        data: { op },
-      });
-    },
-  };
 }
 
 /**
