@@ -391,11 +391,12 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   // Check if note has people mentioned
   const hasPeople = note.people && note.people.length > 0;
+  const hasImages = displayImages && displayImages.length > 0;
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
-      {/* Images - Displayed FIRST, NOT swipeable */}
-      {displayImages && displayImages.length > 0 && (
+      {/* Images - Displayed FIRST if available */}
+      {hasImages && (
         <View style={styles.imagesContainer}>
           <ScrollView
             ref={imageScrollRef}
@@ -472,9 +473,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
             </View>
           )}
           
-          {/* People Avatars - THOROUGHLY FIXED: Positioned absolutely at top right OVER the image */}
+          {/* People Avatars - Positioned absolutely at top right OVER the image */}
           {hasPeople && (
-            <View style={styles.peopleAvatarsContainer}>
+            <View style={styles.peopleAvatarsContainerWithImages}>
               <PeopleAvatars 
                 people={note.people || []} 
                 maxVisible={5}
@@ -496,6 +497,18 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         containerStyle={styles.swipeableContainer}
       >
         <Pressable onPress={onPress} style={styles.cardContent}>
+          {/* People Avatars - For text-only notes, show at top of card content */}
+          {!hasImages && hasPeople && (
+            <View style={styles.peopleAvatarsContainerNoImages}>
+              <PeopleAvatars 
+                people={note.people || []} 
+                maxVisible={5}
+                avatarSize={32}
+                overlapOffset={8}
+              />
+            </View>
+          )}
+
           {/* Text Content */}
           {note.text && (
             <Pressable onPress={handleTextPress}>
@@ -669,10 +682,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
   },
-  peopleAvatarsContainer: {
+  peopleAvatarsContainerWithImages: {
     position: 'absolute',
     top: 12,
     right: 12,
+    zIndex: 1000,
+    elevation: 1000,
+    pointerEvents: 'box-none',
+    backgroundColor: 'transparent',
+  },
+  peopleAvatarsContainerNoImages: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
     zIndex: 1000,
     elevation: 1000,
     pointerEvents: 'box-none',
@@ -685,6 +707,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     marginTop: 4,
     marginLeft: 6,
+    marginRight: 48,
     zIndex: 1,
   },
   normalText: {

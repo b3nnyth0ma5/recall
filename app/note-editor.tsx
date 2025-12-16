@@ -1115,69 +1115,107 @@ export default function NoteEditorScreen() {
         console.log('[NoteEditor] No people to save');
       }
 
-      let uploadedCount = 0;
-      let failedCount = 0;
-      const uploadedImageIds: string[] = [];
-
-      for (const image of images) {
-        if (image.id) {
-          console.log('[NoteEditor] Skipping existing image:', image.id);
-          continue;
+      // FIXED: Navigate back immediately after saving the recall
+      console.log('[NoteEditor] ===== NAVIGATING BACK IMMEDIATELY =====');
+      
+      // Trigger haptic feedback
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      
+      // Navigate back to landing page
+      router.back();
+      
+      // Refresh the notes list immediately (optimistic update)
+      setTimeout(() => {
+        if (isEditing && params.id) {
+          refreshSingleNote(params.id as string);
+        } else {
+          refreshNotes();
         }
+      }, 100);
 
-        if (image.localUri || image.uri) {
-          const imageUri = image.localUri || image.uri;
-          console.log('[NoteEditor] Uploading new image to database:', imageUri);
-          
-          const imageId = await uploadImageToDatabase(imageUri, recallId, image.contentType);
-          
-          if (imageId) {
-            uploadedCount++;
-            uploadedImageIds.push(imageId);
-            console.log('[NoteEditor] Image uploaded successfully to database');
+      // ASYNC: Upload images in the background (don't wait)
+      const imagesToUpload = images.filter(img => !img.id && (img.localUri || img.uri));
+      
+      if (imagesToUpload.length > 0) {
+        console.log(`[NoteEditor] [ASYNC] Starting background upload of ${imagesToUpload.length} images...`);
+        
+        // Fire and forget - upload images in background
+        (async () => {
+          let uploadedCount = 0;
+          let failedCount = 0;
+          const uploadedImageIds: string[] = [];
+
+          for (const image of imagesToUpload) {
+            const imageUri = image.localUri || image.uri;
+            console.log('[NoteEditor] [ASYNC] Uploading image to database:', imageUri);
             
-            console.log('[NoteEditor] Triggering OCR processing for image:', imageId);
-            triggerOCRProcessing(imageId).then(result => {
-              if (result.success) {
-                console.log('[NoteEditor] OCR processing triggered successfully for image:', imageId);
+            try {
+              const imageId = await uploadImageToDatabase(imageUri, recallId, image.contentType);
+              
+              if (imageId) {
+                uploadedCount++;
+                uploadedImageIds.push(imageId);
+                console.log('[NoteEditor] [ASYNC] Image uploaded successfully to database');
+                
+                // Trigger OCR processing for this image
+                console.log('[NoteEditor] [ASYNC] Triggering OCR processing for image:', imageId);
+                triggerOCRProcessing(imageId).then(result => {
+                  if (result.success) {
+                    console.log('[NoteEditor] [ASYNC] OCR processing triggered successfully for image:', imageId);
+                  } else {
+                    console.error('[NoteEditor] [ASYNC] Failed to trigger OCR processing:', result.error);
+                  }
+                }).catch(error => {
+                  console.error('[NoteEditor] [ASYNC] Error triggering OCR processing:', error);
+                });
+                
+                // Refresh the single note to show the newly uploaded image
+                await refreshSingleNote(recallId);
               } else {
-                console.error('[NoteEditor] Failed to trigger OCR processing:', result.error);
+                failedCount++;
+                console.error('[NoteEditor] [ASYNC] Failed to upload image to database');
               }
-            }).catch(error => {
-              console.error('[NoteEditor] Error triggering OCR processing:', error);
-            });
-          } else {
-            failedCount++;
-            console.error('[NoteEditor] Failed to upload image to database');
+            } catch (error) {
+              failedCount++;
+              console.error('[NoteEditor] [ASYNC] Exception uploading image:', error);
+            }
           }
-        }
+
+          console.log(`[NoteEditor] [ASYNC] Upload complete: ${uploadedCount} images uploaded, ${failedCount} failed`);
+          
+          // Final refresh after all images are uploaded
+          await refreshSingleNote(recallId);
+        })();
       }
 
-      console.log(`[NoteEditor] Upload complete: ${uploadedCount} new images uploaded, ${failedCount} failed`);
-
-      console.log('[NoteEditor] Processing URLs in note text for recall:', recallId);
+      // ASYNC: Process URLs in background (don't wait)
+      console.log('[NoteEditor] [ASYNC] Processing URLs in note text for recall:', recallId);
       processRecallUrls(user.id, recallId, noteData.text).then(result => {
         if (result.success) {
-          console.log('[NoteEditor] URLs processed successfully');
+          console.log('[NoteEditor] [ASYNC] URLs processed successfully');
         } else {
-          console.error('[NoteEditor] Failed to process URLs:', result.error);
+          console.error('[NoteEditor] [ASYNC] Failed to process URLs:', result.error);
         }
       }).catch(error => {
-        console.error('[NoteEditor] Error processing URLs:', error);
+        console.error('[NoteEditor] [ASYNC] Error processing URLs:', error);
       });
 
+      // ASYNC: Trigger category matching in background (don't wait)
       setTimeout(() => {
         triggerCategoryMatching(recallId).then(result => {
           if (result.success) {
-            console.log('[NoteEditor] Category matching triggered successfully after note save');
+            console.log('[NoteEditor] [ASYNC] Category matching triggered successfully after note save');
           } else {
-            console.error('[NoteEditor] Failed to trigger category matching:', result.error);
+            console.error('[NoteEditor] [ASYNC] Failed to trigger category matching:', result.error);
           }
         }).catch(error => {
-          console.error('[NoteEditor] Error triggering category matching:', error);
+          console.error('[NoteEditor] [ASYNC] Error triggering category matching:', error);
         });
       }, 500);
 
+      // ASYNC: Trigger recall embedding in background (don't wait)
       setTimeout(() => {
         triggerRecallEmbedding(
           recallId,
@@ -1186,37 +1224,15 @@ export default function NoteEditorScreen() {
           noteData.location_primary_type || undefined
         ).then(result => {
           if (result.success) {
-            console.log('[NoteEditor] Embedding generation triggered successfully after note save');
+            console.log('[NoteEditor] [ASYNC] Embedding generation triggered successfully after note save');
           } else {
-            console.error('[NoteEditor] Failed to trigger embedding generation:', result.error);
+            console.error('[NoteEditor] [ASYNC] Failed to trigger embedding generation:', result.error);
           }
         }).catch(error => {
-          console.error('[NoteEditor] Error triggering embedding generation:', error);
+          console.error('[NoteEditor] [ASYNC] Error triggering embedding generation:', error);
         });
       }, 500);
 
-      if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-
-      if (failedCount > 0) {
-        Alert.alert(
-          'Partial Upload',
-          `${uploadedCount} image(s) uploaded successfully, but ${failedCount} failed. Check console logs for details.`,
-          [{ text: 'OK' }]
-        );
-      }
-
-      console.log('[NoteEditor] ===== SAVE COMPLETE - NAVIGATING BACK =====');
-      router.back();
-      
-      setTimeout(() => {
-        if (isEditing && params.id) {
-          refreshSingleNote(params.id as string);
-        } else {
-          refreshNotes();
-        }
-      }, 300);
     } catch (error: any) {
       console.error('[NoteEditor] 🔥 CRITICAL ERROR saving recall:', error);
       console.error('[NoteEditor] Error stack:', error.stack);
