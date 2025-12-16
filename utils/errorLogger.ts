@@ -1,6 +1,8 @@
-// Global error logging for runtime errors
 
-import { Platform } from "react-native";
+// Global error logging for runtime errors with Sentry integration
+
+import { Platform } from 'react-native';
+import { captureException, captureMessage, addBreadcrumb } from './sentry';
 
 // Simple debouncing to prevent duplicate errors
 const recentErrors: { [key: string]: boolean } = {};
@@ -23,6 +25,16 @@ const sendErrorToParent = (level: string, message: string, data: any) => {
   clearErrorAfterDelay(errorKey);
 
   try {
+    // Send to Sentry
+    if (level === 'error') {
+      const error = new Error(message);
+      error.stack = data.error || data.stack || error.stack;
+      captureException(error, { level, data });
+    } else {
+      captureMessage(message, level as any, { data });
+    }
+
+    // Also send to parent window if available
     if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
       window.parent.postMessage({
         type: 'EXPO_ERROR',
@@ -111,19 +123,52 @@ export const setupErrorLogging = () => {
       };
 
       console.error('🚨 RUNTIME ERROR:', errorData);
+      
+      // Send to Sentry
+      if (error) {
+        captureException(error, errorData);
+      } else {
+        captureMessage(`JavaScript Runtime Error: ${message}`, 'error', errorData);
+      }
+      
+      // Add breadcrumb
+      addBreadcrumb({
+        message: 'Runtime Error',
+        category: 'error',
+        level: 'error',
+        data: errorData,
+      });
+      
       sendErrorToParent('error', 'JavaScript Runtime Error', errorData);
       return false; // Don't prevent default error handling
     };
+    
     // check if platform is web
     if (Platform.OS === 'web') {
       // Capture unhandled promise rejections
       window.addEventListener('unhandledrejection', (event) => {
-          const errorData = {
+        const errorData = {
           reason: event.reason,
           timestamp: new Date().toISOString()
         };
 
         console.error('🚨 UNHANDLED PROMISE REJECTION:', errorData);
+        
+        // Send to Sentry
+        if (event.reason instanceof Error) {
+          captureException(event.reason, errorData);
+        } else {
+          captureMessage(`Unhandled Promise Rejection: ${event.reason}`, 'error', errorData);
+        }
+        
+        // Add breadcrumb
+        addBreadcrumb({
+          message: 'Unhandled Promise Rejection',
+          category: 'promise',
+          level: 'error',
+          data: errorData,
+        });
+        
         sendErrorToParent('error', 'Unhandled Promise Rejection', errorData);
       });
     }
@@ -148,6 +193,17 @@ export const setupErrorLogging = () => {
   //   // Add timestamp and make it stand out in Metro logs
   //   originalConsoleError('🔥🔥🔥 ERROR:', new Date().toISOString(), enhancedMessage);
 
+  //   // Send to Sentry
+  //   captureMessage(enhancedMessage, 'error');
+  //   
+  //   // Add breadcrumb
+  //   addBreadcrumb({
+  //     message: 'Console Error',
+  //     category: 'console',
+  //     level: 'error',
+  //     data: { message: enhancedMessage },
+  //   });
+
   //   // Also send to parent
   //   sendErrorToParent('error', 'Console Error', enhancedMessage);
   // };
@@ -162,6 +218,17 @@ export const setupErrorLogging = () => {
   //   const enhancedMessage = args.join(' ') + sourceInfo + callerInfo;
 
   //   originalConsoleWarn('⚠️ WARNING:', new Date().toISOString(), enhancedMessage);
+
+  //   // Send to Sentry
+  //   captureMessage(enhancedMessage, 'warning');
+  //   
+  //   // Add breadcrumb
+  //   addBreadcrumb({
+  //     message: 'Console Warning',
+  //     category: 'console',
+  //     level: 'warning',
+  //     data: { message: enhancedMessage },
+  //   });
 
   //   // Also send to parent
   //   sendErrorToParent('warn', 'Console Warning', enhancedMessage);
@@ -180,6 +247,15 @@ export const setupErrorLogging = () => {
   //     const enhancedMessage = message + sourceInfo + callerInfo;
 
   //     originalConsoleLog('📝 LOG (potential issue):', new Date().toISOString(), enhancedMessage);
+  //     
+  //     // Add breadcrumb for potential issues
+  //     addBreadcrumb({
+  //       message: 'Console Log (potential issue)',
+  //       category: 'console',
+  //       level: 'info',
+  //       data: { message: enhancedMessage },
+  //     });
+  //     
   //     sendErrorToParent('info', 'Console Log (potential issue)', enhancedMessage);
   //   } else {
   //     // Normal log, just pass through

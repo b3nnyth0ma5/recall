@@ -9,6 +9,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet, View, Platform } from 'react-native';
 import { supabase } from '@/utils/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { initializeSentry, setUser as setSentryUser } from '@/utils/sentry';
+
+// Initialize Sentry as early as possible
+initializeSentry();
 
 const PeopleGraphOverlay = memo(() => {
   const { showGraph, people, anchorPosition, closeGraph } = usePeopleGraph();
@@ -69,6 +73,18 @@ function RootLayoutNav() {
   // Use refs to track navigation state and prevent infinite loops
   const hasInitializedRef = useRef(false);
   const lastRouteRef = useRef<string>('');
+
+  // Update Sentry user context when user changes
+  useEffect(() => {
+    if (user) {
+      setSentryUser({
+        id: user.id,
+        email: user.email,
+      });
+    } else {
+      setSentryUser(null);
+    }
+  }, [user]);
 
   // Check if user needs onboarding
   useEffect(() => {

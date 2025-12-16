@@ -520,7 +520,7 @@ export default function HomeScreen() {
           renderEmptyState()
         ) : shouldShowContent ? (
           <View style={styles.notesContainer}>
-            {/* Recalls section */}
+            {/* Recalls section - FIXED: Allow overflow for avatars */}
             <View style={styles.allNotesSection}>
               {notes.map((note, index) => (
                 <NoteCard
@@ -659,6 +659,7 @@ const styles = StyleSheet.create({
   allNotesSection: {
     paddingHorizontal: 16,
     paddingTop: 8,
+    overflow: 'visible',
   },
   loadingMoreContainer: {
     flexDirection: 'row',

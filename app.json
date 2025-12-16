@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Recall",
@@ -179,7 +180,8 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "SENTRY_INGEST_DSN": "${SENTRY_INGEST_DSN}"
     }
   },
   "scheme": "Recall"
