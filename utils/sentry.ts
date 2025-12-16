@@ -1,18 +1,12 @@
 
 import * as Sentry from '@sentry/react-native';
-import Constants from 'expo-constants';
 
 /**
  * Initialize Sentry for application performance monitoring, error tracking, and session replay
  * This should be called as early as possible in the application lifecycle
  */
 export function initializeSentry() {
-  const sentryDsn = Constants.expoConfig?.extra?.SENTRY_INGEST_DSN || process.env.SENTRY_INGEST_DSN;
-
-  if (!sentryDsn) {
-    console.warn('[Sentry] SENTRY_INGEST_DSN not found in environment variables. Sentry will not be initialized.');
-    return;
-  }
+  const sentryDsn = 'https://4c2b3b4d11570a614f07073e05494eb7@o4510542497447936.ingest.de.sentry.io/4510542503280720';
 
   console.log('[Sentry] Initializing Sentry with DSN...');
 
