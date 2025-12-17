@@ -32,20 +32,33 @@ async function extractLocationEntities(query: string, openaiApiKey: string) {
   try {
     console.log('Extracting location entities from query:', query);
 
-    // OPTIMIZATION: Simplified prompt to reduce token usage
-    const systemPrompt = `Extract location intent from queries. Return JSON:
+    const systemPrompt = `You are a Named Entity Recognition (NER) expert specializing in location and proximity detection.
+
+Your task is to analyze search queries and extract location-based intent.
+
+Detect:
+1. Exact location mentions (e.g., "Sydney", "Eiffel Tower", "Central Park")
+2. Proximity-based searches (e.g., "near me", "within 5km", "nearby", "close to")
+3. Location context (e.g., "at the beach", "in the city", "downtown")
+
+Return a JSON object with this structure:
 {
   "hasLocationIntent": true/false,
-  "location": "location name or null",
-  "proximity": number (km) or null,
+  "location": "extracted location name or null",
+  "proximity": number (in kilometers) or null,
   "type": "exact" | "near" | "within" | null,
-  "cleanedQuery": "query without location"
+  "cleanedQuery": "query with location part removed"
 }
 
 Examples:
-- "coffee near Sydney Opera House" → {"hasLocationIntent": true, "location": "Sydney Opera House", "proximity": 5, "type": "near", "cleanedQuery": "coffee"}
+- "coffee shops near Sydney Opera House" → {"hasLocationIntent": true, "location": "Sydney Opera House", "proximity": 5, "type": "near", "cleanedQuery": "coffee shops"}
 - "restaurants within 10km of Melbourne CBD" → {"hasLocationIntent": true, "location": "Melbourne CBD", "proximity": 10, "type": "within", "cleanedQuery": "restaurants"}
-- "my birthday party" → {"hasLocationIntent": false, "location": null, "proximity": null, "type": null, "cleanedQuery": "my birthday party"}`;
+- "photos at the beach" → {"hasLocationIntent": true, "location": "beach", "proximity": null, "type": "exact", "cleanedQuery": "photos"}
+- "my birthday party" → {"hasLocationIntent": false, "location": null, "proximity": null, "type": null, "cleanedQuery": "my birthday party"}
+
+If no location intent is detected, return hasLocationIntent: false.`;
+
+    const userPrompt = `Analyze this search query for location intent:\n\n"${query}"`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -54,14 +67,13 @@ Examples:
         'Authorization': `Bearer ${openaiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: query },
+          { role: 'user', content: userPrompt },
         ],
-        temperature: 0,
-        max_tokens: 150,
-        response_format: { type: 'json_object' }
+        temperature: 0.1,
+        max_tokens: 300,
       }),
     });
 
@@ -79,7 +91,15 @@ Examples:
       return null;
     }
 
-    const nerResult = JSON.parse(content);
+    // Parse JSON response
+    let jsonContent = content.trim();
+    if (jsonContent.startsWith('```json')) {
+      jsonContent = jsonContent.replace(/^```json\n/, '').replace(/\n```$/, '');
+    } else if (jsonContent.startsWith('```')) {
+      jsonContent = jsonContent.replace(/^```\n/, '').replace(/\n```$/, '');
+    }
+
+    const nerResult = JSON.parse(jsonContent);
     console.log('NER result:', nerResult);
 
     if (!nerResult.hasLocationIntent) {
@@ -239,9 +259,7 @@ Deno.serve(async (req) => {
 
     // Step 1: Apply NLP NER to detect location intent
     console.log('Step 1: Applying NLP NER for location detection...');
-    const nerStart = Date.now();
     const locationEntity = await extractLocationEntities(query, openaiApiKey);
-    console.log(`NER completed in ${Date.now() - nerStart}ms`);
 
     // If no location intent detected, return empty results (caller will use regular search)
     if (!locationEntity) {
@@ -250,7 +268,6 @@ Deno.serve(async (req) => {
         JSON.stringify({
           hasLocationIntent: false,
           shouldUseRegularSearch: true,
-          processingTimeMs: Date.now() - startTime,
         }),
         {
           status: 200,
@@ -263,9 +280,7 @@ Deno.serve(async (req) => {
 
     // Step 2: Use Google Places API to get coordinates for the location
     console.log('Step 2: Resolving location with Google Places API...');
-    const placesStart = Date.now();
     const placeResult = await searchGooglePlaces(locationEntity.location, googleApiKey);
-    console.log(`Google Places completed in ${Date.now() - placesStart}ms`);
 
     if (!placeResult) {
       console.log('Could not resolve location - returning signal to use regular search');
@@ -274,7 +289,6 @@ Deno.serve(async (req) => {
           hasLocationIntent: true,
           locationResolved: false,
           shouldUseRegularSearch: true,
-          processingTimeMs: Date.now() - startTime,
         }),
         {
           status: 200,
@@ -287,16 +301,12 @@ Deno.serve(async (req) => {
 
     // Step 3: Fetch all recalls with location data for this user
     console.log('Step 3: Fetching recalls with location data...');
-    const fetchStart = Date.now();
-    
     const { data: recallsData, error: recallsError } = await supabase
       .from('recalls')
       .select('id, latitude, longitude, location, location_primary_type')
       .eq('user_id', user.id)
       .not('latitude', 'is', null)
       .not('longitude', 'is', null);
-
-    console.log(`Recalls fetched in ${Date.now() - fetchStart}ms`);
 
     if (recallsError) {
       console.error('Error fetching recalls:', recallsError);
@@ -316,8 +326,6 @@ Deno.serve(async (req) => {
 
     // Step 4: Filter recalls by proximity
     console.log(`Step 4: Filtering recalls within ${locationEntity.proximity}km...`);
-    const filterStart = Date.now();
-    
     const proximityKm = locationEntity.proximity || 5;
     const filteredRecalls = (recallsData || [])
       .map((recall) => {
@@ -332,7 +340,6 @@ Deno.serve(async (req) => {
       .filter((recall) => recall.distance <= proximityKm)
       .sort((a, b) => a.distance - b.distance);
 
-    console.log(`Filtering completed in ${Date.now() - filterStart}ms`);
     console.log(`Found ${filteredRecalls.length} recalls within ${proximityKm}km`);
 
     if (filteredRecalls.length === 0) {
@@ -363,7 +370,6 @@ Deno.serve(async (req) => {
     // Return the filtered recall IDs
     const recallIds = filteredRecalls.map((r) => r.id);
     console.log(`Returning ${recallIds.length} recall IDs for further processing`);
-    console.log(`Total processing time: ${Date.now() - startTime}ms`);
 
     return new Response(
       JSON.stringify({

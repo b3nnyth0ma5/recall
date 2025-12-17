@@ -5,7 +5,7 @@ import { supabase, getImageDataUrl, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
 
-export type SearchStage = 'idle' | 'detecting' | 'personFinder' | 'resolving' | 'filtering' | 'searching' | 'complete';
+export type SearchStage = 'idle' | 'detecting' | 'resolving' | 'filtering' | 'searching' | 'complete';
 
 export interface PersonInfo {
   detectedNames: string[];
@@ -553,9 +553,6 @@ export function useNotes() {
       });
 
       console.log(`Location check completed in ${Date.now() - locationCheckStart}ms`);
-      
-      // Update stage to personFinder after location detection
-      setSearchStage('personFinder');
 
       // If location intent detected and resolved
       if (locationData?.hasLocationIntent && locationData?.locationResolved && locationData?.recallIds?.length > 0) {

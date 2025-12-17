@@ -14,12 +14,11 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 
 interface SearchProgressIndicatorProps {
-  stage: 'detecting' | 'personFinder' | 'resolving' | 'filtering' | 'searching' | 'complete';
+  stage: 'detecting' | 'resolving' | 'filtering' | 'searching' | 'complete';
   locationName?: string;
-  personNames?: string[];
 }
 
-export function SearchProgressIndicator({ stage, locationName, personNames }: SearchProgressIndicatorProps) {
+export function SearchProgressIndicator({ stage, locationName }: SearchProgressIndicatorProps) {
   const progress = useSharedValue(0);
   const pulseScale = useSharedValue(1);
   const iconRotation = useSharedValue(0);
@@ -27,10 +26,9 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
   useEffect(() => {
     // Progress animation based on stage
     const targetProgress = {
-      detecting: 0.2,
-      personFinder: 0.35,
+      detecting: 0.25,
       resolving: 0.5,
-      filtering: 0.7,
+      filtering: 0.75,
       searching: 0.9,
       complete: 1,
     }[stage];
@@ -79,9 +77,7 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
   const getStageText = () => {
     switch (stage) {
       case 'detecting':
-        return 'Analyzing your search...';
-      case 'personFinder':
-        return 'Detecting people mentioned...';
+        return 'Detecting location intent...';
       case 'resolving':
         return locationName ? `Finding ${locationName}...` : 'Resolving location...';
       case 'filtering':
@@ -98,15 +94,13 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
   const getStageIcon = () => {
     switch (stage) {
       case 'detecting':
-        return 'sparkles';
-      case 'personFinder':
-        return 'person.2.fill';
+        return 'location.magnifyingglass';
       case 'resolving':
         return 'map.fill';
       case 'filtering':
         return 'line.3.horizontal.decrease.circle.fill';
       case 'searching':
-        return 'brain.head.profile';
+        return 'sparkles';
       case 'complete':
         return 'checkmark.circle.fill';
       default:
@@ -128,42 +122,15 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
 
       <Text style={styles.stageText}>{getStageText()}</Text>
 
-      {/* Person Detection Badge */}
-      {personNames && personNames.length > 0 && (
-        <View style={styles.detectionBadge}>
-          <IconSymbol name="person.circle.fill" size={18} color={colors.primary} />
-          <View style={styles.detectionBadgeText}>
-            <Text style={styles.detectionBadgeTitle}>Person Detected</Text>
-            <Text style={styles.detectionBadgeSubtitle}>
-              {personNames.join(', ')}
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Location Badge */}
-      {locationName && stage !== 'detecting' && stage !== 'personFinder' && (
-        <View style={styles.detectionBadge}>
-          <IconSymbol name="mappin.circle.fill" size={18} color={colors.primary} />
-          <View style={styles.detectionBadgeText}>
-            <Text style={styles.detectionBadgeTitle}>Location Search</Text>
-            <Text style={styles.detectionBadgeSubtitle}>{locationName}</Text>
-          </View>
+      {locationName && stage !== 'detecting' && (
+        <View style={styles.locationBadge}>
+          <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
+          <Text style={styles.locationText}>{locationName}</Text>
         </View>
       )}
 
       <View style={styles.progressBarContainer}>
         <Animated.View style={[styles.progressBar, progressBarStyle]} />
-      </View>
-
-      {/* Stage Details */}
-      <View style={styles.stageDetails}>
-        <View style={[styles.stageDot, stage === 'detecting' || stage === 'personFinder' || stage === 'resolving' || stage === 'filtering' || stage === 'searching' || stage === 'complete' ? styles.stageDotActive : null]} />
-        <View style={[styles.stageDot, stage === 'personFinder' || stage === 'resolving' || stage === 'filtering' || stage === 'searching' || stage === 'complete' ? styles.stageDotActive : null]} />
-        <View style={[styles.stageDot, stage === 'resolving' || stage === 'filtering' || stage === 'searching' || stage === 'complete' ? styles.stageDotActive : null]} />
-        <View style={[styles.stageDot, stage === 'filtering' || stage === 'searching' || stage === 'complete' ? styles.stageDotActive : null]} />
-        <View style={[styles.stageDot, stage === 'searching' || stage === 'complete' ? styles.stageDotActive : null]} />
-        <View style={[styles.stageDot, stage === 'complete' ? styles.stageDotActive : null]} />
       </View>
     </View>
   );
@@ -191,31 +158,19 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
   },
-  detectionBadge: {
+  locationBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 6,
     backgroundColor: `${colors.primary}15`,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: `${colors.primary}30`,
-    minWidth: 200,
   },
-  detectionBadgeText: {
-    flex: 1,
-  },
-  detectionBadgeTitle: {
-    fontSize: 12,
+  locationText: {
+    fontSize: 14,
     fontWeight: '600',
     color: colors.primary,
-    marginBottom: 2,
-  },
-  detectionBadgeSubtitle: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.text,
   },
   progressBarContainer: {
     width: '80%',
@@ -229,20 +184,5 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: colors.primary,
     borderRadius: 2,
-  },
-  stageDetails: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-  },
-  stageDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.border,
-  },
-  stageDotActive: {
-    backgroundColor: colors.primary,
   },
 });
