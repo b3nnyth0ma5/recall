@@ -73,146 +73,133 @@ Deno.serve(async (req) => {
       });
     }
 
-    // OPTIMIZATION: Run NER detection and embedding generation in parallel
-    console.log('Step 0 & 1: Running NER detection and embedding generation in parallel...');
-    const parallelStart = Date.now();
-
-    const [nerResult, embeddingResult] = await Promise.all([
-      // NER Detection
-      (async () => {
-        try {
-          const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${openaiApiKey}`
-            },
-            body: JSON.stringify({
-              model: 'gpt-4o-mini',
-              messages: [
-                {
-                  role: 'system',
-                  content: 'Extract person names from the query. Return JSON: {"names": ["name1", "name2"]}. If none, return {"names": []}.'
-                },
-                {
-                  role: 'user',
-                  content: query
-                }
-              ],
-              temperature: 0,
-              max_tokens: 100,
-              response_format: { type: 'json_object' }
-            })
-          });
-
-          if (!nerResponse.ok) {
-            console.error('NER API error:', await nerResponse.text());
-            return { detectedNames: [], matchedNames: [], peopleRecallIds: [] };
-          }
-
-          const nerData = await nerResponse.json();
-          const nerContent = nerData.choices?.[0]?.message?.content;
-          
-          if (!nerContent) {
-            return { detectedNames: [], matchedNames: [], peopleRecallIds: [] };
-          }
-
-          const parsed = JSON.parse(nerContent);
-          const detectedNames = parsed.names || [];
-          
-          if (detectedNames.length === 0) {
-            return { detectedNames: [], matchedNames: [], peopleRecallIds: [] };
-          }
-
-          console.log('Detected person names:', detectedNames);
-          
-          // Search for these people in the Persons table
-          const { data: personsData } = await supabase
-            .from('persons')
-            .select('id, person_name')
-            .eq('user_id', user.id);
-          
-          if (!personsData || personsData.length === 0) {
-            return { detectedNames, matchedNames: [], peopleRecallIds: [] };
-          }
-
-          // Find matching persons (case-insensitive partial match)
-          const matchingPersonIds: string[] = [];
-          const matchedNames: string[] = [];
-          
-          for (const detectedName of detectedNames) {
-            const normalizedDetected = detectedName.toLowerCase().trim();
-            
-            for (const person of personsData) {
-              const normalizedPerson = person.person_name.toLowerCase().trim();
-              
-              if (normalizedPerson.includes(normalizedDetected) || 
-                  normalizedDetected.includes(normalizedPerson)) {
-                matchingPersonIds.push(person.id);
-                matchedNames.push(person.person_name);
-                console.log(`Matched "${detectedName}" to person "${person.person_name}"`);
+    // OPTIMIZATION: Start person detection asynchronously (don't await)
+    console.log('Step 0: Starting asynchronous person detection...');
+    const personDetectionPromise = (async () => {
+      try {
+        const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openaiApiKey}`
+          },
+          body: JSON.stringify({
+            model: 'gpt-3.5-turbo',
+            messages: [
+              {
+                role: 'system',
+                content: 'Extract person names from the query. Return JSON: {"names": ["name1", "name2"]}. If none, return {"names": []}.'
+              },
+              {
+                role: 'user',
+                content: query
               }
-            }
-          }
-          
-          if (matchingPersonIds.length === 0) {
-            return { detectedNames, matchedNames: [], peopleRecallIds: [] };
-          }
+            ],
+            temperature: 0,
+            max_tokens: 100,
+            response_format: { type: 'json_object' }
+          })
+        });
 
-          // Get recalls mentioning these people
-          const { data: recallPeopleData } = await supabase
-            .from('recall_people')
-            .select('recall_id')
-            .in('person_id', matchingPersonIds)
-            .eq('user_id', user.id);
-          
-          const peopleRecallIds = recallPeopleData 
-            ? [...new Set(recallPeopleData.map((rp: any) => rp.recall_id))]
-            : [];
-          
-          console.log(`Found ${peopleRecallIds.length} recalls mentioning detected people`);
-          
-          return { detectedNames, matchedNames, peopleRecallIds };
-        } catch (error) {
-          console.error('Error in NER detection:', error);
+        if (!nerResponse.ok) {
+          console.error('NER API error:', await nerResponse.text());
           return { detectedNames: [], matchedNames: [], peopleRecallIds: [] };
         }
-      })(),
-      
-      // Embedding Generation
-      (async () => {
-        try {
-          const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${openaiApiKey}`
-            },
-            body: JSON.stringify({
-              model: 'text-embedding-3-small',
-              input: query,
-              encoding_format: 'float'
-            })
-          });
 
-          if (!embeddingResponse.ok) {
-            throw new Error('Failed to generate embedding');
-          }
-
-          const embeddingData = await embeddingResponse.json();
-          return embeddingData.data[0].embedding;
-        } catch (error) {
-          console.error('Error generating embedding:', error);
-          throw error;
+        const nerData = await nerResponse.json();
+        const nerContent = nerData.choices?.[0]?.message?.content;
+        
+        if (!nerContent) {
+          return { detectedNames: [], matchedNames: [], peopleRecallIds: [] };
         }
-      })()
-    ]);
 
-    console.log(`Parallel processing completed in ${Date.now() - parallelStart}ms`);
+        const parsed = JSON.parse(nerContent);
+        const detectedNames = parsed.names || [];
+        
+        if (detectedNames.length === 0) {
+          return { detectedNames: [], matchedNames: [], peopleRecallIds: [] };
+        }
 
-    const { detectedNames, matchedNames, peopleRecallIds } = nerResult;
-    const queryEmbedding = embeddingResult;
+        console.log('Detected person names:', detectedNames);
+        
+        // Search for these people in the Persons table
+        const { data: personsData } = await supabase
+          .from('persons')
+          .select('id, person_name')
+          .eq('user_id', user.id);
+        
+        if (!personsData || personsData.length === 0) {
+          return { detectedNames, matchedNames: [], peopleRecallIds: [] };
+        }
 
+        // Find matching persons (case-insensitive partial match)
+        const matchingPersonIds: string[] = [];
+        const matchedNames: string[] = [];
+        
+        for (const detectedName of detectedNames) {
+          const normalizedDetected = detectedName.toLowerCase().trim();
+          
+          for (const person of personsData) {
+            const normalizedPerson = person.person_name.toLowerCase().trim();
+            
+            if (normalizedPerson.includes(normalizedDetected) || 
+                normalizedDetected.includes(normalizedPerson)) {
+              matchingPersonIds.push(person.id);
+              matchedNames.push(person.person_name);
+              console.log(`Matched "${detectedName}" to person "${person.person_name}"`);
+            }
+          }
+        }
+        
+        if (matchingPersonIds.length === 0) {
+          return { detectedNames, matchedNames: [], peopleRecallIds: [] };
+        }
+
+        // Get recalls mentioning these people
+        const { data: recallPeopleData } = await supabase
+          .from('recall_people')
+          .select('recall_id')
+          .in('person_id', matchingPersonIds)
+          .eq('user_id', user.id);
+        
+        const peopleRecallIds = recallPeopleData 
+          ? [...new Set(recallPeopleData.map((rp: any) => rp.recall_id))]
+          : [];
+        
+        console.log(`Found ${peopleRecallIds.length} recalls mentioning detected people`);
+        
+        return { detectedNames, matchedNames, peopleRecallIds };
+      } catch (error) {
+        console.error('Error in NER detection:', error);
+        return { detectedNames: [], matchedNames: [], peopleRecallIds: [] };
+      }
+    })();
+
+    // Step 1: Generate embedding for the query
+    console.log('Step 1: Generating embedding for query...');
+    const embeddingStart = Date.now();
+    
+    const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiApiKey}`
+      },
+      body: JSON.stringify({
+        model: 'text-embedding-3-small',
+        input: query,
+        encoding_format: 'float'
+      })
+    });
+
+    if (!embeddingResponse.ok) {
+      throw new Error('Failed to generate embedding');
+    }
+
+    const embeddingData = await embeddingResponse.json();
+    const queryEmbedding = embeddingData.data[0].embedding;
+
+    console.log(`Embedding generation completed in ${Date.now() - embeddingStart}ms`);
     console.log('Query embedding length:', queryEmbedding.length);
 
     // Step 2: Find closest matches using vector similarity (>= 40% threshold)
@@ -362,9 +349,14 @@ Deno.serve(async (req) => {
     let uniqueRecallMatches = Array.from(recallMatchMap.values()).sort((a: any, b: any) => b.similarity - a.similarity);
     console.log(`Grouped into ${uniqueRecallMatches.length} unique recalls`);
 
-    // Step 2.5: Add people-related recalls to the final set
+    // Step 2.5: Wait for person detection to complete and add people-related recalls
+    console.log('Step 2.5: Waiting for person detection to complete...');
+    const personDetectionStart = Date.now();
+    const { detectedNames, matchedNames, peopleRecallIds } = await personDetectionPromise;
+    console.log(`Person detection completed in ${Date.now() - personDetectionStart}ms`);
+
     if (peopleRecallIds.length > 0) {
-      console.log('Step 2.5: Adding people-related recalls to the final set...');
+      console.log('Step 2.6: Adding people-related recalls to the final set...');
       
       // Fetch full recall data for people-related recalls
       const { data: peopleRecalls } = await supabase
@@ -430,8 +422,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Step 3: Use OpenAI gpt-4o-mini for question answering with source tracking
-    console.log('Step 3: Using OpenAI gpt-4o-mini for question answering...');
+    // Step 3: Use OpenAI gpt-3.5-turbo for question answering with source tracking
+    console.log('Step 3: Using OpenAI gpt-3.5-turbo for question answering...');
 
     // OPTIMIZATION: Limit context to top 10 matches to reduce token usage
     const topMatches = uniqueRecallMatches.slice(0, 10);
@@ -474,7 +466,7 @@ ${context}
 
 JSON format: {"answer": "your answer", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}`;
 
-    console.log('Making request to OpenAI gpt-4o-mini...');
+    console.log('Making request to OpenAI gpt-3.5-turbo...');
     const qaStart = Date.now();
     
     const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -484,7 +476,7 @@ JSON format: {"answer": "your answer", "confidence": 85, "sources": ["SOURCE_1",
         'Authorization': `Bearer ${openaiApiKey}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-3.5-turbo',
         messages: [
           { 
             role: 'user', 

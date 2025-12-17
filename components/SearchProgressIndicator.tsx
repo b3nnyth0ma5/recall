@@ -14,7 +14,7 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 
 interface SearchProgressIndicatorProps {
-  stage: 'detecting' | 'resolving' | 'filtering' | 'searching' | 'complete';
+  stage: 'detecting' | 'personFinder' | 'resolving' | 'filtering' | 'searching' | 'complete';
   locationName?: string;
   personNames?: string[];
 }
@@ -27,9 +27,10 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
   useEffect(() => {
     // Progress animation based on stage
     const targetProgress = {
-      detecting: 0.25,
+      detecting: 0.2,
+      personFinder: 0.35,
       resolving: 0.5,
-      filtering: 0.75,
+      filtering: 0.7,
       searching: 0.9,
       complete: 1,
     }[stage];
@@ -79,6 +80,8 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
     switch (stage) {
       case 'detecting':
         return 'Analyzing your search...';
+      case 'personFinder':
+        return 'Detecting people mentioned...';
       case 'resolving':
         return locationName ? `Finding ${locationName}...` : 'Resolving location...';
       case 'filtering':
@@ -96,6 +99,8 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
     switch (stage) {
       case 'detecting':
         return 'sparkles';
+      case 'personFinder':
+        return 'person.2.fill';
       case 'resolving':
         return 'map.fill';
       case 'filtering':
@@ -125,10 +130,7 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
 
       {/* Person Detection Badge */}
       {personNames && personNames.length > 0 && (
-        <Animated.View 
-          entering={Animated.FadeIn.duration(400)} 
-          style={styles.detectionBadge}
-        >
+        <View style={styles.detectionBadge}>
           <IconSymbol name="person.circle.fill" size={18} color={colors.primary} />
           <View style={styles.detectionBadgeText}>
             <Text style={styles.detectionBadgeTitle}>Person Detected</Text>
@@ -136,21 +138,18 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
               {personNames.join(', ')}
             </Text>
           </View>
-        </Animated.View>
+        </View>
       )}
 
       {/* Location Badge */}
-      {locationName && stage !== 'detecting' && (
-        <Animated.View 
-          entering={Animated.FadeIn.duration(400)} 
-          style={styles.detectionBadge}
-        >
+      {locationName && stage !== 'detecting' && stage !== 'personFinder' && (
+        <View style={styles.detectionBadge}>
           <IconSymbol name="mappin.circle.fill" size={18} color={colors.primary} />
           <View style={styles.detectionBadgeText}>
             <Text style={styles.detectionBadgeTitle}>Location Search</Text>
             <Text style={styles.detectionBadgeSubtitle}>{locationName}</Text>
           </View>
-        </Animated.View>
+        </View>
       )}
 
       <View style={styles.progressBarContainer}>
@@ -159,7 +158,8 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
 
       {/* Stage Details */}
       <View style={styles.stageDetails}>
-        <View style={[styles.stageDot, stage === 'detecting' || stage === 'resolving' || stage === 'filtering' || stage === 'searching' || stage === 'complete' ? styles.stageDotActive : null]} />
+        <View style={[styles.stageDot, stage === 'detecting' || stage === 'personFinder' || stage === 'resolving' || stage === 'filtering' || stage === 'searching' || stage === 'complete' ? styles.stageDotActive : null]} />
+        <View style={[styles.stageDot, stage === 'personFinder' || stage === 'resolving' || stage === 'filtering' || stage === 'searching' || stage === 'complete' ? styles.stageDotActive : null]} />
         <View style={[styles.stageDot, stage === 'resolving' || stage === 'filtering' || stage === 'searching' || stage === 'complete' ? styles.stageDotActive : null]} />
         <View style={[styles.stageDot, stage === 'filtering' || stage === 'searching' || stage === 'complete' ? styles.stageDotActive : null]} />
         <View style={[styles.stageDot, stage === 'searching' || stage === 'complete' ? styles.stageDotActive : null]} />
