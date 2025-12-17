@@ -20,7 +20,6 @@ import { SearchHistory } from '@/types/Note';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
-import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -71,7 +70,7 @@ export default function SearchScreen() {
     };
   }, [loadSearchHistory]);
 
-  // FIXED: Handle auto-search from CombinedSearchAdd with proper deduplication
+  // Handle auto-search from CombinedSearchAdd with proper deduplication
   useEffect(() => {
     const queryParam = params.q;
     const autoSearchParam = params.autoSearch;
@@ -98,7 +97,7 @@ export default function SearchScreen() {
         setIsSearching(false);
       });
       
-      // FIXED: Clear the autoSearch parameter to prevent re-triggering - use setTimeout to break call stack
+      // Clear the autoSearch parameter to prevent re-triggering
       setTimeout(() => {
         try {
           console.log('[SearchScreen] Clearing autoSearch param');
@@ -164,7 +163,6 @@ export default function SearchScreen() {
   }, [searchNotes]);
 
   const handleNotePress = useCallback((noteId: string) => {
-    // FIXED: Use setTimeout to break the call stack and prevent recursion
     setTimeout(() => {
       try {
         router.push(`/note-editor?id=${noteId}`);
@@ -194,18 +192,15 @@ export default function SearchScreen() {
     setIsSearching(false);
     searchNotes('');
     
-    // FIXED: Navigate back with error handling and setTimeout to break call stack
     setTimeout(() => {
       try {
         if (router.canGoBack()) {
           router.back();
         } else {
-          // If can't go back, navigate to home
           router.replace('/(tabs)/(home)');
         }
       } catch (error) {
         console.error('[SearchScreen] Error navigating back:', error);
-        // Fallback to home
         try {
           router.replace('/(tabs)/(home)');
         } catch (fallbackError) {
@@ -457,6 +452,7 @@ export default function SearchScreen() {
           <SearchProgressIndicator 
             stage={searchStage} 
             locationName={searchLocationName}
+            personNames={personInfo?.matchedNames}
           />
         ) : !hasSearched ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
@@ -530,7 +526,6 @@ export default function SearchScreen() {
                 </Text>
                 {notes.map((note) => (
                   <View key={note.id} style={styles.noteWrapper}>
-                    {/* FIXED: Increased z-index to ensure badge is above image */}
                     {note.used_for_answer && (
                       <View style={styles.badgeRow}>
                         <View style={styles.badgeRowLeft}>
@@ -562,7 +557,6 @@ export default function SearchScreen() {
           if (Platform.OS !== 'web') {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           }
-          // FIXED: Use setTimeout to break the call stack and prevent recursion
           setTimeout(() => {
             try {
               router.push(`/map-view?hasSearch=${hasSearched ? 'true' : 'false'}`);
