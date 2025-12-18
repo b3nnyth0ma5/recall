@@ -4,6 +4,7 @@ import { Note } from '@/types/Note';
 import { supabase, getImageDataUrl, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
+import * as Location from 'expo-location';
 
 export type SearchStage = 'idle' | 'detecting' | 'resolving' | 'filtering' | 'people' | 'searching' | 'complete';
 
@@ -507,6 +508,29 @@ export function useNotes() {
     }
   }, [user]);
 
+  // Helper function to get user's current location
+  const getUserLocation = useCallback(async (): Promise<{ latitude: number; longitude: number } | null> => {
+    try {
+      console.log('[useNotes] Getting user location for search...');
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('[useNotes] Location permission not granted');
+        return null;
+      }
+
+      const currentPosition = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const { latitude, longitude } = currentPosition.coords;
+      
+      console.log('[useNotes] User location obtained:', { latitude, longitude });
+      return { latitude, longitude };
+    } catch (error) {
+      console.error('[useNotes] Error getting user location:', error);
+      return null;
+    }
+  }, []);
+
   const searchNotes = useCallback(async (query: string, useV2: boolean = false) => {
     if (!user) {
       console.error('No user logged in');
@@ -547,12 +571,19 @@ export function useNotes() {
         return;
       }
 
+      // Get user's current location for "near me" queries
+      const userLocation = await getUserLocation();
+      console.log('[useNotes] User location for search:', userLocation);
+
       // Step 1: Check for location intent using search-recalls-with-location
       console.log('Step 1: Checking for location intent...');
       const locationCheckStart = Date.now();
       
       const { data: locationData, error: locationError } = await supabase.functions.invoke('search-recalls-with-location', {
-        body: { query: query.trim() },
+        body: { 
+          query: query.trim(),
+          userLocation: userLocation, // Pass user location to edge function
+        },
       });
 
       console.log(`Location check completed in ${Date.now() - locationCheckStart}ms`);
@@ -724,7 +755,7 @@ export function useNotes() {
         setSearchStage('idle');
       }, 1000);
     }
-  }, [refreshNotes, user, loadImagesForRecalls]);
+  }, [refreshNotes, user, loadImagesForRecalls, getUserLocation]);
 
   const getSearchHistory = useCallback(async () => {
     if (!user) {

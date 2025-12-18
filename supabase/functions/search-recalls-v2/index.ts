@@ -7,6 +7,21 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
+/**
+ * Clean the word "recalls" from the search query
+ */
+function cleanRecallsFromQuery(query: string): string {
+  // Remove "recalls" (case-insensitive) from the query
+  // Handle variations: "recall", "recalls", "Recall", "Recalls", etc.
+  const cleaned = query
+    .replace(/\brecalls?\b/gi, '') // Remove "recall" or "recalls" as whole words
+    .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+    .trim(); // Trim leading/trailing spaces
+  
+  console.log(`Cleaned query: "${query}" -> "${cleaned}"`);
+  return cleaned;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -53,27 +68,21 @@ Deno.serve(async (req) => {
     // Parse request body
     const { query, locationRecallIds, peopleRecallIds, personInfo } = await req.json();
 
-    if (!query || typeof query !== 'string' || query.trim().length === 0) {
+    if (!query || typeof query !== 'string') {
       return new Response(JSON.stringify({ error: 'Query parameter is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    console.log('Search query:', query);
+    console.log('Original search query:', query);
     console.log('Location-filtered recall IDs:', locationRecallIds ? `${locationRecallIds.length} IDs` : 'None');
     console.log('People-filtered recall IDs:', peopleRecallIds ? `${peopleRecallIds.length} IDs` : 'None');
     console.log('Person info:', personInfo);
 
-    // Get OpenAI API key
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiApiKey) {
-      console.error('OPENAI_API_KEY not set');
-      return new Response(JSON.stringify({ error: 'OpenAI API key not configured' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
+    // Clean the word "recalls" from the query
+    const cleanedQuery = cleanRecallsFromQuery(query);
+    console.log('Cleaned query:', cleanedQuery);
 
     // Combine location and people recall IDs (prioritize these)
     const priorityRecallIds = new Set<string>();
@@ -86,8 +95,72 @@ Deno.serve(async (req) => {
 
     console.log(`Combined priority recall IDs: ${priorityRecallIds.size}`);
 
+    // If query is blank after cleaning and we have priority recalls, return them all
+    if (!cleanedQuery.trim() && priorityRecallIds.size > 0) {
+      console.log('Query is blank after cleaning "recalls" - returning all location/people results');
+      
+      const priorityIds = Array.from(priorityRecallIds);
+      const { data: recallsData, error: fetchError } = await supabase
+        .from('recalls')
+        .select('id')
+        .in('id', priorityIds)
+        .eq('user_id', user.id);
+
+      if (fetchError) {
+        console.error('Error fetching priority recalls:', fetchError);
+        return new Response(JSON.stringify({ error: 'Failed to fetch recalls', details: fetchError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      const results = (recallsData || []).map((recall: any) => ({
+        id: recall.id,
+        matchPercentage: 100, // All priority recalls get 100% match
+        usedForAnswer: false,
+      }));
+
+      console.log(`Returning ${results.length} priority recalls (query was blank after cleaning)`);
+
+      return new Response(JSON.stringify({
+        answer: null,
+        confidence: 0,
+        results,
+        processingTimeMs: Date.now() - startTime,
+        personInfo: personInfo || null,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // If query is blank and no priority recalls, return empty results
+    if (!cleanedQuery.trim()) {
+      console.log('Query is blank after cleaning and no priority recalls - returning empty results');
+      return new Response(JSON.stringify({
+        answer: null,
+        confidence: 0,
+        results: [],
+        processingTimeMs: Date.now() - startTime,
+        personInfo: personInfo || null,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Get OpenAI API key
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    if (!openaiApiKey) {
+      console.error('OPENAI_API_KEY not set');
+      return new Response(JSON.stringify({ error: 'OpenAI API key not configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
     // Step 1: Convert query to embedding using OpenAI
-    console.log('Step 1: Converting query to embedding...');
+    console.log('Step 1: Converting cleaned query to embedding...');
     const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
@@ -96,7 +169,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: 'text-embedding-3-small',
-        input: query,
+        input: cleanedQuery,
         encoding_format: 'base64'
       })
     });
@@ -337,7 +410,7 @@ If the user's question includes the name of a location (or is proximity based) t
 IMPORTANT: The source with the highest confidence should always be given the most priority.
 VERY IMPORTANT: Sources marked as [PRIORITY - From location/people search] should be given HIGHEST priority as they match location or people criteria.
 
-Question: ${query}
+Question: ${cleanedQuery}
 
 Recalls from matches:
 ${context}
