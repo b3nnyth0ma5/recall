@@ -20,7 +20,6 @@ import { SearchHistory } from '@/types/Note';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
-import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -36,6 +35,7 @@ export default function SearchScreen() {
     personInfo,
     searchStage,
     searchLocationName,
+    searchPersonNames,
   } = useNotes();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
@@ -457,6 +457,7 @@ export default function SearchScreen() {
           <SearchProgressIndicator 
             stage={searchStage} 
             locationName={searchLocationName}
+            personNames={searchPersonNames}
           />
         ) : !hasSearched ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>

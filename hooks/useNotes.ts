@@ -5,7 +5,7 @@ import { supabase, getImageDataUrl, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
 
-export type SearchStage = 'idle' | 'detecting' | 'resolving' | 'filtering' | 'searching' | 'complete';
+export type SearchStage = 'idle' | 'detecting' | 'resolving' | 'filtering' | 'people' | 'searching' | 'complete';
 
 export interface PersonInfo {
   detectedNames: string[];
@@ -26,6 +26,7 @@ export function useNotes() {
   const [searchConfidence, setSearchConfidence] = useState<number | undefined>(undefined);
   const [searchStage, setSearchStage] = useState<SearchStage>('idle');
   const [searchLocationName, setSearchLocationName] = useState<string | undefined>(undefined);
+  const [searchPersonNames, setSearchPersonNames] = useState<string[] | undefined>(undefined);
   const { user } = useAuth();
 
   const ITEMS_PER_PAGE = 7;
@@ -523,6 +524,7 @@ export function useNotes() {
       setPersonInfo(null);
       setSearchStage('idle');
       setSearchLocationName(undefined);
+      setSearchPersonNames(undefined);
       await refreshNotes();
       return;
     }
@@ -533,6 +535,7 @@ export function useNotes() {
       setLoading(true);
       setSearchStage('detecting');
       setSearchLocationName(undefined);
+      setSearchPersonNames(undefined);
       
       // Save search history
       await saveSearchHistory(user.id, query);
@@ -554,6 +557,9 @@ export function useNotes() {
 
       console.log(`Location check completed in ${Date.now() - locationCheckStart}ms`);
 
+      let locationRecallIds: string[] = [];
+      let cleanedQuery = query.trim();
+
       // If location intent detected and resolved
       if (locationData?.hasLocationIntent && locationData?.locationResolved && locationData?.recallIds?.length > 0) {
         console.log('Location intent detected and resolved!');
@@ -565,105 +571,78 @@ export function useNotes() {
         
         // Store location info
         setLocationInfo(locationData.locationInfo);
-        
-        // Step 2: Use search-recalls-v2 with the filtered recall IDs
-        console.log('Step 2: Running AI search on location-filtered recalls...');
-        setSearchStage('searching');
-        
-        const searchStart = Date.now();
-        const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls-v2', {
-          body: {
-            query: locationData.cleanedQuery || query.trim(),
-            recallIds: locationData.recallIds,
-          },
-        });
-
-        console.log(`AI search completed in ${Date.now() - searchStart}ms`);
-
-        if (searchError) {
-          console.error('Error in AI search:', searchError);
-          // Fallback: just show the location-filtered recalls
-          const { data: recallsData } = await supabase
-            .from('recalls')
-            .select('*')
-            .in('id', locationData.recallIds)
-            .eq('user_id', user.id);
-
-          const notesWithImages = await loadImagesForRecalls(recallsData || []);
-          setNotes(notesWithImages);
-          setSearchAnswer(null);
-          setSearchConfidence(undefined);
-          setPersonInfo(null);
-          setSearchStage('complete');
-          return;
-        }
-
-        // Process V2 results
-        const matchedRecallIds = searchResults?.results?.map((r: any) => r.id) || [];
-        const answer = searchResults?.answer || null;
-        const confidence = searchResults?.confidence || 0;
-        const personInfoData = searchResults?.personInfo || null;
-        
-        console.log(`Found ${matchedRecallIds.length} AI-ranked results`);
-        console.log('Answer:', answer);
-        console.log('Confidence:', confidence);
-        console.log('Person info:', personInfoData);
-        
-        if (matchedRecallIds.length > 0) {
-          const { data: recallsData } = await supabase
-            .from('recalls')
-            .select('*')
-            .in('id', matchedRecallIds)
-            .eq('user_id', user.id);
-
-          // Map recalls with match info
-          const orderedRecalls = searchResults.results
-            .map((matchInfo: any) => {
-              const recall = recallsData?.find(r => r.id === matchInfo.id);
-              if (!recall) {
-                return null;
-              }
-              
-              return {
-                ...recall,
-                relevance_score: matchInfo.matchPercentage || 0,
-                used_for_answer: matchInfo.usedForAnswer || false,
-              };
-            })
-            .filter((recall: any) => recall !== null);
-
-          const notesWithImages = await loadImagesForRecalls(orderedRecalls);
-          
-          setNotes(notesWithImages);
-          setSearchAnswer(answer);
-          setSearchConfidence(confidence);
-          setPersonInfo(personInfoData);
-        } else {
-          setNotes([]);
-          setSearchAnswer(answer);
-          setSearchConfidence(confidence);
-          setPersonInfo(personInfoData);
-        }
-        
-        setSearchStage('complete');
-        console.log('=== LOCATION-BASED SEARCH COMPLETE ===');
-        return;
+        locationRecallIds = locationData.recallIds;
+        cleanedQuery = locationData.cleanedQuery || query.trim();
+      } else {
+        console.log('No location intent detected');
+        setLocationInfo(null);
       }
 
-      // No location intent or couldn't resolve - use regular V2 search
-      console.log('No location intent detected - using regular AI search');
+      // Step 2: Check for people intent using search-recalls-with-people
+      console.log('Step 2: Checking for people intent...');
+      setSearchStage('people');
+      const peopleCheckStart = Date.now();
+      
+      const { data: peopleData, error: peopleError } = await supabase.functions.invoke('search-recalls-with-people', {
+        body: { query: query.trim() },
+      });
+
+      console.log(`People check completed in ${Date.now() - peopleCheckStart}ms`);
+
+      let peopleRecallIds: string[] = [];
+      let personInfoData: PersonInfo | null = null;
+
+      // If people intent detected
+      if (peopleData?.hasPeopleIntent && peopleData?.recallIds?.length > 0) {
+        console.log('People intent detected!');
+        console.log('Person info:', peopleData.personInfo);
+        console.log('Filtered recall IDs:', peopleData.recallIds);
+        
+        peopleRecallIds = peopleData.recallIds;
+        personInfoData = peopleData.personInfo;
+        setPersonInfo(personInfoData);
+        setSearchPersonNames(personInfoData?.matchedNames || []);
+      } else {
+        console.log('No people intent detected');
+        setPersonInfo(null);
+        setSearchPersonNames(undefined);
+      }
+
+      // Step 3: Use search-recalls-v2 with combined results
+      console.log('Step 3: Running AI search with combined filters...');
       setSearchStage('searching');
-      setLocationInfo(null);
       
       const searchStart = Date.now();
       const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls-v2', {
-        body: { query: query.trim() },
+        body: {
+          query: cleanedQuery,
+          locationRecallIds: locationRecallIds.length > 0 ? locationRecallIds : undefined,
+          peopleRecallIds: peopleRecallIds.length > 0 ? peopleRecallIds : undefined,
+          personInfo: personInfoData,
+        },
       });
 
       console.log(`AI search completed in ${Date.now() - searchStart}ms`);
 
       if (searchError) {
         console.error('Error in AI search:', searchError);
+        // Fallback: show location/people filtered recalls if available
+        const combinedIds = [...new Set([...locationRecallIds, ...peopleRecallIds])];
+        if (combinedIds.length > 0) {
+          const { data: recallsData } = await supabase
+            .from('recalls')
+            .select('*')
+            .in('id', combinedIds)
+            .eq('user_id', user.id);
+
+          const notesWithImages = await loadImagesForRecalls(recallsData || []);
+          setNotes(notesWithImages);
+          setSearchAnswer(null);
+          setSearchConfidence(undefined);
+          setSearchStage('complete');
+          return;
+        }
+        
         // Fallback to basic search
         const { data: recallsData } = await supabase
           .from('recalls')
@@ -676,7 +655,6 @@ export function useNotes() {
         setNotes(notesWithImages);
         setSearchAnswer(null);
         setSearchConfidence(undefined);
-        setPersonInfo(null);
         setSearchStage('complete');
         return;
       }
@@ -685,12 +663,10 @@ export function useNotes() {
       const matchedRecallIds = searchResults?.results?.map((r: any) => r.id) || [];
       const answer = searchResults?.answer || null;
       const confidence = searchResults?.confidence || 0;
-      const personInfoData = searchResults?.personInfo || null;
       
-      console.log(`Found ${matchedRecallIds.length} results`);
+      console.log(`Found ${matchedRecallIds.length} AI-ranked results`);
       console.log('Answer:', answer);
       console.log('Confidence:', confidence);
-      console.log('Person info:', personInfoData);
       
       if (matchedRecallIds.length > 0) {
         const { data: recallsData } = await supabase
@@ -699,6 +675,7 @@ export function useNotes() {
           .in('id', matchedRecallIds)
           .eq('user_id', user.id);
 
+        // Map recalls with match info
         const orderedRecalls = searchResults.results
           .map((matchInfo: any) => {
             const recall = recallsData?.find(r => r.id === matchInfo.id);
@@ -719,12 +696,10 @@ export function useNotes() {
         setNotes(notesWithImages);
         setSearchAnswer(answer);
         setSearchConfidence(confidence);
-        setPersonInfo(personInfoData);
       } else {
         setNotes([]);
         setSearchAnswer(answer);
         setSearchConfidence(confidence);
-        setPersonInfo(personInfoData);
       }
       
       setSearchStage('complete');
@@ -740,6 +715,8 @@ export function useNotes() {
       setLocationInfo(null);
       setPersonInfo(null);
       setSearchStage('idle');
+      setSearchLocationName(undefined);
+      setSearchPersonNames(undefined);
     } finally {
       setLoading(false);
       // Reset stage after a delay
@@ -787,6 +764,7 @@ export function useNotes() {
     searchConfidence,
     searchStage,
     searchLocationName,
+    searchPersonNames,
     addNote,
     updateNote,
     deleteNote,

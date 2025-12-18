@@ -14,11 +14,12 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 
 interface SearchProgressIndicatorProps {
-  stage: 'detecting' | 'resolving' | 'filtering' | 'searching' | 'complete';
+  stage: 'detecting' | 'resolving' | 'filtering' | 'people' | 'searching' | 'complete';
   locationName?: string;
+  personNames?: string[];
 }
 
-export function SearchProgressIndicator({ stage, locationName }: SearchProgressIndicatorProps) {
+export function SearchProgressIndicator({ stage, locationName, personNames }: SearchProgressIndicatorProps) {
   const progress = useSharedValue(0);
   const pulseScale = useSharedValue(1);
   const iconRotation = useSharedValue(0);
@@ -26,9 +27,10 @@ export function SearchProgressIndicator({ stage, locationName }: SearchProgressI
   useEffect(() => {
     // Progress animation based on stage
     const targetProgress = {
-      detecting: 0.25,
-      resolving: 0.5,
-      filtering: 0.75,
+      detecting: 0.2,
+      resolving: 0.4,
+      filtering: 0.6,
+      people: 0.75,
       searching: 0.9,
       complete: 1,
     }[stage];
@@ -77,11 +79,15 @@ export function SearchProgressIndicator({ stage, locationName }: SearchProgressI
   const getStageText = () => {
     switch (stage) {
       case 'detecting':
-        return 'Detecting location intent...';
+        return 'Detecting search intent...';
       case 'resolving':
         return locationName ? `Finding ${locationName}...` : 'Resolving location...';
       case 'filtering':
         return 'Filtering nearby recalls...';
+      case 'people':
+        return personNames && personNames.length > 0
+          ? `Finding recalls with ${personNames.join(', ')}...`
+          : 'Searching for people...';
       case 'searching':
         return 'Analyzing with AI...';
       case 'complete':
@@ -94,11 +100,13 @@ export function SearchProgressIndicator({ stage, locationName }: SearchProgressI
   const getStageIcon = () => {
     switch (stage) {
       case 'detecting':
-        return 'location.magnifyingglass';
+        return 'magnifyingglass.circle.fill';
       case 'resolving':
         return 'map.fill';
       case 'filtering':
         return 'line.3.horizontal.decrease.circle.fill';
+      case 'people':
+        return 'person.2.fill';
       case 'searching':
         return 'sparkles';
       case 'complete':
@@ -122,10 +130,17 @@ export function SearchProgressIndicator({ stage, locationName }: SearchProgressI
 
       <Text style={styles.stageText}>{getStageText()}</Text>
 
-      {locationName && stage !== 'detecting' && (
-        <View style={styles.locationBadge}>
+      {locationName && (stage === 'resolving' || stage === 'filtering') && (
+        <View style={styles.infoBadge}>
           <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
-          <Text style={styles.locationText}>{locationName}</Text>
+          <Text style={styles.infoText}>{locationName}</Text>
+        </View>
+      )}
+
+      {personNames && personNames.length > 0 && stage === 'people' && (
+        <View style={styles.infoBadge}>
+          <IconSymbol name="person.circle.fill" size={16} color={colors.primary} />
+          <Text style={styles.infoText}>{personNames.join(', ')}</Text>
         </View>
       )}
 
@@ -158,7 +173,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
   },
-  locationBadge: {
+  infoBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -167,7 +182,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 16,
   },
-  locationText: {
+  infoText: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.primary,
