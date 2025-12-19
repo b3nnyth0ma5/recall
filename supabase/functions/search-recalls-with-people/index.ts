@@ -141,8 +141,65 @@ Deno.serve(async (req) => {
             detectedPersonNames = detectedNames;
             console.log('Detected person names:', detectedPersonNames);
 
-            // Step 2: Search for these people in the Persons table
-            console.log('Step 2: Searching for detected people in database...');
+            // Step 2: Determine if query wants "any" (OR) or "all" (AND) of the people
+            let searchMode: 'any' | 'all' = 'any'; // Default to 'any'
+            
+            if (detectedNames.length > 1) {
+              console.log('Multiple people detected - analyzing query intent (ANY vs ALL)...');
+              
+              const intentResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${openaiApiKey}`
+                },
+                body: JSON.stringify({
+                  model: 'gpt-4o-mini',
+                  messages: [
+                    {
+                      role: 'system',
+                      content: `You are an intent analyzer. Determine if the user wants to find items related to ANY (OR) of the mentioned people or ALL (AND) of them together.
+
+Keywords indicating "ALL" (AND): "with", "and", "together", "both", "all of", "including all"
+Keywords indicating "ANY" (OR): "or", "either", "any of", "mentions"
+
+Return JSON format: {"mode": "any"} or {"mode": "all"}
+
+Examples:
+- "recalls with John and Mary" -> {"mode": "all"}
+- "recalls mentioning John or Mary" -> {"mode": "any"}
+- "recalls about John and Sarah together" -> {"mode": "all"}
+- "any recalls that mention Alice" -> {"mode": "any"}`
+                    },
+                    {
+                      role: 'user',
+                      content: `Analyze this query: "${query}"\nDetected people: ${detectedNames.join(', ')}`
+                    }
+                  ],
+                  temperature: 0.1,
+                  max_tokens: 50,
+                  response_format: { type: 'json_object' }
+                })
+              });
+
+              if (intentResponse.ok) {
+                const intentData = await intentResponse.json();
+                const intentContent = intentData.choices?.[0]?.message?.content;
+                
+                if (intentContent) {
+                  try {
+                    const intentParsed = JSON.parse(intentContent);
+                    searchMode = intentParsed.mode === 'all' ? 'all' : 'any';
+                    console.log('Search mode determined:', searchMode);
+                  } catch (intentParseError) {
+                    console.error('Failed to parse intent response:', intentParseError);
+                  }
+                }
+              }
+            }
+
+            // Step 3: Search for these people in the Persons table
+            console.log('Step 3: Searching for detected people in database...');
             const { data: personsData, error: personsError } = await supabase
               .from('persons')
               .select('id, person_name')
@@ -169,17 +226,51 @@ Deno.serve(async (req) => {
               }
 
               if (matchingPersonIds.length > 0) {
-                // Step 3: Get recalls mentioning these people
-                console.log('Step 3: Fetching recalls mentioning detected people...');
-                const { data: recallPeopleData, error: recallPeopleError } = await supabase
-                  .from('recall_people')
-                  .select('recall_id')
-                  .in('person_id', matchingPersonIds)
-                  .eq('user_id', user.id);
+                // Step 4: Get recalls based on search mode
+                console.log(`Step 4: Fetching recalls (mode: ${searchMode})...`);
+                
+                if (searchMode === 'any') {
+                  // ANY mode: Find recalls mentioning any of the people
+                  console.log('ANY mode: Finding recalls mentioning any of the people...');
+                  const { data: recallPeopleData, error: recallPeopleError } = await supabase
+                    .from('recall_people')
+                    .select('recall_id')
+                    .in('person_id', matchingPersonIds)
+                    .eq('user_id', user.id);
 
-                if (!recallPeopleError && recallPeopleData && recallPeopleData.length > 0) {
-                  peopleRecallIds = [...new Set(recallPeopleData.map((rp: any) => rp.recall_id))];
-                  console.log(`Found ${peopleRecallIds.length} recalls mentioning detected people`);
+                  if (!recallPeopleError && recallPeopleData && recallPeopleData.length > 0) {
+                    peopleRecallIds = [...new Set(recallPeopleData.map((rp: any) => rp.recall_id))];
+                    console.log(`Found ${peopleRecallIds.length} recalls mentioning any of the people`);
+                  }
+                } else {
+                  // ALL mode: Find recalls mentioning all or most of the people
+                  console.log('ALL mode: Finding recalls mentioning all/most of the people...');
+                  const { data: recallPeopleData, error: recallPeopleError } = await supabase
+                    .from('recall_people')
+                    .select('recall_id, person_id')
+                    .in('person_id', matchingPersonIds)
+                    .eq('user_id', user.id);
+
+                  if (!recallPeopleError && recallPeopleData && recallPeopleData.length > 0) {
+                    // Count how many people are mentioned in each recall
+                    const recallPersonCounts = new Map<string, Set<string>>();
+                    
+                    recallPeopleData.forEach((rp: any) => {
+                      if (!recallPersonCounts.has(rp.recall_id)) {
+                        recallPersonCounts.set(rp.recall_id, new Set());
+                      }
+                      recallPersonCounts.get(rp.recall_id)!.add(rp.person_id);
+                    });
+
+                    // Filter recalls that mention all or most (>= 50%) of the people
+                    const threshold = Math.ceil(matchingPersonIds.length * 0.5);
+                    
+                    peopleRecallIds = Array.from(recallPersonCounts.entries())
+                      .filter(([_, personSet]) => personSet.size >= threshold)
+                      .map(([recallId, _]) => recallId);
+
+                    console.log(`Found ${peopleRecallIds.length} recalls mentioning ${threshold}+ of ${matchingPersonIds.length} people`);
+                  }
                 }
               }
             }

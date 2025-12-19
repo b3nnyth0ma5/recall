@@ -429,24 +429,26 @@ Deno.serve(async (req) => {
 
     const context = contextWithSources.map((c: any) => c.text).join('\n\n');
 
-    const qaPrompt = `You are an accurate search assistant that understands the intent of the user's question and provides answers based on the provided information.
-Use bullet points when listing things.
-You're also a NER expert that identifies calendar/date/time entities and uses this to provide more relevant answers.
-If you cannot answer the question with confidence based on the provided information, say so.
-Also provide a confidence score (0-100) indicating how confident you are in your answer.
+    const qaPrompt = `You are a precise search assistant that answers questions based ONLY on the provided recall information.
 
-If the user's question includes the name of a location (or is proximity based) then prioritise the information that's most relevant to the Location and Location Type provided.
+CRITICAL RULES:
+1. Answer ONLY using information explicitly stated in the provided recalls
+2. Do NOT add information, assumptions, or general knowledge not present in the recalls
+3. If the recalls don't contain enough information to answer the question, say so clearly
+4. Use bullet points when listing multiple items
+5. Provide a confidence score (0-100) based on how well the recalls answer the question
 
-IMPORTANT: The source with the highest confidence should always be given the most priority.
-VERY IMPORTANT: Sources marked as [PRIORITY - From location/people search] should be given HIGHEST priority as they match location or people criteria.
+PRIORITY HANDLING:
+- Sources marked as [PRIORITY - From location/people search] should be given HIGHEST priority
+- The source with the highest confidence match should be prioritized
 
 Question: ${cleanedQuery}
 
-Recalls from matches:
+Available Recalls:
 ${context}
 
-Provide your answer in JSON format: {"answer": "your answer here", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
-Sort by highest confidence first.`;
+Provide your answer in JSON format: {"answer": "your answer based ONLY on the provided recalls", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
+If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.`;
 
     console.log('Making request to OpenAI gpt-4o-mini...');
     const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -463,7 +465,7 @@ Sort by highest confidence first.`;
             content: qaPrompt
           }
         ],
-        temperature: 0.3,
+        temperature: 0.1,
         max_tokens: 500,
         response_format: { type: 'json_object' }
       })
