@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform, Alert, Keyboard } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
@@ -32,10 +32,8 @@ export default function HomeScreen() {
   const [hasCheckedForRecalls, setHasCheckedForRecalls] = useState(false);
   const [hasRecalls, setHasRecalls] = useState(false);
   const insets = useSafeAreaInsets();
-  // NEW: Track pending image uploads per recall
   const pendingImageUploadsRef = useRef<Map<string, number>>(new Map());
 
-  // Check if user has any recalls
   useEffect(() => {
     const checkForRecalls = async () => {
       if (!user) {
@@ -45,7 +43,7 @@ export default function HomeScreen() {
       }
 
       try {
-        const { data, error, count } = await supabase
+        const { error, count } = await supabase
           .from('recalls')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', user.id)
@@ -68,7 +66,6 @@ export default function HomeScreen() {
     checkForRecalls();
   }, [user]);
 
-  // Load user preferences
   useEffect(() => {
     const loadUserPreferences = async () => {
       if (!user) {
@@ -98,7 +95,6 @@ export default function HomeScreen() {
     loadUserPreferences();
   }, [user]);
 
-  // Update the previous notes count whenever notes change
   useEffect(() => {
     previousNotesCountRef.current = notes.length;
   }, [notes.length]);
@@ -107,13 +103,11 @@ export default function HomeScreen() {
     useCallback(() => {
       console.log('[useFocusEffect] Home screen focused');
       
-      // Skip auto-refresh on first focus (initial load)
       if (isFirstFocusRef.current) {
         isFirstFocusRef.current = false;
         return;
       }
       
-      // Check if a new recall was created (notes count increased)
       const currentCount = notes.length;
       const previousCount = previousNotesCountRef.current;
       
@@ -122,7 +116,6 @@ export default function HomeScreen() {
         refreshNotes();
       }
       
-      // Restore scroll position after a short delay
       const savedScrollPosition = scrollPositionRef.current;
       if (savedScrollPosition > 0 && scrollViewRef.current) {
         setTimeout(() => {
@@ -130,7 +123,6 @@ export default function HomeScreen() {
         }, 100);
       }
       
-      // Cleanup function
       return () => {
         console.log('[useFocusEffect] Home screen unfocused');
       };
@@ -145,7 +137,6 @@ export default function HomeScreen() {
       console.log('[handleRefresh] Refreshing all recalls...');
       await refreshNotes();
       
-      // Refresh categories
       setCategoryRefreshTrigger(prev => prev + 1);
     } catch (error) {
       console.error('[handleRefresh] Error refreshing data:', error);
@@ -158,19 +149,16 @@ export default function HomeScreen() {
   const handleRecallIconPress = async () => {
     console.log('[handleRecallIconPress] Recall icon pressed - reloading');
     
-    // Scroll to top
     if (scrollViewRef.current) {
       scrollViewRef.current.scrollTo({ y: 0, animated: true });
     }
     
-    // Reload landing page data
     await handleRefresh();
   };
 
   const handleAddRecall = () => {
     console.log('[handleAddRecall] Add recall button pressed');
     
-    // Haptic feedback when add icon is clicked
     if (Platform.OS !== 'web') {
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -179,7 +167,6 @@ export default function HomeScreen() {
       }
     }
     
-    // Navigate directly to recall editor
     try {
       router.push('/note-editor');
     } catch (error) {
@@ -195,22 +182,6 @@ export default function HomeScreen() {
     }
   };
 
-  const handleSearch = () => {
-    // Haptic feedback when search icon is clicked
-    if (Platform.OS !== 'web') {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
-    try {
-      router.push('/search');
-    } catch (error) {
-      console.error('Error navigating to search:', error);
-    }
-  };
-
   const handleProfile = () => {
     try {
       router.push('/(tabs)/profile');
@@ -223,13 +194,10 @@ export default function HomeScreen() {
     try {
       const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
       
-      // Save scroll position to ref (doesn't trigger re-render)
       scrollPositionRef.current = contentOffset.y;
 
-      // Dismiss keyboard when scrolling
       Keyboard.dismiss();
 
-      // Load more recalls when near bottom
       const paddingToBottom = 20;
       const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
 
@@ -260,7 +228,6 @@ export default function HomeScreen() {
     try {
       setIsSaving(true);
 
-      // Step 1: Create the recall first (fast operation)
       console.log('[handleCreateRecallFromCombined] Step 1: Creating recall record...');
       const recallStartTime = Date.now();
       
@@ -289,19 +256,16 @@ export default function HomeScreen() {
 
       console.log('[handleCreateRecallFromCombined] Recall created with ID:', recallData.id);
 
-      // FIXED: Track the total number of images being uploaded
       const totalImageCount = data.images.length;
       if (totalImageCount > 0) {
         pendingImageUploadsRef.current.set(recallData.id, totalImageCount);
         console.log(`[handleCreateRecallFromCombined] Tracking ${totalImageCount} pending image uploads for recall ${recallData.id}`);
       }
 
-      // Step 2: Upload images - FIRST IMAGE SYNCHRONOUSLY, REST ASYNCHRONOUSLY
       if (data.images.length > 0) {
         console.log('[handleCreateRecallFromCombined] Step 2: Uploading images...');
         const imageStartTime = Date.now();
         
-        // Upload FIRST image synchronously
         console.log(`[handleCreateRecallFromCombined] Uploading first image synchronously (1/${data.images.length})...`);
         try {
           const firstImageId = await uploadImageToDatabase(data.images[0], recallData.id, 'image/jpeg');
@@ -318,11 +282,9 @@ export default function HomeScreen() {
         const firstImageDuration = Date.now() - imageStartTime;
         console.log(`[handleCreateRecallFromCombined] First image uploaded in ${firstImageDuration}ms`);
         
-        // Upload REMAINING images ASYNCHRONOUSLY (don't wait)
         if (data.images.length > 1) {
           console.log(`[handleCreateRecallFromCombined] Uploading remaining ${data.images.length - 1} images asynchronously...`);
           
-          // Fire and forget - upload remaining images in background
           (async () => {
             for (let i = 1; i < data.images.length; i++) {
               const uri = data.images[i];
@@ -334,52 +296,41 @@ export default function HomeScreen() {
                 if (imageId) {
                   console.log(`[handleCreateRecallFromCombined] [ASYNC] Image ${i + 1} uploaded successfully with ID:`, imageId);
                   
-                  // FIXED: Refresh the single note immediately after each successful upload
-                  // This ensures the carousel counter updates in real-time
                   console.log(`[handleCreateRecallFromCombined] [ASYNC] Refreshing note ${recallData.id} after image ${i + 1} upload`);
                   await refreshSingleNote(recallData.id);
                 } else {
                   console.error(`[handleCreateRecallFromCombined] [ASYNC] Image ${i + 1} upload failed - no ID returned`);
                 }
                 
-                // Small delay between uploads to prevent overwhelming the system
                 if (i < data.images.length - 1) {
                   await new Promise(resolve => setTimeout(resolve, 100));
                 }
               } catch (uploadError) {
                 console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception uploading image ${i + 1}:`, uploadError);
-                // Continue with next image even if one fails
               }
             }
             
             console.log(`[handleCreateRecallFromCombined] [ASYNC] All remaining images uploaded`);
             
-            // FIXED: Clear pending uploads tracking after all images are uploaded
             pendingImageUploadsRef.current.delete(recallData.id);
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Cleared pending uploads tracking for recall ${recallData.id}`);
             
-            // Final refresh to ensure everything is up to date
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Final refresh of note ${recallData.id}`);
             await refreshSingleNote(recallData.id);
           })();
         } else {
-          // Only one image, clear tracking immediately
           pendingImageUploadsRef.current.delete(recallData.id);
         }
       }
 
-      // Step 3: Refresh the recalls list
       console.log('[handleCreateRecallFromCombined] Step 3: Refreshing recalls list...');
       await refreshNotes();
 
-      // Show success feedback
       console.log('[handleCreateRecallFromCombined] Recall creation complete!');
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       
-      // Note: OCR, people finder, and category matching are triggered automatically
-      // by database triggers in the background. No need to wait for them.
       console.log('[handleCreateRecallFromCombined] Background processing (OCR, people finder) will run asynchronously');
       
     } catch (error) {
@@ -414,7 +365,6 @@ export default function HomeScreen() {
     );
   };
 
-  // Render skeleton loaders for initial load
   const renderSkeletons = () => {
     return (
       <View style={styles.allNotesSection}>
@@ -425,25 +375,10 @@ export default function HomeScreen() {
     );
   };
 
-  // FIXED: Improved skeleton display logic
-  // Show skeletons if:
-  // 1. Still loading AND haven't checked for recalls yet, OR
-  // 2. Still loading AND have checked but notes array is empty (initial load)
   const shouldShowSkeletons = loading && (!hasCheckedForRecalls || notes.length === 0);
-  
-  // Show zero state only if:
-  // 1. We've checked for recalls
-  // 2. User has no recalls
-  // 3. Notes array is empty
-  // 4. Not currently loading
   const shouldShowZeroState = hasCheckedForRecalls && !hasRecalls && notes.length === 0 && !loading;
-  
-  // Show content if:
-  // 1. We've checked for recalls AND
-  // 2. Either have recalls OR have notes loaded
   const shouldShowContent = hasCheckedForRecalls && (hasRecalls || notes.length > 0);
 
-  // FIXED: Helper function to get expected image count for a note
   const getExpectedImageCount = (noteId: string): number | undefined => {
     return pendingImageUploadsRef.current.get(noteId);
   };
@@ -456,7 +391,6 @@ export default function HomeScreen() {
         }}
       />
 
-      {/* Main Content ScrollView - Header now scrolls with content */}
       <ScrollView
         ref={scrollViewRef}
         style={styles.scrollView}
@@ -475,7 +409,6 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Custom Header - Now inside ScrollView so it scrolls with content */}
         <View style={[styles.customHeader, { paddingTop: insets.top }]}>
           <Pressable 
             onPress={handleRecallIconPress} 
@@ -504,7 +437,6 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        {/* Category Carousel - Reduced gap by 10% (from 5.4 to 4.86) */}
         {user && (
           <View style={styles.categoryCarouselContainer}>
             <CategoryCarousel
@@ -520,7 +452,6 @@ export default function HomeScreen() {
           renderEmptyState()
         ) : shouldShowContent ? (
           <View style={styles.notesContainer}>
-            {/* Recalls section */}
             <View style={styles.allNotesSection}>
               {notes.map((note, index) => (
                 <NoteCard
@@ -549,7 +480,6 @@ export default function HomeScreen() {
         ) : null}
       </ScrollView>
 
-      {/* Combined Search/Add Component - Now at bottom of screen */}
       {combinedAddSearchEnabled && user && !loadingPreferences && (
         <CombinedSearchAdd
           onCreateRecall={handleCreateRecallFromCombined}
@@ -557,7 +487,6 @@ export default function HomeScreen() {
         />
       )}
 
-      {/* Deletion Indicator Modal */}
       <Modal
         visible={isDeletingNote}
         transparent={true}
@@ -571,7 +500,6 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      {/* Saving Indicator Modal */}
       <Modal
         visible={isSaving}
         transparent={true}
@@ -625,8 +553,8 @@ const styles = StyleSheet.create({
     paddingBottom: 200,
   },
   categoryCarouselContainer: {
-    paddingTop: 4.86,
-    paddingBottom: 4.86,
+    paddingTop: 3.89,
+    paddingBottom: 3.89,
   },
   loadingContainer: {
     flex: 1,
