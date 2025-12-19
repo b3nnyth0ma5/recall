@@ -49,6 +49,26 @@ function calculateBoundingBox(
 }
 
 /**
+ * Extract distance from query (e.g., "10km", "5 km", "2.5km")
+ * Returns distance in kilometers or null if not found
+ */
+function extractDistanceFromQuery(query: string): number | null {
+  // Match patterns like "10km", "5 km", "2.5km", "10 km", etc.
+  const distancePattern = /(\d+(?:\.\d+)?)\s*km/i;
+  const match = query.match(distancePattern);
+  
+  if (match && match[1]) {
+    const distance = parseFloat(match[1]);
+    if (!isNaN(distance) && distance > 0) {
+      console.log(`Extracted distance from query: ${distance}km`);
+      return distance;
+    }
+  }
+  
+  return null;
+}
+
+/**
  * Use GPT-4o-mini to detect location intent with high precision
  */
 async function detectLocationIntent(query: string, openaiApiKey: string) {
@@ -326,7 +346,12 @@ Deno.serve(async (req) => {
       }
 
       console.log('Step 2: Using user location for "near me" query');
-      const radiusKm = 1; // 1km radius for "near me"
+      
+      // Extract distance from query if specified, otherwise use default 1km
+      const extractedDistance = extractDistanceFromQuery(query);
+      const radiusKm = extractedDistance !== null ? extractedDistance : 1;
+      
+      console.log(`Using radius: ${radiusKm}km ${extractedDistance !== null ? '(extracted from query)' : '(default)'}`);
 
       // Fetch all recalls with location data for this user
       console.log('Step 3: Fetching recalls with location data...');

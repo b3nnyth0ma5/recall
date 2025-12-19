@@ -22,6 +22,32 @@ function cleanRecallsFromQuery(query: string): string {
   return cleaned;
 }
 
+/**
+ * Clean people names from the search query
+ */
+function cleanPeopleNamesFromQuery(query: string, personInfo: any): string {
+  if (!personInfo || !personInfo.matchedNames || personInfo.matchedNames.length === 0) {
+    return query;
+  }
+
+  let cleaned = query;
+  
+  // Remove each matched person name from the query (case-insensitive)
+  personInfo.matchedNames.forEach((name: string) => {
+    // Escape special regex characters in the name
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Create regex to match the name as a whole word (case-insensitive)
+    const nameRegex = new RegExp(`\\b${escapedName}\\b`, 'gi');
+    cleaned = cleaned.replace(nameRegex, '');
+  });
+  
+  // Clean up extra spaces
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  
+  console.log(`Cleaned people names from query: "${query}" -> "${cleaned}"`);
+  return cleaned;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -80,9 +106,13 @@ Deno.serve(async (req) => {
     console.log('People-filtered recall IDs:', peopleRecallIds ? `${peopleRecallIds.length} IDs` : 'None');
     console.log('Person info:', personInfo);
 
-    // Clean the word "recalls" from the query
-    const cleanedQuery = cleanRecallsFromQuery(query);
-    console.log('Cleaned query:', cleanedQuery);
+    // Clean people names from the query first
+    let cleanedQuery = cleanPeopleNamesFromQuery(query, personInfo);
+    console.log('After cleaning people names:', cleanedQuery);
+    
+    // Then clean the word "recalls" from the query
+    cleanedQuery = cleanRecallsFromQuery(cleanedQuery);
+    console.log('After cleaning "recalls":', cleanedQuery);
 
     // Combine location and people recall IDs (prioritize these)
     const priorityRecallIds = new Set<string>();
@@ -97,7 +127,7 @@ Deno.serve(async (req) => {
 
     // If query is blank after cleaning and we have priority recalls, return them all
     if (!cleanedQuery.trim() && priorityRecallIds.size > 0) {
-      console.log('Query is blank after cleaning "recalls" - returning all location/people results');
+      console.log('Query is blank after cleaning - returning all location/people results');
       
       const priorityIds = Array.from(priorityRecallIds);
       const { data: recallsData, error: fetchError } = await supabase

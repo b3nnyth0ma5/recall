@@ -20,6 +20,7 @@ import { SearchHistory } from '@/types/Note';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
+import { PersonAvatar } from '@/components/PersonAvatar';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -170,6 +171,17 @@ export default function SearchScreen() {
         router.push(`/note-editor?id=${noteId}`);
       } catch (error) {
         console.error('[SearchScreen] Error navigating to note editor:', error);
+      }
+    }, 0);
+  }, [router]);
+
+  const handlePersonPress = useCallback((personId: string) => {
+    console.log('[SearchScreen] Person avatar pressed:', personId);
+    setTimeout(() => {
+      try {
+        router.push(`/person-recalls?personId=${personId}`);
+      } catch (error) {
+        console.error('[SearchScreen] Error navigating to person recalls:', error);
       }
     }, 0);
   }, [router]);
@@ -392,7 +404,7 @@ export default function SearchScreen() {
         {/* Intent Badges Container */}
         {hasSearched && !isSearching && (locationInfo || personInfo) && (
           <View style={styles.intentBadgesContainer}>
-            {/* Person Info Badge */}
+            {/* Person Info Badge with Avatars */}
             {personInfo && personInfo.matchedNames.length > 0 && (
               <Animated.View entering={FadeIn.duration(400)} style={styles.intentBadge}>
                 <IconSymbol name="person.circle.fill" size={20} color={colors.primary} />
@@ -531,15 +543,35 @@ export default function SearchScreen() {
                 </Text>
                 {notes.map((note) => (
                   <View key={note.id} style={styles.noteWrapper}>
-                    {/* FIXED: Increased z-index to ensure badge is above image */}
-                    {note.used_for_answer && (
+                    {/* Badge row with person avatars and "used for answer" badge */}
+                    {(note.used_for_answer || (note.people && note.people.length > 0)) && (
                       <View style={styles.badgeRow}>
                         <View style={styles.badgeRowLeft}>
-                          <View style={styles.answerSourceBadge}>
-                            <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
-                            <Text style={styles.answerSourceText}>Used for answer</Text>
-                          </View>
+                          {note.used_for_answer && (
+                            <View style={styles.answerSourceBadge}>
+                              <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                              <Text style={styles.answerSourceText}>Used for answer</Text>
+                            </View>
+                          )}
                         </View>
+                        {note.people && note.people.length > 0 && (
+                          <View style={styles.peopleAvatarsContainer}>
+                            {note.people.map((person: any) => (
+                              <Pressable
+                                key={person.id}
+                                onPress={() => handlePersonPress(person.id)}
+                                style={styles.personAvatarWrapper}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <PersonAvatar
+                                  personName={person.person_name}
+                                  photoUrl={person.photo_url}
+                                  size={32}
+                                />
+                              </Pressable>
+                            ))}
+                          </View>
+                        )}
                       </View>
                     )}
                     <View style={styles.noteCardContainer}>
@@ -897,6 +929,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.primary,
+  },
+  peopleAvatarsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  personAvatarWrapper: {
+    borderWidth: 2,
+    borderColor: colors.background,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   noteCardContainer: {
     position: 'relative',
