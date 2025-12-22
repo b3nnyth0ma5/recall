@@ -337,111 +337,125 @@ export async function searchPlaces(
 }
 
 /**
- * Reverse geocode coordinates to get place information
- * Returns formatted as "DisplayName, Suburb" or "DisplayName, Locality"
+ * Reverse geocode coordinates to get place information with street-level accuracy
+ * Returns formatted as "Street Number Street Name, Suburb" or fallback formats
  */
 export async function reverseGeocodeGoogle(
   latitude: number,
   longitude: number
 ): Promise<string> {
   try {
-    console.log('Reverse geocoding with Google:', { latitude, longitude });
+    console.log('[reverseGeocodeGoogle] Reverse geocoding:', { latitude, longitude });
 
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_PLACES_API_KEY}`;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_PLACES_API_KEY}&result_type=street_address|premise|subpremise|route`;
 
     const response = await fetch(url);
 
     if (!response.ok) {
-      console.error('Google Geocoding API error:', response.status);
+      console.error('[reverseGeocodeGoogle] API error:', response.status);
       const errorText = await response.text();
-      console.error('Error details:', errorText);
+      console.error('[reverseGeocodeGoogle] Error details:', errorText);
       return 'Unknown Location';
     }
 
     const data = await response.json();
 
     if (data.status !== 'OK' || !data.results || data.results.length === 0) {
-      console.log('No results from reverse geocoding, status:', data.status);
+      console.log('[reverseGeocodeGoogle] No results, status:', data.status);
       return 'Unknown Location';
     }
 
-    let placeName = '';
+    console.log('[reverseGeocodeGoogle] Found', data.results.length, 'results');
+
+    // Extract address components for street-level accuracy
+    let streetNumber = '';
+    let streetName = '';
     let suburb = '';
     let locality = '';
 
-    for (const result of data.results) {
-      const types = result.types || [];
-      const addressComponents = result.address_components || [];
+    // Try to find the most specific result (street_address or premise)
+    const bestResult = data.results.find((result: any) => 
+      result.types.includes('street_address') || 
+      result.types.includes('premise') ||
+      result.types.includes('subpremise')
+    ) || data.results[0];
 
-      if (!placeName && (
-        types.includes('point_of_interest') ||
-        types.includes('establishment') ||
-        types.includes('premise') ||
-        types.includes('street_address')
-      )) {
-        const addressParts = result.formatted_address.split(',');
-        if (addressParts.length > 0) {
-          placeName = addressParts[0].trim();
-        }
-      }
+    console.log('[reverseGeocodeGoogle] Using result with types:', bestResult.types);
 
-      for (const component of addressComponents) {
-        const componentTypes = component.types || [];
-        
-        if (componentTypes.includes('locality')) {
-          locality = component.long_name;
-        } else if (componentTypes.includes('sublocality') || componentTypes.includes('sublocality_level_1')) {
-          suburb = component.long_name;
-        } else if (componentTypes.includes('neighborhood')) {
-          if (!suburb) {
-            suburb = component.long_name;
-          }
-        }
-      }
-
-      if (placeName && suburb) {
-        break;
+    for (const component of bestResult.address_components) {
+      const types = component.types || [];
+      
+      if (types.includes('street_number')) {
+        streetNumber = component.long_name;
+        console.log('[reverseGeocodeGoogle] Found street number:', streetNumber);
+      } else if (types.includes('route')) {
+        streetName = component.long_name;
+        console.log('[reverseGeocodeGoogle] Found street name:', streetName);
+      } else if (types.includes('sublocality') || types.includes('sublocality_level_1')) {
+        suburb = component.long_name;
+        console.log('[reverseGeocodeGoogle] Found suburb:', suburb);
+      } else if (types.includes('neighborhood') && !suburb) {
+        suburb = component.long_name;
+        console.log('[reverseGeocodeGoogle] Found neighborhood as suburb:', suburb);
+      } else if (types.includes('locality')) {
+        locality = component.long_name;
+        console.log('[reverseGeocodeGoogle] Found locality:', locality);
       }
     }
 
-    if (placeName && suburb) {
-      const formatted = `${placeName}, ${suburb}`;
-      console.log('Formatted location:', formatted);
-      return formatted;
-    } else if (placeName && locality) {
-      const formatted = `${placeName}, ${locality}`;
-      console.log('Formatted location:', formatted);
-      return formatted;
+    // Build the address string with priority:
+    // 1. "Street Number Street Name, Suburb"
+    // 2. "Street Name, Suburb"
+    // 3. "Suburb, Locality"
+    // 4. First part of formatted address
+    
+    let formattedLocation = '';
+
+    if (streetNumber && streetName && suburb) {
+      formattedLocation = `${streetNumber} ${streetName}, ${suburb}`;
+      console.log('[reverseGeocodeGoogle] Format 1 (full street):', formattedLocation);
+    } else if (streetName && suburb) {
+      formattedLocation = `${streetName}, ${suburb}`;
+      console.log('[reverseGeocodeGoogle] Format 2 (street + suburb):', formattedLocation);
+    } else if (streetNumber && streetName && locality) {
+      formattedLocation = `${streetNumber} ${streetName}, ${locality}`;
+      console.log('[reverseGeocodeGoogle] Format 3 (street + locality):', formattedLocation);
+    } else if (streetName && locality) {
+      formattedLocation = `${streetName}, ${locality}`;
+      console.log('[reverseGeocodeGoogle] Format 4 (street + locality):', formattedLocation);
     } else if (suburb && locality) {
-      const formatted = `${suburb}, ${locality}`;
-      console.log('Formatted location:', formatted);
-      return formatted;
-    } else if (placeName) {
-      console.log('Formatted location:', placeName);
-      return placeName;
+      formattedLocation = `${suburb}, ${locality}`;
+      console.log('[reverseGeocodeGoogle] Format 5 (suburb + locality):', formattedLocation);
     } else if (suburb) {
-      console.log('Formatted location:', suburb);
-      return suburb;
+      formattedLocation = suburb;
+      console.log('[reverseGeocodeGoogle] Format 6 (suburb only):', formattedLocation);
     } else if (locality) {
-      console.log('Formatted location:', locality);
-      return locality;
-    } else if (data.results[0].formatted_address) {
-      const parts = data.results[0].formatted_address.split(',');
+      formattedLocation = locality;
+      console.log('[reverseGeocodeGoogle] Format 7 (locality only):', formattedLocation);
+    } else if (bestResult.formatted_address) {
+      // Fallback: use first two parts of formatted address
+      const parts = bestResult.formatted_address.split(',');
       if (parts.length >= 2) {
-        const formatted = `${parts[0].trim()}, ${parts[1].trim()}`;
-        console.log('Formatted location (fallback):', formatted);
-        return formatted;
+        formattedLocation = `${parts[0].trim()}, ${parts[1].trim()}`;
+        console.log('[reverseGeocodeGoogle] Format 8 (formatted fallback):', formattedLocation);
+      } else {
+        formattedLocation = parts[0].trim();
+        console.log('[reverseGeocodeGoogle] Format 9 (first part only):', formattedLocation);
       }
-      console.log('Formatted location (fallback):', parts[0].trim());
-      return parts[0].trim();
     }
 
-    return 'Unknown Location';
+    if (!formattedLocation) {
+      console.log('[reverseGeocodeGoogle] No formatted location, returning Unknown Location');
+      return 'Unknown Location';
+    }
+
+    console.log('[reverseGeocodeGoogle] Final location:', formattedLocation);
+    return formattedLocation;
   } catch (error) {
-    console.error('Error in reverse geocoding:', error);
+    console.error('[reverseGeocodeGoogle] Exception:', error);
     if (error instanceof Error) {
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
+      console.error('[reverseGeocodeGoogle] Error message:', error.message);
+      console.error('[reverseGeocodeGoogle] Error stack:', error.stack);
     }
     return 'Unknown Location';
   }

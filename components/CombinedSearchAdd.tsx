@@ -13,6 +13,8 @@ import {
   Alert,
   TouchableWithoutFeedback,
   ActivityIndicator,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -27,15 +29,19 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  withRepeat,
+  withSequence,
+  Easing,
 } from 'react-native-reanimated';
 import { supabase } from '@/utils/supabase';
+import { SymbolView } from 'expo-symbols';
 
 interface CombinedSearchAddProps {
   onCreateRecall: (data: {
     text: string;
     images: string[];
     location?: { latitude: number; longitude: number; name: string };
-  }) => Promise<void>;
+  }, onProgress?: (stage: string) => void) => Promise<void>;
   userId: string;
 }
 
@@ -47,20 +53,69 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
   const [showDrawer, setShowDrawer] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [savingStage, setSavingStage] = useState<string>('');
   const [isDetectingIntent, setIsDetectingIntent] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
+  const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const translateY = useSharedValue(0);
+  const lastLocationFetchRef = useRef<number>(0);
+  const locationRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // FIXED: Track if we've already processed these params to prevent infinite loops
   const processedParamsRef = useRef<string>('');
+
+  // Animation values for AI icon
+  const aiIconRotation = useSharedValue(0);
+  const aiIconScale = useSharedValue(1);
 
   // Get current location on mount
   useEffect(() => {
     getCurrentLocation();
   }, []);
+
+  // Handle app state changes for location refresh
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  // Set up periodic location refresh (every 5 minutes of inactivity)
+  useEffect(() => {
+    // Clear any existing interval
+    if (locationRefreshIntervalRef.current) {
+      clearInterval(locationRefreshIntervalRef.current);
+    }
+
+    // Set up new interval to check if location needs refresh
+    locationRefreshIntervalRef.current = setInterval(() => {
+      const timeSinceLastFetch = Date.now() - lastLocationFetchRef.current;
+      const fiveMinutes = 5 * 60 * 1000;
+      
+      if (timeSinceLastFetch > fiveMinutes) {
+        console.log('[CombinedSearchAdd] Auto-refreshing location after 5 minutes of inactivity');
+        getCurrentLocation();
+      }
+    }, 60000); // Check every minute
+
+    return () => {
+      if (locationRefreshIntervalRef.current) {
+        clearInterval(locationRefreshIntervalRef.current);
+      }
+    };
+  }, []);
+
+  const handleAppStateChange = (nextAppState: AppStateStatus) => {
+    if (nextAppState === 'active') {
+      console.log('[CombinedSearchAdd] App became active - refreshing location');
+      getCurrentLocation();
+    }
+  };
 
   // Handle keyboard show/hide
   useEffect(() => {
@@ -94,20 +149,65 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     };
   });
 
+  // AI Icon animation styles
+  const aiIconAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { rotate: `${aiIconRotation.value}deg` },
+        { scale: aiIconScale.value },
+      ],
+    };
+  });
+
+  // Start AI icon animation when detecting intent
+  useEffect(() => {
+    if (isDetectingIntent) {
+      // Continuous rotation
+      aiIconRotation.value = withRepeat(
+        withTiming(360, { duration: 2000, easing: Easing.linear }),
+        -1,
+        false
+      );
+      // Pulsing scale
+      aiIconScale.value = withRepeat(
+        withSequence(
+          withTiming(1.2, { duration: 600, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 600, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        false
+      );
+    } else {
+      // Reset animations
+      aiIconRotation.value = withTiming(0, { duration: 300 });
+      aiIconScale.value = withTiming(1, { duration: 300 });
+    }
+  }, [isDetectingIntent]);
+
   const getCurrentLocation = async () => {
     try {
+      setIsRefreshingLocation(true);
+      console.log('[CombinedSearchAdd] Fetching current location...');
+      
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         console.log('Location permission not granted');
+        setIsRefreshingLocation(false);
         return;
       }
 
-      const currentPosition = await Location.getCurrentPositionAsync({});
+      const currentPosition = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
       const { latitude, longitude } = currentPosition.coords;
 
-      // Reverse geocode to get location name
-      const { reverseGeocode } = await import('@/utils/supabase');
-      const locationName = await reverseGeocode(latitude, longitude);
+      console.log('[CombinedSearchAdd] GPS coordinates:', { latitude, longitude });
+
+      // Use Google Places API for accurate reverse geocoding
+      const { reverseGeocodeGoogle } = await import('@/utils/googlePlaces');
+      const locationName = await reverseGeocodeGoogle(latitude, longitude);
+
+      console.log('[CombinedSearchAdd] Resolved location name:', locationName);
 
       const locationData = {
         latitude,
@@ -117,9 +217,13 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
       setCurrentLocation(locationData);
       setLocation(locationData); // Set as default location
-      console.log('Current location obtained:', locationData);
+      lastLocationFetchRef.current = Date.now();
+      
+      console.log('[CombinedSearchAdd] Current location obtained:', locationData);
     } catch (error) {
-      console.error('Error getting current location:', error);
+      console.error('[CombinedSearchAdd] Error getting current location:', error);
+    } finally {
+      setIsRefreshingLocation(false);
     }
   };
 
@@ -335,22 +439,29 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       // Use manually selected location if available, otherwise use current location
       const locationToSave = location || currentLocation;
       
-      await onCreateRecall({
-        text: text.trim(),
-        images,
-        location: locationToSave || undefined,
-      });
+      await onCreateRecall(
+        {
+          text: text.trim(),
+          images,
+          location: locationToSave || undefined,
+        },
+        (stage: string) => {
+          setSavingStage(stage);
+        }
+      );
 
       // Reset form
       setText('');
       setImages([]);
       // Reset location to current location after creating recall
       setLocation(currentLocation);
+      setSavingStage('');
     } catch (error) {
       console.error('Error creating recall:', error);
       Alert.alert('Error', 'Failed to create recall');
     } finally {
       setIsCreating(false);
+      setSavingStage('');
     }
   };
 
@@ -517,19 +628,23 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
               {/* Button Row - Search icon hidden, location extended */}
               <View style={styles.inputRow}>
-                {/* Location Pill - Extended to fill space where search icon was */}
+                {/* Location Pill - Extended to fill space where search icon was, dynamic width */}
                 <Pressable
                   style={styles.locationPillExtended}
                   onPress={handleLocationPress}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
-                  <Text style={styles.locationPillText} numberOfLines={1}>
-                    {location?.name || currentLocation?.name || 'Add Location'}
-                  </Text>
+                  {isRefreshingLocation ? (
+                    <ActivityIndicator size="small" color={colors.primary} style={styles.locationSpinner} />
+                  ) : (
+                    <Text style={styles.locationPillText} numberOfLines={1}>
+                      {location?.name || currentLocation?.name || 'Add Location'}
+                    </Text>
+                  )}
                 </Pressable>
 								
-                {/* Submit Button - Shows spinner when detecting intent */}
+                {/* Submit Button - Shows AI animation when detecting intent */}
                 <Pressable
                   style={[styles.submitButton, (!text.trim() && images.length === 0) && styles.submitButtonDisabled]}
                   onPress={handleCreateRecall}
@@ -537,9 +652,37 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   {isDetectingIntent ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
+                    Platform.OS === 'ios' ? (
+                      <Animated.View style={aiIconAnimatedStyle}>
+                        <SymbolView
+                          name="sparkles"
+                          size={28}
+                          tintColor={colors.primary}
+                          type="hierarchical"
+                          animationSpec={{
+                            effect: {
+                              type: 'pulse',
+                            },
+                            repeating: true,
+                          }}
+                        />
+                      </Animated.View>
+                    ) : (
+                      <Animated.View style={aiIconAnimatedStyle}>
+                        <IconSymbol name="auto.awesome" size={28} color={colors.primary} />
+                      </Animated.View>
+                    )
                   ) : (
-                    <IconSymbol name="arrow.up.circle.fill" size={28} color={colors.primary} />
+                    Platform.OS === 'ios' ? (
+                      <SymbolView
+                        name="sparkles"
+                        size={28}
+                        tintColor={colors.primary}
+                        type="hierarchical"
+                      />
+                    ) : (
+                      <IconSymbol name="auto.awesome" size={28} color={colors.primary} />
+                    )
                   )}
                 </Pressable>
 
@@ -562,6 +705,14 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
             style={styles.drawerBackdrop} 
             onPress={() => setShowDrawer(false)} 
           />
+        )}
+
+        {/* Saving Stage Indicator */}
+        {isCreating && savingStage && (
+          <View style={styles.savingIndicator}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.savingText}>{savingStage}</Text>
+          </View>
         )}
       </Animated.View>
     </TouchableWithoutFeedback>
@@ -667,6 +818,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     flex: 1,
     minWidth: 0,
+    maxWidth: '70%',
     borderWidth: 1,
     borderColor: colors.primary,
   },
@@ -676,13 +828,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
+  locationSpinner: {
+    marginLeft: 4,
+  },
   plusButton: {
     padding: 0,
   },
   submitButton: {
     padding: 0,
-    width: 28,
-    height: 28,
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -697,5 +852,27 @@ const styles = StyleSheet.create({
     bottom: -1000,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     zIndex: 999,
+  },
+  savingIndicator: {
+    position: 'absolute',
+    bottom: -50,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.card,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  savingText: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '600',
   },
 });

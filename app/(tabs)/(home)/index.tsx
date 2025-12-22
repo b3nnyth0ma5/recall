@@ -26,6 +26,7 @@ export default function HomeScreen() {
   const isFirstFocusRef = useRef(true);
   const { user } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
+  const [savingStage, setSavingStage] = useState<string>('');
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
   const [combinedAddSearchEnabled, setCombinedAddSearchEnabled] = useState(true);
   const [loadingPreferences, setLoadingPreferences] = useState(true);
@@ -210,11 +211,14 @@ export default function HomeScreen() {
     }
   }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
 
-  const handleCreateRecallFromCombined = async (data: {
-    text: string;
-    images: string[];
-    location?: { latitude: number; longitude: number; name: string };
-  }) => {
+  const handleCreateRecallFromCombined = async (
+    data: {
+      text: string;
+      images: string[];
+      location?: { latitude: number; longitude: number; name: string };
+    },
+    onProgress?: (stage: string) => void
+  ) => {
     if (!user) {
       Alert.alert('Error', 'You must be logged in to create a recall');
       return;
@@ -227,7 +231,11 @@ export default function HomeScreen() {
 
     try {
       setIsSaving(true);
-
+      
+      // Stage 1: Creating Recall
+      if (onProgress) onProgress('Creating Recall...');
+      setSavingStage('Creating Recall...');
+      
       console.log('[handleCreateRecallFromCombined] Step 1: Creating recall record...');
       const recallStartTime = Date.now();
       
@@ -263,6 +271,10 @@ export default function HomeScreen() {
       }
 
       if (data.images.length > 0) {
+        // Stage 2: Uploading Images
+        if (onProgress) onProgress('Uploading Images...');
+        setSavingStage('Uploading Images...');
+        
         console.log('[handleCreateRecallFromCombined] Step 2: Uploading images...');
         const imageStartTime = Date.now();
         
@@ -312,13 +324,19 @@ export default function HomeScreen() {
             
             console.log(`[handleCreateRecallFromCombined] [ASYNC] All remaining images uploaded`);
             
+            // Stage 3: Analysing Images (async)
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Analysing images...`);
+            
             pendingImageUploadsRef.current.delete(recallData.id);
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Cleared pending uploads tracking for recall ${recallData.id}`);
             
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Final refresh of note ${recallData.id}`);
             await refreshSingleNote(recallData.id);
             
-            // Run category matching asynchronously after all images are uploaded
+            // Stage 4: Detecting People (async)
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Detecting people...`);
+            
+            // Stage 5: Matching Categories (async)
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id}...`);
             try {
               const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
@@ -337,9 +355,16 @@ export default function HomeScreen() {
         } else {
           pendingImageUploadsRef.current.delete(recallData.id);
           
-          // Run category matching asynchronously after single image upload
-          console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id}...`);
+          // Run async processing for single image
           (async () => {
+            // Stage 3: Analysing Images
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Analysing image...`);
+            
+            // Stage 4: Detecting People
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Detecting people...`);
+            
+            // Stage 5: Matching Categories
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id}...`);
             try {
               const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
                 body: { recallId: recallData.id },
@@ -357,8 +382,13 @@ export default function HomeScreen() {
         }
       } else {
         // No images - run category matching immediately in background
-        console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id} (no images)...`);
         (async () => {
+          // Stage 4: Detecting People (async, text-only)
+          console.log(`[handleCreateRecallFromCombined] [ASYNC] Detecting people...`);
+          
+          // Stage 5: Matching Categories
+          if (onProgress) onProgress('Matching Categories...');
+          console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id} (no images)...`);
           try {
             const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
               body: { recallId: recallData.id },
@@ -390,6 +420,7 @@ export default function HomeScreen() {
       Alert.alert('Error', 'Failed to create recall');
     } finally {
       setIsSaving(false);
+      setSavingStage('');
     }
   };
 
@@ -560,7 +591,7 @@ export default function HomeScreen() {
         <View style={styles.deletionModalContainer}>
           <View style={styles.deletionModalContent}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.deletionModalText}>Saving recall...</Text>
+            <Text style={styles.deletionModalText}>{savingStage || 'Saving recall...'}</Text>
           </View>
         </View>
       </Modal>

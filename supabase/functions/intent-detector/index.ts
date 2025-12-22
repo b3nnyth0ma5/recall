@@ -1,4 +1,3 @@
-
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
@@ -91,18 +90,18 @@ Deno.serve(async (req) => {
 3. UNKNOWN if you cannot determine with high confidence
 
 GUIDELINES:
-- CREATE intent: User is sharing information, describing an event, noting something down, or wants to remember something
+- CREATE intent: User is sharing information, noting something down, or wants to remember something
   Examples: "Had lunch at Joe's Cafe", "Meeting with Sarah tomorrow", "Password is abc123", "Great movie tonight"
   
 - SEARCH intent: User is asking questions, looking for information, or trying to find something
-  Examples: "Where did I have lunch?", "Find recalls about Sarah", "What was my password?", "Show me movie recalls"
+  Examples: "Where did I have lunch?", "Find recalls about Sarah", "Show me movie recalls"
   
 - UNKNOWN: Ambiguous cases or very short/unclear text
 
 Respond ONLY with valid JSON in this exact format:
 {"intent": "create" | "search" | "unknown", "confidence": 0-100}
 
-Be decisive - only use "unknown" if truly ambiguous. Confidence should be 80+ for clear cases.`;
+Be decisive - only use "unknown" if truly ambiguous. Confidence should be 70+ for clear cases.`;
 
     const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -122,7 +121,7 @@ Be decisive - only use "unknown" if truly ambiguous. Confidence should be 80+ fo
             content: text
           }
         ],
-        temperature: 0.3,
+        temperature: 0.2,
         max_tokens: 100,
         response_format: { type: 'json_object' }
       })
