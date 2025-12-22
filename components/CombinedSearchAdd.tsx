@@ -730,7 +730,7 @@ const styles = StyleSheet.create({
   },
   floatingActionsContainer: {
     position: 'absolute',
-    bottom: 95,
+    bottom: 109.25, // Increased by 15% from 95 (95 * 1.15 = 109.25)
     right: 8,
     flexDirection: 'column',
     gap: 12,
@@ -768,7 +768,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 4,
     gap: 4,
-    minHeight: 90,
+    minHeight: 103.5, // Increased by 15% from 90 (90 * 1.15 = 103.5)
   },
   imagesScroll: {
     maxHeight: 150,
@@ -795,8 +795,8 @@ const styles = StyleSheet.create({
   textInput: {
     fontSize: 16,
     color: colors.text,
-    minHeight: 38,
-    maxHeight: 150,
+    minHeight: 43.7, // Increased by 15% from 38 (38 * 1.15 = 43.7)
+    maxHeight: 172.5, // Increased by 15% from 150 (150 * 1.15 = 172.5)
     paddingVertical: 8,
     paddingHorizontal: 4,
     zIndex: 1,

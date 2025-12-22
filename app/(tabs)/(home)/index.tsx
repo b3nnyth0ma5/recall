@@ -271,7 +271,17 @@ export default function HomeScreen() {
       }
 
       if (data.images.length > 0) {
-        // Stage 2: Uploading Images
+        // Stage 2: Detecting People (shown before image upload for better UX)
+        if (onProgress) onProgress('Detecting People...');
+        setSavingStage('Detecting People...');
+        console.log('[handleCreateRecallFromCombined] Stage: Detecting people...');
+        
+        // Stage 3: Matching Categories (shown before image upload for better UX)
+        if (onProgress) onProgress('Matching Categories...');
+        setSavingStage('Matching Categories...');
+        console.log('[handleCreateRecallFromCombined] Stage: Matching categories...');
+        
+        // Stage 4: Uploading Images
         if (onProgress) onProgress('Uploading Images...');
         setSavingStage('Uploading Images...');
         
@@ -324,7 +334,7 @@ export default function HomeScreen() {
             
             console.log(`[handleCreateRecallFromCombined] [ASYNC] All remaining images uploaded`);
             
-            // Stage 3: Analysing Images (async)
+            // Stage 5: Analysing Images (async)
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Analysing images...`);
             
             pendingImageUploadsRef.current.delete(recallData.id);
@@ -333,10 +343,7 @@ export default function HomeScreen() {
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Final refresh of note ${recallData.id}`);
             await refreshSingleNote(recallData.id);
             
-            // Stage 4: Detecting People (async)
-            console.log(`[handleCreateRecallFromCombined] [ASYNC] Detecting people...`);
-            
-            // Stage 5: Matching Categories (async)
+            // Run category matching in background
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id}...`);
             try {
               const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
@@ -357,13 +364,10 @@ export default function HomeScreen() {
           
           // Run async processing for single image
           (async () => {
-            // Stage 3: Analysing Images
+            // Stage 5: Analysing Images
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Analysing image...`);
             
-            // Stage 4: Detecting People
-            console.log(`[handleCreateRecallFromCombined] [ASYNC] Detecting people...`);
-            
-            // Stage 5: Matching Categories
+            // Run category matching in background
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id}...`);
             try {
               const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
@@ -381,13 +385,18 @@ export default function HomeScreen() {
           })();
         }
       } else {
-        // No images - run category matching immediately in background
+        // No images - show people detection and category matching stages
+        // Stage 2: Detecting People (text-only)
+        if (onProgress) onProgress('Detecting People...');
+        setSavingStage('Detecting People...');
+        console.log(`[handleCreateRecallFromCombined] Stage: Detecting people (text-only)...`);
+        
+        // Stage 3: Matching Categories
+        if (onProgress) onProgress('Matching Categories...');
+        setSavingStage('Matching Categories...');
+        
+        // Run category matching immediately in background
         (async () => {
-          // Stage 4: Detecting People (async, text-only)
-          console.log(`[handleCreateRecallFromCombined] [ASYNC] Detecting people...`);
-          
-          // Stage 5: Matching Categories
-          if (onProgress) onProgress('Matching Categories...');
           console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id} (no images)...`);
           try {
             const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
