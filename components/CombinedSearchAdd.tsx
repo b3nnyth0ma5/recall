@@ -12,6 +12,7 @@ import {
   Keyboard,
   Alert,
   TouchableWithoutFeedback,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -46,6 +47,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
   const [showDrawer, setShowDrawer] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isDetectingIntent, setIsDetectingIntent] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -306,7 +308,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     }, 0);
   };
 
-  const handleCreateRecall = async () => {
+  const handleIntentChoice = (choice: 'create' | 'search') => {
+    if (choice === 'create') {
+      handleCreateRecallDirect();
+    } else {
+      handleSearchPress();
+    }
+  };
+
+  const handleCreateRecallDirect = async () => {
     if (!text.trim() && images.length === 0) {
       Alert.alert('Empty Recall', 'Please add some text or images');
       return;
@@ -341,6 +351,83 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       Alert.alert('Error', 'Failed to create recall');
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleCreateRecall = async () => {
+    if (!text.trim() && images.length === 0) {
+      Alert.alert('Empty Recall', 'Please add some text or images');
+      return;
+    }
+
+    // If images are attached, skip intent detection and create recall directly
+    if (images.length > 0) {
+      console.log('[CombinedSearchAdd] Images attached - skipping intent detection');
+      await handleCreateRecallDirect();
+      return;
+    }
+
+    // Run intent detector
+    try {
+      setIsDetectingIntent(true);
+      console.log('[CombinedSearchAdd] Running intent detector...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error('No active session');
+        Alert.alert('Error', 'Please log in to continue');
+        return;
+      }
+
+      const { data: intentData, error: intentError } = await supabase.functions.invoke('intent-detector', {
+        body: { text: text.trim() },
+      });
+
+      if (intentError) {
+        console.error('Error detecting intent:', intentError);
+        // Fallback to create recall on error
+        await handleCreateRecallDirect();
+        return;
+      }
+
+      console.log('[CombinedSearchAdd] Intent detected:', intentData);
+
+      const { intent, confidence } = intentData;
+
+      if (intent === 'create') {
+        console.log('[CombinedSearchAdd] Intent: CREATE recall');
+        await handleCreateRecallDirect();
+      } else if (intent === 'search') {
+        console.log('[CombinedSearchAdd] Intent: SEARCH');
+        await handleSearchPress();
+      } else {
+        // Unknown intent - present choice to user
+        console.log('[CombinedSearchAdd] Intent: UNKNOWN - presenting choice');
+        Alert.alert(
+          'What would you like to do?',
+          'Would you like to create a recall or search for existing recalls?',
+          [
+            {
+              text: 'Create Recall',
+              onPress: () => handleIntentChoice('create'),
+            },
+            {
+              text: 'Search',
+              onPress: () => handleIntentChoice('search'),
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error in intent detection:', error);
+      // Fallback to create recall on error
+      await handleCreateRecallDirect();
+    } finally {
+      setIsDetectingIntent(false);
     }
   };
 
@@ -428,24 +515,11 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 enablesReturnKeyAutomatically={false}
               />
 
-              {/* Button Row - SWAPPED: Plus button now before submit button */}
+              {/* Button Row - Search icon hidden, location extended */}
               <View style={styles.inputRow}>
-                {/* Search Icon - Left side */}
+                {/* Location Pill - Extended to fill space where search icon was */}
                 <Pressable
-                  style={styles.searchButton}
-                  onPress={handleSearchPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol
-                    name="magnifyingglass"
-                    size={24}
-                    color={colors.text}
-                  />
-                </Pressable>
-
-                {/* Location Pill - Takes available width between search and buttons - WITH BORDER */}
-                <Pressable
-                  style={styles.locationPill}
+                  style={styles.locationPillExtended}
                   onPress={handleLocationPress}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
@@ -455,17 +529,21 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   </Text>
                 </Pressable>
 								
-                {/* Submit Button - SWAPPED: Now after plus button, far right */}
+                {/* Submit Button - Shows spinner when detecting intent */}
                 <Pressable
                   style={[styles.submitButton, (!text.trim() && images.length === 0) && styles.submitButtonDisabled]}
                   onPress={handleCreateRecall}
-                  disabled={(!text.trim() && images.length === 0) || isCreating}
+                  disabled={(!text.trim() && images.length === 0) || isCreating || isDetectingIntent}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <IconSymbol name="arrow.up.circle.fill" size={28} color={colors.primary} />
+                  {isDetectingIntent ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <IconSymbol name="arrow.up.circle.fill" size={28} color={colors.primary} />
+                  )}
                 </Pressable>
 
-								{/* Plus Button - SWAPPED: Now before submit button */}
+								{/* Plus Button */}
                 <Pressable
                   style={styles.plusButton}
                   onPress={handlePlusPress}
@@ -578,11 +656,7 @@ const styles = StyleSheet.create({
     gap: 12,
     zIndex: 1,
   },
-  searchButton: {
-    padding: 8,
-    paddingLeft: 0,
-  },
-  locationPill: {
+  locationPillExtended: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -607,6 +681,10 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     padding: 0,
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   submitButtonDisabled: {
     opacity: 0.4,

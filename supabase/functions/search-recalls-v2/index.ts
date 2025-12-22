@@ -7,16 +7,24 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
+/**
+ * Clean the word "recalls" from the search query
+ */
 function cleanRecallsFromQuery(query: string): string {
+  // Remove "recalls" (case-insensitive) from the query
+  // Handle variations: "recall", "recalls", "Recall", "Recalls", etc.
   const cleaned = query
-    .replace(/\brecalls?\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/\brecalls?\b/gi, '') // Remove "recall" or "recalls" as whole words
+    .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+    .trim(); // Trim leading/trailing spaces
   
   console.log(`Cleaned query: "${query}" -> "${cleaned}"`);
   return cleaned;
 }
 
+/**
+ * Clean people names from the search query
+ */
 function cleanPeopleNamesFromQuery(query: string, personInfo: any): string {
   if (!personInfo || !personInfo.matchedNames || personInfo.matchedNames.length === 0) {
     return query;
@@ -24,12 +32,16 @@ function cleanPeopleNamesFromQuery(query: string, personInfo: any): string {
 
   let cleaned = query;
   
+  // Remove each matched person name from the query (case-insensitive)
   personInfo.matchedNames.forEach((name: string) => {
+    // Escape special regex characters in the name
     const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Create regex to match the name as a whole word (case-insensitive)
     const nameRegex = new RegExp(`\\b${escapedName}\\b`, 'gi');
     cleaned = cleaned.replace(nameRegex, '');
   });
   
+  // Clean up extra spaces
   cleaned = cleaned.replace(/\s+/g, ' ').trim();
   
   console.log(`Cleaned people names from query: "${query}" -> "${cleaned}"`);
@@ -37,6 +49,7 @@ function cleanPeopleNamesFromQuery(query: string, personInfo: any): string {
 }
 
 Deno.serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     console.log('Handling OPTIONS preflight request');
     return new Response(null, {
@@ -50,6 +63,7 @@ Deno.serve(async (req) => {
   console.log('Timestamp:', new Date().toISOString());
 
   try {
+    // Get the authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
@@ -58,10 +72,12 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Verify the user's JWT token
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
@@ -75,6 +91,7 @@ Deno.serve(async (req) => {
 
     console.log('Authenticated user:', user.id);
 
+    // Parse request body
     const { query, locationRecallIds, peopleRecallIds, personInfo } = await req.json();
 
     if (!query || typeof query !== 'string') {
@@ -89,12 +106,15 @@ Deno.serve(async (req) => {
     console.log('People-filtered recall IDs:', peopleRecallIds ? `${peopleRecallIds.length} IDs` : 'None');
     console.log('Person info:', personInfo);
 
+    // Clean people names from the query first
     let cleanedQuery = cleanPeopleNamesFromQuery(query, personInfo);
     console.log('After cleaning people names:', cleanedQuery);
     
+    // Then clean the word "recalls" from the query
     cleanedQuery = cleanRecallsFromQuery(cleanedQuery);
     console.log('After cleaning "recalls":', cleanedQuery);
 
+    // Combine location and people recall IDs (prioritize these)
     const priorityRecallIds = new Set<string>();
     if (locationRecallIds && Array.isArray(locationRecallIds)) {
       locationRecallIds.forEach((id: string) => priorityRecallIds.add(id));
@@ -105,6 +125,7 @@ Deno.serve(async (req) => {
 
     console.log(`Combined priority recall IDs: ${priorityRecallIds.size}`);
 
+    // If query is blank after cleaning and we have priority recalls, return them all
     if (!cleanedQuery.trim() && priorityRecallIds.size > 0) {
       console.log('Query is blank after cleaning - returning all location/people results');
       
@@ -125,7 +146,7 @@ Deno.serve(async (req) => {
 
       const results = (recallsData || []).map((recall: any) => ({
         id: recall.id,
-        matchPercentage: 100,
+        matchPercentage: 100, // All priority recalls get 100% match
         usedForAnswer: false,
       }));
 
@@ -143,6 +164,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    // If query is blank and no priority recalls, return empty results
     if (!cleanedQuery.trim()) {
       console.log('Query is blank after cleaning and no priority recalls - returning empty results');
       return new Response(JSON.stringify({
@@ -157,6 +179,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Get OpenAI API key
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
       console.error('OPENAI_API_KEY not set');
@@ -166,6 +189,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Step 1: Convert query to embedding using OpenAI
     console.log('Step 1: Converting cleaned query to embedding...');
     const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
@@ -193,6 +217,7 @@ Deno.serve(async (req) => {
     const embeddingBase64 = embeddingData.data[0].embedding;
     console.log('Embedding generated successfully');
 
+    // Decode base64 to get the actual embedding array
     const binaryString = atob(embeddingBase64);
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
@@ -203,20 +228,24 @@ Deno.serve(async (req) => {
 
     console.log('Decoded query embedding array length:', queryEmbedding.length);
 
+    // Step 2: Find closest matches using vector similarity (>= 40% threshold)
     console.log('Step 2: Finding closest matches with >= 40% similarity...');
 
+    // Build query for images
     let imagesQuery = supabase
       .from('recall_images')
       .select('id, recall_id, ocr_text, image_explanation, recall_image_embedding')
       .eq('user_id', user.id)
       .not('recall_image_embedding', 'is', null);
 
+    // Build query for recalls
     let recallsQuery = supabase
       .from('recalls')
       .select('id, text, location, location_primary_type, recall_embedding')
       .eq('user_id', user.id)
       .not('recall_embedding', 'is', null);
 
+    // If priority recall IDs exist, filter to those first
     if (priorityRecallIds.size > 0) {
       const priorityIds = Array.from(priorityRecallIds);
       console.log(`Filtering to ${priorityIds.length} priority recalls`);
@@ -224,6 +253,7 @@ Deno.serve(async (req) => {
       recallsQuery = recallsQuery.in('id', priorityIds);
     }
 
+    // Fetch images
     const { data: allImages, error: fetchImagesError } = await imagesQuery;
     if (fetchImagesError) {
       console.error('Error fetching images:', fetchImagesError);
@@ -234,6 +264,7 @@ Deno.serve(async (req) => {
     }
     console.log(`Found ${allImages?.length || 0} images with embeddings`);
 
+    // Fetch recalls
     const { data: allRecalls, error: fetchRecallsError } = await recallsQuery;
     if (fetchRecallsError) {
       console.error('Error fetching recalls:', fetchRecallsError);
@@ -244,11 +275,13 @@ Deno.serve(async (req) => {
     }
     console.log(`Found ${allRecalls?.length || 0} recalls with embeddings`);
 
+    // Helper function to calculate cosine similarity
     const calculateCosineSimilarity = (storedEmbedding: any) => {
       if (!storedEmbedding) return 0;
 
       let storedEmbeddingArray = storedEmbedding;
 
+      // Handle different embedding formats
       if (typeof storedEmbedding === 'string') {
         try {
           const cleanStr = storedEmbedding.replace(/[\[\]]/g, '');
@@ -263,6 +296,7 @@ Deno.serve(async (req) => {
       if (!Array.isArray(queryEmbedding) || queryEmbedding.length === 0) return 0;
       if (storedEmbeddingArray.length !== queryEmbedding.length) return 0;
 
+      // Cosine similarity calculation
       let dotProduct = 0;
       let normA = 0;
       let normB = 0;
@@ -284,6 +318,7 @@ Deno.serve(async (req) => {
       return isNaN(clampedSimilarity) ? 0 : clampedSimilarity;
     };
 
+    // Calculate cosine similarity for each image
     const imageMatches = (allImages || []).map((image: any) => {
       const similarity = calculateCosineSimilarity(image.recall_image_embedding);
       const isPriority = priorityRecallIds.has(image.recall_id);
@@ -298,6 +333,7 @@ Deno.serve(async (req) => {
       };
     });
 
+    // Calculate cosine similarity for each recall
     const recallMatches = (allRecalls || []).map((recall: any) => {
       const similarity = calculateCosineSimilarity(recall.recall_embedding);
       const isPriority = priorityRecallIds.has(recall.id);
@@ -313,19 +349,25 @@ Deno.serve(async (req) => {
       };
     });
 
+    // Combine all matches
     const allMatches = [...imageMatches, ...recallMatches];
 
+    // Filter by >= 40% similarity (0.40 cosine similarity)
     const SIMILARITY_THRESHOLD = 0.40;
     const filteredMatches = allMatches.filter((match: any) => match.similarity >= SIMILARITY_THRESHOLD);
 
+    // Sort by priority first, then similarity
     filteredMatches.sort((a: any, b: any) => {
+      // Prioritize priority recalls
       if (a.isPriority && !b.isPriority) return -1;
       if (!a.isPriority && b.isPriority) return 1;
+      // Then sort by similarity
       return b.similarity - a.similarity;
     });
 
     console.log(`Found ${filteredMatches.length} matches with >= 40% similarity`);
 
+    // Group matches by recall_id and keep the highest similarity for each recall
     const recallMatchMap = new Map();
     for (const match of filteredMatches) {
       const existing = recallMatchMap.get(match.recall_id);
@@ -334,9 +376,12 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Convert back to array and sort by priority + similarity
     let uniqueRecallMatches = Array.from(recallMatchMap.values()).sort((a: any, b: any) => {
+      // Prioritize priority recalls
       if (a.isPriority && !b.isPriority) return -1;
       if (!a.isPriority && b.isPriority) return 1;
+      // Then sort by similarity
       return b.similarity - a.similarity;
     });
     console.log(`Grouped into ${uniqueRecallMatches.length} unique recalls`);
@@ -355,8 +400,10 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Step 3: Use OpenAI gpt-4o-mini for question answering with source tracking
     console.log('Step 3: Using OpenAI gpt-4o-mini for question answering with source tracking...');
 
+    // Prepare context from matches with source IDs
     const contextWithSources = uniqueRecallMatches.map((match: any, idx: number) => {
       const sourceId = `SOURCE_${idx + 1}`;
       const priorityMarker = match.isPriority ? ' [PRIORITY - From location/people search]' : '';
@@ -419,8 +466,10 @@ If the recalls don't contain the requested information, respond with: {"answer":
             content: qaPrompt
           }
         ],
-        temperature: 0.3,
-        max_tokens: 500,
+        //temperature: 0.3,
+        //max_tokens: 500,
+        reasoning_effort: 'minimal', // e.g., 'minimal', 'low', 'medium', 'high'
+        verbosity: 'low', // e.g., 'low', 'medium', 'high'
         response_format: { type: 'json_object' }
       })
     });
@@ -454,6 +503,7 @@ If the recalls don't contain the requested information, respond with: {"answer":
       } catch (parseError) {
         console.error('Failed to parse QA response:', parseError);
         console.error('Raw content:', qaContent);
+        // Fallback: use the raw content as answer
         answer = qaContent;
         confidence = 50;
       }
@@ -462,6 +512,7 @@ If the recalls don't contain the requested information, respond with: {"answer":
     console.log('Answer generated:', answer ? 'Yes' : 'No');
     console.log('Confidence:', confidence);
 
+    // Map source IDs back to recall IDs
     const sourceRecallIds = sourcesUsed
       .map((sourceId: string) => {
         const source = contextWithSources.find((c: any) => c.sourceId === sourceId);
@@ -471,19 +522,24 @@ If the recalls don't contain the requested information, respond with: {"answer":
 
     console.log('Recall IDs used for answer:', sourceRecallIds);
 
+    // Create results with proper ordering (priority first, then used for answer, then others)
     const usedRecalls = uniqueRecallMatches
       .filter((match: any) => sourceRecallIds.includes(match.recall_id))
       .sort((a: any, b: any) => {
+        // Prioritize priority recalls
         if (a.isPriority && !b.isPriority) return -1;
         if (!a.isPriority && b.isPriority) return 1;
+        // Then sort by similarity
         return b.similarity - a.similarity;
       });
 
     const unusedRecalls = uniqueRecallMatches
       .filter((match: any) => !sourceRecallIds.includes(match.recall_id))
       .sort((a: any, b: any) => {
+        // Prioritize priority recalls
         if (a.isPriority && !b.isPriority) return -1;
         if (!a.isPriority && b.isPriority) return 1;
+        // Then sort by similarity
         return b.similarity - a.similarity;
       });
 
@@ -491,6 +547,7 @@ If the recalls don't contain the requested information, respond with: {"answer":
 
     console.log(`Ordered results: ${usedRecalls.length} used for answer, ${unusedRecalls.length} others`);
 
+    // Convert similarity to match percentage (0-100)
     const matchResults = orderedMatches.map((match: any) => ({
       id: match.recall_id,
       matchPercentage: Math.round(Math.max(0, Math.min(100, match.similarity * 100))),
@@ -501,6 +558,7 @@ If the recalls don't contain the requested information, respond with: {"answer":
     console.log('=== Search Recalls V2 completed successfully ===');
     console.log('Total processing time:', processingTime, 'ms');
 
+    // Return results with recall_id and person info
     return new Response(JSON.stringify({
       answer,
       confidence,

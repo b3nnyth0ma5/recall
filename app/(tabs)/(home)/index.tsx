@@ -317,10 +317,62 @@ export default function HomeScreen() {
             
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Final refresh of note ${recallData.id}`);
             await refreshSingleNote(recallData.id);
+            
+            // Run category matching asynchronously after all images are uploaded
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id}...`);
+            try {
+              const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
+                body: { recallId: recallData.id },
+              });
+              
+              if (categoryMatchError) {
+                console.error(`[handleCreateRecallFromCombined] [ASYNC] Error in category matching:`, categoryMatchError);
+              } else {
+                console.log(`[handleCreateRecallFromCombined] [ASYNC] Category matching completed successfully`);
+              }
+            } catch (categoryMatchException) {
+              console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception in category matching:`, categoryMatchException);
+            }
           })();
         } else {
           pendingImageUploadsRef.current.delete(recallData.id);
+          
+          // Run category matching asynchronously after single image upload
+          console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id}...`);
+          (async () => {
+            try {
+              const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
+                body: { recallId: recallData.id },
+              });
+              
+              if (categoryMatchError) {
+                console.error(`[handleCreateRecallFromCombined] [ASYNC] Error in category matching:`, categoryMatchError);
+              } else {
+                console.log(`[handleCreateRecallFromCombined] [ASYNC] Category matching completed successfully`);
+              }
+            } catch (categoryMatchException) {
+              console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception in category matching:`, categoryMatchException);
+            }
+          })();
         }
+      } else {
+        // No images - run category matching immediately in background
+        console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id} (no images)...`);
+        (async () => {
+          try {
+            const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
+              body: { recallId: recallData.id },
+            });
+            
+            if (categoryMatchError) {
+              console.error(`[handleCreateRecallFromCombined] [ASYNC] Error in category matching:`, categoryMatchError);
+            } else {
+              console.log(`[handleCreateRecallFromCombined] [ASYNC] Category matching completed successfully`);
+            }
+          } catch (categoryMatchException) {
+            console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception in category matching:`, categoryMatchException);
+          }
+        })();
       }
 
       console.log('[handleCreateRecallFromCombined] Step 3: Refreshing recalls list...');
@@ -331,7 +383,7 @@ export default function HomeScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       
-      console.log('[handleCreateRecallFromCombined] Background processing (OCR, people finder) will run asynchronously');
+      console.log('[handleCreateRecallFromCombined] Background processing (OCR, people finder, category matching) will run asynchronously');
       
     } catch (error) {
       console.error('[handleCreateRecallFromCombined] Exception in recall creation:', error);
