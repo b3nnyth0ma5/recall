@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingVertical: -8,
   },
   categoryItem: {
     alignItems: 'center',
