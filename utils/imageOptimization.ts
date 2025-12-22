@@ -16,10 +16,10 @@ export interface ImageSize {
  * Predefined image sizes for different use cases
  */
 export const IMAGE_SIZES = {
-  THUMBNAIL: { width: 150, height: 150, quality: 70 },
-  CARD: { width: 400, height: 400, quality: 80 },
-  PREVIEW: { width: 800, height: 800, quality: 85 },
-  FULL: { width: 1200, height: 1200, quality: 90 },
+  THUMBNAIL: { width: 130, height: 150, quality: 70 },
+  CARD: { width: 320, height: 400, quality: 80 },
+  PREVIEW: { width: 720, height: 900, quality: 85 },
+  FULL: { width: 720, height: 900, quality: 90 },
 } as const;
 
 /**
@@ -27,7 +27,7 @@ export const IMAGE_SIZES = {
  * Balances quality and upload speed
  */
 export const UPLOAD_SIZE = {
-  width: 1920, // Full HD width
+  width: 1520, // Full HD width
   height: 1920, // Full HD height
   quality: 0.8, // 80% quality - good balance
 } as const;
