@@ -21,6 +21,7 @@ interface Category {
   category_search_description: string;
   icon_cdn_url: string | null;
   user_id: string;
+  is_matching: boolean;
 }
 
 export default function CategoryViewerScreen() {
@@ -41,6 +42,8 @@ export default function CategoryViewerScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isMatching, setIsMatching] = useState(false);
+  const matchingCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
@@ -263,7 +266,13 @@ export default function CategoryViewerScreen() {
         }
 
         setCategory(categoryData);
-        console.log('[CategoryViewer] Category loaded:', categoryData.category_name);
+        setIsMatching(categoryData.is_matching || false);
+        console.log('[CategoryViewer] Category loaded:', categoryData.category_name, 'is_matching:', categoryData.is_matching);
+        
+        // If category is still matching, start polling
+        if (categoryData.is_matching) {
+          startMatchingPolling();
+        }
       }
 
       // Fetch recall IDs that match this category using optimized composite index with pagination
@@ -382,6 +391,58 @@ export default function CategoryViewerScreen() {
     loadCategoryAndRecalls(1, false);
     setPage(1);
     setHasMore(true);
+    
+    // Cleanup polling on unmount
+    return () => {
+      if (matchingCheckIntervalRef.current) {
+        clearInterval(matchingCheckIntervalRef.current);
+        matchingCheckIntervalRef.current = null;
+      }
+    };
+  }, [id, loadCategoryAndRecalls]);
+
+  // Start polling to check if matching is complete
+  const startMatchingPolling = useCallback(() => {
+    console.log('[CategoryViewer] Starting matching polling...');
+    
+    // Clear any existing interval
+    if (matchingCheckIntervalRef.current) {
+      clearInterval(matchingCheckIntervalRef.current);
+    }
+    
+    // Poll every 3 seconds
+    matchingCheckIntervalRef.current = setInterval(async () => {
+      try {
+        console.log('[CategoryViewer] Checking if matching is complete...');
+        
+        const { data: categoryData, error: categoryError } = await supabase
+          .from('recollection_categories')
+          .select('is_matching')
+          .eq('id', id)
+          .single();
+        
+        if (categoryError) {
+          console.error('[CategoryViewer] Error checking matching status:', categoryError);
+          return;
+        }
+        
+        if (!categoryData.is_matching) {
+          console.log('[CategoryViewer] Matching complete! Reloading recalls...');
+          setIsMatching(false);
+          
+          // Stop polling
+          if (matchingCheckIntervalRef.current) {
+            clearInterval(matchingCheckIntervalRef.current);
+            matchingCheckIntervalRef.current = null;
+          }
+          
+          // Reload recalls
+          await loadCategoryAndRecalls(1, false);
+        }
+      } catch (error) {
+        console.error('[CategoryViewer] Error in matching polling:', error);
+      }
+    }, 3000);
   }, [id, loadCategoryAndRecalls]);
 
   const handleRefresh = async () => {
@@ -392,6 +453,26 @@ export default function CategoryViewerScreen() {
     imageCache.clear();
     setPage(1);
     setHasMore(true);
+    
+    // Check if matching is complete
+    if (id && user) {
+      const { data: categoryData } = await supabase
+        .from('recollection_categories')
+        .select('is_matching')
+        .eq('id', id)
+        .single();
+      
+      if (categoryData) {
+        setIsMatching(categoryData.is_matching || false);
+        
+        // If matching just completed, stop polling
+        if (!categoryData.is_matching && matchingCheckIntervalRef.current) {
+          clearInterval(matchingCheckIntervalRef.current);
+          matchingCheckIntervalRef.current = null;
+        }
+      }
+    }
+    
     await loadCategoryAndRecalls(1, false);
     setRefreshing(false);
   };
@@ -536,6 +617,17 @@ export default function CategoryViewerScreen() {
       // Trigger new-category-matching edge function if name or description changed
       if (nameChanged || descriptionChanged) {
         console.log('Category name or description changed, triggering new-category-matching...');
+        
+        // Set is_matching to true before triggering
+        await supabase
+          .from('recollection_categories')
+          .update({ is_matching: true })
+          .eq('id', category.id)
+          .eq('user_id', user.id);
+        
+        setIsMatching(true);
+        startMatchingPolling();
+        
         triggerCategoryMatching(category.id);
       }
 
@@ -650,30 +742,57 @@ export default function CategoryViewerScreen() {
     }
   };
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyContainer}>
-      <View style={styles.emptyIconContainer}>
-        <IconSymbol 
-          name="tray" 
-          size={64} 
-          color={colors.textTertiary} 
-        />
-      </View>
-      <Text style={styles.emptyTitle}>No Recalls Yet</Text>
-      <Text style={styles.emptyText}>
-        Recalls matching this category will appear here automatically
-      </Text>
-      <View style={styles.emptyInfoCard}>
-        <View style={styles.emptyInfoHeader}>
-          <IconSymbol name="sparkles" size={20} color={colors.primary} />
-          <Text style={styles.emptyInfoTitle}>Auto-Matching</Text>
+  const renderEmptyState = () => {
+    // If matching is in progress, show matching state
+    if (isMatching) {
+      return (
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+          <Text style={styles.emptyTitle}>Finding Matching Recalls</Text>
+          <Text style={styles.emptyText}>
+            Our AI is analyzing your recalls to find matches for this category. This may take a moment...
+          </Text>
+          <View style={styles.emptyInfoCard}>
+            <View style={styles.emptyInfoHeader}>
+              <IconSymbol name="sparkles" size={20} color={colors.primary} />
+              <Text style={styles.emptyInfoTitle}>What&apos;s Happening?</Text>
+            </View>
+            <Text style={styles.emptyInfoText}>
+              We&apos;re using AI to scan through your existing recalls and identify which ones match this category based on the description you provided.
+            </Text>
+          </View>
         </View>
-        <Text style={styles.emptyInfoText}>
-          Our AI automatically categorizes your recalls based on the category description. Create recalls and they&apos;ll show up here if they match!
+      );
+    }
+    
+    // Normal empty state when no recalls match
+    return (
+      <View style={styles.emptyContainer}>
+        <View style={styles.emptyIconContainer}>
+          <IconSymbol 
+            name="tray" 
+            size={64} 
+            color={colors.textTertiary} 
+          />
+        </View>
+        <Text style={styles.emptyTitle}>No Matching Recalls</Text>
+        <Text style={styles.emptyText}>
+          No recalls match this category yet. Create new recalls and they&apos;ll automatically appear here if they match!
         </Text>
+        <View style={styles.emptyInfoCard}>
+          <View style={styles.emptyInfoHeader}>
+            <IconSymbol name="sparkles" size={20} color={colors.primary} />
+            <Text style={styles.emptyInfoTitle}>Auto-Matching</Text>
+          </View>
+          <Text style={styles.emptyInfoText}>
+            Our AI automatically categorizes your recalls based on the category description. Create recalls and they&apos;ll show up here if they match!
+          </Text>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   // Render skeleton loaders for initial load - NOW INCLUDING ICON AND DESCRIPTION
   const renderSkeletons = () => {
@@ -742,19 +861,104 @@ export default function CategoryViewerScreen() {
     );
   };
 
+  // Render matching placeholders when category is being matched
+  const renderMatchingPlaceholders = () => {
+    return (
+      <View style={styles.container}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Category Info - Real data */}
+          {category && (
+            <View style={styles.categoryInfoContainer}>
+              <View style={styles.categoryTopRow}>
+                {/* Category Icon */}
+                <View style={styles.iconContainer}>
+                  {category.icon_cdn_url && (
+                    <Image
+                      source={{ uri: category.icon_cdn_url }}
+                      style={styles.categoryIcon}
+                      resizeMode="cover"
+                    />
+                  )}
+                  {/* Edit badge on photo */}
+                  <Pressable 
+                    onPress={handleEditPress} 
+                    style={styles.photoEditBadge}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol 
+                      ios_icon_name="pencil.circle.fill" 
+                      android_material_icon_name="edit" 
+                      size={24} 
+                      color={colors.primary} 
+                    />
+                  </Pressable>
+                </View>
+                
+                {/* Search Description and Matching Status */}
+                <View style={styles.categoryTextContainer}>
+                  <View style={styles.descriptionRow}>
+                    <Text style={styles.categoryDescription}>{category.category_search_description}</Text>
+                    {/* Small Edit Text */}
+                    <Pressable 
+                      onPress={handleEditPress} 
+                      style={styles.editTextButton}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.editText}>edit</Text>
+                    </Pressable>
+                  </View>
+                  {/* Matching status */}
+                  <View style={styles.matchingStatusContainer}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.matchingStatusText}>Finding matches...</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Placeholder Note Cards with shimmer effect */}
+          <View style={styles.notesContainer}>
+            {[...Array(3)].map((_, index) => (
+              <NoteCard
+                key={`matching-placeholder-${index}`}
+                note={{} as any}
+                onPress={() => {}}
+                loading={true}
+              />
+            ))}
+          </View>
+          
+          {/* Info message */}
+          <View style={styles.matchingInfoContainer}>
+            <IconSymbol name="sparkles" size={20} color={colors.primary} />
+            <Text style={styles.matchingInfoText}>
+              Analyzing your recalls to find matches...
+            </Text>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
         <Stack.Screen
           options={{
             headerShown: true,
-            headerTitle: 'Category',
+            headerTitle: category?.category_name || 'Category',
             headerStyle: {
               backgroundColor: colors.background,
             },
             headerTintColor: colors.text,
             headerTitleAlign: 'center',
             headerTitleStyle: {
+              fontSize: 20,
+              fontWeight: 'bold',
               color: colors.primary,
             },
             headerLeft: () => (
@@ -843,95 +1047,100 @@ export default function CategoryViewerScreen() {
         }}
       />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        onScroll={handleScroll}
-        scrollEventThrottle={400}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
-        }
-      >
-        {/* Category Info - Updated Layout */}
-        <View style={styles.categoryInfoContainer}>
-          <View style={styles.categoryTopRow}>
-            {/* Category Icon - 20% smaller and on the left with edit badge */}
-            <View style={styles.iconContainer}>
-              {category.icon_cdn_url && (
-                <Image
-                  source={{ uri: category.icon_cdn_url }}
-                  style={styles.categoryIcon}
-                  resizeMode="cover"
-                />
-              )}
-              {/* Edit badge on photo */}
-              <Pressable 
-                onPress={handleEditPress} 
-                style={styles.photoEditBadge}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <IconSymbol 
-                  ios_icon_name="pencil.circle.fill" 
-                  android_material_icon_name="edit" 
-                  size={24} 
-                  color={colors.primary} 
-                />
-              </Pressable>
-            </View>
-            
-            {/* Search Description and Recall Count - Vertically aligned */}
-            <View style={styles.categoryTextContainer}>
-              <View style={styles.descriptionRow}>
-                <Text style={styles.categoryDescription}>{category.category_search_description}</Text>
-                {/* Small Edit Text */}
+      {/* Show matching placeholders if category is being matched */}
+      {isMatching ? (
+        renderMatchingPlaceholders()
+      ) : (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          onScroll={handleScroll}
+          scrollEventThrottle={400}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+        >
+          {/* Category Info - Updated Layout */}
+          <View style={styles.categoryInfoContainer}>
+            <View style={styles.categoryTopRow}>
+              {/* Category Icon - 20% smaller and on the left with edit badge */}
+              <View style={styles.iconContainer}>
+                {category.icon_cdn_url && (
+                  <Image
+                    source={{ uri: category.icon_cdn_url }}
+                    style={styles.categoryIcon}
+                    resizeMode="cover"
+                  />
+                )}
+                {/* Edit badge on photo */}
                 <Pressable 
                   onPress={handleEditPress} 
-                  style={styles.editTextButton}
+                  style={styles.photoEditBadge}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Text style={styles.editText}>edit</Text>
+                  <IconSymbol 
+                    ios_icon_name="pencil.circle.fill" 
+                    android_material_icon_name="edit" 
+                    size={24} 
+                    color={colors.primary} 
+                  />
                 </Pressable>
               </View>
-              <Text style={styles.recallCount}>
-                {notes.length} {notes.length === 1 ? 'Recall' : 'Recalls'}
-              </Text>
+              
+              {/* Search Description and Recall Count - Vertically aligned */}
+              <View style={styles.categoryTextContainer}>
+                <View style={styles.descriptionRow}>
+                  <Text style={styles.categoryDescription}>{category.category_search_description}</Text>
+                  {/* Small Edit Text */}
+                  <Pressable 
+                    onPress={handleEditPress} 
+                    style={styles.editTextButton}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.editText}>edit</Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.recallCount}>
+                  {notes.length} {notes.length === 1 ? 'Recall' : 'Recalls'}
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
 
-        {/* Recalls */}
-        {notes.length === 0 ? (
-          renderEmptyState()
-        ) : (
-          <View style={styles.notesContainer}>
-            {notes.map((note, index) => (
-              <NoteCard
-                key={`${note.id}-${index}`}
-                note={note}
-                onPress={() => handleNotePress(note.id)}
-              />
-            ))}
-            
-            {isLoadingMore && (
-              <View style={styles.loadingMoreContainer}>
-                <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={styles.loadingMoreText}>Loading more...</Text>
-              </View>
-            )}
-            
-            {!hasMore && notes.length > 0 && (
-              <View style={styles.endContainer}>
-                <Text style={styles.endText}>You&apos;ve reached the end</Text>
-              </View>
-            )}
-          </View>
-        )}
-      </ScrollView>
+          {/* Recalls */}
+          {notes.length === 0 ? (
+            renderEmptyState()
+          ) : (
+            <View style={styles.notesContainer}>
+              {notes.map((note, index) => (
+                <NoteCard
+                  key={`${note.id}-${index}`}
+                  note={note}
+                  onPress={() => handleNotePress(note.id)}
+                />
+              ))}
+              
+              {isLoadingMore && (
+                <View style={styles.loadingMoreContainer}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.loadingMoreText}>Loading more...</Text>
+                </View>
+              )}
+              
+              {!hasMore && notes.length > 0 && (
+                <View style={styles.endContainer}>
+                  <Text style={styles.endText}>You&apos;ve reached the end</Text>
+                </View>
+              )}
+            </View>
+          )}
+        </ScrollView>
+      )}
 
       {/* Edit Modal */}
       <Modal
@@ -1171,6 +1380,36 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     alignSelf: 'flex-start',
     marginTop: 4,
+  },
+  matchingStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  matchingStatusText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  matchingInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    marginHorizontal: 16,
+    marginTop: 16,
+    backgroundColor: `${colors.primary}15`,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${colors.primary}30`,
+  },
+  matchingInfoText: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '500',
   },
   notesContainer: {
     paddingHorizontal: 16,
