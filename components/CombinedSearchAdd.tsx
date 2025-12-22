@@ -45,11 +45,17 @@ interface CombinedSearchAddProps {
   userId: string;
 }
 
+interface ImageState {
+  uri: string;
+  isPlaceholder: boolean;
+  originalUri?: string; // Store original URI for placeholder replacement
+}
+
 export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [text, setText] = useState('');
-  const [images, setImages] = useState<string[]>([]);
+  const [images, setImages] = useState<ImageState[]>([]);
   const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
   const [showDrawer, setShowDrawer] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -366,14 +372,48 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       });
 
       if (!result.canceled && result.assets) {
-        console.log('[CombinedSearchAdd] Compressing selected images...');
+        console.log('[CombinedSearchAdd] Selected images:', result.assets.length);
+        
+        // Create placeholder images immediately
+        const placeholderImages: ImageState[] = result.assets.map(asset => ({
+          uri: asset.uri, // Use original URI as placeholder initially
+          isPlaceholder: true,
+          originalUri: asset.uri,
+        }));
+        
+        // Add placeholders to state immediately - user returns to component
+        setImages(prev => [...prev, ...placeholderImages]);
+        setShowDrawer(false);
+        
+        // Start optimizing images in the background
+        console.log('[CombinedSearchAdd] Starting image optimization...');
         const { compressImagesForUpload } = await import('@/utils/imageOptimization');
         const originalUris = result.assets.map(asset => asset.uri);
-        const compressedUris = await compressImagesForUpload(originalUris);
-        console.log('[CombinedSearchAdd] Images compressed successfully');
         
-        setImages(prev => [...prev, ...compressedUris]);
-        setShowDrawer(false);
+        // Optimize images one by one and replace placeholders as they complete
+        await compressImagesForUpload(originalUris, (optimizedUri: string, index: number) => {
+          console.log(`[CombinedSearchAdd] Image ${index + 1}/${originalUris.length} optimized`);
+          
+          // Replace placeholder with optimized image
+          setImages(prev => {
+            const newImages = [...prev];
+            // Find the placeholder with matching original URI
+            const placeholderIndex = newImages.findIndex(
+              img => img.isPlaceholder && img.originalUri === originalUris[index]
+            );
+            
+            if (placeholderIndex !== -1) {
+              newImages[placeholderIndex] = {
+                uri: optimizedUri,
+                isPlaceholder: false,
+              };
+            }
+            
+            return newImages;
+          });
+        });
+        
+        console.log('[CombinedSearchAdd] All images optimized successfully');
       }
     } catch (error) {
       console.error('Error picking image:', error);
@@ -395,13 +435,41 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
+        console.log('[CombinedSearchAdd] Camera photo taken');
+        
+        // Create placeholder image immediately
+        const placeholderImage: ImageState = {
+          uri: result.assets[0].uri,
+          isPlaceholder: true,
+          originalUri: result.assets[0].uri,
+        };
+        
+        // Add placeholder to state immediately - user returns to component
+        setImages(prev => [...prev, placeholderImage]);
+        setShowDrawer(false);
+        
+        // Optimize image in the background
         console.log('[CombinedSearchAdd] Compressing camera photo...');
         const { compressImageForUpload } = await import('@/utils/imageOptimization');
         const compressedUri = await compressImageForUpload(result.assets[0].uri);
         console.log('[CombinedSearchAdd] Camera photo compressed successfully');
         
-        setImages(prev => [...prev, compressedUri]);
-        setShowDrawer(false);
+        // Replace placeholder with optimized image
+        setImages(prev => {
+          const newImages = [...prev];
+          const placeholderIndex = newImages.findIndex(
+            img => img.isPlaceholder && img.originalUri === result.assets[0].uri
+          );
+          
+          if (placeholderIndex !== -1) {
+            newImages[placeholderIndex] = {
+              uri: compressedUri,
+              isPlaceholder: false,
+            };
+          }
+          
+          return newImages;
+        });
       }
     } catch (error) {
       console.error('Error taking photo:', error);
@@ -449,10 +517,13 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       // Use manually selected location if available, otherwise use current location
       const locationToSave = location || currentLocation;
       
+      // Extract URIs from image states
+      const imageUris = images.map(img => img.uri);
+      
       await onCreateRecall(
         {
           text: text.trim(),
-          images,
+          images: imageUris,
           location: locationToSave || undefined,
         },
         (stage: string) => {
@@ -560,6 +631,14 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     Keyboard.dismiss();
   };
 
+  // Check if all images are optimized (no placeholders remaining)
+  const allImagesOptimized = images.length === 0 || images.every(img => !img.isPlaceholder);
+  
+  // Disable sparkle icon if:
+  // 1. No content (text or images)
+  // 2. Any images are still placeholders (not yet optimized)
+  const isSparkleDisabled = (!text.trim() && images.length === 0) || !allImagesOptimized;
+
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
@@ -606,9 +685,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   removeClippedSubviews={false}
                   keyboardShouldPersistTaps="handled"
                 >
-                  {images.map((uri, index) => (
+                  {images.map((imageState, index) => (
                     <View key={index} style={styles.imageContainer}>
-                      <Image source={{ uri }} style={styles.image} />
+                      <Image source={{ uri: imageState.uri }} style={styles.image} />
+                      {imageState.isPlaceholder && (
+                        <View style={styles.placeholderOverlay}>
+                          <ActivityIndicator size="small" color={colors.primary} />
+                          <Text style={styles.placeholderText}>Optimizing...</Text>
+                        </View>
+                      )}
                       <Pressable
                         style={styles.removeImageButton}
                         onPress={() => handleRemoveImage(index)}
@@ -657,11 +742,11 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 {/* Spacer to push icons to the right */}
                 <View style={styles.iconSpacer} />
 
-                {/* Submit Button - Shows AI animation when detecting intent */}
+                {/* Submit Button - Shows AI animation when detecting intent, disabled when images are being optimized */}
                 <Pressable
-                  style={[styles.submitButton, (!text.trim() && images.length === 0) && styles.submitButtonDisabled]}
+                  style={[styles.submitButton, isSparkleDisabled && styles.submitButtonDisabled]}
                   onPress={handleCreateRecall}
-                  disabled={(!text.trim() && images.length === 0) || isCreating || isDetectingIntent}
+                  disabled={isSparkleDisabled || isCreating || isDetectingIntent}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   {isDetectingIntent ? (
@@ -798,6 +883,24 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 8,
   },
+  placeholderOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  placeholderText: {
+    fontSize: 10,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: 2,
+  },
   removeImageButton: {
     position: 'absolute',
     top: 4,
@@ -838,6 +941,7 @@ const styles = StyleSheet.create({
   locationPillText: {
     fontSize: 13,
     color: colors.primary,
+    maxWidth: '90%',
     fontWeight: '600',
   },
   iconSpacer: {

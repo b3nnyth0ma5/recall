@@ -5,6 +5,7 @@
  */
 
 import * as ImageManipulator from 'expo-image-manipulator';
+import { Image } from 'react-native';
 
 export interface ImageSize {
   width: number;
@@ -16,25 +17,87 @@ export interface ImageSize {
  * Predefined image sizes for different use cases
  */
 export const IMAGE_SIZES = {
-  THUMBNAIL: { width: 150, height: 150, quality: 70 },
-  CARD: { width: 400, height: 400, quality: 80 },
-  PREVIEW: { width: 800, height: 800, quality: 85 },
-  FULL: { width: 1200, height: 1200, quality: 90 },
+  THUMBNAIL: { width: 130, height: 150, quality: 70 },
+  CARD: { width: 320, height: 400, quality: 80 },
+  PREVIEW: { width: 720, height: 900, quality: 85 },
+  FULL: { width: 720, height: 900, quality: 90 },
 } as const;
 
 /**
  * Optimal upload size for mobile devices
  * Balances quality and upload speed
+ * Portrait: 1:1.3 ratio (1520x1976)
+ * Landscape: 1.3:1 ratio (1976x1520) - inverse of portrait
  */
-export const UPLOAD_SIZE = {
-  width: 1920, // Full HD width
-  height: 1920, // Full HD height
-  quality: 0.8, // 80% quality - good balance
+export const UPLOAD_SIZE_PORTRAIT = {
+  width: 1520,
+  height: 1976, // 1520 * 1.3
+  quality: 0.8,
 } as const;
+
+export const UPLOAD_SIZE_LANDSCAPE = {
+  width: 1976, // 1520 * 1.3
+  height: 1520,
+  quality: 0.8,
+} as const;
+
+/**
+ * Get image dimensions from URI
+ */
+async function getImageDimensions(uri: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    Image.getSize(
+      uri,
+      (width, height) => {
+        resolve({ width, height });
+      },
+      (error) => {
+        console.error('[ImageOptimization] Error getting image dimensions:', error);
+        reject(error);
+      }
+    );
+  });
+}
+
+/**
+ * Determine if image is landscape or portrait based on aspect ratio
+ */
+function isLandscape(width: number, height: number): boolean {
+  const aspectRatio = width / height;
+  return aspectRatio > 1;
+}
+
+/**
+ * Calculate resize dimensions based on aspect ratio
+ * Portrait images (height > width): resize to 1:1.3 ratio
+ * Landscape images (width > height): resize to 1.3:1 ratio (inverse)
+ */
+function calculateResizeDimensions(originalWidth: number, originalHeight: number): { width: number; height: number } {
+  const aspectRatio = originalWidth / originalHeight;
+  
+  if (aspectRatio > 1) {
+    // Landscape image - use 1.3:1 ratio
+    console.log('[ImageOptimization] Landscape image detected - using 1.3:1 ratio');
+    return {
+      width: UPLOAD_SIZE_LANDSCAPE.width,
+      height: UPLOAD_SIZE_LANDSCAPE.height,
+    };
+  } else {
+    // Portrait or square image - use 1:1.3 ratio
+    console.log('[ImageOptimization] Portrait/square image detected - using 1:1.3 ratio');
+    return {
+      width: UPLOAD_SIZE_PORTRAIT.width,
+      height: UPLOAD_SIZE_PORTRAIT.height,
+    };
+  }
+}
 
 /**
  * Compress and optimize an image for upload
  * Reduces file size while maintaining good quality for mobile screens
+ * Takes aspect ratio into account:
+ * - Portrait images (height > width): 1:1.3 ratio (1520x1976)
+ * - Landscape images (width > height): 1.3:1 ratio (1976x1520) - inverse
  * 
  * @param uri - Original image URI
  * @returns Promise with optimized image URI
@@ -46,15 +109,35 @@ export async function compressImageForUpload(uri: string): Promise<string> {
     
     const startTime = Date.now();
     
+    // Get original image dimensions
+    const dimensions = await getImageDimensions(uri);
+    console.log('[ImageOptimization] Original dimensions:', dimensions.width, 'x', dimensions.height);
+    
+    // Calculate aspect ratio
+    const aspectRatio = dimensions.width / dimensions.height;
+    console.log('[ImageOptimization] Aspect ratio:', aspectRatio.toFixed(2));
+    
+    // Determine if landscape or portrait
+    const landscape = isLandscape(dimensions.width, dimensions.height);
+    console.log('[ImageOptimization] Image orientation:', landscape ? 'LANDSCAPE' : 'PORTRAIT');
+    
+    // Calculate target dimensions based on aspect ratio
+    const targetDimensions = calculateResizeDimensions(dimensions.width, dimensions.height);
+    console.log('[ImageOptimization] Target dimensions:', targetDimensions.width, 'x', targetDimensions.height);
+    console.log('[ImageOptimization] Target aspect ratio:', (targetDimensions.width / targetDimensions.height).toFixed(2));
+    
+    // Select quality based on orientation
+    const quality = landscape ? UPLOAD_SIZE_LANDSCAPE.quality : UPLOAD_SIZE_PORTRAIT.quality;
+    
     // Compress and resize the image
     const result = await ImageManipulator.manipulateAsync(
       uri,
       [
-        // Resize to max dimensions while maintaining aspect ratio
-        { resize: { width: UPLOAD_SIZE.width, height: UPLOAD_SIZE.height } },
+        // Resize to target dimensions while maintaining aspect ratio
+        { resize: { width: targetDimensions.width, height: targetDimensions.height } },
       ],
       {
-        compress: UPLOAD_SIZE.quality,
+        compress: quality,
         format: ImageManipulator.SaveFormat.JPEG,
       }
     );
@@ -63,6 +146,7 @@ export async function compressImageForUpload(uri: string): Promise<string> {
     console.log(`[ImageOptimization] Compression complete in ${duration}ms`);
     console.log('[ImageOptimization] Optimized URI:', result.uri);
     console.log('[ImageOptimization] New dimensions:', result.width, 'x', result.height);
+    console.log('[ImageOptimization] New aspect ratio:', (result.width / result.height).toFixed(2));
     
     return result.uri;
   } catch (error) {
@@ -74,19 +158,36 @@ export async function compressImageForUpload(uri: string): Promise<string> {
 
 /**
  * Batch compress multiple images for upload
- * Processes images in parallel for faster performance
+ * Processes images sequentially to avoid memory issues
+ * Returns optimized URIs one at a time via callback
  * 
  * @param uris - Array of original image URIs
+ * @param onImageOptimized - Callback called when each image is optimized
  * @returns Promise with array of optimized image URIs
  */
-export async function compressImagesForUpload(uris: string[]): Promise<string[]> {
+export async function compressImagesForUpload(
+  uris: string[],
+  onImageOptimized?: (optimizedUri: string, index: number) => void
+): Promise<string[]> {
   try {
     console.log(`[ImageOptimization] Starting batch compression for ${uris.length} images...`);
     const startTime = Date.now();
     
-    const compressedUris = await Promise.all(
-      uris.map(uri => compressImageForUpload(uri))
-    );
+    const compressedUris: string[] = [];
+    
+    // Process images sequentially to avoid memory issues
+    for (let i = 0; i < uris.length; i++) {
+      const uri = uris[i];
+      console.log(`[ImageOptimization] Compressing image ${i + 1}/${uris.length}...`);
+      
+      const compressedUri = await compressImageForUpload(uri);
+      compressedUris.push(compressedUri);
+      
+      // Notify callback that this image is ready
+      if (onImageOptimized) {
+        onImageOptimized(compressedUri, i);
+      }
+    }
     
     const duration = Date.now() - startTime;
     console.log(`[ImageOptimization] Batch compression complete in ${duration}ms`);
