@@ -87,7 +87,7 @@ export default function CreateCategoryScreen() {
         }
       }
 
-      // Create category in database with is_matching flag set to true
+      // Create category in database
       const { data, error } = await supabase
         .from('recollection_categories')
         .insert([{
@@ -132,7 +132,7 @@ export default function CreateCategoryScreen() {
 
   const triggerCategoryMatchingForNewCategory = async (categoryId: string) => {
     try {
-      console.log('[CreateCategory] Triggering category matching for new category:', categoryId);
+      console.log('Triggering category matching for new category:', categoryId);
       
       const { data, error } = await supabase.functions.invoke('new-category-matching', {
         body: { 
@@ -141,32 +141,24 @@ export default function CreateCategoryScreen() {
       });
 
       if (error) {
-        console.error('[CreateCategory] Error invoking category matching:', error);
+        console.error('Error invoking category matching:', error);
       } else {
-        console.log('[CreateCategory] Category matching triggered successfully:', data);
+        console.log('Category matching triggered successfully:', data);
       }
 
-      // Update is_matching flag to false after completion
+      // Update is_matching flag to false
       await supabase
         .from('recollection_categories')
         .update({ is_matching: false })
         .eq('id', categoryId);
-      
-      console.log('[CreateCategory] Updated is_matching flag to false');
     } catch (error) {
-      console.error('[CreateCategory] Exception in triggerCategoryMatchingForNewCategory:', error);
+      console.error('Exception in triggerCategoryMatchingForNewCategory:', error);
       
-      // Still update is_matching flag to false even on error
-      try {
-        await supabase
-          .from('recollection_categories')
-          .update({ is_matching: false })
-          .eq('id', categoryId);
-        
-        console.log('[CreateCategory] Updated is_matching flag to false (after error)');
-      } catch (updateError) {
-        console.error('[CreateCategory] Failed to update is_matching flag:', updateError);
-      }
+      // Still update is_matching flag to false
+      await supabase
+        .from('recollection_categories')
+        .update({ is_matching: false })
+        .eq('id', categoryId);
     }
   };
 
