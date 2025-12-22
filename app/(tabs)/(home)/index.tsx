@@ -281,9 +281,8 @@ export default function HomeScreen() {
         setSavingStage('Matching Categories...');
         console.log('[handleCreateRecallFromCombined] Stage: Matching categories...');
         
-        // Stage 4: Uploading Images
-        if (onProgress) onProgress('Uploading Images...');
-        setSavingStage('Uploading Images...');
+        // NOTE: Removed "Uploading Images" stage from progress indicator for better UX
+        // Images are still uploaded in the background
         
         console.log('[handleCreateRecallFromCombined] Step 2: Uploading images...');
         const imageStartTime = Date.now();

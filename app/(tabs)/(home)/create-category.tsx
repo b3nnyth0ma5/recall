@@ -117,8 +117,9 @@ export default function CreateCategoryScreen() {
         }
       }
 
-      // Navigate back to landing page immediately
-      router.back();
+      // Navigate to the newly created category page
+      console.log('[CreateCategory] Navigating to category page:', data.id);
+      router.replace(`/(tabs)/(home)/category-viewer?id=${data.id}`);
 
       // Trigger category matching asynchronously (fire and forget)
       triggerCategoryMatchingForNewCategory(data.id);

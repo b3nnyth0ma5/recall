@@ -366,8 +366,13 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       });
 
       if (!result.canceled && result.assets) {
-        const newImages = result.assets.map(asset => asset.uri);
-        setImages(prev => [...prev, ...newImages]);
+        console.log('[CombinedSearchAdd] Compressing selected images...');
+        const { compressImagesForUpload } = await import('@/utils/imageOptimization');
+        const originalUris = result.assets.map(asset => asset.uri);
+        const compressedUris = await compressImagesForUpload(originalUris);
+        console.log('[CombinedSearchAdd] Images compressed successfully');
+        
+        setImages(prev => [...prev, ...compressedUris]);
         setShowDrawer(false);
       }
     } catch (error) {
@@ -390,7 +395,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
-        setImages(prev => [...prev, result.assets[0].uri]);
+        console.log('[CombinedSearchAdd] Compressing camera photo...');
+        const { compressImageForUpload } = await import('@/utils/imageOptimization');
+        const compressedUri = await compressImageForUpload(result.assets[0].uri);
+        console.log('[CombinedSearchAdd] Camera photo compressed successfully');
+        
+        setImages(prev => [...prev, compressedUri]);
         setShowDrawer(false);
       }
     } catch (error) {
@@ -553,7 +563,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
-        {/* Floating Action Icons - Image and Camera above the component, aligned with plus button */}
+        {/* Floating Action Icons - Image and Camera above the component, aligned with plus button on the right */}
         {showDrawer && (
           <Animated.View
             entering={FadeIn.duration(200)}
@@ -626,9 +636,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 enablesReturnKeyAutomatically={false}
               />
 
-              {/* Button Row - Search icon hidden, location extended */}
+              {/* Button Row - Icons moved to the right */}
               <View style={styles.inputRow}>
-                {/* Location Pill - Extended to fill space where search icon was, dynamic width */}
+                {/* Location Pill - Dynamic width to fit text */}
                 <Pressable
                   style={styles.locationPillExtended}
                   onPress={handleLocationPress}
@@ -644,6 +654,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   )}
                 </Pressable>
 								
+                {/* Spacer to push icons to the right */}
+                <View style={styles.iconSpacer} />
+
                 {/* Submit Button - Shows AI animation when detecting intent */}
                 <Pressable
                   style={[styles.submitButton, (!text.trim() && images.length === 0) && styles.submitButtonDisabled]}
@@ -731,7 +744,7 @@ const styles = StyleSheet.create({
   floatingActionsContainer: {
     position: 'absolute',
     bottom: 109.25, // Increased by 15% from 95 (95 * 1.15 = 109.25)
-    right: 8,
+    right: 16, // Aligned with plus button on the right
     flexDirection: 'column',
     gap: 12,
     zIndex: 1002,
@@ -766,7 +779,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingTop: 10,
     paddingHorizontal: 12,
-    paddingBottom: 4,
+    paddingBottom: 12, // Fixed padding to ensure consistent spacing
     gap: 4,
     minHeight: 103.5, // Increased by 15% from 90 (90 * 1.15 = 103.5)
   },
@@ -806,6 +819,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     zIndex: 1,
+    paddingTop: 4, // Consistent top padding
   },
   locationPillExtended: {
     flexDirection: 'row',
@@ -816,8 +830,7 @@ const styles = StyleSheet.create({
     paddingRight: 8,
     paddingLeft: 8,
     borderRadius: 16,
-    flex: 1,
-    minWidth: 0,
+    alignSelf: 'flex-start', // Dynamic width based on content
     maxWidth: '70%',
     borderWidth: 1,
     borderColor: colors.primary,
@@ -826,7 +839,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.primary,
     fontWeight: '600',
-    flex: 1,
+  },
+  iconSpacer: {
+    flex: 1, // Pushes icons to the right
   },
   locationSpinner: {
     marginLeft: 4,

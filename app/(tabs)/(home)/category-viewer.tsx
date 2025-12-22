@@ -378,10 +378,11 @@ export default function CategoryViewerScreen() {
   }, [id, user, router, getCachedNote, loadImagesForRecalls]);
 
   useEffect(() => {
+    console.log('[CategoryViewer] Initial load triggered for category:', id);
     loadCategoryAndRecalls(1, false);
     setPage(1);
     setHasMore(true);
-  }, [loadCategoryAndRecalls]);
+  }, [id, loadCategoryAndRecalls]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

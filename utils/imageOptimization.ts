@@ -1,8 +1,10 @@
 
 /**
- * Image optimization utilities for efficient image loading
- * Provides functions to generate optimized image URLs with proper sizing
+ * Image optimization utilities for efficient image loading and uploading
+ * Provides functions to compress images and generate optimized image URLs
  */
+
+import * as ImageManipulator from 'expo-image-manipulator';
 
 export interface ImageSize {
   width: number;
@@ -19,6 +21,84 @@ export const IMAGE_SIZES = {
   PREVIEW: { width: 800, height: 800, quality: 85 },
   FULL: { width: 1200, height: 1200, quality: 90 },
 } as const;
+
+/**
+ * Optimal upload size for mobile devices
+ * Balances quality and upload speed
+ */
+export const UPLOAD_SIZE = {
+  width: 1920, // Full HD width
+  height: 1920, // Full HD height
+  quality: 0.8, // 80% quality - good balance
+} as const;
+
+/**
+ * Compress and optimize an image for upload
+ * Reduces file size while maintaining good quality for mobile screens
+ * 
+ * @param uri - Original image URI
+ * @returns Promise with optimized image URI
+ */
+export async function compressImageForUpload(uri: string): Promise<string> {
+  try {
+    console.log('[ImageOptimization] Starting image compression...');
+    console.log('[ImageOptimization] Original URI:', uri);
+    
+    const startTime = Date.now();
+    
+    // Compress and resize the image
+    const result = await ImageManipulator.manipulateAsync(
+      uri,
+      [
+        // Resize to max dimensions while maintaining aspect ratio
+        { resize: { width: UPLOAD_SIZE.width, height: UPLOAD_SIZE.height } },
+      ],
+      {
+        compress: UPLOAD_SIZE.quality,
+        format: ImageManipulator.SaveFormat.JPEG,
+      }
+    );
+    
+    const duration = Date.now() - startTime;
+    console.log(`[ImageOptimization] Compression complete in ${duration}ms`);
+    console.log('[ImageOptimization] Optimized URI:', result.uri);
+    console.log('[ImageOptimization] New dimensions:', result.width, 'x', result.height);
+    
+    return result.uri;
+  } catch (error) {
+    console.error('[ImageOptimization] Error compressing image:', error);
+    // Return original URI if compression fails
+    return uri;
+  }
+}
+
+/**
+ * Batch compress multiple images for upload
+ * Processes images in parallel for faster performance
+ * 
+ * @param uris - Array of original image URIs
+ * @returns Promise with array of optimized image URIs
+ */
+export async function compressImagesForUpload(uris: string[]): Promise<string[]> {
+  try {
+    console.log(`[ImageOptimization] Starting batch compression for ${uris.length} images...`);
+    const startTime = Date.now();
+    
+    const compressedUris = await Promise.all(
+      uris.map(uri => compressImageForUpload(uri))
+    );
+    
+    const duration = Date.now() - startTime;
+    console.log(`[ImageOptimization] Batch compression complete in ${duration}ms`);
+    console.log(`[ImageOptimization] Average time per image: ${Math.round(duration / uris.length)}ms`);
+    
+    return compressedUris;
+  } catch (error) {
+    console.error('[ImageOptimization] Error in batch compression:', error);
+    // Return original URIs if batch compression fails
+    return uris;
+  }
+}
 
 /**
  * Get optimized image URL for Supabase storage
