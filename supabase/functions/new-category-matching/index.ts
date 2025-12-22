@@ -20,6 +20,7 @@ const corsHeaders = {
  * 3. Finds all recalls with similarity >= 0.20 using embeddings
  * 4. Uses OpenAI to analyze and rank the candidate recalls
  * 5. Updates recollections table with high-confidence matches
+ * 6. Sets is_matching flag to false when complete
  */
 
 // Helper function to generate embedding using OpenAI with base64 encoding
@@ -134,6 +135,24 @@ function sanitizeText(text: string, maxLength: number = 500): string {
   return sanitized;
 }
 
+// Helper function to update is_matching flag
+async function updateIsMatchingFlag(supabase: any, categoryId: string, isMatching: boolean) {
+  try {
+    const { error } = await supabase
+      .from('recollection_categories')
+      .update({ is_matching: isMatching })
+      .eq('id', categoryId);
+
+    if (error) {
+      console.error('Error updating is_matching flag:', error);
+    } else {
+      console.log(`Updated is_matching flag to ${isMatching} for category ${categoryId}`);
+    }
+  } catch (error) {
+    console.error('Exception updating is_matching flag:', error);
+  }
+}
+
 Deno.serve(async (req) => {
   const startTime = Date.now();
 
@@ -141,6 +160,9 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  let categoryId: string | null = null;
+  let supabase: any = null;
 
   try {
     console.log('=== New Category Matching Edge Function Started ===');
@@ -165,7 +187,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false
@@ -176,7 +198,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log('Request body:', body);
 
-    const { categoryId } = body;
+    categoryId = body.categoryId;
 
     // Validate input
     if (!categoryId) {
@@ -202,6 +224,7 @@ Deno.serve(async (req) => {
 
     if (categoryError || !categoryData) {
       console.error('Error fetching category:', categoryError);
+      await updateIsMatchingFlag(supabase, categoryId, false);
       return new Response(JSON.stringify({
         error: 'Failed to fetch category data',
         details: categoryError?.message
@@ -231,6 +254,7 @@ Deno.serve(async (req) => {
     
     if (!categoryText.trim()) {
       console.error('Category has empty name and description');
+      await updateIsMatchingFlag(supabase, categoryId, false);
       return new Response(JSON.stringify({
         error: 'Category name and description are empty',
         details: 'Cannot generate embedding for empty category'
@@ -251,6 +275,7 @@ Deno.serve(async (req) => {
       console.log(`Generated category embedding, length: ${categoryEmbedding.length}`);
     } catch (error) {
       console.error('Error generating category embedding:', error);
+      await updateIsMatchingFlag(supabase, categoryId, false);
       return new Response(JSON.stringify({
         error: 'Failed to generate category embedding',
         details: error.message
@@ -273,6 +298,7 @@ Deno.serve(async (req) => {
 
     if (recallsError) {
       console.error('Error fetching recalls:', recallsError);
+      await updateIsMatchingFlag(supabase, categoryId, false);
       return new Response(JSON.stringify({
         error: 'Failed to fetch recalls',
         details: recallsError.message
@@ -287,6 +313,7 @@ Deno.serve(async (req) => {
 
     if (!recallsData || recallsData.length === 0) {
       console.log('No recalls found for user');
+      await updateIsMatchingFlag(supabase, categoryId, false);
       return new Response(JSON.stringify({
         success: true,
         message: 'No recalls found for user',
@@ -376,6 +403,8 @@ Deno.serve(async (req) => {
       if (deleteError) {
         console.error('Error deleting existing recollections:', deleteError);
       }
+
+      await updateIsMatchingFlag(supabase, categoryId, false);
 
       const processingTime = Date.now() - startTime;
       return new Response(JSON.stringify({
@@ -489,6 +518,7 @@ Only include recalls with confidence >= 55. If no recalls meet this threshold, r
       console.error('OpenAI API error:', errorText);
       console.error('Response status:', openaiResponse.status);
       console.error('Response headers:', JSON.stringify(Object.fromEntries(openaiResponse.headers.entries())));
+      await updateIsMatchingFlag(supabase, categoryId, false);
       return new Response(JSON.stringify({
         error: 'Failed to analyze recalls with OpenAI',
         details: errorText
@@ -556,6 +586,7 @@ Only include recalls with confidence >= 55. If no recalls meet this threshold, r
 
       if (deleteError) {
         console.error('Error deleting existing recollections:', deleteError);
+        await updateIsMatchingFlag(supabase, categoryId, false);
         return new Response(JSON.stringify({
           error: 'Failed to delete existing recollections',
           details: deleteError.message
@@ -583,6 +614,7 @@ Only include recalls with confidence >= 55. If no recalls meet this threshold, r
 
       if (insertError) {
         console.error('Error inserting recollections:', insertError);
+        await updateIsMatchingFlag(supabase, categoryId, false);
         return new Response(JSON.stringify({
           error: 'Failed to create recollections',
           details: insertError.message
@@ -610,6 +642,9 @@ Only include recalls with confidence >= 55. If no recalls meet this threshold, r
         console.error('Error deleting existing recollections:', deleteError);
       }
     }
+
+    // Update is_matching flag to false
+    await updateIsMatchingFlag(supabase, categoryId, false);
 
     const processingTime = Date.now() - startTime;
     console.log('=== New Category Matching completed successfully ===');
@@ -642,6 +677,11 @@ Only include recalls with confidence >= 55. If no recalls meet this threshold, r
     console.error('Error message:', error instanceof Error ? error.message : 'Unknown error');
     console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     console.error('Processing time before error:', processingTime, 'ms');
+
+    // Update is_matching flag to false on error
+    if (categoryId && supabase) {
+      await updateIsMatchingFlag(supabase, categoryId, false);
+    }
 
     return new Response(JSON.stringify({
       error: 'Internal server error',

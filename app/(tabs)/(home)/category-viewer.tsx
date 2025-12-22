@@ -14,6 +14,7 @@ import { getImageDataUrl } from '@/utils/supabase';
 import { useNotes } from '@/hooks/useNotes';
 import { peopleCache, imageCache, CostCalculator } from '@/utils/memoryCache';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
+import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 
 interface Category {
   id: string;
@@ -21,6 +22,7 @@ interface Category {
   category_search_description: string;
   icon_cdn_url: string | null;
   user_id: string;
+  is_matching: boolean | null;
 }
 
 export default function CategoryViewerScreen() {
@@ -41,9 +43,11 @@ export default function CategoryViewerScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isMatching, setIsMatching] = useState(false);
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
+  const matchingCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const ITEMS_PER_PAGE = 10;
 
@@ -229,6 +233,56 @@ export default function CategoryViewerScreen() {
     return processedNotes;
   }, [loadPeopleForRecalls]);
 
+  // Check if category matching is in progress
+  const checkMatchingStatus = useCallback(async () => {
+    if (!id || !user) return;
+
+    try {
+      const { data: categoryData, error: categoryError } = await supabase
+        .from('recollection_categories')
+        .select('is_matching')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (categoryError) {
+        console.error('[CategoryViewer] Error checking matching status:', categoryError);
+        return;
+      }
+
+      const matchingStatus = categoryData?.is_matching || false;
+      console.log('[CategoryViewer] Matching status:', matchingStatus);
+      
+      setIsMatching(matchingStatus);
+
+      // If matching just finished, reload the data
+      if (!matchingStatus && isMatching) {
+        console.log('[CategoryViewer] Matching completed, reloading data...');
+        await loadCategoryAndRecalls(1, false);
+      }
+    } catch (error) {
+      console.error('[CategoryViewer] Error checking matching status:', error);
+    }
+  }, [id, user, isMatching]);
+
+  // Poll for matching status updates
+  useEffect(() => {
+    if (isMatching) {
+      console.log('[CategoryViewer] Starting matching status polling...');
+      matchingCheckIntervalRef.current = setInterval(() => {
+        checkMatchingStatus();
+      }, 3000); // Check every 3 seconds
+
+      return () => {
+        if (matchingCheckIntervalRef.current) {
+          console.log('[CategoryViewer] Stopping matching status polling');
+          clearInterval(matchingCheckIntervalRef.current);
+          matchingCheckIntervalRef.current = null;
+        }
+      };
+    }
+  }, [isMatching, checkMatchingStatus]);
+
   // Optimized category and recalls loading with pagination and cache usage
   const loadCategoryAndRecalls = useCallback(async (pageNum: number = 1, append: boolean = false) => {
     if (!id || !user) {
@@ -263,7 +317,8 @@ export default function CategoryViewerScreen() {
         }
 
         setCategory(categoryData);
-        console.log('[CategoryViewer] Category loaded:', categoryData.category_name);
+        setIsMatching(categoryData.is_matching || false);
+        console.log('[CategoryViewer] Category loaded:', categoryData.category_name, 'is_matching:', categoryData.is_matching);
       }
 
       // Fetch recall IDs that match this category using optimized composite index with pagination
@@ -536,6 +591,7 @@ export default function CategoryViewerScreen() {
       // Trigger new-category-matching edge function if name or description changed
       if (nameChanged || descriptionChanged) {
         console.log('Category name or description changed, triggering new-category-matching...');
+        setIsMatching(true);
         triggerCategoryMatching(category.id);
       }
 
@@ -650,6 +706,36 @@ export default function CategoryViewerScreen() {
     }
   };
 
+  const renderMatchingState = () => (
+    <View style={styles.matchingContainer}>
+      <View style={styles.matchingIconContainer}>
+        <IconSymbol 
+          name="sparkles" 
+          size={64} 
+          color={colors.primary} 
+        />
+      </View>
+      <Text style={styles.matchingTitle}>Finding Your Recalls</Text>
+      <Text style={styles.matchingText}>
+        Our AI is analyzing your recalls to find the best matches for this category. This usually takes a few moments.
+      </Text>
+      
+      {/* Animated progress indicator */}
+      <View style={styles.matchingProgressContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.matchingProgressText}>Matching in progress...</Text>
+      </View>
+
+      {/* Placeholder cards */}
+      <View style={styles.matchingPlaceholdersContainer}>
+        <Text style={styles.matchingPlaceholdersTitle}>Preview</Text>
+        <NoteCardSkeleton />
+        <NoteCardSkeleton />
+        <NoteCardSkeleton />
+      </View>
+    </View>
+  );
+
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
       <View style={styles.emptyIconContainer}>
@@ -659,17 +745,20 @@ export default function CategoryViewerScreen() {
           color={colors.textTertiary} 
         />
       </View>
-      <Text style={styles.emptyTitle}>No Recalls Yet</Text>
+      <Text style={styles.emptyTitle}>No Matching Recalls</Text>
       <Text style={styles.emptyText}>
-        Recalls matching this category will appear here automatically
+        No recalls match this category yet. Create new recalls and they&apos;ll automatically appear here if they match!
       </Text>
       <View style={styles.emptyInfoCard}>
         <View style={styles.emptyInfoHeader}>
           <IconSymbol name="sparkles" size={20} color={colors.primary} />
-          <Text style={styles.emptyInfoTitle}>Auto-Matching</Text>
+          <Text style={styles.emptyInfoTitle}>How It Works</Text>
         </View>
         <Text style={styles.emptyInfoText}>
-          Our AI automatically categorizes your recalls based on the category description. Create recalls and they&apos;ll show up here if they match!
+          Our AI automatically categorizes your recalls based on the category description. As you create more recalls, they&apos;ll be matched to relevant categories.
+        </Text>
+        <Text style={styles.emptyInfoText} style={{ marginTop: 12 }}>
+          Try creating recalls that relate to &quot;{category?.category_search_description}&quot; and check back here!
         </Text>
       </View>
     </View>
@@ -904,8 +993,10 @@ export default function CategoryViewerScreen() {
           </View>
         </View>
 
-        {/* Recalls */}
-        {notes.length === 0 ? (
+        {/* Matching State - Show when matching is in progress */}
+        {isMatching ? (
+          renderMatchingState()
+        ) : notes.length === 0 ? (
           renderEmptyState()
         ) : (
           <View style={styles.notesContainer}>
@@ -1108,6 +1199,60 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  matchingContainer: {
+    flex: 1,
+    paddingTop: 40,
+    paddingHorizontal: 24,
+  },
+  matchingIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: `${colors.primary}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    alignSelf: 'center',
+  },
+  matchingTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  matchingText: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 32,
+    maxWidth: 320,
+    alignSelf: 'center',
+  },
+  matchingProgressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    paddingVertical: 20,
+    marginBottom: 32,
+  },
+  matchingProgressText: {
+    fontSize: 16,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  matchingPlaceholdersContainer: {
+    width: '100%',
+  },
+  matchingPlaceholdersTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 16,
+    textAlign: 'center',
   },
   headerButton: {
     padding: 8,
