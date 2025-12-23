@@ -189,8 +189,58 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Step 1: Convert query to embedding using OpenAI
-    console.log('Step 1: Converting cleaned query to embedding...');
+    // Step 1: Use OpenAI NER to extract keywords from the query
+    console.log('Step 1: Extracting keywords using OpenAI NER...');
+    const nerPrompt = `You are a keyword extraction assistant. Extract the most important keywords and named entities from the following search query. Focus on:
+- Named entities (people, places, organizations, dates, times)
+- Important nouns and noun phrases
+- Key concepts and topics
+- Action verbs that are central to the query
+
+Return ONLY the extracted keywords as a comma-separated list, without any explanation or additional text.
+
+Query: ${cleanedQuery}
+
+Keywords:`;
+
+    const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiApiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a keyword extraction assistant. Extract only the most important keywords and named entities from user queries. Return them as a comma-separated list without any explanation.'
+          },
+          {
+            role: 'user',
+            content: nerPrompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 150
+      })
+    });
+
+    if (!nerResponse.ok) {
+      const errorText = await nerResponse.text();
+      console.error('OpenAI NER API error:', errorText);
+      return new Response(JSON.stringify({ error: 'Failed to extract keywords', details: errorText }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const nerData = await nerResponse.json();
+    const extractedKeywords = nerData.choices?.[0]?.message?.content?.trim() || cleanedQuery;
+    console.log('Extracted keywords:', extractedKeywords);
+
+    // Step 1b: Convert extracted keywords to embedding using OpenAI
+    console.log('Step 1b: Converting extracted keywords to embedding...');
     const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
@@ -199,7 +249,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: 'text-embedding-3-small',
-        input: cleanedQuery,
+        input: extractedKeywords,
         encoding_format: 'base64'
       })
     });

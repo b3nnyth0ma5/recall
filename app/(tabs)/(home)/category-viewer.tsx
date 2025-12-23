@@ -442,7 +442,7 @@ export default function CategoryViewerScreen() {
       } catch (error) {
         console.error('[CategoryViewer] Error in matching polling:', error);
       }
-    }, 3000);
+    }, 1500);
   }, [id, loadCategoryAndRecalls]);
 
   const handleRefresh = async () => {
