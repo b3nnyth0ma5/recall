@@ -7,6 +7,13 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
+// Three-tier threshold configuration
+const SIMILARITY_THRESHOLDS = {
+  HIGH: 0.60,    // 60% similarity - High confidence matches
+  MEDIUM: 0.40,  // 40% similarity - Medium confidence matches
+  LOW: 0.25      // 25% similarity - Low confidence matches
+};
+
 /**
  * Clean the word "recalls" from the search query
  */
@@ -49,108 +56,13 @@ function cleanPeopleNamesFromQuery(query: string, personInfo: any): string {
 }
 
 /**
- * Decode base64 embedding to float array
- * 
- * OpenAI returns embeddings in base64 format when encoding_format='base64' is specified.
- * The base64 string represents a binary buffer of Float32 values.
- * This function decodes the base64 string back to a Float32Array, then converts to a regular array.
- * 
- * @param base64String - Base64 encoded string from OpenAI embeddings API
- * @returns Array of numbers representing the embedding vector
+ * Determine the tier based on similarity score
  */
-function decodeBase64Embedding(base64String: string): number[] {
-  try {
-    // Decode base64 to binary string
-    const binaryString = atob(base64String);
-    
-    // Convert binary string to Uint8Array
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    
-    // Interpret bytes as Float32Array (4 bytes per float)
-    const float32Array = new Float32Array(bytes.buffer);
-    
-    // Convert to regular array for easier manipulation
-    return Array.from(float32Array);
-  } catch (error) {
-    console.error('Error decoding base64 embedding:', error);
-    return [];
-  }
-}
-
-/**
- * Calculate cosine similarity between two vectors
- * 
- * Cosine similarity measures the cosine of the angle between two vectors.
- * Returns a value between -1 and 1, where:
- * - 1 means vectors point in the same direction (identical)
- * - 0 means vectors are orthogonal (unrelated)
- * - -1 means vectors point in opposite directions
- * 
- * @param vec1 - First embedding vector
- * @param vec2 - Second embedding vector
- * @returns Cosine similarity score between -1 and 1
- */
-function calculateCosineSimilarity(vec1: number[], vec2: number[]): number {
-  // Validate inputs
-  if (!Array.isArray(vec1) || !Array.isArray(vec2)) return 0;
-  if (vec1.length === 0 || vec2.length === 0) return 0;
-  if (vec1.length !== vec2.length) return 0;
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  // Calculate dot product and norms
-  for (let i = 0; i < vec1.length; i++) {
-    dotProduct += vec1[i] * vec2[i];
-    normA += vec1[i] * vec1[i];
-    normB += vec2[i] * vec2[i];
-  }
-
-  // Calculate cosine similarity
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  if (denominator === 0) return 0;
-
-  const similarity = dotProduct / denominator;
-  
-  // Clamp to [-1, 1] range to handle floating point errors
-  return Math.max(-1, Math.min(1, similarity));
-}
-
-/**
- * Parse embedding from database (handles vector type and string formats)
- * 
- * Supabase stores embeddings as the 'vector' type in PostgreSQL.
- * When retrieved via the JS client, they come back as arrays of numbers.
- * This function handles various formats for robustness.
- * 
- * @param embedding - Embedding data from database (can be array, string, or null)
- * @returns Array of numbers representing the embedding vector
- */
-function parseEmbedding(embedding: any): number[] {
-  if (!embedding) return [];
-  
-  // If it's already an array, return it
-  if (Array.isArray(embedding)) {
-    return embedding;
-  }
-  
-  // If it's a string, try to parse it
-  if (typeof embedding === 'string') {
-    try {
-      // Remove brackets and parse as comma-separated floats
-      const cleanStr = embedding.replace(/[\[\]]/g, '');
-      return cleanStr.split(',').map((s: string) => parseFloat(s.trim()));
-    } catch (e) {
-      console.error('Failed to parse embedding string:', e);
-      return [];
-    }
-  }
-  
-  return [];
+function getSimilarityTier(similarity: number): 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE' {
+  if (similarity >= SIMILARITY_THRESHOLDS.HIGH) return 'HIGH';
+  if (similarity >= SIMILARITY_THRESHOLDS.MEDIUM) return 'MEDIUM';
+  if (similarity >= SIMILARITY_THRESHOLDS.LOW) return 'LOW';
+  return 'NONE';
 }
 
 Deno.serve(async (req) => {
@@ -212,11 +124,12 @@ Deno.serve(async (req) => {
     console.log('Person info:', personInfo);
 
     // Clean people names from the query first
-    let cleanedQuery = cleanPeopleNamesFromQuery(query, personInfo);
-    console.log('After cleaning people names:', cleanedQuery);
+    //let cleanedQuery = cleanPeopleNamesFromQuery(query, personInfo);
+    //console.log('After cleaning people names:', cleanedQuery);
     
     // Then clean the word "recalls" from the query
-    cleanedQuery = cleanRecallsFromQuery(cleanedQuery);
+    //cleanedQuery = cleanRecallsFromQuery(cleanedQuery);
+    let cleanedQuery = cleanRecallsFromQuery(query);
     console.log('After cleaning "recalls":', cleanedQuery);
 
     // Combine location and people recall IDs (prioritize these)
@@ -253,6 +166,7 @@ Deno.serve(async (req) => {
         id: recall.id,
         matchPercentage: 100, // All priority recalls get 100% match
         usedForAnswer: false,
+        tier: 'HIGH' // Priority recalls are always HIGH tier
       }));
 
       console.log(`Returning ${results.length} priority recalls (query was blank after cleaning)`);
@@ -296,7 +210,16 @@ Deno.serve(async (req) => {
 
     // Step 1: Use OpenAI NER to extract keywords from the query
     console.log('Step 1: Extracting keywords using OpenAI NER...');
-    const nerPrompt = `Extract key search terms from: "${cleanedQuery}"\nReturn only comma-separated keywords (entities, nouns, verbs, concepts).`;
+    const nerPrompt = `You are a keyword extraction specialist. Extract keywords and named entities from the following query. Focus on:
+- Named entities (people, places, organizations, dates, times)
+- Important nouns and noun phrases
+- Key concepts and topics
+
+Return ONLY the extracted keywords as a comma-separated list, without any explanation or additional text.
+
+Query: ${cleanedQuery}
+
+Keywords:`;
 
     const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -309,14 +232,14 @@ Deno.serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: 'Extract keywords from queries. Return comma-separated list only.'
+            content: 'You are a keyword extraction assistant. Extract only the most important keywords and named entities from user queries. Return them as a comma-separated list without any explanation.'
           },
           {
             role: 'user',
             content: nerPrompt
           }
         ],
-        temperature: 0.3,
+        temperature: 0.2,
         max_tokens: 100
       })
     });
@@ -335,8 +258,6 @@ Deno.serve(async (req) => {
     console.log('Extracted keywords:', extractedKeywords);
 
     // Step 1b: Convert extracted keywords to embedding using OpenAI
-    // IMPORTANT: We use base64 encoding format for efficient transmission
-    // The base64 string will be decoded to a float array for comparison
     console.log('Step 1b: Converting extracted keywords to embedding...');
     const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
@@ -347,7 +268,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         model: 'text-embedding-3-small',
         input: extractedKeywords,
-        encoding_format: 'base64' // Request base64 encoding for efficient transmission
+        encoding_format: 'base64'
       })
     });
 
@@ -362,31 +283,27 @@ Deno.serve(async (req) => {
 
     const embeddingData = await embeddingResponse.json();
     const embeddingBase64 = embeddingData.data[0].embedding;
-    console.log('Embedding generated successfully (base64 format)');
-    console.log('Base64 embedding length:', embeddingBase64.length, 'characters');
+    console.log('Embedding generated successfully');
 
     // Decode base64 to get the actual embedding array
-    // This converts the base64 string to a Float32Array, then to a regular array
-    const queryEmbedding = decodeBase64Embedding(embeddingBase64);
-    console.log('Decoded query embedding array length:', queryEmbedding.length, 'dimensions');
-
-    if (queryEmbedding.length === 0) {
-      console.error('Failed to decode query embedding');
-      return new Response(JSON.stringify({ error: 'Failed to decode query embedding' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    const binaryString = atob(embeddingBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
     }
+    const float32Array = new Float32Array(bytes.buffer);
+    const queryEmbedding = Array.from(float32Array);
 
-    // Step 2: Find closest matches using vector similarity (>= 40% threshold)
-    console.log('Step 2: Finding closest matches with >= 40% similarity...');
+    console.log('Decoded query embedding array length:', queryEmbedding.length);
+
+    // Step 2: Find closest matches using vector similarity with three-tier thresholds
+    console.log('Step 2: Finding closest matches with three-tier thresholds...');
+    console.log(`Thresholds - HIGH: ${SIMILARITY_THRESHOLDS.HIGH * 100}%, MEDIUM: ${SIMILARITY_THRESHOLDS.MEDIUM * 100}%, LOW: ${SIMILARITY_THRESHOLDS.LOW * 100}%`);
 
     // Build query for images
     let imagesQuery = supabase
       .from('recall_images')
-      // COMMENTED OUT: ocr_text usage - uncomment if needed
-      // .select('id, recall_id, ocr_text, image_explanation, recall_image_embedding')
-      .select('id, recall_id, image_explanation, recall_image_embedding')
+      .select('id, recall_id, ocr_text, image_explanation, recall_image_embedding')
       .eq('user_id', user.id)
       .not('recall_image_embedding', 'is', null);
 
@@ -405,7 +322,7 @@ Deno.serve(async (req) => {
       recallsQuery = recallsQuery.in('id', priorityIds);
     }
 
-    // Fetch images with embeddings
+    // Fetch images
     const { data: allImages, error: fetchImagesError } = await imagesQuery;
     if (fetchImagesError) {
       console.error('Error fetching images:', fetchImagesError);
@@ -416,7 +333,7 @@ Deno.serve(async (req) => {
     }
     console.log(`Found ${allImages?.length || 0} images with embeddings`);
 
-    // Fetch recalls with embeddings
+    // Fetch recalls
     const { data: allRecalls, error: fetchRecallsError } = await recallsQuery;
     if (fetchRecallsError) {
       console.error('Error fetching recalls:', fetchRecallsError);
@@ -427,21 +344,61 @@ Deno.serve(async (req) => {
     }
     console.log(`Found ${allRecalls?.length || 0} recalls with embeddings`);
 
+    // Helper function to calculate cosine similarity
+    const calculateCosineSimilarity = (storedEmbedding: any) => {
+      if (!storedEmbedding) return 0;
+
+      let storedEmbeddingArray = storedEmbedding;
+
+      // Handle different embedding formats
+      if (typeof storedEmbedding === 'string') {
+        try {
+          const cleanStr = storedEmbedding.replace(/[\[\]]/g, '');
+          storedEmbeddingArray = cleanStr.split(',').map((s: string) => parseFloat(s.trim()));
+        } catch (e) {
+          console.error('Failed to parse embedding string:', e);
+          return 0;
+        }
+      }
+
+      if (!Array.isArray(storedEmbeddingArray) || storedEmbeddingArray.length === 0) return 0;
+      if (!Array.isArray(queryEmbedding) || queryEmbedding.length === 0) return 0;
+      if (storedEmbeddingArray.length !== queryEmbedding.length) return 0;
+
+      // Cosine similarity calculation
+      let dotProduct = 0;
+      let normA = 0;
+      let normB = 0;
+
+      for (let i = 0; i < queryEmbedding.length; i++) {
+        const queryVal = queryEmbedding[i];
+        const storedVal = storedEmbeddingArray[i];
+        dotProduct += queryVal * storedVal;
+        normA += queryVal * queryVal;
+        normB += storedVal * storedVal;
+      }
+
+      const denominator = Math.sqrt(normA) * Math.sqrt(normB);
+      if (denominator === 0) return 0;
+
+      const similarity = dotProduct / denominator;
+      const clampedSimilarity = Math.max(-1, Math.min(1, similarity));
+
+      return isNaN(clampedSimilarity) ? 0 : clampedSimilarity;
+    };
+
     // Calculate cosine similarity for each image
-    // NOTE: Embeddings stored in database are already in float array format (vector type)
-    // We parse them to ensure they're in the correct format, then compare with query embedding
     const imageMatches = (allImages || []).map((image: any) => {
-      const storedEmbedding = parseEmbedding(image.recall_image_embedding);
-      const similarity = calculateCosineSimilarity(queryEmbedding, storedEmbedding);
+      const similarity = calculateCosineSimilarity(image.recall_image_embedding);
+      const tier = getSimilarityTier(similarity);
       const isPriority = priorityRecallIds.has(image.recall_id);
-      
       return {
         id: image.id,
         recall_id: image.recall_id,
-        // COMMENTED OUT: ocr_text usage - uncomment if needed
-        // ocr_text: image.ocr_text || '',
+        ocr_text: image.ocr_text || '',
         image_explanation: image.image_explanation || '',
         similarity,
+        tier,
         source: 'image',
         isPriority
       };
@@ -449,10 +406,9 @@ Deno.serve(async (req) => {
 
     // Calculate cosine similarity for each recall
     const recallMatches = (allRecalls || []).map((recall: any) => {
-      const storedEmbedding = parseEmbedding(recall.recall_embedding);
-      const similarity = calculateCosineSimilarity(queryEmbedding, storedEmbedding);
+      const similarity = calculateCosineSimilarity(recall.recall_embedding);
+      const tier = getSimilarityTier(similarity);
       const isPriority = priorityRecallIds.has(recall.id);
-      
       return {
         id: recall.id,
         recall_id: recall.id,
@@ -460,6 +416,7 @@ Deno.serve(async (req) => {
         location: recall.location || '',
         location_primary_type: recall.location_primary_type || '',
         similarity,
+        tier,
         source: 'recall',
         isPriority
       };
@@ -467,40 +424,35 @@ Deno.serve(async (req) => {
 
     // Combine all matches
     const allMatches = [...imageMatches, ...recallMatches];
-    console.log(`Total matches before filtering: ${allMatches.length}`);
 
-    // IMPROVED SEARCH LOGIC: Multi-tier similarity thresholds
-    // Tier 1: High confidence matches (>= 60%)
-    // Tier 2: Medium confidence matches (>= 40%)
-    // Tier 3: Low confidence matches (>= 25%) - only if priority recalls
-    const HIGH_THRESHOLD = 0.60;
-    const MEDIUM_THRESHOLD = 0.40;
-    const LOW_THRESHOLD = 0.25;
+    // Filter by LOW threshold or higher (>= 25% similarity)
+    const filteredMatches = allMatches.filter((match: any) => match.tier !== 'NONE');
 
-    const filteredMatches = allMatches.filter((match: any) => {
-      // Always include high and medium confidence matches
-      if (match.similarity >= MEDIUM_THRESHOLD) return true;
-      // Include low confidence matches only if they're priority recalls
-      if (match.similarity >= LOW_THRESHOLD && match.isPriority) return true;
-      return false;
-    });
+    // Count matches by tier
+    const tierCounts = {
+      HIGH: filteredMatches.filter(m => m.tier === 'HIGH').length,
+      MEDIUM: filteredMatches.filter(m => m.tier === 'MEDIUM').length,
+      LOW: filteredMatches.filter(m => m.tier === 'LOW').length
+    };
+    console.log(`Tier distribution - HIGH: ${tierCounts.HIGH}, MEDIUM: ${tierCounts.MEDIUM}, LOW: ${tierCounts.LOW}`);
 
-    console.log(`Filtered matches: ${filteredMatches.length} (from ${allMatches.length} total)`);
-
-    // Sort by priority first, then similarity
-    // This ensures priority recalls appear first, followed by best matches
+    // Sort by priority first, then tier (HIGH > MEDIUM > LOW), then similarity
+    const tierOrder = { HIGH: 3, MEDIUM: 2, LOW: 1, NONE: 0 };
     filteredMatches.sort((a: any, b: any) => {
       // Prioritize priority recalls
       if (a.isPriority && !b.isPriority) return -1;
       if (!a.isPriority && b.isPriority) return 1;
-      // Then sort by similarity (highest first)
+      // Then sort by tier
+      if (tierOrder[a.tier] !== tierOrder[b.tier]) {
+        return tierOrder[b.tier] - tierOrder[a.tier];
+      }
+      // Then sort by similarity
       return b.similarity - a.similarity;
     });
 
-    console.log(`Found ${filteredMatches.length} matches after filtering and sorting`);
+    console.log(`Found ${filteredMatches.length} matches with LOW threshold or higher`);
 
     // Group matches by recall_id and keep the highest similarity for each recall
-    // This prevents duplicate recalls in results (e.g., if multiple images match)
     const recallMatchMap = new Map();
     for (const match of filteredMatches) {
       const existing = recallMatchMap.get(match.recall_id);
@@ -509,11 +461,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Convert back to array and sort by priority + similarity
+    // Convert back to array and sort by priority + tier + similarity
     let uniqueRecallMatches = Array.from(recallMatchMap.values()).sort((a: any, b: any) => {
       // Prioritize priority recalls
       if (a.isPriority && !b.isPriority) return -1;
       if (!a.isPriority && b.isPriority) return 1;
+      // Then sort by tier
+      if (tierOrder[a.tier] !== tierOrder[b.tier]) {
+        return tierOrder[b.tier] - tierOrder[a.tier];
+      }
       // Then sort by similarity
       return b.similarity - a.similarity;
     });
@@ -534,30 +490,32 @@ Deno.serve(async (req) => {
     }
 
     // Step 3: Use OpenAI gpt-4o-mini for question answering with source tracking
+    // NOTE: ocr_text is removed from this step as requested
     console.log('Step 3: Using OpenAI gpt-4o-mini for question answering with source tracking...');
 
-    // Prepare context from matches with source IDs
+    // Prepare context from matches with source IDs (excluding ocr_text)
     const contextWithSources = uniqueRecallMatches.map((match: any, idx: number) => {
       const sourceId = `SOURCE_${idx + 1}`;
-      const priorityMarker = match.isPriority ? ' [PRIORITY]' : '';
-      const matchPercent = Math.round(match.similarity * 100);
+      const priorityMarker = match.isPriority ? ' [PRIORITY - From location/people search]' : '';
+      const tierMarker = ` [${match.tier} TIER]`;
 
       if (match.source === 'image') {
+        // Removed ocr_text from context as requested
         return {
           sourceId,
           recallId: match.recall_id,
-          // COMMENTED OUT: ocr_text usage - uncomment if needed
-          // text: `${sourceId} (${matchPercent}% match${priorityMarker}):\nOCR: ${match.ocr_text}\nImage: ${match.image_explanation}`,
-          text: `${sourceId} (${matchPercent}% match${priorityMarker}):\nImage: ${match.image_explanation}`,
+          text: `${sourceId} (${Math.round(match.similarity * 100)}% match - from image${priorityMarker}${tierMarker}):\nImage Explanation: ${match.image_explanation}`,
           similarity: match.similarity,
+          tier: match.tier,
           isPriority: match.isPriority
         };
       } else {
         return {
           sourceId,
           recallId: match.recall_id,
-          text: `${sourceId} (${matchPercent}% match${priorityMarker}):\nText: ${match.text}\nLocation: ${match.location}`,
+          text: `${sourceId} (${Math.round(match.similarity * 100)}% match - from recall${priorityMarker}${tierMarker}):\nText: ${match.text}\nLocation: ${match.location}\nLocation Type: ${match.location_primary_type}`,
           similarity: match.similarity,
+          tier: match.tier,
           isPriority: match.isPriority
         };
       }
@@ -565,8 +523,29 @@ Deno.serve(async (req) => {
 
     const context = contextWithSources.map((c: any) => c.text).join('\n\n');
 
-    // OPTIMIZED PROMPT: More concise and efficient
-    const qaPrompt = `You are an insightful search assistant. Answer based on provided information. If info missing, say so.\n\nQuestion: ${cleanedQuery}\n\nRecalls:\n${context}\n\nJSON format: {"answer": "your answer", "confidence": 0-100, "sources": ["SOURCE_1"]}\nPrioritize [PRIORITY] sources and higher match %.`;
+    const qaPrompt = `You are a search assistant that answers questions thoroughly based on the provided information.
+
+CRITICAL RULES:
+1. Answer ONLY using information explicitly stated in the provided recalls
+2. Do NOT add information or general knowledge not present in the recalls
+3. If the recalls don't contain enough information to answer the question, say so clearly
+4. Use bullet points when listing multiple items
+5. Provide a confidence score (0-100) based on how well the recalls answer the question
+
+PRIORITY HANDLING:
+- Sources marked as [PRIORITY - From location/people search] should be given HIGHEST priority
+- Sources marked as [HIGH TIER] have the strongest match (60%+) and should be prioritized
+- Sources marked as [MEDIUM TIER] have moderate match (40-60%)
+- Sources marked as [LOW TIER] have weaker match (25-40%)
+- The source with the highest confidence match should be prioritized
+
+Question: ${cleanedQuery}
+
+Available Recalls:
+${context}
+
+Provide your answer in JSON format: {"answer": "your answer based ONLY on the provided recalls", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
+If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.`;
 
     console.log('Making request to OpenAI gpt-4o-mini...');
     const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -578,10 +557,6 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
-          {
-            role: 'system',
-            content: 'Answer questions using provided data. Be accurate. Return JSON.'
-          },
           {
             role: 'user',
             content: qaPrompt
@@ -597,6 +572,7 @@ Deno.serve(async (req) => {
       const errorText = await qaResponse.text();
       console.error('OpenAI QA API error:', errorText);
       console.error('Response status:', qaResponse.status);
+      console.error('Response headers:', JSON.stringify(Object.fromEntries(qaResponse.headers.entries())));
       return new Response(JSON.stringify({ error: 'Failed to generate answer', details: errorText }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -604,7 +580,7 @@ Deno.serve(async (req) => {
     }
 
     const qaData = await qaResponse.json();
-    console.log('OpenAI response received');
+    console.log('OpenAI response received:', JSON.stringify(qaData, null, 2));
     const qaContent = qaData.choices?.[0]?.message?.content;
 
     let answer = null;
@@ -647,6 +623,10 @@ Deno.serve(async (req) => {
         // Prioritize priority recalls
         if (a.isPriority && !b.isPriority) return -1;
         if (!a.isPriority && b.isPriority) return 1;
+        // Then sort by tier
+        if (tierOrder[a.tier] !== tierOrder[b.tier]) {
+          return tierOrder[b.tier] - tierOrder[a.tier];
+        }
         // Then sort by similarity
         return b.similarity - a.similarity;
       });
@@ -657,6 +637,10 @@ Deno.serve(async (req) => {
         // Prioritize priority recalls
         if (a.isPriority && !b.isPriority) return -1;
         if (!a.isPriority && b.isPriority) return 1;
+        // Then sort by tier
+        if (tierOrder[a.tier] !== tierOrder[b.tier]) {
+          return tierOrder[b.tier] - tierOrder[a.tier];
+        }
         // Then sort by similarity
         return b.similarity - a.similarity;
       });
@@ -665,24 +649,26 @@ Deno.serve(async (req) => {
 
     console.log(`Ordered results: ${usedRecalls.length} used for answer, ${unusedRecalls.length} others`);
 
-    // Convert similarity to match percentage (0-100)
+    // Convert similarity to match percentage (0-100) and include tier information
     const matchResults = orderedMatches.map((match: any) => ({
       id: match.recall_id,
       matchPercentage: Math.round(Math.max(0, Math.min(100, match.similarity * 100))),
-      usedForAnswer: sourceRecallIds.includes(match.recall_id)
+      usedForAnswer: sourceRecallIds.includes(match.recall_id),
+      tier: match.tier
     }));
 
     const processingTime = Date.now() - startTime;
     console.log('=== Search Recalls V2 completed successfully ===');
     console.log('Total processing time:', processingTime, 'ms');
 
-    // Return results with recall_id and person info
+    // Return results with recall_id, tier, and person info
     return new Response(JSON.stringify({
       answer,
       confidence,
       results: matchResults,
       processingTimeMs: processingTime,
       personInfo: personInfo || null,
+      tierCounts // Include tier distribution in response
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
