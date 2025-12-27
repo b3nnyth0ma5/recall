@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 const corsHeaders = {
@@ -13,44 +14,37 @@ const SIMILARITY_THRESHOLDS = {
   LOW: 0.25      // 25% similarity - Low confidence matches
 };
 
+interface RecallMatch {
+  recall_id: string;
+  text_similarity: number;
+  image_similarities: number[];
+  keyword_matches: number;
+  aggregated_match: number;
+  tier: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
+  isPriority: boolean;
+  recall_data: {
+    text: string;
+    location: string;
+    location_primary_type: string;
+  };
+  images_data: Array<{
+    id: string;
+    ocr_text: string;
+    image_explanation: string;
+    similarity: number;
+  }>;
+}
+
 /**
  * Clean the word "recalls" from the search query
  */
 function cleanRecallsFromQuery(query: string): string {
-  // Remove "recalls" (case-insensitive) from the query
-  // Handle variations: "recall", "recalls", "Recall", "Recalls", etc.
   const cleaned = query
-    .replace(/\brecalls?\b/gi, '') // Remove "recall" or "recalls" as whole words
-    .replace(/\s+/g, ' ') // Replace multiple spaces with single space
-    .trim(); // Trim leading/trailing spaces
+    .replace(/\brecalls?\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   
   console.log(`Cleaned query: "${query}" -> "${cleaned}"`);
-  return cleaned;
-}
-
-/**
- * Clean people names from the search query
- */
-function cleanPeopleNamesFromQuery(query: string, personInfo: any): string {
-  if (!personInfo || !personInfo.matchedNames || personInfo.matchedNames.length === 0) {
-    return query;
-  }
-
-  let cleaned = query;
-  
-  // Remove each matched person name from the query (case-insensitive)
-  personInfo.matchedNames.forEach((name: string) => {
-    // Escape special regex characters in the name
-    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Create regex to match the name as a whole word (case-insensitive)
-    const nameRegex = new RegExp(`\\b${escapedName}\\b`, 'gi');
-    cleaned = cleaned.replace(nameRegex, '');
-  });
-  
-  // Clean up extra spaces
-  cleaned = cleaned.replace(/\s+/g, ' ').trim();
-  
-  console.log(`Cleaned people names from query: "${query}" -> "${cleaned}"`);
   return cleaned;
 }
 
@@ -62,6 +56,207 @@ function getSimilarityTier(similarity: number): 'HIGH' | 'MEDIUM' | 'LOW' | 'NON
   if (similarity >= SIMILARITY_THRESHOLDS.MEDIUM) return 'MEDIUM';
   if (similarity >= SIMILARITY_THRESHOLDS.LOW) return 'LOW';
   return 'NONE';
+}
+
+/**
+ * Calculate cosine similarity between two embeddings
+ */
+function calculateCosineSimilarity(embedding1: number[], embedding2: any): number {
+  if (!embedding2) return 0;
+
+  let embedding2Array = embedding2;
+
+  // Handle different embedding formats
+  if (typeof embedding2 === 'string') {
+    try {
+      const cleanStr = embedding2.replace(/[\[\]]/g, '');
+      embedding2Array = cleanStr.split(',').map((s: string) => parseFloat(s.trim()));
+    } catch (e) {
+      console.error('Failed to parse embedding string:', e);
+      return 0;
+    }
+  }
+
+  if (!Array.isArray(embedding2Array) || embedding2Array.length === 0) return 0;
+  if (!Array.isArray(embedding1) || embedding1.length === 0) return 0;
+  if (embedding2Array.length !== embedding1.length) return 0;
+
+  // Cosine similarity calculation
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (let i = 0; i < embedding1.length; i++) {
+    const val1 = embedding1[i];
+    const val2 = embedding2Array[i];
+    dotProduct += val1 * val2;
+    normA += val1 * val1;
+    normB += val2 * val2;
+  }
+
+  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
+  if (denominator === 0) return 0;
+
+  const similarity = dotProduct / denominator;
+  const clampedSimilarity = Math.max(-1, Math.min(1, similarity));
+
+  return isNaN(clampedSimilarity) ? 0 : clampedSimilarity;
+}
+
+/**
+ * Extract keywords from query using OpenAI NER
+ */
+async function extractKeywords(query: string, openaiApiKey: string): Promise<string[]> {
+  console.log('Extracting keywords using OpenAI NER...');
+  
+  const nerPrompt = `You are a keyword extraction specialist. Extract keywords and named entities from the following query. Focus on:
+- Named entities (people, places, organizations, dates, times)
+- Important nouns and noun phrases
+- Key concepts and topics
+
+Return ONLY the extracted keywords as a comma-separated list, without any explanation or additional text.
+
+Query: ${query}
+
+Keywords:`;
+
+  const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${openaiApiKey}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a keyword extraction assistant. Extract only the most important keywords and named entities from user queries. Return them as a comma-separated list without any explanation.'
+        },
+        {
+          role: 'user',
+          content: nerPrompt
+        }
+      ],
+      temperature: 0.2,
+      max_tokens: 100
+    })
+  });
+
+  if (!nerResponse.ok) {
+    const errorText = await nerResponse.text();
+    console.error('OpenAI NER API error:', errorText);
+    throw new Error(`Failed to extract keywords: ${errorText}`);
+  }
+
+  const nerData = await nerResponse.json();
+  const extractedKeywords = nerData.choices?.[0]?.message?.content?.trim() || query;
+  
+  // Split keywords by comma and clean them
+  const keywords = extractedKeywords
+    .split(',')
+    .map((k: string) => k.trim())
+    .filter((k: string) => k.length > 0);
+  
+  console.log('Extracted keywords:', keywords);
+  return keywords;
+}
+
+/**
+ * Generate embeddings for multiple keywords
+ */
+async function generateKeywordEmbeddings(keywords: string[], openaiApiKey: string): Promise<number[][]> {
+  console.log(`Generating embeddings for ${keywords.length} keywords...`);
+  
+  const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${openaiApiKey}`
+    },
+    body: JSON.stringify({
+      model: 'text-embedding-3-small',
+      input: keywords,
+      encoding_format: 'base64'
+    })
+  });
+
+  if (!embeddingResponse.ok) {
+    const errorText = await embeddingResponse.text();
+    console.error('OpenAI embedding API error:', errorText);
+    throw new Error(`Failed to generate embeddings: ${errorText}`);
+  }
+
+  const embeddingData = await embeddingResponse.json();
+  
+  // Decode all embeddings
+  const embeddings: number[][] = [];
+  for (const item of embeddingData.data) {
+    const embeddingBase64 = item.embedding;
+    const binaryString = atob(embeddingBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const float32Array = new Float32Array(bytes.buffer);
+    embeddings.push(Array.from(float32Array));
+  }
+  
+  console.log(`Generated ${embeddings.length} embeddings`);
+  return embeddings;
+}
+
+/**
+ * Calculate multi-keyword match score
+ * Returns the number of keywords that match above threshold and the best similarity
+ */
+function calculateMultiKeywordMatch(
+  keywordEmbeddings: number[][],
+  targetEmbedding: any
+): { matchCount: number; bestSimilarity: number; allSimilarities: number[] } {
+  const similarities = keywordEmbeddings.map(keywordEmb => 
+    calculateCosineSimilarity(keywordEmb, targetEmbedding)
+  );
+  
+  // Count how many keywords match above LOW threshold
+  const matchCount = similarities.filter(sim => sim >= SIMILARITY_THRESHOLDS.LOW).length;
+  const bestSimilarity = Math.max(...similarities, 0);
+  
+  return { matchCount, bestSimilarity, allSimilarities: similarities };
+}
+
+/**
+ * Calculate aggregated match percentage for a recall
+ * Combines text similarity and all image similarities
+ */
+function calculateAggregatedMatch(
+  textSimilarity: number,
+  imageSimilarities: number[],
+  keywordMatchCount: number,
+  totalKeywords: number
+): number {
+  // Weight: 40% text, 40% images, 20% keyword coverage
+  const textWeight = 0.4;
+  const imageWeight = 0.4;
+  const keywordWeight = 0.2;
+  
+  // Text component
+  const textScore = textSimilarity * textWeight;
+  
+  // Image component (average of all image similarities)
+  const avgImageSimilarity = imageSimilarities.length > 0
+    ? imageSimilarities.reduce((sum, sim) => sum + sim, 0) / imageSimilarities.length
+    : 0;
+  const imageScore = avgImageSimilarity * imageWeight;
+  
+  // Keyword coverage component
+  const keywordCoverage = totalKeywords > 0 ? keywordMatchCount / totalKeywords : 0;
+  const keywordScore = keywordCoverage * keywordWeight;
+  
+  // Combine all components
+  const aggregated = textScore + imageScore + keywordScore;
+  
+  return Math.max(0, Math.min(1, aggregated));
 }
 
 Deno.serve(async (req) => {
@@ -120,16 +315,10 @@ Deno.serve(async (req) => {
     console.log('Original search query:', query);
     console.log('Location-filtered recall IDs:', locationRecallIds ? `${locationRecallIds.length} IDs` : 'None');
     console.log('People-filtered recall IDs:', peopleRecallIds ? `${peopleRecallIds.length} IDs` : 'None');
-    console.log('Person info:', personInfo);
 
-    // Clean people names from the query first
-    //let cleanedQuery = cleanPeopleNamesFromQuery(query, personInfo);
-    //console.log('After cleaning people names:', cleanedQuery);
-    
-    // Then clean the word "recalls" from the query
-    //cleanedQuery = cleanRecallsFromQuery(cleanedQuery);
-    let cleanedQuery = cleanRecallsFromQuery(query);
-    console.log('After cleaning "recalls":', cleanedQuery);
+    // Clean the query
+    const cleanedQuery = cleanRecallsFromQuery(query);
+    console.log('Cleaned query:', cleanedQuery);
 
     // Combine location and people recall IDs (prioritize these)
     const priorityRecallIds = new Set<string>();
@@ -163,9 +352,9 @@ Deno.serve(async (req) => {
 
       const results = (recallsData || []).map((recall: any) => ({
         id: recall.id,
-        matchPercentage: 100, // All priority recalls get 100% match
+        matchPercentage: 100,
         usedForAnswer: false,
-        tier: 'HIGH' // Priority recalls are always HIGH tier
+        tier: 'HIGH'
       }));
 
       console.log(`Returning ${results.length} priority recalls (query was blank after cleaning)`);
@@ -207,274 +396,148 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Step 1: Use OpenAI NER to extract keywords from the query
-    console.log('Step 1: Extracting keywords using OpenAI NER...');
-    const nerPrompt = `You are a keyword extraction specialist. Extract keywords and named entities from the following query. Focus on:
-- Named entities (people, places, organizations, dates, times)
-- Important nouns and noun phrases
-- Key concepts and topics
+    // Step 1: Extract keywords and generate embeddings
+    console.log('Step 1: Extracting keywords and generating embeddings...');
+    const keywords = await extractKeywords(cleanedQuery, openaiApiKey);
+    const keywordEmbeddings = await generateKeywordEmbeddings(keywords, openaiApiKey);
 
-Return ONLY the extracted keywords as a comma-separated list, without any explanation or additional text.
-
-Query: ${cleanedQuery}
-
-Keywords:`;
-
-    const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiApiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a keyword extraction assistant. Extract only the most important keywords and named entities from user queries. Return them as a comma-separated list without any explanation.'
-          },
-          {
-            role: 'user',
-            content: nerPrompt
-          }
-        ],
-        temperature: 0.2,
-        max_tokens: 100
-      })
-    });
-
-    if (!nerResponse.ok) {
-      const errorText = await nerResponse.text();
-      console.error('OpenAI NER API error:', errorText);
-      return new Response(JSON.stringify({ error: 'Failed to extract keywords', details: errorText }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    const nerData = await nerResponse.json();
-    const extractedKeywords = nerData.choices?.[0]?.message?.content?.trim() || cleanedQuery;
-    console.log('Extracted keywords:', extractedKeywords);
-
-    // Step 1b: Convert extracted keywords to embedding using OpenAI
-    console.log('Step 1b: Converting extracted keywords to embedding...');
-    const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiApiKey}`
-      },
-      body: JSON.stringify({
-        model: 'text-embedding-3-small',
-        input: extractedKeywords,
-        encoding_format: 'base64'
-      })
-    });
-
-    if (!embeddingResponse.ok) {
-      const errorText = await embeddingResponse.text();
-      console.error('OpenAI embedding API error:', errorText);
-      return new Response(JSON.stringify({ error: 'Failed to generate embedding', details: errorText }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    const embeddingData = await embeddingResponse.json();
-    const embeddingBase64 = embeddingData.data[0].embedding;
-    console.log('Embedding generated successfully');
-
-    // Decode base64 to get the actual embedding array
-    const binaryString = atob(embeddingBase64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    const float32Array = new Float32Array(bytes.buffer);
-    const queryEmbedding = Array.from(float32Array);
-
-    console.log('Decoded query embedding array length:', queryEmbedding.length);
-
-    // Step 2: Find closest matches using vector similarity with three-tier thresholds
-    console.log('Step 2: Finding closest matches with three-tier thresholds...');
-    console.log(`Thresholds - HIGH: ${SIMILARITY_THRESHOLDS.HIGH * 100}%, MEDIUM: ${SIMILARITY_THRESHOLDS.MEDIUM * 100}%, LOW: ${SIMILARITY_THRESHOLDS.LOW * 100}%`);
-
-    // Build query for images
-    let imagesQuery = supabase
-      .from('recall_images')
-      .select('id, recall_id, ocr_text, image_explanation, recall_image_embedding')
-      .eq('user_id', user.id)
-      .not('recall_image_embedding', 'is', null);
-
-    // Build query for recalls
+    // Step 2: Fetch recalls and images with embeddings
+    console.log('Step 2: Fetching recalls and images...');
+    
+    // Build queries
     let recallsQuery = supabase
       .from('recalls')
       .select('id, text, location, location_primary_type, recall_embedding')
       .eq('user_id', user.id)
       .not('recall_embedding', 'is', null);
 
-    // If priority recall IDs exist, filter to those first
+    let imagesQuery = supabase
+      .from('recall_images')
+      .select('id, recall_id, ocr_text, image_explanation, recall_image_embedding')
+      .eq('user_id', user.id)
+      .not('recall_image_embedding', 'is', null);
+
+    // Filter by priority recalls if they exist
     if (priorityRecallIds.size > 0) {
       const priorityIds = Array.from(priorityRecallIds);
       console.log(`Filtering to ${priorityIds.length} priority recalls`);
-      imagesQuery = imagesQuery.in('recall_id', priorityIds);
       recallsQuery = recallsQuery.in('id', priorityIds);
+      imagesQuery = imagesQuery.in('recall_id', priorityIds);
     }
 
-    // Fetch images
-    const { data: allImages, error: fetchImagesError } = await imagesQuery;
-    if (fetchImagesError) {
-      console.error('Error fetching images:', fetchImagesError);
-      return new Response(JSON.stringify({ error: 'Failed to fetch images', details: fetchImagesError.message }), {
+    // Fetch in parallel for speed
+    const [recallsResult, imagesResult] = await Promise.all([
+      recallsQuery,
+      imagesQuery
+    ]);
+
+    if (recallsResult.error) {
+      console.error('Error fetching recalls:', recallsResult.error);
+      return new Response(JSON.stringify({ error: 'Failed to fetch recalls', details: recallsResult.error.message }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    console.log(`Found ${allImages?.length || 0} images with embeddings`);
 
-    // Fetch recalls
-    const { data: allRecalls, error: fetchRecallsError } = await recallsQuery;
-    if (fetchRecallsError) {
-      console.error('Error fetching recalls:', fetchRecallsError);
-      return new Response(JSON.stringify({ error: 'Failed to fetch recalls', details: fetchRecallsError.message }), {
+    if (imagesResult.error) {
+      console.error('Error fetching images:', imagesResult.error);
+      return new Response(JSON.stringify({ error: 'Failed to fetch images', details: imagesResult.error.message }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    console.log(`Found ${allRecalls?.length || 0} recalls with embeddings`);
 
-    // Helper function to calculate cosine similarity
-    const calculateCosineSimilarity = (storedEmbedding: any) => {
-      if (!storedEmbedding) return 0;
+    const allRecalls = recallsResult.data || [];
+    const allImages = imagesResult.data || [];
 
-      let storedEmbeddingArray = storedEmbedding;
+    console.log(`Found ${allRecalls.length} recalls and ${allImages.length} images with embeddings`);
 
-      // Handle different embedding formats
-      if (typeof storedEmbedding === 'string') {
-        try {
-          const cleanStr = storedEmbedding.replace(/[\[\]]/g, '');
-          storedEmbeddingArray = cleanStr.split(',').map((s: string) => parseFloat(s.trim()));
-        } catch (e) {
-          console.error('Failed to parse embedding string:', e);
-          return 0;
-        }
+    // Step 3: Calculate multi-keyword matches and aggregate scores
+    console.log('Step 3: Calculating multi-keyword matches and aggregated scores...');
+    
+    // Group images by recall_id for efficient lookup
+    const imagesByRecall = new Map<string, typeof allImages>();
+    for (const image of allImages) {
+      if (!imagesByRecall.has(image.recall_id)) {
+        imagesByRecall.set(image.recall_id, []);
       }
+      imagesByRecall.get(image.recall_id)!.push(image);
+    }
 
-      if (!Array.isArray(storedEmbeddingArray) || storedEmbeddingArray.length === 0) return 0;
-      if (!Array.isArray(queryEmbedding) || queryEmbedding.length === 0) return 0;
-      if (storedEmbeddingArray.length !== queryEmbedding.length) return 0;
-
-      // Cosine similarity calculation
-      let dotProduct = 0;
-      let normA = 0;
-      let normB = 0;
-
-      for (let i = 0; i < queryEmbedding.length; i++) {
-        const queryVal = queryEmbedding[i];
-        const storedVal = storedEmbeddingArray[i];
-        dotProduct += queryVal * storedVal;
-        normA += queryVal * queryVal;
-        normB += storedVal * storedVal;
+    // Calculate matches for each recall
+    const recallMatches: RecallMatch[] = [];
+    
+    for (const recall of allRecalls) {
+      // Calculate text similarity with multi-keyword matching
+      const textMatch = calculateMultiKeywordMatch(keywordEmbeddings, recall.recall_embedding);
+      
+      // Calculate image similarities
+      const recallImages = imagesByRecall.get(recall.id) || [];
+      const imageSimilarities: number[] = [];
+      const imagesData: RecallMatch['images_data'] = [];
+      let totalImageKeywordMatches = 0;
+      
+      for (const image of recallImages) {
+        const imageMatch = calculateMultiKeywordMatch(keywordEmbeddings, image.recall_image_embedding);
+        imageSimilarities.push(imageMatch.bestSimilarity);
+        totalImageKeywordMatches += imageMatch.matchCount;
+        
+        imagesData.push({
+          id: image.id,
+          ocr_text: image.ocr_text || '',
+          image_explanation: image.image_explanation || '',
+          similarity: imageMatch.bestSimilarity
+        });
       }
-
-      const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-      if (denominator === 0) return 0;
-
-      const similarity = dotProduct / denominator;
-      const clampedSimilarity = Math.max(-1, Math.min(1, similarity));
-
-      return isNaN(clampedSimilarity) ? 0 : clampedSimilarity;
-    };
-
-    // Calculate cosine similarity for each image
-    const imageMatches = (allImages || []).map((image: any) => {
-      const similarity = calculateCosineSimilarity(image.recall_image_embedding);
-      const tier = getSimilarityTier(similarity);
-      const isPriority = priorityRecallIds.has(image.recall_id);
-      return {
-        id: image.id,
-        recall_id: image.recall_id,
-        ocr_text: image.ocr_text || '',
-        image_explanation: image.image_explanation || '',
-        similarity,
-        tier,
-        source: 'image',
-        isPriority
-      };
-    });
-
-    // Calculate cosine similarity for each recall
-    const recallMatches = (allRecalls || []).map((recall: any) => {
-      const similarity = calculateCosineSimilarity(recall.recall_embedding);
-      const tier = getSimilarityTier(similarity);
+      
+      // Total keyword matches (text + images)
+      const totalKeywordMatches = textMatch.matchCount + totalImageKeywordMatches;
+      
+      // Calculate aggregated match percentage
+      const aggregatedMatch = calculateAggregatedMatch(
+        textMatch.bestSimilarity,
+        imageSimilarities,
+        totalKeywordMatches,
+        keywords.length
+      );
+      
+      const tier = getSimilarityTier(aggregatedMatch);
       const isPriority = priorityRecallIds.has(recall.id);
-      return {
-        id: recall.id,
-        recall_id: recall.id,
-        text: recall.text || '',
-        location: recall.location || '',
-        location_primary_type: recall.location_primary_type || '',
-        similarity,
-        tier,
-        source: 'recall',
-        isPriority
-      };
-    });
-
-    // Combine all matches
-    const allMatches = [...imageMatches, ...recallMatches];
-
-    // Filter by LOW threshold or higher (>= 25% similarity)
-    const filteredMatches = allMatches.filter((match: any) => match.tier !== 'NONE');
-
-    // Count matches by tier
-    const tierCounts = {
-      HIGH: filteredMatches.filter(m => m.tier === 'HIGH').length,
-      MEDIUM: filteredMatches.filter(m => m.tier === 'MEDIUM').length,
-      LOW: filteredMatches.filter(m => m.tier === 'LOW').length
-    };
-    console.log(`Tier distribution - HIGH: ${tierCounts.HIGH}, MEDIUM: ${tierCounts.MEDIUM}, LOW: ${tierCounts.LOW}`);
-
-    // Sort by priority first, then tier (HIGH > MEDIUM > LOW), then similarity
-    const tierOrder = { HIGH: 3, MEDIUM: 2, LOW: 1, NONE: 0 };
-    filteredMatches.sort((a: any, b: any) => {
-      // Prioritize priority recalls
-      if (a.isPriority && !b.isPriority) return -1;
-      if (!a.isPriority && b.isPriority) return 1;
-      // Then sort by tier
-      if (tierOrder[a.tier] !== tierOrder[b.tier]) {
-        return tierOrder[b.tier] - tierOrder[a.tier];
-      }
-      // Then sort by similarity
-      return b.similarity - a.similarity;
-    });
-
-    console.log(`Found ${filteredMatches.length} matches with LOW threshold or higher`);
-
-    // Group matches by recall_id and keep the highest similarity for each recall
-    const recallMatchMap = new Map();
-    for (const match of filteredMatches) {
-      const existing = recallMatchMap.get(match.recall_id);
-      if (!existing || match.similarity > existing.similarity) {
-        recallMatchMap.set(match.recall_id, match);
+      
+      // Only include recalls that meet LOW threshold or higher
+      if (tier !== 'NONE') {
+        recallMatches.push({
+          recall_id: recall.id,
+          text_similarity: textMatch.bestSimilarity,
+          image_similarities: imageSimilarities,
+          keyword_matches: totalKeywordMatches,
+          aggregated_match: aggregatedMatch,
+          tier,
+          isPriority,
+          recall_data: {
+            text: recall.text || '',
+            location: recall.location || '',
+            location_primary_type: recall.location_primary_type || ''
+          },
+          images_data: imagesData
+        });
       }
     }
 
-    // Convert back to array and sort by priority + tier + similarity
-    let uniqueRecallMatches = Array.from(recallMatchMap.values()).sort((a: any, b: any) => {
-      // Prioritize priority recalls
+    console.log(`Found ${recallMatches.length} recalls meeting threshold`);
+
+    // Sort by priority, then tier, then aggregated match
+    const tierOrder = { HIGH: 3, MEDIUM: 2, LOW: 1, NONE: 0 };
+    recallMatches.sort((a, b) => {
       if (a.isPriority && !b.isPriority) return -1;
       if (!a.isPriority && b.isPriority) return 1;
-      // Then sort by tier
       if (tierOrder[a.tier] !== tierOrder[b.tier]) {
         return tierOrder[b.tier] - tierOrder[a.tier];
       }
-      // Then sort by similarity
-      return b.similarity - a.similarity;
+      return b.aggregated_match - a.aggregated_match;
     });
-    console.log(`Grouped into ${uniqueRecallMatches.length} unique recalls`);
 
-    if (uniqueRecallMatches.length === 0) {
+    if (recallMatches.length === 0) {
       console.log('No matches found');
       return new Response(JSON.stringify({
         answer: null,
@@ -488,62 +551,70 @@ Keywords:`;
       });
     }
 
-    // Step 3: Use OpenAI gpt-4o-mini for question answering with source tracking
-    // NOTE: ocr_text is removed from this step as requested
-    console.log('Step 3: Using OpenAI gpt-4o-mini for question answering with source tracking...');
-
-    // Prepare context from matches with source IDs (excluding ocr_text)
-    const contextWithSources = uniqueRecallMatches.map((match: any, idx: number) => {
+    // Step 4: Generate answer using OpenAI with ALL recall information
+    console.log('Step 4: Generating answer with OpenAI using all recall information...');
+    
+    // Build comprehensive context including all images
+    const contextWithSources = recallMatches.map((match, idx) => {
       const sourceId = `SOURCE_${idx + 1}`;
       const priorityMarker = match.isPriority ? ' [PRIORITY - From location/people search]' : '';
       const tierMarker = ` [${match.tier} TIER]`;
-
-      if (match.source === 'image') {
-        // Removed ocr_text from context as requested
-        return {
-          sourceId,
-          recallId: match.recall_id,
-          text: `${sourceId} (${Math.round(match.similarity * 100)}% match - from image${priorityMarker}${tierMarker}):\nImage Explanation: ${match.image_explanation}`,
-          similarity: match.similarity,
-          tier: match.tier,
-          isPriority: match.isPriority
-        };
-      } else {
-        return {
-          sourceId,
-          recallId: match.recall_id,
-          text: `${sourceId} (${Math.round(match.similarity * 100)}% match - from recall${priorityMarker}${tierMarker}):\nText: ${match.text}\nLocation: ${match.location}\nLocation Type: ${match.location_primary_type}`,
-          similarity: match.similarity,
-          tier: match.tier,
-          isPriority: match.isPriority
-        };
+      const keywordMarker = ` [${match.keyword_matches}/${keywords.length} keywords matched]`;
+      
+      let contextText = `${sourceId} (${Math.round(match.aggregated_match * 100)}% aggregated match${priorityMarker}${tierMarker}${keywordMarker}):\n`;
+      contextText += `Text: ${match.recall_data.text}\n`;
+      contextText += `Location: ${match.recall_data.location}\n`;
+      contextText += `Location Type: ${match.recall_data.location_primary_type}\n`;
+      
+      // Include ALL images with their information
+      if (match.images_data.length > 0) {
+        contextText += `Images (${match.images_data.length}):\n`;
+        match.images_data.forEach((img, imgIdx) => {
+          contextText += `  Image ${imgIdx + 1} (${Math.round(img.similarity * 100)}% match):\n`;
+          if (img.image_explanation) {
+            contextText += `    Explanation: ${img.image_explanation}\n`;
+          }
+          if (img.ocr_text) {
+            contextText += `    OCR Text: ${img.ocr_text}\n`;
+          }
+        });
       }
+      
+      return {
+        sourceId,
+        recallId: match.recall_id,
+        text: contextText,
+        aggregatedMatch: match.aggregated_match,
+        tier: match.tier,
+        isPriority: match.isPriority
+      };
     });
 
-    const context = contextWithSources.map((c: any) => c.text).join('\n\n');
+    const context = contextWithSources.map(c => c.text).join('\n');
 
     const qaPrompt = `You are a search assistant that answers questions thoroughly based on the provided information.
 
 CRITICAL RULES:
 1. Answer ONLY using information explicitly stated in the provided recalls
-2. Do NOT add information or general knowledge not present in the recalls
-3. If the recalls don't contain enough information to answer the question, say so clearly
-4. Use bullet points when listing multiple items
-5. Provide a confidence score (0-100) based on how well the recalls answer the question
+2. Use information from BOTH the recall text AND all associated images
+3. Do NOT add information or general knowledge not present in the recalls
+4. If the recalls don't contain enough information to answer the question, say so clearly
+5. Use bullet points when listing multiple items
+6. Provide a confidence score (0-100) based on how well the recalls answer the question
 
 PRIORITY HANDLING:
-- Sources marked as [PRIORITY - From location/people search] should be given HIGHEST priority
+- Sources marked as [PRIORITY] should be given HIGHEST priority
 - Sources marked as [HIGH TIER] have the strongest match (60%+) and should be prioritized
 - Sources marked as [MEDIUM TIER] have moderate match (40-60%)
 - Sources marked as [LOW TIER] have weaker match (25-40%)
-- The source with the highest confidence match should be prioritized
+- Pay attention to keyword match counts - more matched keywords indicate better relevance
 
 Question: ${cleanedQuery}
 
-Available Recalls:
+Available Recalls (with all images):
 ${context}
 
-Provide your answer in JSON format: {"answer": "your answer based ONLY on the provided recalls", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
+Provide your answer in JSON format: {"answer": "your comprehensive answer based on ALL provided information including images", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
 If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.`;
 
     console.log('Making request to OpenAI gpt-4o-mini...');
@@ -555,7 +626,6 @@ If the recalls don't contain the requested information, respond with: {"answer":
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        //model: 'gpt-5-mini',
         messages: [
           {
             role: 'user',
@@ -564,8 +634,6 @@ If the recalls don't contain the requested information, respond with: {"answer":
         ],
         temperature: 0.35,
         max_tokens: 1000,
-        //reasoning_effort: 'minimal', // e.g., 'minimal', 'low', 'medium', 'high'
-        //verbosity: 'low', // e.g., 'low', 'medium', 'high'
         response_format: { type: 'json_object' }
       })
     });
@@ -573,8 +641,6 @@ If the recalls don't contain the requested information, respond with: {"answer":
     if (!qaResponse.ok) {
       const errorText = await qaResponse.text();
       console.error('OpenAI QA API error:', errorText);
-      console.error('Response status:', qaResponse.status);
-      console.error('Response headers:', JSON.stringify(Object.fromEntries(qaResponse.headers.entries())));
       return new Response(JSON.stringify({ error: 'Failed to generate answer', details: errorText }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -582,7 +648,6 @@ If the recalls don't contain the requested information, respond with: {"answer":
     }
 
     const qaData = await qaResponse.json();
-    console.log('OpenAI response received:', JSON.stringify(qaData, null, 2));
     const qaContent = qaData.choices?.[0]?.message?.content;
 
     let answer = null;
@@ -598,8 +663,6 @@ If the recalls don't contain the requested information, respond with: {"answer":
         console.log('Sources used by AI:', sourcesUsed);
       } catch (parseError) {
         console.error('Failed to parse QA response:', parseError);
-        console.error('Raw content:', qaContent);
-        // Fallback: use the raw content as answer
         answer = qaContent;
         confidence = 50;
       }
@@ -611,66 +674,70 @@ If the recalls don't contain the requested information, respond with: {"answer":
     // Map source IDs back to recall IDs
     const sourceRecallIds = sourcesUsed
       .map((sourceId: string) => {
-        const source = contextWithSources.find((c: any) => c.sourceId === sourceId);
+        const source = contextWithSources.find(c => c.sourceId === sourceId);
         return source ? source.recallId : null;
       })
       .filter((id: string | null) => id !== null);
 
     console.log('Recall IDs used for answer:', sourceRecallIds);
 
-    // Create results with proper ordering (priority first, then used for answer, then others)
-    const usedRecalls = uniqueRecallMatches
-      .filter((match: any) => sourceRecallIds.includes(match.recall_id))
-      .sort((a: any, b: any) => {
-        // Prioritize priority recalls
+    // Create results with proper ordering
+    const usedRecalls = recallMatches
+      .filter(match => sourceRecallIds.includes(match.recall_id))
+      .sort((a, b) => {
         if (a.isPriority && !b.isPriority) return -1;
         if (!a.isPriority && b.isPriority) return 1;
-        // Then sort by tier
         if (tierOrder[a.tier] !== tierOrder[b.tier]) {
           return tierOrder[b.tier] - tierOrder[a.tier];
         }
-        // Then sort by similarity
-        return b.similarity - a.similarity;
+        return b.aggregated_match - a.aggregated_match;
       });
 
-    const unusedRecalls = uniqueRecallMatches
-      .filter((match: any) => !sourceRecallIds.includes(match.recall_id))
-      .sort((a: any, b: any) => {
-        // Prioritize priority recalls
+    const unusedRecalls = recallMatches
+      .filter(match => !sourceRecallIds.includes(match.recall_id))
+      .sort((a, b) => {
         if (a.isPriority && !b.isPriority) return -1;
         if (!a.isPriority && b.isPriority) return 1;
-        // Then sort by tier
         if (tierOrder[a.tier] !== tierOrder[b.tier]) {
           return tierOrder[b.tier] - tierOrder[a.tier];
         }
-        // Then sort by similarity
-        return b.similarity - a.similarity;
+        return b.aggregated_match - a.aggregated_match;
       });
 
     const orderedMatches = [...usedRecalls, ...unusedRecalls];
 
     console.log(`Ordered results: ${usedRecalls.length} used for answer, ${unusedRecalls.length} others`);
 
-    // Convert similarity to match percentage (0-100) and include tier information
-    const matchResults = orderedMatches.map((match: any) => ({
+    // Convert to result format with aggregated match percentage
+    const matchResults = orderedMatches.map(match => ({
       id: match.recall_id,
-      matchPercentage: Math.round(Math.max(0, Math.min(100, match.similarity * 100))),
+      matchPercentage: Math.round(match.aggregated_match * 100),
       usedForAnswer: sourceRecallIds.includes(match.recall_id),
-      tier: match.tier
+      tier: match.tier,
+      keywordMatches: match.keyword_matches,
+      totalKeywords: keywords.length
     }));
+
+    // Calculate tier counts
+    const tierCounts = {
+      HIGH: recallMatches.filter(m => m.tier === 'HIGH').length,
+      MEDIUM: recallMatches.filter(m => m.tier === 'MEDIUM').length,
+      LOW: recallMatches.filter(m => m.tier === 'LOW').length
+    };
 
     const processingTime = Date.now() - startTime;
     console.log('=== Search Recalls V2 completed successfully ===');
     console.log('Total processing time:', processingTime, 'ms');
+    console.log(`Tier distribution - HIGH: ${tierCounts.HIGH}, MEDIUM: ${tierCounts.MEDIUM}, LOW: ${tierCounts.LOW}`);
 
-    // Return results with recall_id, tier, and person info
     return new Response(JSON.stringify({
       answer,
       confidence,
       results: matchResults,
       processingTimeMs: processingTime,
       personInfo: personInfo || null,
-      tierCounts // Include tier distribution in response
+      tierCounts,
+      keywords: keywords.length
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
