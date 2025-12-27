@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 const corsHeaders = {
@@ -556,6 +555,7 @@ If the recalls don't contain the requested information, respond with: {"answer":
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
+        //model: 'gpt-5-mini',
         messages: [
           {
             role: 'user',
@@ -564,6 +564,8 @@ If the recalls don't contain the requested information, respond with: {"answer":
         ],
         temperature: 0.35,
         max_tokens: 1000,
+        //reasoning_effort: 'minimal', // e.g., 'minimal', 'low', 'medium', 'high'
+        //verbosity: 'low', // e.g., 'low', 'medium', 'high'
         response_format: { type: 'json_object' }
       })
     });
