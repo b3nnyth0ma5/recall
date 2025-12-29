@@ -68,26 +68,55 @@ function isLandscape(width: number, height: number): boolean {
 }
 
 /**
- * Calculate resize dimensions based on aspect ratio
- * Portrait images (height > width): resize to 1:1.3 ratio
- * Landscape images (width > height): resize to 1.3:1 ratio (inverse)
+ * Calculate resize dimensions based on aspect ratio and orientation
+ * Portrait images (height > width): resize to fit within 1520x1976 maintaining aspect ratio
+ * Landscape images (width > height): resize to fit within 1976x1520 maintaining aspect ratio
+ * This ensures proper sizing for both regular photos and screenshots
  */
 function calculateResizeDimensions(originalWidth: number, originalHeight: number): { width: number; height: number } {
   const aspectRatio = originalWidth / originalHeight;
   
   if (aspectRatio > 1) {
-    // Landscape image - use 1.3:1 ratio
-    console.log('[ImageOptimization] Landscape image detected - using 1.3:1 ratio');
+    // Landscape image - fit within 1976x1520
+    console.log('[ImageOptimization] Landscape image detected - fitting within 1976x1520');
+    
+    // Calculate dimensions that fit within the landscape bounds
+    if (originalWidth > UPLOAD_SIZE_LANDSCAPE.width || originalHeight > UPLOAD_SIZE_LANDSCAPE.height) {
+      const widthRatio = UPLOAD_SIZE_LANDSCAPE.width / originalWidth;
+      const heightRatio = UPLOAD_SIZE_LANDSCAPE.height / originalHeight;
+      const ratio = Math.min(widthRatio, heightRatio);
+      
+      return {
+        width: Math.round(originalWidth * ratio),
+        height: Math.round(originalHeight * ratio),
+      };
+    }
+    
+    // Image is already smaller than target, return original dimensions
     return {
-      width: UPLOAD_SIZE_LANDSCAPE.width,
-      height: UPLOAD_SIZE_LANDSCAPE.height,
+      width: originalWidth,
+      height: originalHeight,
     };
   } else {
-    // Portrait or square image - use 1:1.3 ratio
-    console.log('[ImageOptimization] Portrait/square image detected - using 1:1.3 ratio');
+    // Portrait or square image - fit within 1520x1976
+    console.log('[ImageOptimization] Portrait/square image detected - fitting within 1520x1976');
+    
+    // Calculate dimensions that fit within the portrait bounds
+    if (originalWidth > UPLOAD_SIZE_PORTRAIT.width || originalHeight > UPLOAD_SIZE_PORTRAIT.height) {
+      const widthRatio = UPLOAD_SIZE_PORTRAIT.width / originalWidth;
+      const heightRatio = UPLOAD_SIZE_PORTRAIT.height / originalHeight;
+      const ratio = Math.min(widthRatio, heightRatio);
+      
+      return {
+        width: Math.round(originalWidth * ratio),
+        height: Math.round(originalHeight * ratio),
+      };
+    }
+    
+    // Image is already smaller than target, return original dimensions
     return {
-      width: UPLOAD_SIZE_PORTRAIT.width,
-      height: UPLOAD_SIZE_PORTRAIT.height,
+      width: originalWidth,
+      height: originalHeight,
     };
   }
 }
@@ -96,14 +125,16 @@ function calculateResizeDimensions(originalWidth: number, originalHeight: number
  * Compress and optimize an image for upload
  * Reduces file size while maintaining good quality for mobile screens
  * Takes aspect ratio into account:
- * - Portrait images (height > width): 1:1.3 ratio (1520x1976)
- * - Landscape images (width > height): 1.3:1 ratio (1976x1520) - inverse
+ * - Portrait images (height > width): fit within 1520x1976 maintaining aspect ratio
+ * - Landscape images (width > height): fit within 1976x1520 maintaining aspect ratio
+ * - Handles screenshots and photos correctly by preserving aspect ratio
  * 
  * @param uri - Original image URI
  * @returns Promise with optimized image URI
  */
 export async function compressImageForUpload(uri: string): Promise<string> {
   try {
+    console.log('[ImageOptimization] ========================================');
     console.log('[ImageOptimization] Starting image compression...');
     console.log('[ImageOptimization] Original URI:', uri);
     
@@ -111,29 +142,57 @@ export async function compressImageForUpload(uri: string): Promise<string> {
     
     // Get original image dimensions
     const dimensions = await getImageDimensions(uri);
-    console.log('[ImageOptimization] Original dimensions:', dimensions.width, 'x', dimensions.height);
+    console.log('[ImageOptimization] ========================================');
+    console.log('[ImageOptimization] ORIGINAL IMAGE DIMENSIONS:');
+    console.log('[ImageOptimization]   Width:', dimensions.width, 'px');
+    console.log('[ImageOptimization]   Height:', dimensions.height, 'px');
     
     // Calculate aspect ratio
     const aspectRatio = dimensions.width / dimensions.height;
-    console.log('[ImageOptimization] Aspect ratio:', aspectRatio.toFixed(2));
+    console.log('[ImageOptimization] ========================================');
+    console.log('[ImageOptimization] ASPECT RATIO ANALYSIS:');
+    console.log('[ImageOptimization]   Aspect Ratio:', aspectRatio.toFixed(4));
+    console.log('[ImageOptimization]   Ratio (W:H):', `${dimensions.width}:${dimensions.height}`);
     
     // Determine if landscape or portrait
     const landscape = isLandscape(dimensions.width, dimensions.height);
-    console.log('[ImageOptimization] Image orientation:', landscape ? 'LANDSCAPE' : 'PORTRAIT');
+    console.log('[ImageOptimization] ========================================');
+    console.log('[ImageOptimization] ORIENTATION DETECTION:');
+    console.log('[ImageOptimization]   Orientation:', landscape ? 'LANDSCAPE' : 'PORTRAIT');
+    console.log('[ImageOptimization]   Detection Logic:', aspectRatio > 1 ? 'Width > Height (Landscape)' : 'Height >= Width (Portrait)');
     
-    // Calculate target dimensions based on aspect ratio
+    // Calculate target dimensions based on aspect ratio (maintains original aspect ratio)
     const targetDimensions = calculateResizeDimensions(dimensions.width, dimensions.height);
-    console.log('[ImageOptimization] Target dimensions:', targetDimensions.width, 'x', targetDimensions.height);
-    console.log('[ImageOptimization] Target aspect ratio:', (targetDimensions.width / targetDimensions.height).toFixed(2));
+    console.log('[ImageOptimization] ========================================');
+    console.log('[ImageOptimization] TARGET DIMENSIONS:');
+    console.log('[ImageOptimization]   Target Width:', targetDimensions.width, 'px');
+    console.log('[ImageOptimization]   Target Height:', targetDimensions.height, 'px');
+    console.log('[ImageOptimization]   Target Aspect Ratio:', (targetDimensions.width / targetDimensions.height).toFixed(4));
+    console.log('[ImageOptimization]   Max Bounds:', landscape ? '1976x1520 (Landscape)' : '1520x1976 (Portrait)');
+    
+    // Check if aspect ratio is preserved
+    const originalRatio = dimensions.width / dimensions.height;
+    const targetRatio = targetDimensions.width / targetDimensions.height;
+    const ratioDifference = Math.abs(originalRatio - targetRatio);
+    console.log('[ImageOptimization] ========================================');
+    console.log('[ImageOptimization] ASPECT RATIO PRESERVATION:');
+    console.log('[ImageOptimization]   Original Ratio:', originalRatio.toFixed(4));
+    console.log('[ImageOptimization]   Target Ratio:', targetRatio.toFixed(4));
+    console.log('[ImageOptimization]   Difference:', ratioDifference.toFixed(6));
+    console.log('[ImageOptimization]   Preserved:', ratioDifference < 0.001 ? 'YES ✓' : 'NO ✗');
     
     // Select quality based on orientation
     const quality = landscape ? UPLOAD_SIZE_LANDSCAPE.quality : UPLOAD_SIZE_PORTRAIT.quality;
+    console.log('[ImageOptimization] ========================================');
+    console.log('[ImageOptimization] COMPRESSION SETTINGS:');
+    console.log('[ImageOptimization]   Quality:', quality);
+    console.log('[ImageOptimization]   Format: JPEG');
     
     // Compress and resize the image
     const result = await ImageManipulator.manipulateAsync(
       uri,
       [
-        // Resize to target dimensions while maintaining aspect ratio
+        // Resize to target dimensions - this maintains aspect ratio
         { resize: { width: targetDimensions.width, height: targetDimensions.height } },
       ],
       {
@@ -143,14 +202,27 @@ export async function compressImageForUpload(uri: string): Promise<string> {
     );
     
     const duration = Date.now() - startTime;
-    console.log(`[ImageOptimization] Compression complete in ${duration}ms`);
-    console.log('[ImageOptimization] Optimized URI:', result.uri);
-    console.log('[ImageOptimization] New dimensions:', result.width, 'x', result.height);
-    console.log('[ImageOptimization] New aspect ratio:', (result.width / result.height).toFixed(2));
+    console.log('[ImageOptimization] ========================================');
+    console.log('[ImageOptimization] COMPRESSION COMPLETE:');
+    console.log('[ImageOptimization]   Duration:', duration, 'ms');
+    console.log('[ImageOptimization]   Optimized URI:', result.uri);
+    console.log('[ImageOptimization] ========================================');
+    console.log('[ImageOptimization] FINAL IMAGE DIMENSIONS:');
+    console.log('[ImageOptimization]   Final Width:', result.width, 'px');
+    console.log('[ImageOptimization]   Final Height:', result.height, 'px');
+    console.log('[ImageOptimization]   Final Aspect Ratio:', (result.width / result.height).toFixed(4));
+    console.log('[ImageOptimization] ========================================');
+    console.log('[ImageOptimization] SIZE REDUCTION:');
+    console.log('[ImageOptimization]   Width Reduction:', ((1 - result.width / dimensions.width) * 100).toFixed(1), '%');
+    console.log('[ImageOptimization]   Height Reduction:', ((1 - result.height / dimensions.height) * 100).toFixed(1), '%');
+    console.log('[ImageOptimization] ========================================');
     
     return result.uri;
   } catch (error) {
-    console.error('[ImageOptimization] Error compressing image:', error);
+    console.error('[ImageOptimization] ========================================');
+    console.error('[ImageOptimization] ERROR COMPRESSING IMAGE:');
+    console.error('[ImageOptimization]   Error:', error);
+    console.error('[ImageOptimization] ========================================');
     // Return original URI if compression fails
     return uri;
   }
