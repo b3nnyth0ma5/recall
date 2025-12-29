@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, memo } from 'react';
+import React, { useState, useRef, useEffect, memo, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
@@ -30,6 +30,7 @@ interface NoteCardProps {
   onDelete?: () => void;
   loading?: boolean;
   expectedImageCount?: number;
+  isSearchResult?: boolean; // Flag to indicate if this is a search result
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -60,7 +61,15 @@ const countNewlines = (text: string): number => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ 
+  note, 
+  onPress, 
+  onImagePress, 
+  onDelete, 
+  loading = false, 
+  expectedImageCount,
+  isSearchResult = false 
+}: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -87,18 +96,58 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const scale = useSharedValue(1);
   const height = useSharedValue(1);
 
+  // Sort images by match percentage if this is a search result
+  const sortedImageData = useMemo(() => {
+    if (!isSearchResult || !note.imageMatchData || note.imageMatchData.length === 0) {
+      // Return original order with indices
+      return (note.imageIds || []).map((id, index) => ({
+        imageId: id,
+        originalIndex: index,
+        similarity: 0,
+      }));
+    }
+
+    // Create a map of imageId to match data
+    const matchDataMap = new Map(
+      note.imageMatchData.map(data => [data.imageId, data])
+    );
+
+    // Map imageIds with their match data and original indices
+    const imageDataWithIndices = (note.imageIds || []).map((id, index) => {
+      const matchData = matchDataMap.get(id);
+      return {
+        imageId: id,
+        originalIndex: index,
+        similarity: matchData?.similarity || 0,
+      };
+    });
+
+    // Sort by similarity (highest first) for search results
+    return imageDataWithIndices.sort((a, b) => b.similarity - a.similarity);
+  }, [isSearchResult, note.imageMatchData, note.imageIds]);
+
   // Initialize with first TWO images for better performance
   useEffect(() => {
     if (!loading && note.images && note.images.length > 0) {
       // Set total count immediately
       setTotalImageCount(note.images.length);
       
-      // Load first two images immediately if available
-      const imagesToLoad = note.images.length > 1 ? note.images.slice(0, 2) : [note.images[0]];
-      setLazyLoadedImages(imagesToLoad);
+      // For search results, load images in sorted order
+      if (isSearchResult && sortedImageData.length > 0) {
+        // Load first two images in sorted order
+        const firstTwoSortedIndices = sortedImageData.slice(0, 2).map(d => d.originalIndex);
+        const imagesToLoad = firstTwoSortedIndices.map(idx => note.images[idx]).filter(Boolean);
+        setLazyLoadedImages(imagesToLoad);
+        console.log(`[NoteCard] Initialized search result with first ${imagesToLoad.length} sorted image(s) for note ${note.id}`);
+      } else {
+        // Load first two images in original order
+        const imagesToLoad = note.images.length > 1 ? note.images.slice(0, 2) : [note.images[0]];
+        setLazyLoadedImages(imagesToLoad);
+        console.log(`[NoteCard] Initialized with first ${imagesToLoad.length} image(s) for note ${note.id}`);
+      }
+      
       // Initialize currentImageIndex to 0 to show counter immediately
       setCurrentImageIndex(0);
-      console.log(`[NoteCard] Initialized with first ${imagesToLoad.length} image(s) for note ${note.id}, total count: ${note.images.length}`);
       
       // Check if we're still uploading images
       if (expectedImageCount && note.images.length < expectedImageCount) {
@@ -125,7 +174,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     } else {
       setIsUploadingImages(false);
     }
-  }, [note.id, note.images, note.imageIds, loading, expectedImageCount]);
+  }, [note.id, note.images, note.imageIds, loading, expectedImageCount, isSearchResult, sortedImageData]);
 
   // Animated style for deletion - MUST be called before any conditional returns
   const animatedCardStyle = useAnimatedStyle(() => {
@@ -144,37 +193,41 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   }
 
   // Optimized lazy load with queue management
-  const lazyLoadImage = async (index: number) => {
-    if (!note.imageIds || index >= note.imageIds.length) {
-      return;
-    }
-    if (lazyLoadedImages[index]) {
-      return;
-    }
-    if (loadingQueueRef.current.has(index)) {
+  const lazyLoadImage = async (sortedIndex: number) => {
+    if (!note.imageIds || sortedIndex >= sortedImageData.length) {
       return;
     }
     
-    loadingQueueRef.current.add(index);
+    // Get the original index from sorted data
+    const originalIndex = sortedImageData[sortedIndex].originalIndex;
+    
+    if (lazyLoadedImages[sortedIndex]) {
+      return;
+    }
+    if (loadingQueueRef.current.has(sortedIndex)) {
+      return;
+    }
+    
+    loadingQueueRef.current.add(sortedIndex);
     setIsLazyLoading(true);
     
     try {
-      const imageIdToLoad = note.imageIds[index];
+      const imageIdToLoad = note.imageIds[originalIndex];
       if (imageIdToLoad) {
         const imageUrl = await getImageDataUrl(imageIdToLoad);
         if (imageUrl) {
           setLazyLoadedImages(prev => {
             const newImages = [...prev];
-            newImages[index] = imageUrl;
+            newImages[sortedIndex] = imageUrl;
             return newImages;
           });
-          console.log(`[NoteCard] Successfully lazy loaded image at index ${index}`);
+          console.log(`[NoteCard] Successfully lazy loaded image at sorted index ${sortedIndex} (original index ${originalIndex})`);
         }
       }
     } catch (error) {
-      console.error(`[NoteCard] Error lazy loading image at index ${index}:`, error);
+      console.error(`[NoteCard] Error lazy loading image at sorted index ${sortedIndex}:`, error);
     } finally {
-      loadingQueueRef.current.delete(index);
+      loadingQueueRef.current.delete(sortedIndex);
       setIsLazyLoading(false);
     }
   };
@@ -263,8 +316,10 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     setImageLoadedStates(prev => ({ ...prev, [index]: true }));
   };
 
-  const handleImagePress = (index: number) => {
-    setFullScreenImageIndex(index);
+  const handleImagePress = (sortedIndex: number) => {
+    // Convert sorted index back to original index for full screen view
+    const originalIndex = sortedImageData[sortedIndex].originalIndex;
+    setFullScreenImageIndex(originalIndex);
     setShowFullScreenImage(true);
     if (onImagePress) {
       onImagePress();
@@ -373,21 +428,29 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     );
   };
 
-  // Create display array with placeholders based on totalImageCount
-  const displayImages = totalImageCount > 0 
-    ? Array.from({ length: totalImageCount }, (_, index) => {
-        // First check if we have a lazy loaded image
-        if (lazyLoadedImages[index]) {
-          return lazyLoadedImages[index];
-        }
-        // Then check if we have the image in the note.images array
-        if (note.images && note.images[index]) {
-          return note.images[index];
-        }
-        // Otherwise return empty string for placeholder
-        return '';
-      }) 
-    : [];
+  // Create display array with sorted images for search results
+  const displayImages = useMemo(() => {
+    if (totalImageCount === 0) {
+      return [];
+    }
+
+    return Array.from({ length: totalImageCount }, (_, sortedIndex) => {
+      const originalIndex = sortedImageData[sortedIndex]?.originalIndex;
+      
+      // First check if we have a lazy loaded image at this sorted position
+      if (lazyLoadedImages[sortedIndex]) {
+        return lazyLoadedImages[sortedIndex];
+      }
+      
+      // Then check if we have the image in the note.images array at the original index
+      if (originalIndex !== undefined && note.images && note.images[originalIndex]) {
+        return note.images[originalIndex];
+      }
+      
+      // Otherwise return empty string for placeholder
+      return '';
+    });
+  }, [totalImageCount, sortedImageData, lazyLoadedImages, note.images]);
 
   // Check if note has people mentioned
   const hasPeople = note.people && note.people.length > 0;
@@ -410,52 +473,68 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
             snapToInterval={IMAGE_WIDTH + IMAGE_SPACING}
             snapToAlignment="start"
           >
-            {displayImages.map((imageUrl, index) => (
-              <Pressable 
-                key={`${note.id}-image-${index}`}
-                onPress={() => handleImagePress(index)}
-                style={styles.imageWrapper}
-              >
-                {!imageUrl ? (
-                  <View style={styles.imageLoadingContainer}>
-                    <SkeletonLoader
-                      width={IMAGE_WIDTH}
-                      height={IMAGE_HEIGHT}
-                      borderRadius={12}
-                      variant="wave"
-                    />
-                  </View>
-                ) : (
-                  <>
-                    {imageLoadingStates[index] && !imageErrorStates[index] && !imageLoadedStates[index] && (
-                      <View style={styles.imageLoadingContainer}>
-                        <SkeletonLoader
-                          width={IMAGE_WIDTH}
-                          height={IMAGE_HEIGHT}
-                          borderRadius={12}
-                          variant="wave"
-                        />
-                      </View>
-                    )}
-                    {imageErrorStates[index] ? (
-                      <View style={styles.imageErrorContainer}>
-                        <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
-                        <Text style={styles.imageErrorText}>Failed to load image</Text>
-                      </View>
-                    ) : (
-                      <Image
-                        source={{ uri: imageUrl }}
-                        style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
-                        resizeMode="cover"
-                        onLoadStart={() => handleImageLoadStart(index)}
-                        onLoad={() => handleImageLoad(index)}
-                        onError={() => handleImageError(index)}
+            {displayImages.map((imageUrl, sortedIndex) => {
+              const matchData = isSearchResult && sortedImageData[sortedIndex] 
+                ? sortedImageData[sortedIndex] 
+                : null;
+              
+              return (
+                <Pressable 
+                  key={`${note.id}-image-${sortedIndex}`}
+                  onPress={() => handleImagePress(sortedIndex)}
+                  style={styles.imageWrapper}
+                >
+                  {!imageUrl ? (
+                    <View style={styles.imageLoadingContainer}>
+                      <SkeletonLoader
+                        width={IMAGE_WIDTH}
+                        height={IMAGE_HEIGHT}
+                        borderRadius={12}
+                        variant="wave"
                       />
-                    )}
-                  </>
-                )}
-              </Pressable>
-            ))}
+                    </View>
+                  ) : (
+                    <>
+                      {imageLoadingStates[sortedIndex] && !imageErrorStates[sortedIndex] && !imageLoadedStates[sortedIndex] && (
+                        <View style={styles.imageLoadingContainer}>
+                          <SkeletonLoader
+                            width={IMAGE_WIDTH}
+                            height={IMAGE_HEIGHT}
+                            borderRadius={12}
+                            variant="wave"
+                          />
+                        </View>
+                      )}
+                      {imageErrorStates[sortedIndex] ? (
+                        <View style={styles.imageErrorContainer}>
+                          <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
+                          <Text style={styles.imageErrorText}>Failed to load image</Text>
+                        </View>
+                      ) : (
+                        <>
+                          <Image
+                            source={{ uri: imageUrl }}
+                            style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
+                            resizeMode="cover"
+                            onLoadStart={() => handleImageLoadStart(sortedIndex)}
+                            onLoad={() => handleImageLoad(sortedIndex)}
+                            onError={() => handleImageError(sortedIndex)}
+                          />
+                          {/* Show match percentage badge for search results */}
+                          {isSearchResult && matchData && matchData.similarity > 0 && (
+                            <View style={styles.matchBadge}>
+                              <Text style={styles.matchBadgeText}>
+                                {Math.round(matchData.similarity * 100)}% match
+                              </Text>
+                            </View>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )}
+                </Pressable>
+              );
+            })}
           </ScrollView>
           {/* Image counter with busy spinner - visible immediately */}
           {totalImageCount > 0 && (
@@ -584,7 +663,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     prevProps.note.imageIds?.length === nextProps.note.imageIds?.length &&
     prevProps.note.people?.length === nextProps.note.people?.length &&
     prevProps.loading === nextProps.loading &&
-    prevProps.expectedImageCount === nextProps.expectedImageCount
+    prevProps.expectedImageCount === nextProps.expectedImageCount &&
+    prevProps.isSearchResult === nextProps.isSearchResult &&
+    JSON.stringify(prevProps.note.imageMatchData) === JSON.stringify(nextProps.note.imageMatchData)
   );
 });
 
@@ -626,10 +707,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardDark,
     width: IMAGE_WIDTH,
     height: IMAGE_HEIGHT,
+    position: 'relative',
   },
   image: {
     width: IMAGE_WIDTH,
     height: IMAGE_HEIGHT,
+  },
+  matchBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: 'rgba(255, 107, 122, 0.95)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    zIndex: 100,
+  },
+  matchBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   imageLoadingContainer: {
     position: 'absolute',

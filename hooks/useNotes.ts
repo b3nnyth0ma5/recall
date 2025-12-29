@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
-import { Note } from '@/types/Note';
+import { Note, ImageMatchData } from '@/types/Note';
 import { supabase, getImageDataUrl, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
@@ -132,7 +132,7 @@ export function useNotes() {
   }, []);
 
   // Optimized image loading with better error handling and caching
-  const loadImagesForRecalls = useCallback(async (recalls: any[]) => {
+  const loadImagesForRecalls = useCallback(async (recalls: any[], imageMatchDataMap?: Map<string, ImageMatchData[]>) => {
     // First, load people for all recalls in one batch
     const recallIds = recalls.map(r => r.id);
     const peopleByRecallId = await loadPeopleForRecalls(recallIds);
@@ -204,11 +204,15 @@ export function useNotes() {
           const validImageUrls = imageResults.map(result => result.url);
           const imageIds = imageResults.map(result => result.id);
           
+          // Get image match data if available
+          const imageMatchData = imageMatchDataMap?.get(recall.id);
+          
           const processedNote = { 
             ...recall, 
             images: validImageUrls, 
             imageIds: imageIds,
             people: peopleByRecallId[recall.id] || [],
+            imageMatchData: imageMatchData || undefined,
           };
 
           // Update note cache with processed note
@@ -222,6 +226,7 @@ export function useNotes() {
             images: [], 
             imageIds: [],
             people: [],
+            imageMatchData: undefined,
           };
         }
       })
@@ -274,7 +279,7 @@ export function useNotes() {
         setHasMore(false);
       }
 
-      // Optimized image and people loading
+      // Optimized image and people loading (no image match data for regular notes)
       const notesWithImagesAndPeople = await loadImagesForRecalls(recallsData);
 
       if (append) {
@@ -847,6 +852,20 @@ export function useNotes() {
           .in('id', matchedRecallIds)
           .eq('user_id', user.id);
 
+        // Create a map of recall_id to image match data from keyword results
+        const imageMatchDataMap = new Map<string, ImageMatchData[]>();
+        keywordRecalls.forEach((keywordRecall: any) => {
+          if (keywordRecall.images_data && keywordRecall.images_data.length > 0) {
+            const matchData: ImageMatchData[] = keywordRecall.images_data.map((img: any) => ({
+              imageId: img.id,
+              similarity: img.similarity,
+              ocr_text: img.ocr_text,
+              image_explanation: img.image_explanation,
+            }));
+            imageMatchDataMap.set(keywordRecall.recall_id, matchData);
+          }
+        });
+
         // Map recalls with match info
         const orderedRecalls = searchResults.results
           .map((matchInfo: any) => {
@@ -863,7 +882,7 @@ export function useNotes() {
           })
           .filter((recall: any) => recall !== null);
 
-        const notesWithImages = await loadImagesForRecalls(orderedRecalls);
+        const notesWithImages = await loadImagesForRecalls(orderedRecalls, imageMatchDataMap);
         
         setNotes(notesWithImages);
         setSearchAnswer(answer);

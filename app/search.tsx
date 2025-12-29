@@ -21,6 +21,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
+import { MarkdownAnswer } from '@/components/MarkdownAnswer';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -572,7 +573,7 @@ export default function SearchScreen() {
               </Animated.View>
             )}
 
-            {/* Answer Section */}
+            {/* Answer Section with Markdown Support */}
             {searchAnswer && searchConfidence !== undefined && (
               <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
                 <View style={styles.answerHeader}>
@@ -585,9 +586,13 @@ export default function SearchScreen() {
                     <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
                   </View>
                 </View>
-                <Text style={styles.answerText}>
-                  {isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
-                </Text>
+                <View style={styles.answerContent}>
+                  {isAnswerExpanded ? (
+                    <MarkdownAnswer content={searchAnswer} />
+                  ) : (
+                    <MarkdownAnswer content={getAnswerPreview(searchAnswer)} />
+                  )}
+                </View>
                 {shouldShowAnswerToggle(searchAnswer) && (
                   <Pressable 
                     onPress={() => setIsAnswerExpanded(!isAnswerExpanded)}
@@ -626,6 +631,7 @@ export default function SearchScreen() {
                         note={note}
                         onPress={() => handleNotePress(note.id)}
                         loading={false}
+                        isSearchResult={true}
                       />
                     </View>
                   </View>
@@ -978,10 +984,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primary,
   },
-  answerText: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: colors.text,
+  answerContent: {
+    width: '100%',
   },
   answerToggleContainer: {
     alignSelf: 'flex-end',

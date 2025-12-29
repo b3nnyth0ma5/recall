@@ -232,6 +232,50 @@ export default function CategoryViewerScreen() {
     return processedNotes;
   }, [loadPeopleForRecalls]);
 
+  // Start polling to check if matching is complete
+  const startMatchingPolling = useCallback(() => {
+    console.log('[CategoryViewer] Starting matching polling...');
+    
+    // Clear any existing interval
+    if (matchingCheckIntervalRef.current) {
+      clearInterval(matchingCheckIntervalRef.current);
+    }
+    
+    // Poll every 3 seconds
+    matchingCheckIntervalRef.current = setInterval(async () => {
+      try {
+        console.log('[CategoryViewer] Checking if matching is complete...');
+        
+        const { data: categoryData, error: categoryError } = await supabase
+          .from('recollection_categories')
+          .select('is_matching')
+          .eq('id', id)
+          .single();
+        
+        if (categoryError) {
+          console.error('[CategoryViewer] Error checking matching status:', categoryError);
+          return;
+        }
+        
+        if (!categoryData.is_matching) {
+          console.log('[CategoryViewer] Matching complete! Reloading recalls...');
+          setIsMatching(false);
+          
+          // Stop polling
+          if (matchingCheckIntervalRef.current) {
+            clearInterval(matchingCheckIntervalRef.current);
+            matchingCheckIntervalRef.current = null;
+          }
+          
+          // Reload recalls
+          await loadCategoryAndRecalls(1, false);
+        }
+      } catch (error) {
+        console.error('[CategoryViewer] Error in matching polling:', error);
+      }
+    }, 1500);
+  }, [id]);
+
   // Optimized category and recalls loading with pagination and cache usage
   const loadCategoryAndRecalls = useCallback(async (pageNum: number = 1, append: boolean = false) => {
     if (!id || !user) {
@@ -384,7 +428,7 @@ export default function CategoryViewerScreen() {
       setLoading(false);
       setIsLoadingMore(false);
     }
-  }, [id, user, router, getCachedNote, loadImagesForRecalls]);
+  }, [id, user, router, getCachedNote, loadImagesForRecalls, startMatchingPolling]);
 
   useEffect(() => {
     console.log('[CategoryViewer] Initial load triggered for category:', id);
@@ -399,50 +443,6 @@ export default function CategoryViewerScreen() {
         matchingCheckIntervalRef.current = null;
       }
     };
-  }, [id, loadCategoryAndRecalls]);
-
-  // Start polling to check if matching is complete
-  const startMatchingPolling = useCallback(() => {
-    console.log('[CategoryViewer] Starting matching polling...');
-    
-    // Clear any existing interval
-    if (matchingCheckIntervalRef.current) {
-      clearInterval(matchingCheckIntervalRef.current);
-    }
-    
-    // Poll every 3 seconds
-    matchingCheckIntervalRef.current = setInterval(async () => {
-      try {
-        console.log('[CategoryViewer] Checking if matching is complete...');
-        
-        const { data: categoryData, error: categoryError } = await supabase
-          .from('recollection_categories')
-          .select('is_matching')
-          .eq('id', id)
-          .single();
-        
-        if (categoryError) {
-          console.error('[CategoryViewer] Error checking matching status:', categoryError);
-          return;
-        }
-        
-        if (!categoryData.is_matching) {
-          console.log('[CategoryViewer] Matching complete! Reloading recalls...');
-          setIsMatching(false);
-          
-          // Stop polling
-          if (matchingCheckIntervalRef.current) {
-            clearInterval(matchingCheckIntervalRef.current);
-            matchingCheckIntervalRef.current = null;
-          }
-          
-          // Reload recalls
-          await loadCategoryAndRecalls(1, false);
-        }
-      } catch (error) {
-        console.error('[CategoryViewer] Error in matching polling:', error);
-      }
-    }, 1500);
   }, [id, loadCategoryAndRecalls]);
 
   const handleRefresh = async () => {
