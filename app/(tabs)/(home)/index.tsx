@@ -215,7 +215,7 @@ export default function HomeScreen() {
     data: {
       text: string;
       images: string[];
-      location?: { latitude: number; longitude: number; name: string };
+      location?: { latitude: number; longitude: number; name: string; primaryType?: string };
     },
     onProgress?: (stage: string) => void
   ) => {
@@ -228,6 +228,7 @@ export default function HomeScreen() {
     console.log('[handleCreateRecallFromCombined] Text length:', data.text.length);
     console.log('[handleCreateRecallFromCombined] Number of images:', data.images.length);
     console.log('[handleCreateRecallFromCombined] Has location:', !!data.location);
+    console.log('[handleCreateRecallFromCombined] Location primary type:', data.location?.primaryType || 'Not provided');
 
     try {
       setIsSaving(true);
@@ -247,6 +248,7 @@ export default function HomeScreen() {
           latitude: data.location?.latitude,
           longitude: data.location?.longitude,
           location: data.location?.name,
+          location_primary_type: data.location?.primaryType || null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })

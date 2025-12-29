@@ -59,14 +59,14 @@ function getSimilarityTier(similarity: number): 'HIGH' | 'MEDIUM' | 'LOW' | 'NON
 }
 
 /**
- * Calculate cosine similarity between two embeddings - OPTIMIZED
+ * Calculate cosine similarity between two embeddings - SIMPLIFIED
  */
 function calculateCosineSimilarity(embedding1: number[], embedding2: any): number {
   if (!embedding2 || !Array.isArray(embedding1) || embedding1.length === 0) return 0;
 
   let embedding2Array = embedding2;
 
-  // Handle different embedding formats
+  // Convert string to array if needed
   if (typeof embedding2 === 'string') {
     try {
       const cleanStr = embedding2.replace(/[\[\]]/g, '');
@@ -79,7 +79,7 @@ function calculateCosineSimilarity(embedding1: number[], embedding2: any): numbe
   if (!Array.isArray(embedding2Array) || embedding2Array.length === 0) return 0;
   if (embedding2Array.length !== embedding1.length) return 0;
 
-  // Cosine similarity calculation - optimized single pass
+  // Cosine similarity calculation - single pass
   let dotProduct = 0;
   let normA = 0;
   let normB = 0;
@@ -152,7 +152,7 @@ async function extractKeywords(query: string, openaiApiKey: string): Promise<str
 }
 
 /**
- * Generate embeddings for multiple keywords - OPTIMIZED with batching
+ * Generate embeddings for multiple keywords - SIMPLIFIED to base64 only
  */
 async function generateKeywordEmbeddings(keywords: string[], openaiApiKey: string): Promise<number[][]> {
   console.log(`Generating embeddings for ${keywords.length} keywords...`);
@@ -178,7 +178,7 @@ async function generateKeywordEmbeddings(keywords: string[], openaiApiKey: strin
 
   const embeddingData = await embeddingResponse.json();
   
-  // Decode all embeddings - optimized
+  // Decode all embeddings from base64
   const embeddings: number[][] = embeddingData.data.map((item: any) => {
     const embeddingBase64 = item.embedding;
     const binaryString = atob(embeddingBase64);
@@ -214,7 +214,7 @@ function calculateMultiKeywordMatch(
 }
 
 /**
- * Calculate aggregated match percentage - OPTIMIZED
+ * Calculate aggregated match percentage - SIMPLIFIED
  */
 function calculateAggregatedMatch(
   textSimilarity: number,

@@ -40,7 +40,7 @@ interface CombinedSearchAddProps {
   onCreateRecall: (data: {
     text: string;
     images: string[];
-    location?: { latitude: number; longitude: number; name: string };
+    location?: { latitude: number; longitude: number; name: string; primaryType?: string };
   }, onProgress?: (stage: string) => void) => Promise<void>;
   userId: string;
 }
@@ -56,12 +56,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const params = useLocalSearchParams();
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageState[]>([]);
-  const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
+  const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string; primaryType?: string } | null>(null);
   const [showDrawer, setShowDrawer] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [savingStage, setSavingStage] = useState<string>('');
   const [isDetectingIntent, setIsDetectingIntent] = useState(false);
-  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number; name: string; primaryType?: string } | null>(null);
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -219,6 +219,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         latitude,
         longitude,
         name: locationName,
+        primaryType: undefined, // Will be set when user selects a specific location
       };
 
       setCurrentLocation(locationData);
@@ -252,6 +253,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         latitude: parseFloat(params.selectedLatitude as string),
         longitude: parseFloat(params.selectedLongitude as string),
         name: params.selectedLocationName as string,
+        primaryType: params.selectedPrimaryType ? (params.selectedPrimaryType as string) : undefined,
       };
       
       console.log('[CombinedSearchAdd] Location selected from location-search:', selectedLocation);
@@ -282,7 +284,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         }
       }, 0);
     }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, router]);
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router]);
 
   const handlePlusPress = () => {
     if (Platform.OS !== 'web') {
