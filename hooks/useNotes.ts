@@ -594,56 +594,63 @@ export function useNotes() {
       await new Promise(resolve => setTimeout(resolve, 300));
 
       // PARALLEL EXECUTION: Run all three search functions simultaneously
-      console.log('Step 1: Running location, people, and keyword searches in parallel...');
+      console.log('Step 1: Running location, people, and keyword searches in PARALLEL...');
       const parallelSearchStart = Date.now();
       
-      // Track individual search times
-      const locationSearchStart = Date.now();
-      const peopleSearchStart = Date.now();
-      const keywordSearchStart = Date.now();
+      // Create promises for all three searches with individual timing
+      const locationPromise = (async () => {
+        const start = Date.now();
+        try {
+          const result = await supabase.functions.invoke('search-recalls-with-location', {
+            body: { 
+              query: query.trim(),
+              userLocation: userLocation,
+            },
+          });
+          const searchTime = Date.now() - start;
+          console.log(`[TIMING] Location search completed in ${searchTime}ms`);
+          return { ...result, searchTime };
+        } catch (error) {
+          console.error('Location search error:', error);
+          const searchTime = Date.now() - start;
+          return { data: null, error, searchTime };
+        }
+      })();
       
-      // Create promises for all three searches
-      const locationPromise = supabase.functions.invoke('search-recalls-with-location', {
-        body: { 
-          query: query.trim(),
-          userLocation: userLocation,
-        },
-      }).then(result => {
-        const locationSearchTime = Date.now() - locationSearchStart;
-        console.log(`[TIMING] Location search completed in ${locationSearchTime}ms`);
-        return { ...result, searchTime: locationSearchTime };
-      }).catch(error => {
-        console.error('Location search error:', error);
-        const locationSearchTime = Date.now() - locationSearchStart;
-        return { data: null, error, searchTime: locationSearchTime };
-      });
+      const peoplePromise = (async () => {
+        const start = Date.now();
+        try {
+          const result = await supabase.functions.invoke('search-recalls-with-people', {
+            body: { query: query.trim() },
+          });
+          const searchTime = Date.now() - start;
+          console.log(`[TIMING] People search completed in ${searchTime}ms`);
+          return { ...result, searchTime };
+        } catch (error) {
+          console.error('People search error:', error);
+          const searchTime = Date.now() - start;
+          return { data: null, error, searchTime };
+        }
+      })();
       
-      const peoplePromise = supabase.functions.invoke('search-recalls-with-people', {
-        body: { query: query.trim() },
-      }).then(result => {
-        const peopleSearchTime = Date.now() - peopleSearchStart;
-        console.log(`[TIMING] People search completed in ${peopleSearchTime}ms`);
-        return { ...result, searchTime: peopleSearchTime };
-      }).catch(error => {
-        console.error('People search error:', error);
-        const peopleSearchTime = Date.now() - peopleSearchStart;
-        return { data: null, error, searchTime: peopleSearchTime };
-      });
-      
-      const keywordPromise = supabase.functions.invoke('search-recalls-with-keywords', {
-        body: { 
-          query: query.trim(),
-          priorityRecallIds: [], // Will be updated with location/people results
-        },
-      }).then(result => {
-        const keywordSearchTime = Date.now() - keywordSearchStart;
-        console.log(`[TIMING] Keyword search completed in ${keywordSearchTime}ms`);
-        return { ...result, searchTime: keywordSearchTime };
-      }).catch(error => {
-        console.error('Keyword search error:', error);
-        const keywordSearchTime = Date.now() - keywordSearchStart;
-        return { data: null, error, searchTime: keywordSearchTime };
-      });
+      const keywordPromise = (async () => {
+        const start = Date.now();
+        try {
+          const result = await supabase.functions.invoke('search-recalls-with-keywords', {
+            body: { 
+              query: query.trim(),
+              priorityRecallIds: [], // Will be updated with location/people results
+            },
+          });
+          const searchTime = Date.now() - start;
+          console.log(`[TIMING] Keyword search completed in ${searchTime}ms`);
+          return { ...result, searchTime };
+        } catch (error) {
+          console.error('Keyword search error:', error);
+          const searchTime = Date.now() - start;
+          return { data: null, error, searchTime };
+        }
+      })();
 
       // Wait for all searches to complete in parallel
       const [locationResult, peopleResult, keywordResult] = await Promise.all([
@@ -653,7 +660,7 @@ export function useNotes() {
       ]);
 
       const parallelSearchTime = Date.now() - parallelSearchStart;
-      console.log(`Parallel searches completed in ${parallelSearchTime}ms`);
+      console.log(`All parallel searches completed in ${parallelSearchTime}ms`);
 
       // Process location results
       let locationRecalls: any[] = [];

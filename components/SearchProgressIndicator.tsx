@@ -1,14 +1,11 @@
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Animated, {
-  useSharedValue,
+  FadeIn,
   useAnimatedStyle,
-  withRepeat,
-  withSequence,
   withTiming,
   Easing,
-  interpolate,
 } from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
@@ -19,278 +16,254 @@ interface SearchProgressIndicatorProps {
   personNames?: string[];
 }
 
+interface StepConfig {
+  id: string;
+  icon: string;
+  title: string;
+  description: string;
+  stages: string[];
+}
+
+const STEPS: StepConfig[] = [
+  {
+    id: 'detecting',
+    icon: 'magnifyingglass.circle.fill',
+    title: 'Analyzing search intent',
+    description: 'Understanding your search query',
+    stages: ['detecting', 'resolving', 'filtering', 'people', 'keywords', 'searching', 'complete'],
+  },
+  {
+    id: 'resolving',
+    icon: 'map.fill',
+    title: 'Resolving location',
+    description: 'Looking up location details',
+    stages: ['resolving', 'filtering', 'people', 'keywords', 'searching', 'complete'],
+  },
+  {
+    id: 'filtering',
+    icon: 'line.3.horizontal.decrease.circle.fill',
+    title: 'Filtering nearby recalls',
+    description: 'Finding recalls in the area',
+    stages: ['filtering', 'people', 'keywords', 'searching', 'complete'],
+  },
+  {
+    id: 'people',
+    icon: 'person.2.fill',
+    title: 'Searching for people',
+    description: 'Matching people in your recalls',
+    stages: ['people', 'keywords', 'searching', 'complete'],
+  },
+  {
+    id: 'keywords',
+    icon: 'text.word.spacing',
+    title: 'Extracting keywords',
+    description: 'Analyzing content and images',
+    stages: ['keywords', 'searching', 'complete'],
+  },
+  {
+    id: 'searching',
+    icon: 'sparkles',
+    title: 'Generating answer with AI',
+    description: 'Crafting your personalized answer',
+    stages: ['searching', 'complete'],
+  },
+  {
+    id: 'complete',
+    icon: 'checkmark.circle.fill',
+    title: 'Complete',
+    description: 'Search completed successfully',
+    stages: ['complete'],
+  },
+];
+
 export function SearchProgressIndicator({ stage, locationName, personNames }: SearchProgressIndicatorProps) {
-  const progress = useSharedValue(0);
-  const pulseScale = useSharedValue(1);
-  const iconRotation = useSharedValue(0);
-
-  useEffect(() => {
-    // Progress animation based on stage with more granular steps
-    const targetProgress = {
-      detecting: 0.14,
-      resolving: 0.28,
-      filtering: 0.42,
-      people: 0.56,
-      keywords: 0.70,
-      searching: 0.85,
-      complete: 1,
-    }[stage];
-
-    progress.value = withTiming(targetProgress, {
-      duration: 500,
-      easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-    });
-
-    // Pulse animation
-    pulseScale.value = withRepeat(
-      withSequence(
-        withTiming(1.15, { duration: 700, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 700, easing: Easing.inOut(Easing.ease) })
-      ),
-      -1,
-      false
-    );
-
-    // Icon rotation - only when not complete
-    if (stage !== 'complete') {
-      iconRotation.value = withRepeat(
-        withTiming(360, { duration: 2000, easing: Easing.linear }),
-        -1,
-        false
-      );
-    } else {
-      iconRotation.value = withTiming(0, { duration: 300 });
-    }
-  }, [stage, progress, pulseScale, iconRotation]);
-
-  const progressBarStyle = useAnimatedStyle(() => {
-    return {
-      width: `${interpolate(progress.value, [0, 1], [0, 100])}%`,
-    };
-  });
-
-  const pulseStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: pulseScale.value }],
-    };
-  });
-
-  const iconRotationStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ rotate: `${iconRotation.value}deg` }],
-    };
-  });
-
-  const getStageText = () => {
-    switch (stage) {
-      case 'detecting':
-        return 'Analyzing search intent...';
-      case 'resolving':
-        return locationName ? `Finding ${locationName}...` : 'Resolving location...';
-      case 'filtering':
-        return 'Filtering nearby recalls...';
-      case 'people':
-        return personNames && personNames.length > 0
-          ? `Finding recalls with ${personNames.join(', ')}...`
-          : 'Searching for people...';
-      case 'keywords':
-        return 'Extracting keywords and matching...';
-      case 'searching':
-        return 'Generating answer with AI...';
-      case 'complete':
-        return 'Complete!';
-      default:
-        return 'Searching...';
-    }
+  const isStepComplete = (step: StepConfig): boolean => {
+    return step.stages.includes(stage) && stage !== step.id;
   };
 
-  const getStageIcon = () => {
-    switch (stage) {
-      case 'detecting':
-        return 'magnifyingglass.circle.fill';
-      case 'resolving':
-        return 'map.fill';
-      case 'filtering':
-        return 'line.3.horizontal.decrease.circle.fill';
-      case 'people':
-        return 'person.2.fill';
-      case 'keywords':
-        return 'text.word.spacing';
-      case 'searching':
-        return 'sparkles';
-      case 'complete':
-        return 'checkmark.circle.fill';
-      default:
-        return 'magnifyingglass';
-    }
+  const isStepActive = (step: StepConfig): boolean => {
+    return stage === step.id;
   };
 
-  const getStageDescription = () => {
-    switch (stage) {
-      case 'detecting':
-        return 'Understanding your search query';
-      case 'resolving':
-        return 'Looking up location details';
-      case 'filtering':
-        return 'Finding recalls in the area';
-      case 'people':
-        return 'Matching people in your recalls';
-      case 'keywords':
-        return 'Analyzing content and images';
-      case 'searching':
-        return 'Crafting your personalized answer';
-      case 'complete':
-        return 'Search completed successfully';
-      default:
-        return '';
+  const getStepStatus = (step: StepConfig): 'pending' | 'active' | 'complete' => {
+    if (isStepComplete(step)) {
+      return 'complete';
     }
+    if (isStepActive(step)) {
+      return 'active';
+    }
+    return 'pending';
+  };
+
+  const getStepTitle = (step: StepConfig): string => {
+    if (step.id === 'resolving' && locationName) {
+      return `Finding ${locationName}`;
+    }
+    if (step.id === 'people' && personNames && personNames.length > 0) {
+      return `Finding recalls with ${personNames.join(', ')}`;
+    }
+    return step.title;
   };
 
   return (
-    <View style={styles.container}>
-      <Animated.View style={[styles.iconContainer, pulseStyle]}>
-        <Animated.View style={stage !== 'complete' ? iconRotationStyle : undefined}>
-          <IconSymbol
-            name={getStageIcon()}
-            size={48}
-            color={stage === 'complete' ? colors.success : colors.primary}
-          />
-        </Animated.View>
-      </Animated.View>
+    <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
+      <View style={styles.stepsContainer}>
+        {STEPS.map((step, index) => {
+          const status = getStepStatus(step);
+          const isLast = index === STEPS.length - 1;
 
-      <Text style={styles.stageText}>{getStageText()}</Text>
-      <Text style={styles.stageDescription}>{getStageDescription()}</Text>
-
-      {locationName && (stage === 'resolving' || stage === 'filtering') && (
-        <View style={styles.infoBadge}>
-          <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
-          <Text style={styles.infoText}>{locationName}</Text>
-        </View>
-      )}
-
-      {personNames && personNames.length > 0 && stage === 'people' && (
-        <View style={styles.infoBadge}>
-          <IconSymbol name="person.circle.fill" size={16} color={colors.primary} />
-          <Text style={styles.infoText}>{personNames.join(', ')}</Text>
-        </View>
-      )}
-
-      <View style={styles.progressBarContainer}>
-        <Animated.View style={[styles.progressBar, progressBarStyle]} />
+          return (
+            <React.Fragment key={step.id}>
+              <StepItem
+                step={step}
+                status={status}
+                locationName={locationName}
+                personNames={personNames}
+                title={getStepTitle(step)}
+              />
+              {!isLast && <StepConnector status={status} />}
+            </React.Fragment>
+          );
+        })}
       </View>
+    </Animated.View>
+  );
+}
 
-      {/* Stage indicators */}
-      <View style={styles.stageIndicators}>
-        <View style={[
-          styles.stageIndicator,
-          (stage === 'detecting' || stage === 'resolving' || stage === 'filtering' || 
-           stage === 'people' || stage === 'keywords' || stage === 'searching' || 
-           stage === 'complete') && styles.stageIndicatorActive
-        ]} />
-        <View style={[
-          styles.stageIndicator,
-          (stage === 'resolving' || stage === 'filtering' || stage === 'people' || 
-           stage === 'keywords' || stage === 'searching' || stage === 'complete') && 
-           styles.stageIndicatorActive
-        ]} />
-        <View style={[
-          styles.stageIndicator,
-          (stage === 'filtering' || stage === 'people' || stage === 'keywords' || 
-           stage === 'searching' || stage === 'complete') && styles.stageIndicatorActive
-        ]} />
-        <View style={[
-          styles.stageIndicator,
-          (stage === 'people' || stage === 'keywords' || stage === 'searching' || 
-           stage === 'complete') && styles.stageIndicatorActive
-        ]} />
-        <View style={[
-          styles.stageIndicator,
-          (stage === 'keywords' || stage === 'searching' || stage === 'complete') && 
-           styles.stageIndicatorActive
-        ]} />
-        <View style={[
-          styles.stageIndicator,
-          (stage === 'searching' || stage === 'complete') && styles.stageIndicatorActive
-        ]} />
-        <View style={[
-          styles.stageIndicator,
-          stage === 'complete' && styles.stageIndicatorActive
-        ]} />
+interface StepItemProps {
+  step: StepConfig;
+  status: 'pending' | 'active' | 'complete';
+  locationName?: string;
+  personNames?: string[];
+  title: string;
+}
+
+function StepItem({ step, status, locationName, personNames, title }: StepItemProps) {
+  const iconColor = status === 'complete' 
+    ? colors.success 
+    : status === 'active' 
+    ? colors.primary 
+    : colors.textTertiary;
+
+  const textColor = status === 'pending' ? colors.textTertiary : colors.text;
+  const descriptionColor = status === 'pending' ? colors.textTertiary : colors.textSecondary;
+
+  const iconContainerStyle = useAnimatedStyle(() => {
+    return {
+      backgroundColor: status === 'complete'
+        ? withTiming(`${colors.success}20`, { duration: 300, easing: Easing.bezier(0.25, 0.1, 0.25, 1) })
+        : status === 'active'
+        ? withTiming(`${colors.primary}20`, { duration: 300, easing: Easing.bezier(0.25, 0.1, 0.25, 1) })
+        : withTiming(`${colors.textTertiary}10`, { duration: 300, easing: Easing.bezier(0.25, 0.1, 0.25, 1) }),
+    };
+  });
+
+  return (
+    <View style={styles.stepItem}>
+      <Animated.View style={[styles.iconContainer, iconContainerStyle]}>
+        <IconSymbol
+          name={status === 'complete' ? 'checkmark.circle.fill' : step.icon}
+          size={28}
+          color={iconColor}
+        />
+      </Animated.View>
+      <View style={styles.stepContent}>
+        <Text style={[styles.stepTitle, { color: textColor }]}>
+          {title}
+        </Text>
+        <Text style={[styles.stepDescription, { color: descriptionColor }]}>
+          {step.description}
+        </Text>
+        
+        {/* Show location badge when resolving or filtering */}
+        {locationName && (step.id === 'resolving' || step.id === 'filtering') && status !== 'pending' && (
+          <View style={styles.infoBadge}>
+            <IconSymbol name="mappin.circle.fill" size={14} color={colors.primary} />
+            <Text style={styles.infoText}>{locationName}</Text>
+          </View>
+        )}
+
+        {/* Show people badge when searching for people */}
+        {personNames && personNames.length > 0 && step.id === 'people' && status !== 'pending' && (
+          <View style={styles.infoBadge}>
+            <IconSymbol name="person.circle.fill" size={14} color={colors.primary} />
+            <Text style={styles.infoText}>{personNames.join(', ')}</Text>
+          </View>
+        )}
       </View>
     </View>
   );
 }
 
+interface StepConnectorProps {
+  status: 'pending' | 'active' | 'complete';
+}
+
+function StepConnector({ status }: StepConnectorProps) {
+  const connectorStyle = useAnimatedStyle(() => {
+    return {
+      backgroundColor: status === 'complete'
+        ? withTiming(colors.success, { duration: 300, easing: Easing.bezier(0.25, 0.1, 0.25, 1) })
+        : withTiming(colors.border, { duration: 300, easing: Easing.bezier(0.25, 0.1, 0.25, 1) }),
+    };
+  });
+
+  return <Animated.View style={[styles.connector, connectorStyle]} />;
+}
+
 const styles = StyleSheet.create({
   container: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-    gap: 12,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+  },
+  stepsContainer: {
+    width: '100%',
+  },
+  stepItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
   },
   iconContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: `${colors.primary}15`,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
-  stageText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
-    marginTop: 4,
+  stepContent: {
+    flex: 1,
+    paddingTop: 4,
   },
-  stageDescription: {
+  stepTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  stepDescription: {
     fontSize: 14,
-    fontWeight: '400',
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 8,
+    lineHeight: 20,
   },
   infoBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     backgroundColor: `${colors.primary}15`,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    marginTop: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginTop: 8,
+    alignSelf: 'flex-start',
   },
   infoText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.primary,
   },
-  progressBarContainer: {
-    width: '85%',
-    height: 6,
-    backgroundColor: colors.border,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginTop: 16,
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: colors.primary,
-    borderRadius: 3,
-  },
-  stageIndicators: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-  },
-  stageIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.border,
-  },
-  stageIndicatorActive: {
-    backgroundColor: colors.primary,
+  connector: {
+    width: 2,
+    height: 24,
+    marginLeft: 23,
+    marginVertical: 4,
   },
 });
