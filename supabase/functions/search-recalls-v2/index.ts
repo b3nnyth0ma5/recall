@@ -7,258 +7,6 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-// Three-tier threshold configuration
-const SIMILARITY_THRESHOLDS = {
-  HIGH: 0.60,    // 60% similarity - High confidence matches
-  MEDIUM: 0.40,  // 40% similarity - Medium confidence matches
-  LOW: 0.25      // 25% similarity - Low confidence matches
-};
-
-interface RecallMatch {
-  recall_id: string;
-  text_similarity: number;
-  image_similarities: number[];
-  keyword_matches: number;
-  aggregated_match: number;
-  tier: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
-  isPriority: boolean;
-  recall_data: {
-    text: string;
-    location: string;
-    location_primary_type: string;
-  };
-  images_data: Array<{
-    id: string;
-    ocr_text: string;
-    image_explanation: string;
-    similarity: number;
-  }>;
-}
-
-/**
- * Clean the word "recalls" from the search query
- */
-function cleanRecallsFromQuery(query: string): string {
-  const cleaned = query
-    .replace(/\brecalls?\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  
-  console.log(`Cleaned query: "${query}" -> "${cleaned}"`);
-  return cleaned;
-}
-
-/**
- * Determine the tier based on similarity score
- */
-function getSimilarityTier(similarity: number): 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE' {
-  if (similarity >= SIMILARITY_THRESHOLDS.HIGH) return 'HIGH';
-  if (similarity >= SIMILARITY_THRESHOLDS.MEDIUM) return 'MEDIUM';
-  if (similarity >= SIMILARITY_THRESHOLDS.LOW) return 'LOW';
-  return 'NONE';
-}
-
-/**
- * Calculate cosine similarity between two embeddings
- */
-function calculateCosineSimilarity(embedding1: number[], embedding2: any): number {
-  if (!embedding2) return 0;
-
-  let embedding2Array = embedding2;
-
-  // Handle different embedding formats
-  if (typeof embedding2 === 'string') {
-    try {
-      const cleanStr = embedding2.replace(/[\[\]]/g, '');
-      embedding2Array = cleanStr.split(',').map((s: string) => parseFloat(s.trim()));
-    } catch (e) {
-      console.error('Failed to parse embedding string:', e);
-      return 0;
-    }
-  }
-
-  if (!Array.isArray(embedding2Array) || embedding2Array.length === 0) return 0;
-  if (!Array.isArray(embedding1) || embedding1.length === 0) return 0;
-  if (embedding2Array.length !== embedding1.length) return 0;
-
-  // Cosine similarity calculation
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < embedding1.length; i++) {
-    const val1 = embedding1[i];
-    const val2 = embedding2Array[i];
-    dotProduct += val1 * val2;
-    normA += val1 * val1;
-    normB += val2 * val2;
-  }
-
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  if (denominator === 0) return 0;
-
-  const similarity = dotProduct / denominator;
-  const clampedSimilarity = Math.max(-1, Math.min(1, similarity));
-
-  return isNaN(clampedSimilarity) ? 0 : clampedSimilarity;
-}
-
-/**
- * Extract keywords from query using OpenAI NER
- */
-async function extractKeywords(query: string, openaiApiKey: string): Promise<string[]> {
-  console.log('Extracting keywords using OpenAI NER...');
-  
-  const nerPrompt = `You are a keyword extraction specialist. Extract keywords and named entities from the following query. Focus on:
-- Named entities (people, places, organizations, dates, times)
-- Important nouns and noun phrases
-- Key concepts and topics
-
-Return ONLY the extracted keywords as a comma-separated list, without any explanation or additional text.
-
-Query: ${query}
-
-Keywords:`;
-
-  const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${openaiApiKey}`
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a keyword extraction assistant. Extract only the most important keywords and named entities from user queries. Return them as a comma-separated list without any explanation.'
-        },
-        {
-          role: 'user',
-          content: nerPrompt
-        }
-      ],
-      temperature: 0.2,
-      max_tokens: 100
-    })
-  });
-
-  if (!nerResponse.ok) {
-    const errorText = await nerResponse.text();
-    console.error('OpenAI NER API error:', errorText);
-    throw new Error(`Failed to extract keywords: ${errorText}`);
-  }
-
-  const nerData = await nerResponse.json();
-  const extractedKeywords = nerData.choices?.[0]?.message?.content?.trim() || query;
-  
-  // Split keywords by comma and clean them
-  const keywords = extractedKeywords
-    .split(',')
-    .map((k: string) => k.trim())
-    .filter((k: string) => k.length > 0);
-  
-  console.log('Extracted keywords:', keywords);
-  return keywords;
-}
-
-/**
- * Generate embeddings for multiple keywords
- */
-async function generateKeywordEmbeddings(keywords: string[], openaiApiKey: string): Promise<number[][]> {
-  console.log(`Generating embeddings for ${keywords.length} keywords...`);
-  
-  const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${openaiApiKey}`
-    },
-    body: JSON.stringify({
-      model: 'text-embedding-3-small',
-      input: keywords,
-      encoding_format: 'base64'
-    })
-  });
-
-  if (!embeddingResponse.ok) {
-    const errorText = await embeddingResponse.text();
-    console.error('OpenAI embedding API error:', errorText);
-    throw new Error(`Failed to generate embeddings: ${errorText}`);
-  }
-
-  const embeddingData = await embeddingResponse.json();
-  
-  // Decode all embeddings
-  const embeddings: number[][] = [];
-  for (const item of embeddingData.data) {
-    const embeddingBase64 = item.embedding;
-    const binaryString = atob(embeddingBase64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    const float32Array = new Float32Array(bytes.buffer);
-    embeddings.push(Array.from(float32Array));
-  }
-  
-  console.log(`Generated ${embeddings.length} embeddings`);
-  return embeddings;
-}
-
-/**
- * Calculate multi-keyword match score
- * Returns the number of keywords that match above threshold and the best similarity
- */
-function calculateMultiKeywordMatch(
-  keywordEmbeddings: number[][],
-  targetEmbedding: any
-): { matchCount: number; bestSimilarity: number; allSimilarities: number[] } {
-  const similarities = keywordEmbeddings.map(keywordEmb => 
-    calculateCosineSimilarity(keywordEmb, targetEmbedding)
-  );
-  
-  // Count how many keywords match above LOW threshold
-  const matchCount = similarities.filter(sim => sim >= SIMILARITY_THRESHOLDS.LOW).length;
-  const bestSimilarity = Math.max(...similarities, 0);
-  
-  return { matchCount, bestSimilarity, allSimilarities: similarities };
-}
-
-/**
- * Calculate aggregated match percentage for a recall
- * Combines text similarity and all image similarities
- */
-function calculateAggregatedMatch(
-  textSimilarity: number,
-  imageSimilarities: number[],
-  keywordMatchCount: number,
-  totalKeywords: number
-): number {
-  // Weight: 40% text, 40% images, 20% keyword coverage
-  const textWeight = 0.4;
-  const imageWeight = 0.4;
-  const keywordWeight = 0.2;
-  
-  // Text component
-  const textScore = textSimilarity * textWeight;
-  
-  // Image component (average of all image similarities)
-  const avgImageSimilarity = imageSimilarities.length > 0
-    ? imageSimilarities.reduce((sum, sim) => sum + sim, 0) / imageSimilarities.length
-    : 0;
-  const imageScore = avgImageSimilarity * imageWeight;
-  
-  // Keyword coverage component
-  const keywordCoverage = totalKeywords > 0 ? keywordMatchCount / totalKeywords : 0;
-  const keywordScore = keywordCoverage * keywordWeight;
-  
-  // Combine all components
-  const aggregated = textScore + imageScore + keywordScore;
-  
-  return Math.max(0, Math.min(1, aggregated));
-}
-
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -303,7 +51,7 @@ Deno.serve(async (req) => {
     console.log('Authenticated user:', user.id);
 
     // Parse request body
-    const { query, locationRecallIds, peopleRecallIds, personInfo } = await req.json();
+    const { query, locationRecalls, peopleRecalls, keywordRecalls, personInfo } = await req.json();
 
     if (!query || typeof query !== 'string') {
       return new Response(JSON.stringify({ error: 'Query parameter is required' }), {
@@ -312,68 +60,73 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log('Original search query:', query);
-    console.log('Location-filtered recall IDs:', locationRecallIds ? `${locationRecallIds.length} IDs` : 'None');
-    console.log('People-filtered recall IDs:', peopleRecallIds ? `${peopleRecallIds.length} IDs` : 'None');
+    console.log('Search query:', query);
+    console.log('Location recalls:', locationRecalls ? `${locationRecalls.length} recalls` : 'None');
+    console.log('People recalls:', peopleRecalls ? `${peopleRecalls.length} recalls` : 'None');
+    console.log('Keyword recalls:', keywordRecalls ? `${keywordRecalls.length} recalls` : 'None');
 
-    // Clean the query
-    const cleanedQuery = cleanRecallsFromQuery(query);
-    console.log('Cleaned query:', cleanedQuery);
-
-    // Combine location and people recall IDs (prioritize these)
-    const priorityRecallIds = new Set<string>();
-    if (locationRecallIds && Array.isArray(locationRecallIds)) {
-      locationRecallIds.forEach((id: string) => priorityRecallIds.add(id));
-    }
-    if (peopleRecallIds && Array.isArray(peopleRecallIds)) {
-      peopleRecallIds.forEach((id: string) => priorityRecallIds.add(id));
-    }
-
-    console.log(`Combined priority recall IDs: ${priorityRecallIds.size}`);
-
-    // If query is blank after cleaning and we have priority recalls, return them all
-    if (!cleanedQuery.trim() && priorityRecallIds.size > 0) {
-      console.log('Query is blank after cleaning - returning all location/people results');
-      
-      const priorityIds = Array.from(priorityRecallIds);
-      const { data: recallsData, error: fetchError } = await supabase
-        .from('recalls')
-        .select('id')
-        .in('id', priorityIds)
-        .eq('user_id', user.id);
-
-      if (fetchError) {
-        console.error('Error fetching priority recalls:', fetchError);
-        return new Response(JSON.stringify({ error: 'Failed to fetch recalls', details: fetchError.message }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    // Combine all recalls (deduplicate by recall_id)
+    const allRecallsMap = new Map();
+    
+    // Add location recalls
+    if (locationRecalls && Array.isArray(locationRecalls)) {
+      locationRecalls.forEach((recall: any) => {
+        allRecallsMap.set(recall.recall_id, {
+          ...recall,
+          isLocationMatch: true,
+          isPeopleMatch: false,
+          isKeywordMatch: false
         });
-      }
-
-      const results = (recallsData || []).map((recall: any) => ({
-        id: recall.id,
-        matchPercentage: 100,
-        usedForAnswer: false,
-        tier: 'HIGH'
-      }));
-
-      console.log(`Returning ${results.length} priority recalls (query was blank after cleaning)`);
-
-      return new Response(JSON.stringify({
-        answer: null,
-        confidence: 0,
-        results,
-        processingTimeMs: Date.now() - startTime,
-        personInfo: personInfo || null,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Add people recalls
+    if (peopleRecalls && Array.isArray(peopleRecalls)) {
+      peopleRecalls.forEach((recall: any) => {
+        if (allRecallsMap.has(recall.recall_id)) {
+          const existing = allRecallsMap.get(recall.recall_id);
+          allRecallsMap.set(recall.recall_id, {
+            ...existing,
+            isPeopleMatch: true
+          });
+        } else {
+          allRecallsMap.set(recall.recall_id, {
+            ...recall,
+            isLocationMatch: false,
+            isPeopleMatch: true,
+            isKeywordMatch: false
+          });
+        }
+      });
+    }
+    
+    // Add keyword recalls
+    if (keywordRecalls && Array.isArray(keywordRecalls)) {
+      keywordRecalls.forEach((recall: any) => {
+        if (allRecallsMap.has(recall.recall_id)) {
+          const existing = allRecallsMap.get(recall.recall_id);
+          allRecallsMap.set(recall.recall_id, {
+            ...existing,
+            isKeywordMatch: true,
+            // Boost match percentage if it matches multiple criteria
+            matchPercentage: Math.min(100, existing.matchPercentage + recall.matchPercentage * 0.2)
+          });
+        } else {
+          allRecallsMap.set(recall.recall_id, {
+            ...recall,
+            isLocationMatch: false,
+            isPeopleMatch: false,
+            isKeywordMatch: true
+          });
+        }
       });
     }
 
-    // If query is blank and no priority recalls, return empty results
-    if (!cleanedQuery.trim()) {
-      console.log('Query is blank after cleaning and no priority recalls - returning empty results');
+    const allRecalls = Array.from(allRecallsMap.values());
+    console.log(`Combined ${allRecalls.length} unique recalls from all sources`);
+
+    if (allRecalls.length === 0) {
+      console.log('No recalls to process');
       return new Response(JSON.stringify({
         answer: null,
         confidence: 0,
@@ -396,180 +149,48 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Step 1: Extract keywords and generate embeddings
-    console.log('Step 1: Extracting keywords and generating embeddings...');
-    const keywords = await extractKeywords(cleanedQuery, openaiApiKey);
-    const keywordEmbeddings = await generateKeywordEmbeddings(keywords, openaiApiKey);
-
-    // Step 2: Fetch recalls and images with embeddings
-    console.log('Step 2: Fetching recalls and images...');
-    
-    // Build queries
-    let recallsQuery = supabase
-      .from('recalls')
-      .select('id, text, location, location_primary_type, recall_embedding')
-      .eq('user_id', user.id)
-      .not('recall_embedding', 'is', null);
-
-    let imagesQuery = supabase
-      .from('recall_images')
-      .select('id, recall_id, ocr_text, image_explanation, recall_image_embedding')
-      .eq('user_id', user.id)
-      .not('recall_image_embedding', 'is', null);
-
-    // Filter by priority recalls if they exist
-    if (priorityRecallIds.size > 0) {
-      const priorityIds = Array.from(priorityRecallIds);
-      console.log(`Filtering to ${priorityIds.length} priority recalls`);
-      recallsQuery = recallsQuery.in('id', priorityIds);
-      imagesQuery = imagesQuery.in('recall_id', priorityIds);
-    }
-
-    // Fetch in parallel for speed
-    const [recallsResult, imagesResult] = await Promise.all([
-      recallsQuery,
-      imagesQuery
-    ]);
-
-    if (recallsResult.error) {
-      console.error('Error fetching recalls:', recallsResult.error);
-      return new Response(JSON.stringify({ error: 'Failed to fetch recalls', details: recallsResult.error.message }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    if (imagesResult.error) {
-      console.error('Error fetching images:', imagesResult.error);
-      return new Response(JSON.stringify({ error: 'Failed to fetch images', details: imagesResult.error.message }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    const allRecalls = recallsResult.data || [];
-    const allImages = imagesResult.data || [];
-
-    console.log(`Found ${allRecalls.length} recalls and ${allImages.length} images with embeddings`);
-
-    // Step 3: Calculate multi-keyword matches and aggregate scores
-    console.log('Step 3: Calculating multi-keyword matches and aggregated scores...');
-    
-    // Group images by recall_id for efficient lookup
-    const imagesByRecall = new Map<string, typeof allImages>();
-    for (const image of allImages) {
-      if (!imagesByRecall.has(image.recall_id)) {
-        imagesByRecall.set(image.recall_id, []);
-      }
-      imagesByRecall.get(image.recall_id)!.push(image);
-    }
-
-    // Calculate matches for each recall
-    const recallMatches: RecallMatch[] = [];
-    
-    for (const recall of allRecalls) {
-      // Calculate text similarity with multi-keyword matching
-      const textMatch = calculateMultiKeywordMatch(keywordEmbeddings, recall.recall_embedding);
-      
-      // Calculate image similarities
-      const recallImages = imagesByRecall.get(recall.id) || [];
-      const imageSimilarities: number[] = [];
-      const imagesData: RecallMatch['images_data'] = [];
-      let totalImageKeywordMatches = 0;
-      
-      for (const image of recallImages) {
-        const imageMatch = calculateMultiKeywordMatch(keywordEmbeddings, image.recall_image_embedding);
-        imageSimilarities.push(imageMatch.bestSimilarity);
-        totalImageKeywordMatches += imageMatch.matchCount;
-        
-        imagesData.push({
-          id: image.id,
-          ocr_text: image.ocr_text || '',
-          image_explanation: image.image_explanation || '',
-          similarity: imageMatch.bestSimilarity
-        });
-      }
-      
-      // Total keyword matches (text + images)
-      const totalKeywordMatches = textMatch.matchCount + totalImageKeywordMatches;
-      
-      // Calculate aggregated match percentage
-      const aggregatedMatch = calculateAggregatedMatch(
-        textMatch.bestSimilarity,
-        imageSimilarities,
-        totalKeywordMatches,
-        keywords.length
-      );
-      
-      const tier = getSimilarityTier(aggregatedMatch);
-      const isPriority = priorityRecallIds.has(recall.id);
-      
-      // Only include recalls that meet LOW threshold or higher
-      if (tier !== 'NONE') {
-        recallMatches.push({
-          recall_id: recall.id,
-          text_similarity: textMatch.bestSimilarity,
-          image_similarities: imageSimilarities,
-          keyword_matches: totalKeywordMatches,
-          aggregated_match: aggregatedMatch,
-          tier,
-          isPriority,
-          recall_data: {
-            text: recall.text || '',
-            location: recall.location || '',
-            location_primary_type: recall.location_primary_type || ''
-          },
-          images_data: imagesData
-        });
-      }
-    }
-
-    console.log(`Found ${recallMatches.length} recalls meeting threshold`);
-
-    // Sort by priority, then tier, then aggregated match
-    const tierOrder = { HIGH: 3, MEDIUM: 2, LOW: 1, NONE: 0 };
-    recallMatches.sort((a, b) => {
-      if (a.isPriority && !b.isPriority) return -1;
-      if (!a.isPriority && b.isPriority) return 1;
-      if (tierOrder[a.tier] !== tierOrder[b.tier]) {
-        return tierOrder[b.tier] - tierOrder[a.tier];
-      }
-      return b.aggregated_match - a.aggregated_match;
-    });
-
-    if (recallMatches.length === 0) {
-      console.log('No matches found');
-      return new Response(JSON.stringify({
-        answer: null,
-        confidence: 0,
-        results: [],
-        processingTimeMs: Date.now() - startTime,
-        personInfo: personInfo || null,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
     // Step 4: Generate answer using OpenAI with ALL recall information
     console.log('Step 4: Generating answer with OpenAI using all recall information...');
     
-    // Build comprehensive context including all images
-    const contextWithSources = recallMatches.map((match, idx) => {
-      const sourceId = `SOURCE_${idx + 1}`;
-      const priorityMarker = match.isPriority ? ' [PRIORITY - From location/people search]' : '';
-      const tierMarker = ` [${match.tier} TIER]`;
-      const keywordMarker = ` [${match.keyword_matches}/${keywords.length} keywords matched]`;
+    // Sort recalls by match percentage and match type priority
+    allRecalls.sort((a, b) => {
+      // Prioritize recalls that match multiple criteria
+      const aMultiMatch = (a.isLocationMatch ? 1 : 0) + (a.isPeopleMatch ? 1 : 0) + (a.isKeywordMatch ? 1 : 0);
+      const bMultiMatch = (b.isLocationMatch ? 1 : 0) + (b.isPeopleMatch ? 1 : 0) + (b.isKeywordMatch ? 1 : 0);
       
-      let contextText = `${sourceId} (${Math.round(match.aggregated_match * 100)}% aggregated match${priorityMarker}${tierMarker}${keywordMarker}):\n`;
-      contextText += `Text: ${match.recall_data.text}\n`;
-      contextText += `Location: ${match.recall_data.location}\n`;
-      contextText += `Location Type: ${match.recall_data.location_primary_type}\n`;
+      if (aMultiMatch !== bMultiMatch) {
+        return bMultiMatch - aMultiMatch;
+      }
+      
+      // Then by match percentage
+      return (b.matchPercentage || 0) - (a.matchPercentage || 0);
+    });
+    
+    // Build comprehensive context including all images
+    const contextWithSources = allRecalls.map((recall: any, idx: number) => {
+      const sourceId = `SOURCE_${idx + 1}`;
+      
+      // Build match type indicators
+      const matchTypes: string[] = [];
+      if (recall.isLocationMatch) matchTypes.push('LOCATION');
+      if (recall.isPeopleMatch) matchTypes.push('PEOPLE');
+      if (recall.isKeywordMatch) matchTypes.push('KEYWORD');
+      const matchTypeStr = matchTypes.length > 0 ? ` [${matchTypes.join(' + ')}]` : '';
+      
+      const tierMarker = recall.tier ? ` [${recall.tier} TIER]` : '';
+      const keywordMarker = recall.keywordMatches && recall.totalKeywords 
+        ? ` [${recall.keywordMatches}/${recall.totalKeywords} keywords matched]` 
+        : '';
+      
+      let contextText = `${sourceId} (${Math.round(recall.matchPercentage || 0)}% match${matchTypeStr}${tierMarker}${keywordMarker}):\n`;
+      contextText += `Text: ${recall.recall_data?.text || ''}\n`;
+      contextText += `Location: ${recall.recall_data?.location || ''}\n`;
+      contextText += `Location Type: ${recall.recall_data?.location_primary_type || ''}\n`;
       
       // Include ALL images with their information
-      if (match.images_data.length > 0) {
-        contextText += `Images (${match.images_data.length}):\n`;
-        match.images_data.forEach((img, imgIdx) => {
+      if (recall.images_data && recall.images_data.length > 0) {
+        contextText += `Images (${recall.images_data.length}):\n`;
+        recall.images_data.forEach((img: any, imgIdx: number) => {
           contextText += `  Image ${imgIdx + 1} (${Math.round(img.similarity * 100)}% match):\n`;
           if (img.image_explanation) {
             contextText += `    Explanation: ${img.image_explanation}\n`;
@@ -582,11 +203,13 @@ Deno.serve(async (req) => {
       
       return {
         sourceId,
-        recallId: match.recall_id,
+        recallId: recall.recall_id,
         text: contextText,
-        aggregatedMatch: match.aggregated_match,
-        tier: match.tier,
-        isPriority: match.isPriority
+        matchPercentage: recall.matchPercentage || 0,
+        tier: recall.tier || 'MEDIUM',
+        isLocationMatch: recall.isLocationMatch || false,
+        isPeopleMatch: recall.isPeopleMatch || false,
+        isKeywordMatch: recall.isKeywordMatch || false
       };
     });
 
@@ -602,14 +225,14 @@ CRITICAL RULES:
 5. Use bullet points when listing multiple items
 6. Provide a confidence score (0-100) based on how well the recalls answer the question
 
-PRIORITY HANDLING:
-- Sources marked as [PRIORITY] should be given HIGHEST priority
-- Sources marked as [HIGH TIER] have the strongest match (60%+) and should be prioritized
-- Sources marked as [MEDIUM TIER] have moderate match (40-60%)
-- Sources marked as [LOW TIER] have weaker match (25-40%)
+MATCH TYPE PRIORITY:
+- Sources marked with [LOCATION + PEOPLE + KEYWORD] have the HIGHEST priority (match all criteria)
+- Sources marked with [LOCATION + KEYWORD] or [PEOPLE + KEYWORD] have HIGH priority (match two criteria)
+- Sources marked with [LOCATION], [PEOPLE], or [KEYWORD] alone have MEDIUM priority (match one criterion)
+- Pay attention to TIER markers: [HIGH TIER] (60%+), [MEDIUM TIER] (40-60%), [LOW TIER] (25-40%)
 - Pay attention to keyword match counts - more matched keywords indicate better relevance
 
-Question: ${cleanedQuery}
+Question: ${query}
 
 Available Recalls (with all images):
 ${context}
@@ -682,53 +305,54 @@ If the recalls don't contain the requested information, respond with: {"answer":
     console.log('Recall IDs used for answer:', sourceRecallIds);
 
     // Create results with proper ordering
-    const usedRecalls = recallMatches
-      .filter(match => sourceRecallIds.includes(match.recall_id))
-      .sort((a, b) => {
-        if (a.isPriority && !b.isPriority) return -1;
-        if (!a.isPriority && b.isPriority) return 1;
-        if (tierOrder[a.tier] !== tierOrder[b.tier]) {
-          return tierOrder[b.tier] - tierOrder[a.tier];
+    const usedRecalls = allRecalls
+      .filter((recall: any) => sourceRecallIds.includes(recall.recall_id))
+      .sort((a: any, b: any) => {
+        // Prioritize multi-match recalls
+        const aMultiMatch = (a.isLocationMatch ? 1 : 0) + (a.isPeopleMatch ? 1 : 0) + (a.isKeywordMatch ? 1 : 0);
+        const bMultiMatch = (b.isLocationMatch ? 1 : 0) + (b.isPeopleMatch ? 1 : 0) + (b.isKeywordMatch ? 1 : 0);
+        
+        if (aMultiMatch !== bMultiMatch) {
+          return bMultiMatch - aMultiMatch;
         }
-        return b.aggregated_match - a.aggregated_match;
+        
+        return (b.matchPercentage || 0) - (a.matchPercentage || 0);
       });
 
-    const unusedRecalls = recallMatches
-      .filter(match => !sourceRecallIds.includes(match.recall_id))
-      .sort((a, b) => {
-        if (a.isPriority && !b.isPriority) return -1;
-        if (!a.isPriority && b.isPriority) return 1;
-        if (tierOrder[a.tier] !== tierOrder[b.tier]) {
-          return tierOrder[b.tier] - tierOrder[a.tier];
+    const unusedRecalls = allRecalls
+      .filter((recall: any) => !sourceRecallIds.includes(recall.recall_id))
+      .sort((a: any, b: any) => {
+        // Prioritize multi-match recalls
+        const aMultiMatch = (a.isLocationMatch ? 1 : 0) + (a.isPeopleMatch ? 1 : 0) + (a.isKeywordMatch ? 1 : 0);
+        const bMultiMatch = (b.isLocationMatch ? 1 : 0) + (b.isPeopleMatch ? 1 : 0) + (b.isKeywordMatch ? 1 : 0);
+        
+        if (aMultiMatch !== bMultiMatch) {
+          return bMultiMatch - aMultiMatch;
         }
-        return b.aggregated_match - a.aggregated_match;
+        
+        return (b.matchPercentage || 0) - (a.matchPercentage || 0);
       });
 
-    const orderedMatches = [...usedRecalls, ...unusedRecalls];
+    const orderedRecalls = [...usedRecalls, ...unusedRecalls];
 
     console.log(`Ordered results: ${usedRecalls.length} used for answer, ${unusedRecalls.length} others`);
 
-    // Convert to result format with aggregated match percentage
-    const matchResults = orderedMatches.map(match => ({
-      id: match.recall_id,
-      matchPercentage: Math.round(match.aggregated_match * 100),
-      usedForAnswer: sourceRecallIds.includes(match.recall_id),
-      tier: match.tier,
-      keywordMatches: match.keyword_matches,
-      totalKeywords: keywords.length
+    // Convert to result format
+    const matchResults = orderedRecalls.map((recall: any) => ({
+      id: recall.recall_id,
+      matchPercentage: Math.round(recall.matchPercentage || 0),
+      usedForAnswer: sourceRecallIds.includes(recall.recall_id),
+      tier: recall.tier || 'MEDIUM',
+      keywordMatches: recall.keywordMatches || 0,
+      totalKeywords: recall.totalKeywords || 0,
+      isLocationMatch: recall.isLocationMatch || false,
+      isPeopleMatch: recall.isPeopleMatch || false,
+      isKeywordMatch: recall.isKeywordMatch || false
     }));
-
-    // Calculate tier counts
-    const tierCounts = {
-      HIGH: recallMatches.filter(m => m.tier === 'HIGH').length,
-      MEDIUM: recallMatches.filter(m => m.tier === 'MEDIUM').length,
-      LOW: recallMatches.filter(m => m.tier === 'LOW').length
-    };
 
     const processingTime = Date.now() - startTime;
     console.log('=== Search Recalls V2 completed successfully ===');
     console.log('Total processing time:', processingTime, 'ms');
-    console.log(`Tier distribution - HIGH: ${tierCounts.HIGH}, MEDIUM: ${tierCounts.MEDIUM}, LOW: ${tierCounts.LOW}`);
 
     return new Response(JSON.stringify({
       answer,
@@ -736,8 +360,6 @@ If the recalls don't contain the requested information, respond with: {"answer":
       results: matchResults,
       processingTimeMs: processingTime,
       personInfo: personInfo || null,
-      tierCounts,
-      keywords: keywords.length
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

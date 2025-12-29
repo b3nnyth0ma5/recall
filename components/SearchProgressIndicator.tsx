@@ -14,7 +14,7 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 
 interface SearchProgressIndicatorProps {
-  stage: 'detecting' | 'resolving' | 'filtering' | 'people' | 'searching' | 'complete';
+  stage: 'detecting' | 'resolving' | 'filtering' | 'people' | 'keywords' | 'searching' | 'complete';
   locationName?: string;
   personNames?: string[];
 }
@@ -27,10 +27,11 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
   useEffect(() => {
     // Progress animation based on stage
     const targetProgress = {
-      detecting: 0.2,
-      resolving: 0.4,
-      filtering: 0.6,
-      people: 0.75,
+      detecting: 0.15,
+      resolving: 0.3,
+      filtering: 0.45,
+      people: 0.6,
+      keywords: 0.75,
       searching: 0.9,
       complete: 1,
     }[stage];
@@ -79,7 +80,7 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
   const getStageText = () => {
     switch (stage) {
       case 'detecting':
-        return 'Detecting search intent...';
+        return 'Analyzing search intent...';
       case 'resolving':
         return locationName ? `Finding ${locationName}...` : 'Resolving location...';
       case 'filtering':
@@ -88,8 +89,10 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
         return personNames && personNames.length > 0
           ? `Finding recalls with ${personNames.join(', ')}...`
           : 'Searching for people...';
+      case 'keywords':
+        return 'Extracting keywords and matching...';
       case 'searching':
-        return 'Analyzing with AI...';
+        return 'Generating answer with AI...';
       case 'complete':
         return 'Complete!';
       default:
@@ -107,6 +110,8 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
         return 'line.3.horizontal.decrease.circle.fill';
       case 'people':
         return 'person.2.fill';
+      case 'keywords':
+        return 'text.word.spacing';
       case 'searching':
         return 'sparkles';
       case 'complete':

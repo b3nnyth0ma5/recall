@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
 import * as Location from 'expo-location';
 
-export type SearchStage = 'idle' | 'detecting' | 'resolving' | 'filtering' | 'people' | 'searching' | 'complete';
+export type SearchStage = 'idle' | 'detecting' | 'resolving' | 'filtering' | 'people' | 'keywords' | 'searching' | 'complete';
 
 export interface PersonInfo {
   detectedNames: string[];
@@ -554,7 +554,7 @@ export function useNotes() {
     }
     
     try {
-      console.log('=== STARTING OPTIMIZED SEARCH ===');
+      console.log('=== STARTING PARALLEL OPTIMIZED SEARCH ===');
       console.log('Search query:', query);
       setLoading(true);
       setSearchStage('detecting');
@@ -575,95 +575,143 @@ export function useNotes() {
       const userLocation = await getUserLocation();
       console.log('[useNotes] User location for search:', userLocation);
 
-      // Step 1: Check for location intent using search-recalls-with-location
-      console.log('Step 1: Checking for location intent...');
-      const locationCheckStart = Date.now();
+      // PARALLEL EXECUTION: Run all three search functions simultaneously
+      console.log('Step 1: Running location, people, and keyword searches in parallel...');
+      const parallelSearchStart = Date.now();
       
-      const { data: locationData, error: locationError } = await supabase.functions.invoke('search-recalls-with-location', {
-        body: { 
-          query: query.trim(),
-          userLocation: userLocation, // Pass user location to edge function
-        },
-      });
+      const [locationResult, peopleResult, keywordResult] = await Promise.all([
+        // Location search
+        supabase.functions.invoke('search-recalls-with-location', {
+          body: { 
+            query: query.trim(),
+            userLocation: userLocation,
+          },
+        }).catch(error => {
+          console.error('Location search error:', error);
+          return { data: null, error };
+        }),
+        
+        // People search
+        supabase.functions.invoke('search-recalls-with-people', {
+          body: { query: query.trim() },
+        }).catch(error => {
+          console.error('People search error:', error);
+          return { data: null, error };
+        }),
+        
+        // Keyword search
+        supabase.functions.invoke('search-recalls-with-keywords', {
+          body: { 
+            query: query.trim(),
+            priorityRecallIds: [], // Will be updated with location/people results
+          },
+        }).catch(error => {
+          console.error('Keyword search error:', error);
+          return { data: null, error };
+        }),
+      ]);
 
-      console.log(`Location check completed in ${Date.now() - locationCheckStart}ms`);
+      console.log(`Parallel searches completed in ${Date.now() - parallelSearchStart}ms`);
 
-      let locationRecallIds: string[] = [];
-      let cleanedQuery = query.trim();
-
-      // If location intent detected and resolved
-      if (locationData?.hasLocationIntent && locationData?.locationResolved && locationData?.recallIds?.length > 0) {
+      // Process location results
+      let locationRecalls: any[] = [];
+      let locationInfoData: any = null;
+      
+      if (locationResult.data?.hasLocationIntent && locationResult.data?.locationResolved && locationResult.data?.recallIds?.length > 0) {
         console.log('Location intent detected and resolved!');
-        console.log('Location info:', locationData.locationInfo);
-        console.log('Filtered recall IDs:', locationData.recallIds);
+        console.log('Location info:', locationResult.data.locationInfo);
         
         setSearchStage('resolving');
-        setSearchLocationName(locationData.locationInfo?.resolvedPlace);
+        setSearchLocationName(locationResult.data.locationInfo?.resolvedPlace);
+        locationInfoData = locationResult.data.locationInfo;
+        setLocationInfo(locationInfoData);
         
-        // Store location info
-        setLocationInfo(locationData.locationInfo);
-        locationRecallIds = locationData.recallIds;
-        cleanedQuery = locationData.cleanedQuery || query.trim();
+        // Create location recalls with match info
+        locationRecalls = locationResult.data.recallIds.map((id: string) => ({
+          recall_id: id,
+          matchPercentage: 100,
+          tier: 'HIGH',
+          recall_data: { text: '', location: '', location_primary_type: '' },
+          images_data: []
+        }));
       } else {
         console.log('No location intent detected');
         setLocationInfo(null);
       }
 
-      // Step 2: Check for people intent using search-recalls-with-people
-      console.log('Step 2: Checking for people intent...');
-      setSearchStage('people');
-      const peopleCheckStart = Date.now();
-      
-      const { data: peopleData, error: peopleError } = await supabase.functions.invoke('search-recalls-with-people', {
-        body: { query: query.trim() },
-      });
-
-      console.log(`People check completed in ${Date.now() - peopleCheckStart}ms`);
-
-      let peopleRecallIds: string[] = [];
+      // Process people results
+      let peopleRecalls: any[] = [];
       let personInfoData: PersonInfo | null = null;
-
-      // If people intent detected
-      if (peopleData?.hasPeopleIntent && peopleData?.recallIds?.length > 0) {
+      
+      if (peopleResult.data?.hasPeopleIntent && peopleResult.data?.recallIds?.length > 0) {
         console.log('People intent detected!');
-        console.log('Person info:', peopleData.personInfo);
-        console.log('Filtered recall IDs:', peopleData.recallIds);
+        console.log('Person info:', peopleResult.data.personInfo);
         
-        peopleRecallIds = peopleData.recallIds;
-        personInfoData = peopleData.personInfo;
+        setSearchStage('people');
+        personInfoData = peopleResult.data.personInfo;
         setPersonInfo(personInfoData);
         setSearchPersonNames(personInfoData?.matchedNames || []);
+        
+        // Create people recalls with match info
+        peopleRecalls = peopleResult.data.recallIds.map((id: string) => ({
+          recall_id: id,
+          matchPercentage: 100,
+          tier: 'HIGH',
+          recall_data: { text: '', location: '', location_primary_type: '' },
+          images_data: []
+        }));
       } else {
         console.log('No people intent detected');
         setPersonInfo(null);
         setSearchPersonNames(undefined);
       }
 
-      // Step 3: Use search-recalls-v2 with combined results
-      console.log('Step 3: Running AI search with combined filters...');
+      // Process keyword results
+      let keywordRecalls: any[] = [];
+      
+      if (keywordResult.data?.results && keywordResult.data.results.length > 0) {
+        console.log('Keyword matches found!');
+        console.log(`Found ${keywordResult.data.results.length} keyword matches`);
+        
+        setSearchStage('keywords');
+        keywordRecalls = keywordResult.data.results;
+      } else {
+        console.log('No keyword matches found');
+      }
+
+      // Step 2: Use search-recalls-v2 with combined results
+      console.log('Step 2: Running AI answer generation with combined results...');
       setSearchStage('searching');
       
-      const searchStart = Date.now();
+      const answerStart = Date.now();
       const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls-v2', {
         body: {
-          query: cleanedQuery,
-          locationRecallIds: locationRecallIds.length > 0 ? locationRecallIds : undefined,
-          peopleRecallIds: peopleRecallIds.length > 0 ? peopleRecallIds : undefined,
+          query: query.trim(),
+          locationRecalls: locationRecalls.length > 0 ? locationRecalls : undefined,
+          peopleRecalls: peopleRecalls.length > 0 ? peopleRecalls : undefined,
+          keywordRecalls: keywordRecalls.length > 0 ? keywordRecalls : undefined,
           personInfo: personInfoData,
         },
       });
 
-      console.log(`AI search completed in ${Date.now() - searchStart}ms`);
+      console.log(`AI answer generation completed in ${Date.now() - answerStart}ms`);
 
       if (searchError) {
-        console.error('Error in AI search:', searchError);
-        // Fallback: show location/people filtered recalls if available
-        const combinedIds = [...new Set([...locationRecallIds, ...peopleRecallIds])];
-        if (combinedIds.length > 0) {
+        console.error('Error in AI answer generation:', searchError);
+        
+        // Fallback: show combined results if available
+        const allRecallIds = [
+          ...locationRecalls.map(r => r.recall_id),
+          ...peopleRecalls.map(r => r.recall_id),
+          ...keywordRecalls.map(r => r.recall_id)
+        ];
+        const uniqueRecallIds = [...new Set(allRecallIds)];
+        
+        if (uniqueRecallIds.length > 0) {
           const { data: recallsData } = await supabase
             .from('recalls')
             .select('*')
-            .in('id', combinedIds)
+            .in('id', uniqueRecallIds)
             .eq('user_id', user.id);
 
           const notesWithImages = await loadImagesForRecalls(recallsData || []);
@@ -734,7 +782,7 @@ export function useNotes() {
       }
       
       setSearchStage('complete');
-      console.log('=== SEARCH COMPLETE ===');
+      console.log('=== PARALLEL SEARCH COMPLETE ===');
     } catch (error) {
       console.error('=== SEARCH EXCEPTION ===');
       console.error('Error searching recalls:', error);
