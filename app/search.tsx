@@ -21,6 +21,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
+import Markdown from 'react-native-markdown-display';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -585,9 +586,25 @@ export default function SearchScreen() {
                     <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
                   </View>
                 </View>
-                <Text style={styles.answerText}>
+                <Markdown
+                  style={{
+                    body: styles.answerMarkdownBody,
+                    text: styles.answerMarkdownText,
+                    paragraph: styles.answerMarkdownParagraph,
+                    strong: styles.answerMarkdownStrong,
+                    em: styles.answerMarkdownEm,
+                    bullet_list: styles.answerMarkdownBulletList,
+                    ordered_list: styles.answerMarkdownOrderedList,
+                    list_item: styles.answerMarkdownListItem,
+                    code_inline: styles.answerMarkdownCodeInline,
+                    code_block: styles.answerMarkdownCodeBlock,
+                    fence: styles.answerMarkdownCodeBlock,
+                    link: styles.answerMarkdownLink,
+                    blockquote: styles.answerMarkdownBlockquote,
+                  }}
+                >
                   {isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
-                </Text>
+                </Markdown>
                 {shouldShowAnswerToggle(searchAnswer) && (
                   <Pressable 
                     onPress={() => setIsAnswerExpanded(!isAnswerExpanded)}
@@ -626,6 +643,7 @@ export default function SearchScreen() {
                         note={note}
                         onPress={() => handleNotePress(note.id)}
                         loading={false}
+                        isSearchResult={true}
                       />
                     </View>
                   </View>
@@ -982,6 +1000,75 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     color: colors.text,
+  },
+  answerMarkdownBody: {
+    color: colors.text,
+  },
+  answerMarkdownText: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.text,
+  },
+  answerMarkdownParagraph: {
+    marginTop: 0,
+    marginBottom: 12,
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.text,
+  },
+  answerMarkdownStrong: {
+    fontWeight: '700',
+    color: colors.text,
+  },
+  answerMarkdownEm: {
+    fontStyle: 'italic',
+    color: colors.text,
+  },
+  answerMarkdownBulletList: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  answerMarkdownOrderedList: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  answerMarkdownListItem: {
+    marginBottom: 6,
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.text,
+  },
+  answerMarkdownCodeInline: {
+    backgroundColor: colors.cardDark,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    fontSize: 14,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    color: colors.text,
+  },
+  answerMarkdownCodeBlock: {
+    backgroundColor: colors.cardDark,
+    padding: 12,
+    borderRadius: 8,
+    fontSize: 14,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    color: colors.text,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  answerMarkdownLink: {
+    color: colors.primary,
+    textDecorationLine: 'underline',
+  },
+  answerMarkdownBlockquote: {
+    backgroundColor: `${colors.primary}10`,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+    paddingLeft: 12,
+    paddingVertical: 8,
+    marginTop: 8,
+    marginBottom: 8,
   },
   answerToggleContainer: {
     alignSelf: 'flex-end',

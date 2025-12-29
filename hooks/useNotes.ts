@@ -847,7 +847,13 @@ export function useNotes() {
           .in('id', matchedRecallIds)
           .eq('user_id', user.id);
 
-        // Map recalls with match info
+        // Create a map of recall IDs to their match info from search results
+        const matchInfoMap = new Map();
+        searchResults.results.forEach((matchInfo: any) => {
+          matchInfoMap.set(matchInfo.id, matchInfo);
+        });
+
+        // Map recalls with match info and image match data
         const orderedRecalls = searchResults.results
           .map((matchInfo: any) => {
             const recall = recallsData?.find(r => r.id === matchInfo.id);
@@ -855,17 +861,32 @@ export function useNotes() {
               return null;
             }
             
+            // Get image match data from keyword search results if available
+            const keywordMatch = keywordRecalls.find((kr: any) => kr.recall_id === matchInfo.id);
+            const imageMatchData = keywordMatch?.images_data || [];
+            
             return {
               ...recall,
               relevance_score: matchInfo.matchPercentage || 0,
               used_for_answer: matchInfo.usedForAnswer || false,
+              imageMatchData: imageMatchData, // Pass image match data for sorting
             };
           })
           .filter((recall: any) => recall !== null);
 
+        // Load images for recalls and preserve imageMatchData
         const notesWithImages = await loadImagesForRecalls(orderedRecalls);
         
-        setNotes(notesWithImages);
+        // Re-attach imageMatchData after loading images (it may get lost in processing)
+        const notesWithMatchData = notesWithImages.map((note: any) => {
+          const originalRecall = orderedRecalls.find((r: any) => r.id === note.id);
+          return {
+            ...note,
+            imageMatchData: originalRecall?.imageMatchData || [],
+          };
+        });
+        
+        setNotes(notesWithMatchData);
         setSearchAnswer(answer);
         setSearchConfidence(confidence);
       } else {
