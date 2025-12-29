@@ -20,10 +20,12 @@ import { SearchHistory } from '@/types/Note';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function SearchScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { user } = useAuth();
   const { 
     notes, 
     loading, 
@@ -36,6 +38,7 @@ export default function SearchScreen() {
     searchStage,
     searchLocationName,
     searchPersonNames,
+    searchTimeMs,
   } = useNotes();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
@@ -47,6 +50,9 @@ export default function SearchScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
   const hasAutoSearchedRef = useRef(false);
+
+  // Check if user should see search time
+  const shouldShowSearchTime = user?.email === 'benny_thomas21@yahoo.co.in';
 
   const loadSearchHistory = useCallback(async () => {
     setIsLoadingHistory(true);
@@ -491,6 +497,16 @@ export default function SearchScreen() {
         ) : (
           // Show results only when search is complete
           <View style={styles.notesContainer}>
+            {/* Search Time Display - Only for specific user */}
+            {shouldShowSearchTime && searchTimeMs !== undefined && (
+              <Animated.View entering={FadeIn.duration(400)} style={styles.searchTimeContainer}>
+                <IconSymbol name="clock.fill" size={16} color={colors.textSecondary} />
+                <Text style={styles.searchTimeText}>
+                  Search completed in {(searchTimeMs / 1000).toFixed(2)}s
+                </Text>
+              </Animated.View>
+            )}
+
             {/* Answer Section */}
             {searchAnswer && searchConfidence !== undefined && (
               <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
@@ -799,6 +815,22 @@ const styles = StyleSheet.create({
   },
   notesContainer: {
     width: '100%',
+  },
+  searchTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.card,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    alignSelf: 'flex-start',
+  },
+  searchTimeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   answerContainer: {
     backgroundColor: colors.card,

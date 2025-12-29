@@ -17,8 +17,7 @@ Deno.serve(async (req) => {
   }
 
   const startTime = Date.now();
-  console.log('=== search-recalls-with-people function invoked ===');
-  console.log('Timestamp:', new Date().toISOString());
+  console.log('=== search-recalls-with-people started ===');
 
   try {
     // Get the authorization header
@@ -46,14 +45,11 @@ Deno.serve(async (req) => {
     } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
-      console.error('Authentication error:', authError);
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
-    console.log('Authenticated user:', user.id);
 
     // Parse request body
     const { query } = await req.json();
@@ -65,12 +61,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log('Search query:', query);
-
     // Get OpenAI API key
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
-      console.error('OPENAI_API_KEY not set');
       return new Response(
         JSON.stringify({ error: 'OpenAI API key not configured' }),
         {
@@ -80,227 +73,201 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Step 1: Use NLP NER to detect people names in the query
-    console.log('Step 1: Detecting people names using NLP NER with GPT-4o-mini...');
-    let peopleRecallIds: string[] = [];
-    let detectedPersonNames: string[] = [];
-    let matchedPersonNames: string[] = [];
-
-    try {
-      const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openaiApiKey}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a Named Entity Recognition (NER) expert. Extract all person names from the user\'s query. Return only the names as a JSON array of strings. If no names are found, return an empty array. Format: {"names": ["Name1", "Name2"]}'
-            },
-            {
-              role: 'user',
-              content: `Extract person names from this query: "${query}"`
-            }
-          ],
-          temperature: 0.1,
-          max_tokens: 200,
-          response_format: { type: 'json_object' }
-        })
-      });
-
-      if (!nerResponse.ok) {
-        const errorText = await nerResponse.text();
-        console.error('OpenAI NER API error:', errorText);
-        // Return empty result if NER fails
-        return new Response(
-          JSON.stringify({
-            hasPeopleIntent: false,
-            recallIds: [],
-            personInfo: null,
-            processingTimeMs: Date.now() - startTime,
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
-      }
-
-      const nerData = await nerResponse.json();
-      const nerContent = nerData.choices?.[0]?.message?.content;
-
-      if (nerContent) {
+    // OPTIMIZATION: Run NER detection and persons fetch in parallel
+    const [nerResult, personsResult] = await Promise.all([
+      // NER detection
+      (async () => {
         try {
-          const parsed = JSON.parse(nerContent);
-          const detectedNames = parsed.names || parsed.persons || parsed.people || [];
-
-          if (Array.isArray(detectedNames) && detectedNames.length > 0) {
-            detectedPersonNames = detectedNames;
-            console.log('Detected person names:', detectedPersonNames);
-
-            // Step 2: Determine if query wants "any" (OR) or "all" (AND) of the people
-            let searchMode: 'any' | 'all' = 'any'; // Default to 'any'
-            
-            if (detectedNames.length > 1) {
-              console.log('Multiple people detected - analyzing query intent (ANY vs ALL)...');
-              
-              const intentResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${openaiApiKey}`
+          const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${openaiApiKey}`
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: [
+                {
+                  role: 'system',
+                  content: 'Extract person names as JSON array. Format: {"names": ["Name1", "Name2"]}. No explanation.'
                 },
-                body: JSON.stringify({
-                  model: 'gpt-4o-mini',
-                  messages: [
-                    {
-                      role: 'system',
-                      content: `You are an intent analyzer. Determine if the user wants to find items related to ANY (OR) of the mentioned people or ALL (AND) of them together.
-
-Keywords indicating "ALL" (AND): "with", "and", "together", "both", "all of", "including all"
-Keywords indicating "ANY" (OR): "or", "either", "any of", "mentions"
-
-Return JSON format: {"mode": "any"} or {"mode": "all"}
-
-Examples:
-- "recalls with John and Mary" -> {"mode": "all"}
-- "recalls mentioning John or Mary" -> {"mode": "any"}
-- "recalls about John and Sarah together" -> {"mode": "all"}
-- "any recalls that mention Alice" -> {"mode": "any"}`
-                    },
-                    {
-                      role: 'user',
-                      content: `Analyze this query: "${query}"\nDetected people: ${detectedNames.join(', ')}`
-                    }
-                  ],
-                  temperature: 0.1,
-                  max_tokens: 50,
-                  response_format: { type: 'json_object' }
-                })
-              });
-
-              if (intentResponse.ok) {
-                const intentData = await intentResponse.json();
-                const intentContent = intentData.choices?.[0]?.message?.content;
-                
-                if (intentContent) {
-                  try {
-                    const intentParsed = JSON.parse(intentContent);
-                    searchMode = intentParsed.mode === 'all' ? 'all' : 'any';
-                    console.log('Search mode determined:', searchMode);
-                  } catch (intentParseError) {
-                    console.error('Failed to parse intent response:', intentParseError);
-                  }
+                {
+                  role: 'user',
+                  content: `Extract person names from: "${query}"`
                 }
-              }
-            }
+              ],
+              temperature: 0.1,
+              max_tokens: 100, // Reduced for speed
+              response_format: { type: 'json_object' }
+            })
+          });
 
-            // Step 3: Search for these people in the Persons table
-            console.log('Step 3: Searching for detected people in database...');
-            const { data: personsData, error: personsError } = await supabase
-              .from('persons')
-              .select('id, person_name')
-              .eq('user_id', user.id);
-
-            if (!personsError && personsData && personsData.length > 0) {
-              // Find matching persons (case-insensitive partial match)
-              const matchingPersonIds: string[] = [];
-
-              for (const detectedName of detectedNames) {
-                const normalizedDetected = detectedName.toLowerCase().trim();
-
-                for (const person of personsData) {
-                  const normalizedPerson = person.person_name.toLowerCase().trim();
-
-                  // Check if either name contains the other (partial match)
-                  if (normalizedPerson.includes(normalizedDetected) ||
-                    normalizedDetected.includes(normalizedPerson)) {
-                    matchingPersonIds.push(person.id);
-                    matchedPersonNames.push(person.person_name);
-                    console.log(`Matched "${detectedName}" to person "${person.person_name}"`);
-                  }
-                }
-              }
-
-              if (matchingPersonIds.length > 0) {
-                // Step 4: Get recalls based on search mode
-                console.log(`Step 4: Fetching recalls (mode: ${searchMode})...`);
-                
-                if (searchMode === 'any') {
-                  // ANY mode: Find recalls mentioning any of the people
-                  console.log('ANY mode: Finding recalls mentioning any of the people...');
-                  const { data: recallPeopleData, error: recallPeopleError } = await supabase
-                    .from('recall_people')
-                    .select('recall_id')
-                    .in('person_id', matchingPersonIds)
-                    .eq('user_id', user.id);
-
-                  if (!recallPeopleError && recallPeopleData && recallPeopleData.length > 0) {
-                    peopleRecallIds = [...new Set(recallPeopleData.map((rp: any) => rp.recall_id))];
-                    console.log(`Found ${peopleRecallIds.length} recalls mentioning any of the people`);
-                  }
-                } else {
-                  // ALL mode: Find recalls mentioning all or most of the people
-                  console.log('ALL mode: Finding recalls mentioning all/most of the people...');
-                  const { data: recallPeopleData, error: recallPeopleError } = await supabase
-                    .from('recall_people')
-                    .select('recall_id, person_id')
-                    .in('person_id', matchingPersonIds)
-                    .eq('user_id', user.id);
-
-                  if (!recallPeopleError && recallPeopleData && recallPeopleData.length > 0) {
-                    // Count how many people are mentioned in each recall
-                    const recallPersonCounts = new Map<string, Set<string>>();
-                    
-                    recallPeopleData.forEach((rp: any) => {
-                      if (!recallPersonCounts.has(rp.recall_id)) {
-                        recallPersonCounts.set(rp.recall_id, new Set());
-                      }
-                      recallPersonCounts.get(rp.recall_id)!.add(rp.person_id);
-                    });
-
-                    // Filter recalls that mention all or most (>= 50%) of the people
-                    const threshold = Math.ceil(matchingPersonIds.length * 0.5);
-                    
-                    peopleRecallIds = Array.from(recallPersonCounts.entries())
-                      .filter(([_, personSet]) => personSet.size >= threshold)
-                      .map(([recallId, _]) => recallId);
-
-                    console.log(`Found ${peopleRecallIds.length} recalls mentioning ${threshold}+ of ${matchingPersonIds.length} people`);
-                  }
-                }
-              }
-            }
+          if (!nerResponse.ok) {
+            return { names: [] };
           }
-        } catch (parseError) {
-          console.error('Failed to parse NER response:', parseError);
+
+          const nerData = await nerResponse.json();
+          const nerContent = nerData.choices?.[0]?.message?.content;
+
+          if (nerContent) {
+            const parsed = JSON.parse(nerContent);
+            const detectedNames = parsed.names || parsed.persons || parsed.people || [];
+            return { names: Array.isArray(detectedNames) ? detectedNames : [] };
+          }
+
+          return { names: [] };
+        } catch (error) {
+          console.error('NER error:', error);
+          return { names: [] };
         }
-      }
-    } catch (nerError) {
-      console.error('Error in NER detection:', nerError);
+      })(),
+      // Fetch persons
+      supabase
+        .from('persons')
+        .select('id, person_name')
+        .eq('user_id', user.id)
+    ]);
+
+    const detectedNames = nerResult.names;
+
+    if (detectedNames.length === 0) {
+      return new Response(
+        JSON.stringify({
+          hasPeopleIntent: false,
+          recallIds: [],
+          personInfo: null,
+          processingTimeMs: Date.now() - startTime,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
-    // Return results
-    const hasPeopleIntent = matchedPersonNames.length > 0;
-    const processingTime = Date.now() - startTime;
+    if (personsResult.error || !personsResult.data || personsResult.data.length === 0) {
+      return new Response(
+        JSON.stringify({
+          hasPeopleIntent: false,
+          recallIds: [],
+          personInfo: null,
+          processingTimeMs: Date.now() - startTime,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
 
-    console.log('=== search-recalls-with-people completed ===');
-    console.log('Has people intent:', hasPeopleIntent);
-    console.log('Matched person names:', matchedPersonNames);
-    console.log('Recall IDs:', peopleRecallIds.length);
-    console.log('Processing time:', processingTime, 'ms');
+    const personsData = personsResult.data;
+
+    // OPTIMIZATION: Find matching persons with case-insensitive partial match
+    const matchingPersonIds: string[] = [];
+    const matchedPersonNames: string[] = [];
+
+    for (const detectedName of detectedNames) {
+      const normalizedDetected = detectedName.toLowerCase().trim();
+
+      for (const person of personsData) {
+        const normalizedPerson = person.person_name.toLowerCase().trim();
+
+        if (normalizedPerson.includes(normalizedDetected) ||
+          normalizedDetected.includes(normalizedPerson)) {
+          matchingPersonIds.push(person.id);
+          matchedPersonNames.push(person.person_name);
+        }
+      }
+    }
+
+    if (matchingPersonIds.length === 0) {
+      return new Response(
+        JSON.stringify({
+          hasPeopleIntent: false,
+          recallIds: [],
+          personInfo: null,
+          processingTimeMs: Date.now() - startTime,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // Determine search mode (ANY vs ALL)
+    let searchMode: 'any' | 'all' = 'any';
+
+    if (detectedNames.length > 1) {
+      // OPTIMIZATION: Simplified intent detection
+      const lowerQuery = query.toLowerCase();
+      if (lowerQuery.includes(' with ') || lowerQuery.includes(' and ') || 
+          lowerQuery.includes('together') || lowerQuery.includes('both') || 
+          lowerQuery.includes('all of')) {
+        searchMode = 'all';
+      }
+    }
+
+    // Fetch recalls based on search mode
+    const { data: recallPeopleData, error: recallPeopleError } = await supabase
+      .from('recall_people')
+      .select('recall_id, person_id')
+      .in('person_id', matchingPersonIds)
+      .eq('user_id', user.id);
+
+    if (recallPeopleError || !recallPeopleData || recallPeopleData.length === 0) {
+      return new Response(
+        JSON.stringify({
+          hasPeopleIntent: true,
+          recallIds: [],
+          personInfo: {
+            detectedNames: detectedNames,
+            matchedNames: matchedPersonNames,
+          },
+          processingTimeMs: Date.now() - startTime,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    let peopleRecallIds: string[] = [];
+
+    if (searchMode === 'any') {
+      // ANY mode: Find recalls mentioning any of the people
+      peopleRecallIds = [...new Set(recallPeopleData.map((rp: any) => rp.recall_id))];
+    } else {
+      // ALL mode: Find recalls mentioning all or most of the people
+      const recallPersonCounts = new Map<string, Set<string>>();
+      
+      recallPeopleData.forEach((rp: any) => {
+        if (!recallPersonCounts.has(rp.recall_id)) {
+          recallPersonCounts.set(rp.recall_id, new Set());
+        }
+        recallPersonCounts.get(rp.recall_id)!.add(rp.person_id);
+      });
+
+      // Filter recalls that mention all or most (>= 50%) of the people
+      const threshold = Math.ceil(matchingPersonIds.length * 0.5);
+      
+      peopleRecallIds = Array.from(recallPersonCounts.entries())
+        .filter(([_, personSet]) => personSet.size >= threshold)
+        .map(([recallId, _]) => recallId);
+    }
+
+    const processingTime = Date.now() - startTime;
+    console.log('=== search-recalls-with-people completed in', processingTime, 'ms ===');
 
     return new Response(
       JSON.stringify({
-        hasPeopleIntent,
+        hasPeopleIntent: true,
         recallIds: peopleRecallIds,
-        personInfo: hasPeopleIntent ? {
-          detectedNames: detectedPersonNames,
+        personInfo: {
+          detectedNames: detectedNames,
           matchedNames: matchedPersonNames,
-        } : null,
+        },
         processingTimeMs: processingTime,
       }),
       {
@@ -310,11 +277,8 @@ Examples:
     );
   } catch (error) {
     const processingTime = Date.now() - startTime;
-    console.error('=== Error in search-recalls-with-people function ===');
-    console.error('Error type:', error?.constructor?.name);
-    console.error('Error message:', error instanceof Error ? error.message : 'Unknown error');
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-    console.error('Processing time before error:', processingTime, 'ms');
+    console.error('=== Error in search-recalls-with-people ===');
+    console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
 
     return new Response(
       JSON.stringify({

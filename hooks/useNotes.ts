@@ -28,6 +28,7 @@ export function useNotes() {
   const [searchStage, setSearchStage] = useState<SearchStage>('idle');
   const [searchLocationName, setSearchLocationName] = useState<string | undefined>(undefined);
   const [searchPersonNames, setSearchPersonNames] = useState<string[] | undefined>(undefined);
+  const [searchTimeMs, setSearchTimeMs] = useState<number | undefined>(undefined);
   const { user } = useAuth();
 
   const ITEMS_PER_PAGE = 7;
@@ -549,17 +550,20 @@ export function useNotes() {
       setSearchStage('idle');
       setSearchLocationName(undefined);
       setSearchPersonNames(undefined);
+      setSearchTimeMs(undefined);
       await refreshNotes();
       return;
     }
     
     try {
+      const searchStartTime = Date.now();
       console.log('=== STARTING PARALLEL OPTIMIZED SEARCH ===');
       console.log('Search query:', query);
       setLoading(true);
       setSearchStage('detecting');
       setSearchLocationName(undefined);
       setSearchPersonNames(undefined);
+      setSearchTimeMs(undefined);
       
       // Save search history
       await saveSearchHistory(user.id, query);
@@ -579,36 +583,39 @@ export function useNotes() {
       console.log('Step 1: Running location, people, and keyword searches in parallel...');
       const parallelSearchStart = Date.now();
       
+      // Create promises for all three searches
+      const locationPromise = supabase.functions.invoke('search-recalls-with-location', {
+        body: { 
+          query: query.trim(),
+          userLocation: userLocation,
+        },
+      }).catch(error => {
+        console.error('Location search error:', error);
+        return { data: null, error };
+      });
+      
+      const peoplePromise = supabase.functions.invoke('search-recalls-with-people', {
+        body: { query: query.trim() },
+      }).catch(error => {
+        console.error('People search error:', error);
+        return { data: null, error };
+      });
+      
+      const keywordPromise = supabase.functions.invoke('search-recalls-with-keywords', {
+        body: { 
+          query: query.trim(),
+          priorityRecallIds: [], // Will be updated with location/people results
+        },
+      }).catch(error => {
+        console.error('Keyword search error:', error);
+        return { data: null, error };
+      });
+
+      // Wait for all searches to complete in parallel
       const [locationResult, peopleResult, keywordResult] = await Promise.all([
-        // Location search
-        supabase.functions.invoke('search-recalls-with-location', {
-          body: { 
-            query: query.trim(),
-            userLocation: userLocation,
-          },
-        }).catch(error => {
-          console.error('Location search error:', error);
-          return { data: null, error };
-        }),
-        
-        // People search
-        supabase.functions.invoke('search-recalls-with-people', {
-          body: { query: query.trim() },
-        }).catch(error => {
-          console.error('People search error:', error);
-          return { data: null, error };
-        }),
-        
-        // Keyword search
-        supabase.functions.invoke('search-recalls-with-keywords', {
-          body: { 
-            query: query.trim(),
-            priorityRecallIds: [], // Will be updated with location/people results
-          },
-        }).catch(error => {
-          console.error('Keyword search error:', error);
-          return { data: null, error };
-        }),
+        locationPromise,
+        peoplePromise,
+        keywordPromise,
       ]);
 
       console.log(`Parallel searches completed in ${Date.now() - parallelSearchStart}ms`);
@@ -625,6 +632,9 @@ export function useNotes() {
         setSearchLocationName(locationResult.data.locationInfo?.resolvedPlace);
         locationInfoData = locationResult.data.locationInfo;
         setLocationInfo(locationInfoData);
+        
+        // Update stage to filtering
+        setTimeout(() => setSearchStage('filtering'), 100);
         
         // Create location recalls with match info
         locationRecalls = locationResult.data.recallIds.map((id: string) => ({
@@ -719,6 +729,11 @@ export function useNotes() {
           setSearchAnswer(null);
           setSearchConfidence(undefined);
           setSearchStage('complete');
+          
+          // Calculate and set search time
+          const totalSearchTime = Date.now() - searchStartTime;
+          setSearchTimeMs(totalSearchTime);
+          
           return;
         }
         
@@ -735,6 +750,11 @@ export function useNotes() {
         setSearchAnswer(null);
         setSearchConfidence(undefined);
         setSearchStage('complete');
+        
+        // Calculate and set search time
+        const totalSearchTime = Date.now() - searchStartTime;
+        setSearchTimeMs(totalSearchTime);
+        
         return;
       }
 
@@ -782,7 +802,13 @@ export function useNotes() {
       }
       
       setSearchStage('complete');
+      
+      // Calculate and set total search time
+      const totalSearchTime = Date.now() - searchStartTime;
+      setSearchTimeMs(totalSearchTime);
+      
       console.log('=== PARALLEL SEARCH COMPLETE ===');
+      console.log(`Total search time: ${totalSearchTime}ms`);
     } catch (error) {
       console.error('=== SEARCH EXCEPTION ===');
       console.error('Error searching recalls:', error);
@@ -796,6 +822,7 @@ export function useNotes() {
       setSearchStage('idle');
       setSearchLocationName(undefined);
       setSearchPersonNames(undefined);
+      setSearchTimeMs(undefined);
     } finally {
       setLoading(false);
       // Reset stage after a delay
@@ -844,6 +871,7 @@ export function useNotes() {
     searchStage,
     searchLocationName,
     searchPersonNames,
+    searchTimeMs,
     addNote,
     updateNote,
     deleteNote,
