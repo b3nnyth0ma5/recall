@@ -15,7 +15,6 @@ export interface Note {
   relevance_reason?: string; // Explanation of why this recall matches
   used_for_answer?: boolean; // Whether this recall was used to derive the AI answer
   people?: Person[]; // People mentioned in this recall
-  imageMatchData?: ImageMatchData[]; // Image match data for search results
 }
 
 export interface Person {
@@ -48,11 +47,4 @@ export interface ImageRecord {
   ocr_text?: string; // Extracted text from OCR
   image_explanation?: string; // AI-generated explanation (under 120 words)
   processed_at?: string; // Timestamp when OCR processing completed
-}
-
-export interface ImageMatchData {
-  imageId: string;
-  similarity: number; // 0-1 similarity score
-  ocr_text?: string;
-  image_explanation?: string;
 }
