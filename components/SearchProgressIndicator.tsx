@@ -1,20 +1,23 @@
 
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Animated, {
   FadeIn,
   useAnimatedStyle,
   withTiming,
   Easing,
+  useSharedValue,
 } from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 
 interface SearchProgressIndicatorProps {
-  stage: 'detecting' | 'resolving' | 'filtering' | 'people' | 'keywords' | 'searching' | 'complete';
+  stage: 'detecting' | 'resolving' | 'filtering' | 'people' | 'keywords' | 'searching' | 'complete' | 'idle';
   locationName?: string;
   personNames?: string[];
   extractedKeywords?: string[];
+  isExpanded: boolean;
+  onToggle: () => void;
 }
 
 interface StepConfig {
@@ -74,8 +77,24 @@ export function SearchProgressIndicator({
   stage, 
   locationName, 
   personNames,
-  extractedKeywords 
+  extractedKeywords,
+  isExpanded,
+  onToggle,
 }: SearchProgressIndicatorProps) {
+  const heightValue = useSharedValue(isExpanded ? 1 : 0);
+
+  useEffect(() => {
+    heightValue.value = withTiming(isExpanded ? 1 : 0, { duration: 300 });
+  }, [isExpanded, heightValue]);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      maxHeight: heightValue.value === 0 ? 60 : 1000,
+      opacity: heightValue.value === 0 ? 0.8 : 1,
+      overflow: 'hidden',
+    };
+  });
+
   const isStepComplete = (step: StepConfig): boolean => {
     return step.stages.includes(stage) && stage !== step.id;
   };
@@ -106,26 +125,50 @@ export function SearchProgressIndicator({
 
   return (
     <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
-      <View style={styles.stepsContainer}>
-        {STEPS.map((step, index) => {
-          const status = getStepStatus(step);
-          const isLast = index === STEPS.length - 1;
+      <Pressable 
+        onPress={onToggle}
+        style={styles.header}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <View style={styles.headerLeft}>
+          <IconSymbol 
+            name={stage === 'complete' ? 'checkmark.circle.fill' : 'arrow.clockwise.circle.fill'} 
+            size={20} 
+            color={stage === 'complete' ? colors.success : colors.primary} 
+          />
+          <Text style={styles.headerTitle}>
+            {stage === 'complete' ? 'Search Complete' : 'Searching...'}
+          </Text>
+        </View>
+        <IconSymbol 
+          name={isExpanded ? "chevron.up" : "chevron.down"} 
+          size={20} 
+          color={colors.textSecondary} 
+        />
+      </Pressable>
 
-          return (
-            <React.Fragment key={step.id}>
-              <StepItem
-                step={step}
-                status={status}
-                locationName={locationName}
-                personNames={personNames}
-                extractedKeywords={extractedKeywords}
-                title={getStepTitle(step)}
-              />
-              {!isLast && <StepConnector status={status} />}
-            </React.Fragment>
-          );
-        })}
-      </View>
+      <Animated.View style={animatedStyle}>
+        <View style={styles.stepsContainer}>
+          {STEPS.map((step, index) => {
+            const status = getStepStatus(step);
+            const isLast = index === STEPS.length - 1;
+
+            return (
+              <React.Fragment key={step.id}>
+                <StepItem
+                  step={step}
+                  status={status}
+                  locationName={locationName}
+                  personNames={personNames}
+                  extractedKeywords={extractedKeywords}
+                  title={getStepTitle(step)}
+                />
+                {!isLast && <StepConnector status={status} />}
+              </React.Fragment>
+            );
+          })}
+        </View>
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -229,11 +272,31 @@ function StepConnector({ status }: StepConnectorProps) {
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 24,
-    paddingHorizontal: 16,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
   },
   stepsContainer: {
     width: '100%',
+    marginTop: 16,
   },
   stepItem: {
     flexDirection: 'row',

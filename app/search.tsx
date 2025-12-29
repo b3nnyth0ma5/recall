@@ -17,7 +17,7 @@ import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
 import { SearchHistory } from '@/types/Note';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,6 +50,8 @@ export default function SearchScreen() {
   const [isAnswerExpanded, setIsAnswerExpanded] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [isProgressExpanded, setIsProgressExpanded] = useState(true);
+  const [isPerformanceExpanded, setIsPerformanceExpanded] = useState(true);
   const searchInputRef = useRef<TextInput>(null);
   const hasAutoSearchedRef = useRef(false);
 
@@ -79,7 +81,7 @@ export default function SearchScreen() {
     };
   }, [loadSearchHistory]);
 
-  // FIXED: Handle auto-search from CombinedSearchAdd with proper deduplication
+  // Handle auto-search from CombinedSearchAdd with proper deduplication
   useEffect(() => {
     const queryParam = params.q;
     const autoSearchParam = params.autoSearch;
@@ -95,6 +97,7 @@ export default function SearchScreen() {
       setHasSearched(true);
       setIsAnswerExpanded(false);
       setIsSearching(true);
+      setIsProgressExpanded(true);
       
       // Mark that we've auto-searched to prevent duplicate searches
       hasAutoSearchedRef.current = true;
@@ -106,7 +109,7 @@ export default function SearchScreen() {
         setIsSearching(false);
       });
       
-      // FIXED: Clear the autoSearch parameter to prevent re-triggering - use setTimeout to break call stack
+      // Clear the autoSearch parameter to prevent re-triggering
       setTimeout(() => {
         try {
           console.log('[SearchScreen] Clearing autoSearch param');
@@ -132,6 +135,16 @@ export default function SearchScreen() {
     }
   }, [hasSearched, searchHistory, isLoadingHistory]);
 
+  // Collapse progress indicator when search completes
+  useEffect(() => {
+    if (searchStage === 'complete' && isSearching === false && hasSearched) {
+      // Collapse progress indicator after a short delay
+      setTimeout(() => {
+        setIsProgressExpanded(false);
+      }, 500);
+    }
+  }, [searchStage, isSearching, hasSearched]);
+
   const handleSearch = useCallback(() => {
     if (searchQuery.trim()) {
       // Haptic feedback when search is clicked
@@ -144,6 +157,7 @@ export default function SearchScreen() {
       setHasSearched(true);
       setIsAnswerExpanded(false);
       setIsSearching(true);
+      setIsProgressExpanded(true);
       
       searchNotes(searchQuery, true).finally(() => {
         console.log('[SearchScreen] Manual search completed');
@@ -164,6 +178,7 @@ export default function SearchScreen() {
     setHasSearched(true);
     setIsAnswerExpanded(false);
     setIsSearching(true);
+    setIsProgressExpanded(true);
     
     searchNotes(searchText, true).finally(() => {
       console.log('[SearchScreen] History search completed');
@@ -172,7 +187,6 @@ export default function SearchScreen() {
   }, [searchNotes]);
 
   const handleNotePress = useCallback((noteId: string) => {
-    // FIXED: Use setTimeout to break the call stack and prevent recursion
     setTimeout(() => {
       try {
         router.push(`/note-editor?id=${noteId}`);
@@ -188,6 +202,7 @@ export default function SearchScreen() {
     setHasSearched(false);
     setIsAnswerExpanded(false);
     setIsSearching(false);
+    setIsProgressExpanded(true);
     searchNotes('');
   }, [searchNotes]);
 
@@ -200,20 +215,18 @@ export default function SearchScreen() {
     setHasSearched(false);
     setIsAnswerExpanded(false);
     setIsSearching(false);
+    setIsProgressExpanded(true);
     searchNotes('');
     
-    // FIXED: Navigate back with error handling and setTimeout to break call stack
     setTimeout(() => {
       try {
         if (router.canGoBack()) {
           router.back();
         } else {
-          // If can't go back, navigate to home
           router.replace('/(tabs)/(home)');
         }
       } catch (error) {
         console.error('[SearchScreen] Error navigating back:', error);
-        // Fallback to home
         try {
           router.replace('/(tabs)/(home)');
         } catch (fallbackError) {
@@ -366,7 +379,7 @@ export default function SearchScreen() {
             blurOnSubmit={true}
             multiline={true}
             numberOfLines={1}
-            textAlignVertical="center"
+            textAlignVertical="top"
           />
           {searchQuery.length > 0 && (
             <Pressable 
@@ -470,6 +483,8 @@ export default function SearchScreen() {
             locationName={searchLocationName}
             personNames={searchPersonNames}
             extractedKeywords={searchExtractedKeywords}
+            isExpanded={isProgressExpanded}
+            onToggle={() => setIsProgressExpanded(!isProgressExpanded)}
           />
         ) : !hasSearched ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
@@ -503,78 +518,25 @@ export default function SearchScreen() {
         ) : (
           // Show results only when search is complete
           <View style={styles.notesContainer}>
+            {/* Collapsed Progress Indicator - Shows after search completes */}
+            {hasSearched && searchStage === 'complete' && (
+              <SearchProgressIndicator 
+                stage={searchStage} 
+                locationName={searchLocationName}
+                personNames={searchPersonNames}
+                extractedKeywords={searchExtractedKeywords}
+                isExpanded={isProgressExpanded}
+                onToggle={() => setIsProgressExpanded(!isProgressExpanded)}
+              />
+            )}
+
             {/* Search Time Display - Only for specific user */}
             {shouldShowSearchTime && searchTimings.totalMs !== undefined && (
-              <Animated.View entering={FadeIn.duration(400)} style={styles.searchTimingsContainer}>
-                <View style={styles.searchTimingsHeader}>
-                  <IconSymbol name="clock.fill" size={18} color={colors.primary} />
-                  <Text style={styles.searchTimingsTitle}>Search Performance</Text>
-                </View>
-                
-                <View style={styles.searchTimingsList}>
-                  {searchTimings.locationSearchMs !== undefined && (
-                    <View style={styles.searchTimingRow}>
-                      <View style={styles.searchTimingLabel}>
-                        <IconSymbol name="mappin.circle.fill" size={14} color={colors.textSecondary} />
-                        <Text style={styles.searchTimingText}>Location Search</Text>
-                      </View>
-                      <Text style={styles.searchTimingValue}>
-                        {(searchTimings.locationSearchMs / 1000).toFixed(2)}s
-                      </Text>
-                    </View>
-                  )}
-                  
-                  {searchTimings.peopleSearchMs !== undefined && (
-                    <View style={styles.searchTimingRow}>
-                      <View style={styles.searchTimingLabel}>
-                        <IconSymbol name="person.2.fill" size={14} color={colors.textSecondary} />
-                        <Text style={styles.searchTimingText}>People Search</Text>
-                      </View>
-                      <Text style={styles.searchTimingValue}>
-                        {(searchTimings.peopleSearchMs / 1000).toFixed(2)}s
-                      </Text>
-                    </View>
-                  )}
-                  
-                  {searchTimings.keywordSearchMs !== undefined && (
-                    <View style={styles.searchTimingRow}>
-                      <View style={styles.searchTimingLabel}>
-                        <IconSymbol name="text.word.spacing" size={14} color={colors.textSecondary} />
-                        <Text style={styles.searchTimingText}>Keyword Search</Text>
-                      </View>
-                      <Text style={styles.searchTimingValue}>
-                        {(searchTimings.keywordSearchMs / 1000).toFixed(2)}s
-                      </Text>
-                    </View>
-                  )}
-                  
-                  {searchTimings.aiAnswerMs !== undefined && (
-                    <View style={styles.searchTimingRow}>
-                      <View style={styles.searchTimingLabel}>
-                        <IconSymbol name="sparkles" size={14} color={colors.textSecondary} />
-                        <Text style={styles.searchTimingText}>AI Answer Generation</Text>
-                      </View>
-                      <Text style={styles.searchTimingValue}>
-                        {(searchTimings.aiAnswerMs / 1000).toFixed(2)}s
-                      </Text>
-                    </View>
-                  )}
-                  
-                  <View style={styles.searchTimingDivider} />
-                  
-                  <View style={styles.searchTimingRow}>
-                    <View style={styles.searchTimingLabel}>
-                      <IconSymbol name="clock.fill" size={14} color={colors.primary} />
-                      <Text style={[styles.searchTimingText, styles.searchTimingTextBold]}>
-                        Total Time
-                      </Text>
-                    </View>
-                    <Text style={[styles.searchTimingValue, styles.searchTimingValueBold]}>
-                      {(searchTimings.totalMs / 1000).toFixed(2)}s
-                    </Text>
-                  </View>
-                </View>
-              </Animated.View>
+              <CollapsiblePerformance
+                searchTimings={searchTimings}
+                isExpanded={isPerformanceExpanded}
+                onToggle={() => setIsPerformanceExpanded(!isPerformanceExpanded)}
+              />
             )}
 
             {/* Answer Section */}
@@ -644,6 +606,121 @@ export default function SearchScreen() {
   );
 }
 
+// Collapsible Performance Component
+interface CollapsiblePerformanceProps {
+  searchTimings: {
+    locationSearchMs?: number;
+    peopleSearchMs?: number;
+    keywordSearchMs?: number;
+    aiAnswerMs?: number;
+    totalMs?: number;
+  };
+  isExpanded: boolean;
+  onToggle: () => void;
+}
+
+function CollapsiblePerformance({ searchTimings, isExpanded, onToggle }: CollapsiblePerformanceProps) {
+  const heightValue = useSharedValue(isExpanded ? 1 : 0);
+
+  useEffect(() => {
+    heightValue.value = withTiming(isExpanded ? 1 : 0, { duration: 300 });
+  }, [isExpanded, heightValue]);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      maxHeight: heightValue.value === 0 ? 0 : 1000,
+      opacity: heightValue.value,
+      overflow: 'hidden',
+    };
+  });
+
+  return (
+    <Animated.View entering={FadeIn.duration(400)} style={styles.searchTimingsContainer}>
+      <Pressable 
+        onPress={onToggle}
+        style={styles.searchTimingsHeader}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <View style={styles.searchTimingsHeaderLeft}>
+          <IconSymbol name="clock.fill" size={18} color={colors.primary} />
+          <Text style={styles.searchTimingsTitle}>Search Performance</Text>
+        </View>
+        <IconSymbol 
+          name={isExpanded ? "chevron.up" : "chevron.down"} 
+          size={20} 
+          color={colors.textSecondary} 
+        />
+      </Pressable>
+      
+      <Animated.View style={animatedStyle}>
+        <View style={styles.searchTimingsList}>
+          {searchTimings.locationSearchMs !== undefined && (
+            <View style={styles.searchTimingRow}>
+              <View style={styles.searchTimingLabel}>
+                <IconSymbol name="mappin.circle.fill" size={14} color={colors.textSecondary} />
+                <Text style={styles.searchTimingText}>Location Search</Text>
+              </View>
+              <Text style={styles.searchTimingValue}>
+                {(searchTimings.locationSearchMs / 1000).toFixed(2)}s
+              </Text>
+            </View>
+          )}
+          
+          {searchTimings.peopleSearchMs !== undefined && (
+            <View style={styles.searchTimingRow}>
+              <View style={styles.searchTimingLabel}>
+                <IconSymbol name="person.2.fill" size={14} color={colors.textSecondary} />
+                <Text style={styles.searchTimingText}>People Search</Text>
+              </View>
+              <Text style={styles.searchTimingValue}>
+                {(searchTimings.peopleSearchMs / 1000).toFixed(2)}s
+              </Text>
+            </View>
+          )}
+          
+          {searchTimings.keywordSearchMs !== undefined && (
+            <View style={styles.searchTimingRow}>
+              <View style={styles.searchTimingLabel}>
+                <IconSymbol name="text.word.spacing" size={14} color={colors.textSecondary} />
+                <Text style={styles.searchTimingText}>Keyword Search</Text>
+              </View>
+              <Text style={styles.searchTimingValue}>
+                {(searchTimings.keywordSearchMs / 1000).toFixed(2)}s
+              </Text>
+            </View>
+          )}
+          
+          {searchTimings.aiAnswerMs !== undefined && (
+            <View style={styles.searchTimingRow}>
+              <View style={styles.searchTimingLabel}>
+                <IconSymbol name="sparkles" size={14} color={colors.textSecondary} />
+                <Text style={styles.searchTimingText}>AI Answer Generation</Text>
+              </View>
+              <Text style={styles.searchTimingValue}>
+                {(searchTimings.aiAnswerMs / 1000).toFixed(2)}s
+              </Text>
+            </View>
+          )}
+          
+          <View style={styles.searchTimingDivider} />
+          
+          <View style={styles.searchTimingRow}>
+            <View style={styles.searchTimingLabel}>
+              <IconSymbol name="clock.fill" size={14} color={colors.primary} />
+              <Text style={[styles.searchTimingText, styles.searchTimingTextBold]}>
+                Total Time
+              </Text>
+            </View>
+            <Text style={[styles.searchTimingValue, styles.searchTimingValueBold]}>
+              {(searchTimings.totalMs! / 1000).toFixed(2)}s
+            </Text>
+          </View>
+        </View>
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -665,7 +742,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 12,
     paddingHorizontal: 16 * 1.15,
-    paddingVertical: 12 * 1.15,
+    paddingVertical: 8,
     gap: 12,
     minHeight: 48 * 1.1,
   },
@@ -675,6 +752,8 @@ const styles = StyleSheet.create({
     color: colors.text,
     minHeight: 24 * 1.1,
     maxHeight: 120,
+    paddingTop: 4,
+    paddingBottom: 4,
   },
   clearButton: {
     padding: 4 * 1.15,
@@ -877,8 +956,12 @@ const styles = StyleSheet.create({
   searchTimingsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  searchTimingsHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    marginBottom: 12,
   },
   searchTimingsTitle: {
     fontSize: 16,
@@ -887,6 +970,7 @@ const styles = StyleSheet.create({
   },
   searchTimingsList: {
     gap: 8,
+    marginTop: 12,
   },
   searchTimingRow: {
     flexDirection: 'row',
