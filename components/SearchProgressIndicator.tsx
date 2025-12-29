@@ -25,38 +25,42 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
   const iconRotation = useSharedValue(0);
 
   useEffect(() => {
-    // Progress animation based on stage
+    // Progress animation based on stage with more granular steps
     const targetProgress = {
-      detecting: 0.15,
-      resolving: 0.3,
-      filtering: 0.45,
-      people: 0.6,
-      keywords: 0.75,
-      searching: 0.9,
+      detecting: 0.14,
+      resolving: 0.28,
+      filtering: 0.42,
+      people: 0.56,
+      keywords: 0.70,
+      searching: 0.85,
       complete: 1,
     }[stage];
 
     progress.value = withTiming(targetProgress, {
-      duration: 400,
+      duration: 500,
       easing: Easing.bezier(0.25, 0.1, 0.25, 1),
     });
 
     // Pulse animation
     pulseScale.value = withRepeat(
       withSequence(
-        withTiming(1.1, { duration: 600, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 600, easing: Easing.inOut(Easing.ease) })
+        withTiming(1.15, { duration: 700, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 700, easing: Easing.inOut(Easing.ease) })
       ),
       -1,
       false
     );
 
-    // Icon rotation
-    iconRotation.value = withRepeat(
-      withTiming(360, { duration: 2000, easing: Easing.linear }),
-      -1,
-      false
-    );
+    // Icon rotation - only when not complete
+    if (stage !== 'complete') {
+      iconRotation.value = withRepeat(
+        withTiming(360, { duration: 2000, easing: Easing.linear }),
+        -1,
+        false
+      );
+    } else {
+      iconRotation.value = withTiming(0, { duration: 300 });
+    }
   }, [stage, progress, pulseScale, iconRotation]);
 
   const progressBarStyle = useAnimatedStyle(() => {
@@ -121,19 +125,41 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
     }
   };
 
+  const getStageDescription = () => {
+    switch (stage) {
+      case 'detecting':
+        return 'Understanding your search query';
+      case 'resolving':
+        return 'Looking up location details';
+      case 'filtering':
+        return 'Finding recalls in the area';
+      case 'people':
+        return 'Matching people in your recalls';
+      case 'keywords':
+        return 'Analyzing content and images';
+      case 'searching':
+        return 'Crafting your personalized answer';
+      case 'complete':
+        return 'Search completed successfully';
+      default:
+        return '';
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Animated.View style={[styles.iconContainer, pulseStyle]}>
         <Animated.View style={stage !== 'complete' ? iconRotationStyle : undefined}>
           <IconSymbol
             name={getStageIcon()}
-            size={40}
+            size={48}
             color={stage === 'complete' ? colors.success : colors.primary}
           />
         </Animated.View>
       </Animated.View>
 
       <Text style={styles.stageText}>{getStageText()}</Text>
+      <Text style={styles.stageDescription}>{getStageDescription()}</Text>
 
       {locationName && (stage === 'resolving' || stage === 'filtering') && (
         <View style={styles.infoBadge}>
@@ -152,6 +178,45 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
       <View style={styles.progressBarContainer}>
         <Animated.View style={[styles.progressBar, progressBarStyle]} />
       </View>
+
+      {/* Stage indicators */}
+      <View style={styles.stageIndicators}>
+        <View style={[
+          styles.stageIndicator,
+          (stage === 'detecting' || stage === 'resolving' || stage === 'filtering' || 
+           stage === 'people' || stage === 'keywords' || stage === 'searching' || 
+           stage === 'complete') && styles.stageIndicatorActive
+        ]} />
+        <View style={[
+          styles.stageIndicator,
+          (stage === 'resolving' || stage === 'filtering' || stage === 'people' || 
+           stage === 'keywords' || stage === 'searching' || stage === 'complete') && 
+           styles.stageIndicatorActive
+        ]} />
+        <View style={[
+          styles.stageIndicator,
+          (stage === 'filtering' || stage === 'people' || stage === 'keywords' || 
+           stage === 'searching' || stage === 'complete') && styles.stageIndicatorActive
+        ]} />
+        <View style={[
+          styles.stageIndicator,
+          (stage === 'people' || stage === 'keywords' || stage === 'searching' || 
+           stage === 'complete') && styles.stageIndicatorActive
+        ]} />
+        <View style={[
+          styles.stageIndicator,
+          (stage === 'keywords' || stage === 'searching' || stage === 'complete') && 
+           styles.stageIndicatorActive
+        ]} />
+        <View style={[
+          styles.stageIndicator,
+          (stage === 'searching' || stage === 'complete') && styles.stageIndicatorActive
+        ]} />
+        <View style={[
+          styles.stageIndicator,
+          stage === 'complete' && styles.stageIndicatorActive
+        ]} />
+      </View>
     </View>
   );
 }
@@ -161,31 +226,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 40,
-    gap: 16,
+    gap: 12,
   },
   iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: `${colors.primary}15`,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
   },
   stageText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
     color: colors.text,
     textAlign: 'center',
+    marginTop: 4,
+  },
+  stageDescription: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 8,
   },
   infoBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     backgroundColor: `${colors.primary}15`,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: 16,
+    marginTop: 4,
   },
   infoText: {
     fontSize: 14,
@@ -193,16 +267,30 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   progressBarContainer: {
-    width: '80%',
-    height: 4,
+    width: '85%',
+    height: 6,
     backgroundColor: colors.border,
-    borderRadius: 2,
+    borderRadius: 3,
     overflow: 'hidden',
-    marginTop: 8,
+    marginTop: 16,
   },
   progressBar: {
     height: '100%',
     backgroundColor: colors.primary,
-    borderRadius: 2,
+    borderRadius: 3,
+  },
+  stageIndicators: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  stageIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.border,
+  },
+  stageIndicatorActive: {
+    backgroundColor: colors.primary,
   },
 });

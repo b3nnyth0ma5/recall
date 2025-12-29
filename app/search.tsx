@@ -39,6 +39,7 @@ export default function SearchScreen() {
     searchLocationName,
     searchPersonNames,
     searchTimeMs,
+    searchTimings,
   } = useNotes();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
@@ -498,12 +499,76 @@ export default function SearchScreen() {
           // Show results only when search is complete
           <View style={styles.notesContainer}>
             {/* Search Time Display - Only for specific user */}
-            {shouldShowSearchTime && searchTimeMs !== undefined && (
-              <Animated.View entering={FadeIn.duration(400)} style={styles.searchTimeContainer}>
-                <IconSymbol name="clock.fill" size={16} color={colors.textSecondary} />
-                <Text style={styles.searchTimeText}>
-                  Search completed in {(searchTimeMs / 1000).toFixed(2)}s
-                </Text>
+            {shouldShowSearchTime && searchTimings.totalMs !== undefined && (
+              <Animated.View entering={FadeIn.duration(400)} style={styles.searchTimingsContainer}>
+                <View style={styles.searchTimingsHeader}>
+                  <IconSymbol name="clock.fill" size={18} color={colors.primary} />
+                  <Text style={styles.searchTimingsTitle}>Search Performance</Text>
+                </View>
+                
+                <View style={styles.searchTimingsList}>
+                  {searchTimings.locationSearchMs !== undefined && (
+                    <View style={styles.searchTimingRow}>
+                      <View style={styles.searchTimingLabel}>
+                        <IconSymbol name="mappin.circle.fill" size={14} color={colors.textSecondary} />
+                        <Text style={styles.searchTimingText}>Location Search</Text>
+                      </View>
+                      <Text style={styles.searchTimingValue}>
+                        {(searchTimings.locationSearchMs / 1000).toFixed(2)}s
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {searchTimings.peopleSearchMs !== undefined && (
+                    <View style={styles.searchTimingRow}>
+                      <View style={styles.searchTimingLabel}>
+                        <IconSymbol name="person.2.fill" size={14} color={colors.textSecondary} />
+                        <Text style={styles.searchTimingText}>People Search</Text>
+                      </View>
+                      <Text style={styles.searchTimingValue}>
+                        {(searchTimings.peopleSearchMs / 1000).toFixed(2)}s
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {searchTimings.keywordSearchMs !== undefined && (
+                    <View style={styles.searchTimingRow}>
+                      <View style={styles.searchTimingLabel}>
+                        <IconSymbol name="text.word.spacing" size={14} color={colors.textSecondary} />
+                        <Text style={styles.searchTimingText}>Keyword Search</Text>
+                      </View>
+                      <Text style={styles.searchTimingValue}>
+                        {(searchTimings.keywordSearchMs / 1000).toFixed(2)}s
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {searchTimings.aiAnswerMs !== undefined && (
+                    <View style={styles.searchTimingRow}>
+                      <View style={styles.searchTimingLabel}>
+                        <IconSymbol name="sparkles" size={14} color={colors.textSecondary} />
+                        <Text style={styles.searchTimingText}>AI Answer Generation</Text>
+                      </View>
+                      <Text style={styles.searchTimingValue}>
+                        {(searchTimings.aiAnswerMs / 1000).toFixed(2)}s
+                      </Text>
+                    </View>
+                  )}
+                  
+                  <View style={styles.searchTimingDivider} />
+                  
+                  <View style={styles.searchTimingRow}>
+                    <View style={styles.searchTimingLabel}>
+                      <IconSymbol name="clock.fill" size={14} color={colors.primary} />
+                      <Text style={[styles.searchTimingText, styles.searchTimingTextBold]}>
+                        Total Time
+                      </Text>
+                    </View>
+                    <Text style={[styles.searchTimingValue, styles.searchTimingValueBold]}>
+                      {(searchTimings.totalMs / 1000).toFixed(2)}s
+                    </Text>
+                  </View>
+                </View>
               </Animated.View>
             )}
 
@@ -816,21 +881,62 @@ const styles = StyleSheet.create({
   notesContainer: {
     width: '100%',
   },
-  searchTimeContainer: {
+  searchTimingsContainer: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  searchTimingsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.card,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-    alignSelf: 'flex-start',
+    marginBottom: 12,
   },
-  searchTimeText: {
-    fontSize: 13,
+  searchTimingsTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  searchTimingsList: {
+    gap: 8,
+  },
+  searchTimingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  searchTimingLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  searchTimingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  searchTimingTextBold: {
+    fontWeight: '700',
+    color: colors.text,
+  },
+  searchTimingValue: {
+    fontSize: 14,
     fontWeight: '600',
     color: colors.textSecondary,
+  },
+  searchTimingValueBold: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  searchTimingDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 4,
   },
   answerContainer: {
     backgroundColor: colors.card,

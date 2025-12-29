@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 const corsHeaders = {
@@ -218,16 +217,14 @@ Deno.serve(async (req) => {
     const qaPrompt = `You are a search assistant that answers questions thoroughly based on the provided information.
 
 CRITICAL RULES:
-1. Answer ONLY using information explicitly stated in the provided recalls
-2. Use information from BOTH the recall text AND all associated images
-3. Do NOT add information or general knowledge not present in the recalls
-4. If the recalls don't contain enough information to answer the question, say so clearly
-5. Use bullet points when listing multiple items
-6. Provide a confidence score (0-100) based on how well the recalls answer the question
+- Use information from BOTH the recall text AND all associated images
+- If the recalls don't contain enough information to answer the question, say so clearly
+- Use bullet points when listing multiple items
+- Provide a confidence score (0-100) based on how well the recalls answer the question
 
 MATCH TYPE PRIORITY:
 - Sources marked with [LOCATION + PEOPLE + KEYWORD] have the HIGHEST priority (match all criteria)
-- Sources marked with [LOCATION + KEYWORD] or [PEOPLE + KEYWORD] have HIGH priority (match two criteria)
+- Sources marked with [LOCATION + KEYWORD] or [PEOPLE + KEYWORD] or [LOCATION + PEOPLE] have HIGH priority (match two criteria)
 - Sources marked with [LOCATION], [PEOPLE], or [KEYWORD] alone have MEDIUM priority (match one criterion)
 - Pay attention to TIER markers: [HIGH TIER] (60%+), [MEDIUM TIER] (40-60%), [LOW TIER] (25-40%)
 - Pay attention to keyword match counts - more matched keywords indicate better relevance
@@ -255,8 +252,8 @@ If the recalls don't contain the requested information, respond with: {"answer":
             content: qaPrompt
           }
         ],
-        temperature: 0.35,
-        max_tokens: 1000,
+        temperature: 0.3,
+        max_tokens: 500,
         response_format: { type: 'json_object' }
       })
     });
