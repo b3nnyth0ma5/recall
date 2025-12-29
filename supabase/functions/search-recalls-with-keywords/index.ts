@@ -19,7 +19,7 @@ interface RecallMatch {
   text_similarity: number;
   image_similarities: number[];
   keyword_matches: number;
-  aggregated_match: number;
+  best_similarity: number;
   tier: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
   isPriority: boolean;
   recall_data: {
@@ -196,6 +196,7 @@ async function generateKeywordEmbeddings(keywords: string[], openaiApiKey: strin
 
 /**
  * Calculate multi-keyword match score - OPTIMIZED
+ * Returns the best similarity score and count of matching keywords
  */
 function calculateMultiKeywordMatch(
   keywordEmbeddings: number[][],
@@ -211,32 +212,6 @@ function calculateMultiKeywordMatch(
   }
   
   return { matchCount, bestSimilarity };
-}
-
-/**
- * Calculate aggregated match percentage - SIMPLIFIED
- */
-function calculateAggregatedMatch(
-  textSimilarity: number,
-  imageSimilarities: number[],
-  keywordMatchCount: number,
-  totalKeywords: number
-): number {
-  // Weight: 40% text, 40% images, 20% keyword coverage
-  const textScore = textSimilarity * 0.4;
-  
-  // Image component (average of all image similarities)
-  const avgImageSimilarity = imageSimilarities.length > 0
-    ? imageSimilarities.reduce((sum, sim) => sum + sim, 0) / imageSimilarities.length
-    : 0;
-  const imageScore = avgImageSimilarity * 0.4;
-  
-  // Keyword coverage component
-  const keywordCoverage = totalKeywords > 0 ? keywordMatchCount / totalKeywords : 0;
-  const keywordScore = keywordCoverage * 0.2;
-  
-  // Combine all components
-  return Math.max(0, Math.min(1, textScore + imageScore + keywordScore));
 }
 
 Deno.serve(async (req) => {
@@ -416,12 +391,15 @@ Deno.serve(async (req) => {
       const recallImages = imagesByRecall.get(recall.id) || [];
       const imageSimilarities: number[] = [];
       const imagesData: RecallMatch['images_data'] = [];
-      let totalImageKeywordMatches = 0;
+      let bestImageSimilarity = 0;
       
       for (const image of recallImages) {
         const imageMatch = calculateMultiKeywordMatch(keywordEmbeddings, image.recall_image_embedding);
         imageSimilarities.push(imageMatch.bestSimilarity);
-        totalImageKeywordMatches += imageMatch.matchCount;
+        
+        if (imageMatch.bestSimilarity > bestImageSimilarity) {
+          bestImageSimilarity = imageMatch.bestSimilarity;
+        }
         
         imagesData.push({
           id: image.id,
@@ -431,18 +409,18 @@ Deno.serve(async (req) => {
         });
       }
       
-      // Total keyword matches
-      const totalKeywordMatches = textMatch.matchCount + totalImageKeywordMatches;
+      // Total keyword matches (text + images)
+      const totalKeywordMatches = textMatch.matchCount + 
+        recallImages.reduce((sum, image) => {
+          const imageMatch = calculateMultiKeywordMatch(keywordEmbeddings, image.recall_image_embedding);
+          return sum + imageMatch.matchCount;
+        }, 0);
       
-      // Calculate aggregated match
-      const aggregatedMatch = calculateAggregatedMatch(
-        textMatch.bestSimilarity,
-        imageSimilarities,
-        totalKeywordMatches,
-        keywords.length
-      );
+      // Use the best similarity score across text and images as the overall match score
+      // This is a simple, non-weighted approach
+      const bestSimilarity = Math.max(textMatch.bestSimilarity, bestImageSimilarity);
       
-      const tier = getSimilarityTier(aggregatedMatch);
+      const tier = getSimilarityTier(bestSimilarity);
       
       // Only include recalls that meet LOW threshold or higher
       if (tier !== 'NONE') {
@@ -451,7 +429,7 @@ Deno.serve(async (req) => {
           text_similarity: textMatch.bestSimilarity,
           image_similarities: imageSimilarities,
           keyword_matches: totalKeywordMatches,
-          aggregated_match: aggregatedMatch,
+          best_similarity: bestSimilarity,
           tier,
           isPriority: priorityRecallIdsSet.has(recall.id),
           recall_data: {
@@ -466,7 +444,7 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${recallMatches.length} recalls meeting threshold`);
 
-    // Sort by priority, then tier, then aggregated match
+    // Sort by priority, then tier, then best similarity
     const tierOrder = { HIGH: 3, MEDIUM: 2, LOW: 1, NONE: 0 };
     recallMatches.sort((a, b) => {
       if (a.isPriority && !b.isPriority) return -1;
@@ -474,13 +452,13 @@ Deno.serve(async (req) => {
       if (tierOrder[a.tier] !== tierOrder[b.tier]) {
         return tierOrder[b.tier] - tierOrder[a.tier];
       }
-      return b.aggregated_match - a.aggregated_match;
+      return b.best_similarity - a.best_similarity;
     });
 
     // Convert to result format
     const results = recallMatches.map(match => ({
       recall_id: match.recall_id,
-      matchPercentage: Math.round(match.aggregated_match * 100),
+      matchPercentage: Math.round(match.best_similarity * 100),
       tier: match.tier,
       keywordMatches: match.keyword_matches,
       totalKeywords: keywords.length,

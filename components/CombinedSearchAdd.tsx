@@ -388,20 +388,29 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         setShowDrawer(false);
         
         // Start optimizing images in the background
-        console.log('[CombinedSearchAdd] Starting image optimization...');
-        const { compressImagesForUpload } = await import('@/utils/imageOptimization');
-        const originalUris = result.assets.map(asset => asset.uri);
+        console.log('[CombinedSearchAdd] Starting image optimization for uploaded photos...');
         
-        // Optimize images one by one and replace placeholders as they complete
-        await compressImagesForUpload(originalUris, (optimizedUri: string, index: number) => {
-          console.log(`[CombinedSearchAdd] Image ${index + 1}/${originalUris.length} optimized`);
+        // Process each image individually to check aspect ratio and optimize
+        for (let i = 0; i < result.assets.length; i++) {
+          const asset = result.assets[i];
+          const originalUri = asset.uri;
+          
+          console.log(`[CombinedSearchAdd] Processing uploaded image ${i + 1}/${result.assets.length}`);
+          
+          // Import image optimization utility
+          const { compressImageForUpload } = await import('@/utils/imageOptimization');
+          
+          // Compress and optimize the image (this function checks aspect ratio internally)
+          const optimizedUri = await compressImageForUpload(originalUri);
+          
+          console.log(`[CombinedSearchAdd] Image ${i + 1}/${result.assets.length} optimized`);
           
           // Replace placeholder with optimized image
           setImages(prev => {
             const newImages = [...prev];
             // Find the placeholder with matching original URI
             const placeholderIndex = newImages.findIndex(
-              img => img.isPlaceholder && img.originalUri === originalUris[index]
+              img => img.isPlaceholder && img.originalUri === originalUri
             );
             
             if (placeholderIndex !== -1) {
@@ -413,9 +422,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
             
             return newImages;
           });
-        });
+        }
         
-        console.log('[CombinedSearchAdd] All images optimized successfully');
+        console.log('[CombinedSearchAdd] All uploaded images optimized successfully');
       }
     } catch (error) {
       console.error('Error picking image:', error);
