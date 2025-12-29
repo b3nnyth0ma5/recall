@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -82,6 +82,13 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     getCurrentLocation();
   }, []);
 
+  const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
+    if (nextAppState === 'active') {
+      console.log('[CombinedSearchAdd] App became active - refreshing location');
+      getCurrentLocation();
+    }
+  }, []);
+
   // Handle app state changes for location refresh
   useEffect(() => {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
@@ -89,7 +96,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [handleAppStateChange]);
 
   // Set up periodic location refresh (every 5 minutes of inactivity)
   useEffect(() => {
@@ -115,13 +122,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       }
     };
   }, []);
-
-  const handleAppStateChange = (nextAppState: AppStateStatus) => {
-    if (nextAppState === 'active') {
-      console.log('[CombinedSearchAdd] App became active - refreshing location');
-      getCurrentLocation();
-    }
-  };
 
   // Handle keyboard show/hide
   useEffect(() => {
@@ -163,7 +163,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         { scale: aiIconScale.value },
       ],
     };
-  });
+  }, [aiIconRotation, aiIconScale]);
 
   // Start AI icon animation when detecting intent
   useEffect(() => {
@@ -188,7 +188,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       aiIconRotation.value = withTiming(0, { duration: 300 });
       aiIconScale.value = withTiming(1, { duration: 300 });
     }
-  }, [isDetectingIntent]);
+  }, [isDetectingIntent, aiIconRotation, aiIconScale]);
 
   const getCurrentLocation = async () => {
     try {
