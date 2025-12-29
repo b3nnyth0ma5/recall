@@ -451,8 +451,6 @@ export default function HomeScreen() {
         icon="doc.text"
         title="No Recalls Yet"
         message="Start capturing your thoughts, memories, and moments"
-        actionText="Create Your First Recall"
-        onActionPress={handleAddRecall}
         animatedIcon={true}
       />
     );

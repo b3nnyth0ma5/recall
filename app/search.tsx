@@ -38,6 +38,7 @@ export default function SearchScreen() {
     searchStage,
     searchLocationName,
     searchPersonNames,
+    searchExtractedKeywords,
     searchTimeMs,
     searchTimings,
   } = useNotes();
@@ -363,6 +364,9 @@ export default function SearchScreen() {
             returnKeyType="search"
             enablesReturnKeyAutomatically={true}
             blurOnSubmit={true}
+            multiline={true}
+            numberOfLines={1}
+            textAlignVertical="center"
           />
           {searchQuery.length > 0 && (
             <Pressable 
@@ -465,6 +469,7 @@ export default function SearchScreen() {
             stage={searchStage} 
             locationName={searchLocationName}
             personNames={searchPersonNames}
+            extractedKeywords={searchExtractedKeywords}
           />
         ) : !hasSearched ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
@@ -635,27 +640,6 @@ export default function SearchScreen() {
           </View>
         )}
       </ScrollView>
-
-      {/* Map FAB - Bottom Right */}
-      <Pressable
-        onPress={() => {
-          if (Platform.OS !== 'web') {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          }
-          // FIXED: Use setTimeout to break the call stack and prevent recursion
-          setTimeout(() => {
-            try {
-              router.push(`/map-view?hasSearch=${hasSearched ? 'true' : 'false'}`);
-            } catch (error) {
-              console.error('[SearchScreen] Error navigating to map view:', error);
-            }
-          }, 0);
-        }}
-        style={styles.mapFab}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <IconSymbol name="map.fill" size={24} color="#FFFFFF" />
-      </Pressable>
     </View>
   );
 }
@@ -690,6 +674,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     minHeight: 24 * 1.1,
+    maxHeight: 120,
   },
   clearButton: {
     padding: 4 * 1.15,
@@ -1032,18 +1017,5 @@ const styles = StyleSheet.create({
   noteCardContainer: {
     position: 'relative',
     zIndex: 1,
-  },
-  mapFab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 60 * 1.15,
-    height: 60 * 1.15,
-    borderRadius: 30 * 1.15,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(255, 107, 122, 0.4)',
-    elevation: 8,
   },
 });

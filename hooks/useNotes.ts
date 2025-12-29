@@ -36,6 +36,7 @@ export function useNotes() {
   const [searchStage, setSearchStage] = useState<SearchStage>('idle');
   const [searchLocationName, setSearchLocationName] = useState<string | undefined>(undefined);
   const [searchPersonNames, setSearchPersonNames] = useState<string[] | undefined>(undefined);
+  const [searchExtractedKeywords, setSearchExtractedKeywords] = useState<string[] | undefined>(undefined);
   const [searchTimeMs, setSearchTimeMs] = useState<number | undefined>(undefined);
   const [searchTimings, setSearchTimings] = useState<SearchTimings>({});
   const { user } = useAuth();
@@ -559,6 +560,7 @@ export function useNotes() {
       setSearchStage('idle');
       setSearchLocationName(undefined);
       setSearchPersonNames(undefined);
+      setSearchExtractedKeywords(undefined);
       setSearchTimeMs(undefined);
       setSearchTimings({});
       await refreshNotes();
@@ -573,6 +575,7 @@ export function useNotes() {
       setSearchStage('detecting');
       setSearchLocationName(undefined);
       setSearchPersonNames(undefined);
+      setSearchExtractedKeywords(undefined);
       setSearchTimeMs(undefined);
       setSearchTimings({});
       
@@ -678,12 +681,6 @@ export function useNotes() {
         // Add delay to show resolving stage
         await new Promise(resolve => setTimeout(resolve, 400));
         
-        // Update stage to filtering
-        setSearchStage('filtering');
-        
-        // Add delay to show filtering stage
-        await new Promise(resolve => setTimeout(resolve, 400));
-        
         // Create location recalls with match info
         locationRecalls = locationResult.data.recallIds.map((id: string) => ({
           recall_id: id,
@@ -729,6 +726,7 @@ export function useNotes() {
 
       // Process keyword results
       let keywordRecalls: any[] = [];
+      let extractedKeywords: string[] = [];
       
       if (keywordResult.data?.results && keywordResult.data.results.length > 0) {
         console.log('Keyword matches found!');
@@ -736,12 +734,20 @@ export function useNotes() {
         
         setSearchStage('keywords');
         
+        // Extract keywords from the result
+        if (keywordResult.data.keywords && Array.isArray(keywordResult.data.keywords)) {
+          extractedKeywords = keywordResult.data.keywords;
+          setSearchExtractedKeywords(extractedKeywords);
+          console.log('Extracted keywords:', extractedKeywords);
+        }
+        
         // Add delay to show keywords stage
         await new Promise(resolve => setTimeout(resolve, 400));
         
         keywordRecalls = keywordResult.data.results;
       } else {
         console.log('No keyword matches found');
+        setSearchExtractedKeywords(undefined);
       }
 
       // Step 2: Use search-recalls-v2 with combined results
@@ -909,6 +915,7 @@ export function useNotes() {
       setSearchStage('idle');
       setSearchLocationName(undefined);
       setSearchPersonNames(undefined);
+      setSearchExtractedKeywords(undefined);
       setSearchTimeMs(undefined);
       setSearchTimings({});
     } finally {
@@ -959,6 +966,7 @@ export function useNotes() {
     searchStage,
     searchLocationName,
     searchPersonNames,
+    searchExtractedKeywords,
     searchTimeMs,
     searchTimings,
     addNote,

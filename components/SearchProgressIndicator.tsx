@@ -14,6 +14,7 @@ interface SearchProgressIndicatorProps {
   stage: 'detecting' | 'resolving' | 'filtering' | 'people' | 'keywords' | 'searching' | 'complete';
   locationName?: string;
   personNames?: string[];
+  extractedKeywords?: string[];
 }
 
 interface StepConfig {
@@ -38,13 +39,6 @@ const STEPS: StepConfig[] = [
     title: 'Resolving location',
     description: 'Looking up location details',
     stages: ['resolving', 'filtering', 'people', 'keywords', 'searching', 'complete'],
-  },
-  {
-    id: 'filtering',
-    icon: 'line.3.horizontal.decrease.circle.fill',
-    title: 'Filtering nearby recalls',
-    description: 'Finding recalls in the area',
-    stages: ['filtering', 'people', 'keywords', 'searching', 'complete'],
   },
   {
     id: 'people',
@@ -76,7 +70,12 @@ const STEPS: StepConfig[] = [
   },
 ];
 
-export function SearchProgressIndicator({ stage, locationName, personNames }: SearchProgressIndicatorProps) {
+export function SearchProgressIndicator({ 
+  stage, 
+  locationName, 
+  personNames,
+  extractedKeywords 
+}: SearchProgressIndicatorProps) {
   const isStepComplete = (step: StepConfig): boolean => {
     return step.stages.includes(stage) && stage !== step.id;
   };
@@ -119,6 +118,7 @@ export function SearchProgressIndicator({ stage, locationName, personNames }: Se
                 status={status}
                 locationName={locationName}
                 personNames={personNames}
+                extractedKeywords={extractedKeywords}
                 title={getStepTitle(step)}
               />
               {!isLast && <StepConnector status={status} />}
@@ -135,10 +135,18 @@ interface StepItemProps {
   status: 'pending' | 'active' | 'complete';
   locationName?: string;
   personNames?: string[];
+  extractedKeywords?: string[];
   title: string;
 }
 
-function StepItem({ step, status, locationName, personNames, title }: StepItemProps) {
+function StepItem({ 
+  step, 
+  status, 
+  locationName, 
+  personNames, 
+  extractedKeywords,
+  title 
+}: StepItemProps) {
   const iconColor = status === 'complete' 
     ? colors.success 
     : status === 'active' 
@@ -175,8 +183,8 @@ function StepItem({ step, status, locationName, personNames, title }: StepItemPr
           {step.description}
         </Text>
         
-        {/* Show location badge when resolving or filtering */}
-        {locationName && (step.id === 'resolving' || step.id === 'filtering') && status !== 'pending' && (
+        {/* Show location badge when resolving */}
+        {locationName && step.id === 'resolving' && status !== 'pending' && (
           <View style={styles.infoBadge}>
             <IconSymbol name="mappin.circle.fill" size={14} color={colors.primary} />
             <Text style={styles.infoText}>{locationName}</Text>
@@ -188,6 +196,14 @@ function StepItem({ step, status, locationName, personNames, title }: StepItemPr
           <View style={styles.infoBadge}>
             <IconSymbol name="person.circle.fill" size={14} color={colors.primary} />
             <Text style={styles.infoText}>{personNames.join(', ')}</Text>
+          </View>
+        )}
+
+        {/* Show extracted keywords badge when extracting keywords */}
+        {extractedKeywords && extractedKeywords.length > 0 && step.id === 'keywords' && status !== 'pending' && (
+          <View style={styles.infoBadge}>
+            <IconSymbol name="text.word.spacing" size={14} color={colors.primary} />
+            <Text style={styles.infoText}>{extractedKeywords.join(', ')}</Text>
           </View>
         )}
       </View>
