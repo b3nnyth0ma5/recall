@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, memo, useMemo } from 'react';
+import React, { useState, useRef, useEffect, memo } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
@@ -30,7 +30,6 @@ interface NoteCardProps {
   onDelete?: () => void;
   loading?: boolean;
   expectedImageCount?: number;
-  isSearchResult?: boolean; // Flag to indicate if this is on search results page
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -61,7 +60,7 @@ const countNewlines = (text: string): number => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount, isSearchResult = false }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount }: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -375,51 +374,20 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   // Create display array with placeholders based on totalImageCount
-  // Sort images by match percentage if on search results page
-  const { displayImages, sortedImageIds } = useMemo(() => {
-    if (totalImageCount === 0) {
-      return { displayImages: [], sortedImageIds: [] };
-    }
-
-    // Create array of image data with indices
-    const imageDataArray = Array.from({ length: totalImageCount }, (_, index) => {
-      let imageUrl = '';
-      
-      // First check if we have a lazy loaded image
-      if (lazyLoadedImages[index]) {
-        imageUrl = lazyLoadedImages[index];
-      }
-      // Then check if we have the image in the note.images array
-      else if (note.images && note.images[index]) {
-        imageUrl = note.images[index];
-      }
-      
-      // Get match data if available
-      const matchData = note.imageMatchData?.[index];
-      const similarity = matchData?.similarity || 0;
-      const imageId = note.imageIds?.[index] || '';
-      
-      return {
-        url: imageUrl,
-        originalIndex: index,
-        similarity,
-        imageId,
-      };
-    });
-
-    // Sort by similarity (highest first) ONLY if on search results page
-    if (isSearchResult && note.imageMatchData && note.imageMatchData.length > 0) {
-      imageDataArray.sort((a, b) => b.similarity - a.similarity);
-      console.log(`[NoteCard] Sorted images for search result ${note.id} by similarity:`, 
-        imageDataArray.map(img => `${Math.round(img.similarity * 100)}%`).join(', '));
-    }
-
-    // Return both URLs and IDs in the sorted order
-    return {
-      displayImages: imageDataArray.map(img => img.url),
-      sortedImageIds: imageDataArray.map(img => img.imageId),
-    };
-  }, [totalImageCount, lazyLoadedImages, note.images, note.imageMatchData, note.imageIds, note.id, isSearchResult]);
+  const displayImages = totalImageCount > 0 
+    ? Array.from({ length: totalImageCount }, (_, index) => {
+        // First check if we have a lazy loaded image
+        if (lazyLoadedImages[index]) {
+          return lazyLoadedImages[index];
+        }
+        // Then check if we have the image in the note.images array
+        if (note.images && note.images[index]) {
+          return note.images[index];
+        }
+        // Otherwise return empty string for placeholder
+        return '';
+      }) 
+    : [];
 
   // Check if note has people mentioned
   const hasPeople = note.people && note.people.length > 0;
@@ -594,12 +562,12 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         </Pressable>
       </Swipeable>
 
-      {/* Full Screen Image Component - Pass sorted images if on search results page */}
-      {displayImages && displayImages.length > 0 && (
+      {/* Full Screen Image Component - Pass original images array, not lazy loaded */}
+      {note.images && note.images.length > 0 && (
         <FullScreenImage
           visible={showFullScreenImage}
-          images={displayImages.filter(img => img !== '')}
-          imageIds={sortedImageIds}
+          images={note.images}
+          imageIds={note.imageIds}
           initialIndex={fullScreenImageIndex}
           onClose={() => setShowFullScreenImage(false)}
         />
@@ -614,11 +582,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     prevProps.note.updated_at === nextProps.note.updated_at &&
     prevProps.note.images?.length === nextProps.note.images?.length &&
     prevProps.note.imageIds?.length === nextProps.note.imageIds?.length &&
-    prevProps.note.imageMatchData?.length === nextProps.note.imageMatchData?.length &&
     prevProps.note.people?.length === nextProps.note.people?.length &&
     prevProps.loading === nextProps.loading &&
-    prevProps.expectedImageCount === nextProps.expectedImageCount &&
-    prevProps.isSearchResult === nextProps.isSearchResult
+    prevProps.expectedImageCount === nextProps.expectedImageCount
   );
 });
 

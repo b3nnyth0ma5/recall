@@ -4,7 +4,6 @@ export interface Note {
   text: string;
   images: string[]; // Array of CDN URLs for display
   imageIds?: string[]; // Array of image record IDs
-  imageMatchData?: ImageMatchData[]; // Match data for each image (search results only)
   created_at: string;
   updated_at: string;
   latitude?: number;
@@ -16,13 +15,6 @@ export interface Note {
   relevance_reason?: string; // Explanation of why this recall matches
   used_for_answer?: boolean; // Whether this recall was used to derive the AI answer
   people?: Person[]; // People mentioned in this recall
-}
-
-export interface ImageMatchData {
-  id: string;
-  similarity: number; // Match percentage (0-1)
-  ocr_text?: string;
-  image_explanation?: string;
 }
 
 export interface Person {
