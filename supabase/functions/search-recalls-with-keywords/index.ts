@@ -106,7 +106,7 @@ async function extractKeywords(query: string, openaiApiKey: string): Promise<str
   console.log('Extracting keywords using OpenAI NER...');
   
   // Optimized prompt for faster processing
-  const nerPrompt = `Extract key search terms from: "${query}"\nReturn comma-separated list only:`;
+  const nerPrompt = `Extract key search terms (include related words/phrases too but prioritise the search terms in the query) from: "${query}"\nReturn comma-separated list only:`;
 
   const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -145,7 +145,7 @@ async function extractKeywords(query: string, openaiApiKey: string): Promise<str
     .split(',')
     .map((k: string) => k.trim())
     .filter((k: string) => k.length > 0)
-    .slice(0, 5); // Limit to 5 keywords for speed
+    .slice(0, 10); // Limit to 10 keywords for speed
   
   console.log('Extracted keywords:', keywords);
   return keywords;
@@ -223,17 +223,17 @@ function calculateAggregatedMatch(
   totalKeywords: number
 ): number {
   // Weight: 40% text, 40% images, 20% keyword coverage
-  const textScore = textSimilarity * 0.4;
+  const textScore = textSimilarity * 0.3;
   
   // Image component (average of all image similarities)
   const avgImageSimilarity = imageSimilarities.length > 0
     ? imageSimilarities.reduce((sum, sim) => sum + sim, 0) / imageSimilarities.length
     : 0;
-  const imageScore = avgImageSimilarity * 0.4;
+  const imageScore = avgImageSimilarity * 0.6;
   
   // Keyword coverage component
   const keywordCoverage = totalKeywords > 0 ? keywordMatchCount / totalKeywords : 0;
-  const keywordScore = keywordCoverage * 0.2;
+  const keywordScore = keywordCoverage * 0.5;
   
   // Combine all components
   return Math.max(0, Math.min(1, textScore + imageScore + keywordScore));
