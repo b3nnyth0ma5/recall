@@ -131,7 +131,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         setKeyboardHeight(e.endCoordinates.height);
         setIsKeyboardVisible(true);
         // Reduced from -(e.endCoordinates.height + 10) to -(e.endCoordinates.height / 2 + 5)
-        translateY.value = withTiming(-(e.endCoordinates.height / 2 + 5), { duration: 250 });
+        translateY.value = withTiming(-(e.endCoordinates.height - 10), { duration: 250 });
       }
     );
 
