@@ -19,7 +19,7 @@ interface RecallMatch {
   text_similarity: number;
   image_similarities: number[];
   keyword_matches: number;
-  aggregated_match: number;
+  best_similarity: number;
   tier: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
   isPriority: boolean;
   recall_data: {
@@ -59,53 +59,98 @@ function getSimilarityTier(similarity: number): 'HIGH' | 'MEDIUM' | 'LOW' | 'NON
 }
 
 /**
- * Calculate cosine similarity between two embeddings - SIMPLIFIED
+ * Calculate cosine similarity between two embeddings - INDUSTRY STANDARD
+ * 
+ * Cosine similarity formula:
+ * similarity = (A · B) / (||A|| * ||B||)
+ * 
+ * Where:
+ * - A · B is the dot product of vectors A and B
+ * - ||A|| is the magnitude (Euclidean norm) of vector A
+ * - ||B|| is the magnitude (Euclidean norm) of vector B
+ * 
+ * The result is a value between -1 and 1:
+ * - 1 means vectors are identical in direction
+ * - 0 means vectors are orthogonal (perpendicular)
+ * - -1 means vectors are opposite in direction
  */
 function calculateCosineSimilarity(embedding1: number[], embedding2: any): number {
-  if (!embedding2 || !Array.isArray(embedding1) || embedding1.length === 0) return 0;
+  // Validate inputs
+  if (!embedding1 || !Array.isArray(embedding1) || embedding1.length === 0) {
+    console.warn('Invalid embedding1: not an array or empty');
+    return 0;
+  }
+
+  if (!embedding2) {
+    console.warn('Invalid embedding2: null or undefined');
+    return 0;
+  }
 
   let embedding2Array = embedding2;
 
-  // Convert string to array if needed
+  // Convert string to array if needed (for database stored embeddings)
   if (typeof embedding2 === 'string') {
     try {
       const cleanStr = embedding2.replace(/[\[\]]/g, '');
       embedding2Array = cleanStr.split(',').map((s: string) => parseFloat(s.trim()));
     } catch (e) {
+      console.error('Failed to parse embedding2 string:', e);
       return 0;
     }
   }
 
-  if (!Array.isArray(embedding2Array) || embedding2Array.length === 0) return 0;
-  if (embedding2Array.length !== embedding1.length) return 0;
-
-  // Cosine similarity calculation - single pass
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < embedding1.length; i++) {
-    const val1 = embedding1[i];
-    const val2 = embedding2Array[i];
-    dotProduct += val1 * val2;
-    normA += val1 * val1;
-    normB += val2 * val2;
+  // Validate embedding2Array
+  if (!Array.isArray(embedding2Array) || embedding2Array.length === 0) {
+    console.warn('Invalid embedding2Array: not an array or empty');
+    return 0;
   }
 
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  if (denominator === 0) return 0;
+  // Check dimensions match
+  if (embedding2Array.length !== embedding1.length) {
+    console.warn(`Dimension mismatch: embedding1=${embedding1.length}, embedding2=${embedding2Array.length}`);
+    return 0;
+  }
 
-  const similarity = dotProduct / denominator;
+  // Calculate dot product and magnitudes in a single pass for efficiency
+  let dotProduct = 0;
+  let magnitudeA = 0;
+  let magnitudeB = 0;
+
+  for (let i = 0; i < embedding1.length; i++) {
+    const a = embedding1[i];
+    const b = embedding2Array[i];
+    
+    // Accumulate dot product
+    dotProduct += a * b;
+    
+    // Accumulate squared magnitudes
+    magnitudeA += a * a;
+    magnitudeB += b * b;
+  }
+
+  // Calculate the magnitudes (Euclidean norms)
+  const normA = Math.sqrt(magnitudeA);
+  const normB = Math.sqrt(magnitudeB);
+
+  // Avoid division by zero
+  if (normA === 0 || normB === 0) {
+    console.warn('Zero magnitude detected in one or both embeddings');
+    return 0;
+  }
+
+  // Calculate cosine similarity
+  const similarity = dotProduct / (normA * normB);
+
+  // Clamp result to [-1, 1] range to handle floating point precision issues
   return Math.max(-1, Math.min(1, similarity));
 }
 
 /**
- * Extract keywords from query using OpenAI NER - OPTIMIZED
+ * Extract keywords from query using OpenAI NER
  */
 async function extractKeywords(query: string, openaiApiKey: string): Promise<string[]> {
   console.log('Extracting keywords using OpenAI NER...');
   
-  // Optimized prompt for faster processing
   const nerPrompt = `Extract key search terms (include related words/phrases too but prioritise the search terms in the query) from: "${query}"\nReturn comma-separated list only:`;
 
   const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -127,7 +172,7 @@ async function extractKeywords(query: string, openaiApiKey: string): Promise<str
         }
       ],
       temperature: 0.1,
-      max_tokens: 50 // Reduced for speed
+      max_tokens: 50
     })
   });
 
@@ -145,17 +190,25 @@ async function extractKeywords(query: string, openaiApiKey: string): Promise<str
     .split(',')
     .map((k: string) => k.trim())
     .filter((k: string) => k.length > 0)
-    .slice(0, 10); // Limit to 10 keywords for speed
+    .slice(0, 10); // Limit to 10 keywords for performance
   
   console.log('Extracted keywords:', keywords);
   return keywords;
 }
 
 /**
- * Generate embeddings for multiple keywords - SIMPLIFIED to base64 only
+ * Generate embeddings for multiple keywords using OpenAI
+ * 
+ * This function generates embeddings the same way as embedding-recall and embedding-image:
+ * 1. Uses text-embedding-3-small model
+ * 2. Requests base64 encoding format
+ * 3. Decodes base64 to Float32Array
+ * 4. Converts to regular number array
  */
 async function generateKeywordEmbeddings(keywords: string[], openaiApiKey: string): Promise<number[][]> {
   console.log(`Generating embeddings for ${keywords.length} keywords...`);
+  console.log('Model: text-embedding-3-small');
+  console.log('Encoding format: base64');
   
   const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
     method: 'POST',
@@ -178,24 +231,49 @@ async function generateKeywordEmbeddings(keywords: string[], openaiApiKey: strin
 
   const embeddingData = await embeddingResponse.json();
   
-  // Decode all embeddings from base64
-  const embeddings: number[][] = embeddingData.data.map((item: any) => {
+  if (!embeddingData.data || embeddingData.data.length === 0) {
+    console.error('No data in OpenAI embedding response');
+    throw new Error('Invalid response from OpenAI API');
+  }
+
+  console.log(`Received ${embeddingData.data.length} embeddings from OpenAI`);
+  
+  // Decode all embeddings from base64 (same process as embedding-recall and embedding-image)
+  const embeddings: number[][] = embeddingData.data.map((item: any, index: number) => {
     const embeddingBase64 = item.embedding;
+    
+    // Decode base64 to binary string
     const binaryString = atob(embeddingBase64);
+    
+    // Convert binary string to Uint8Array
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
+    
+    // Interpret bytes as Float32Array
     const float32Array = new Float32Array(bytes.buffer);
-    return Array.from(float32Array);
+    
+    // Convert to regular array
+    const embeddingArray = Array.from(float32Array);
+    
+    console.log(`Decoded embedding ${index + 1}/${embeddingData.data.length}: length=${embeddingArray.length}`);
+    
+    return embeddingArray;
   });
   
-  console.log(`Generated ${embeddings.length} embeddings`);
+  console.log(`Successfully generated and decoded ${embeddings.length} embeddings`);
+  
+  if (embeddingData.usage) {
+    console.log('Token usage:', JSON.stringify(embeddingData.usage));
+  }
+  
   return embeddings;
 }
 
 /**
- * Calculate multi-keyword match score - OPTIMIZED
+ * Calculate multi-keyword match score
+ * Returns the count of keywords that match above threshold and the best similarity score
  */
 function calculateMultiKeywordMatch(
   keywordEmbeddings: number[][],
@@ -206,37 +284,19 @@ function calculateMultiKeywordMatch(
   
   for (const keywordEmb of keywordEmbeddings) {
     const sim = calculateCosineSimilarity(keywordEmb, targetEmbedding);
-    if (sim >= SIMILARITY_THRESHOLDS.LOW) matchCount++;
-    if (sim > bestSimilarity) bestSimilarity = sim;
+    
+    // Count matches above LOW threshold
+    if (sim >= SIMILARITY_THRESHOLDS.LOW) {
+      matchCount++;
+    }
+    
+    // Track best similarity
+    if (sim > bestSimilarity) {
+      bestSimilarity = sim;
+    }
   }
   
   return { matchCount, bestSimilarity };
-}
-
-/**
- * Calculate aggregated match percentage - SIMPLIFIED
- */
-function calculateAggregatedMatch(
-  textSimilarity: number,
-  imageSimilarities: number[],
-  keywordMatchCount: number,
-  totalKeywords: number
-): number {
-  // Weight: 40% text, 40% images, 20% keyword coverage
-  const textScore = textSimilarity * 0.3;
-  
-  // Image component (average of all image similarities)
-  const avgImageSimilarity = imageSimilarities.length > 0
-    ? imageSimilarities.reduce((sum, sim) => sum + sim, 0) / imageSimilarities.length
-    : 0;
-  const imageScore = avgImageSimilarity * 0.6;
-  
-  // Keyword coverage component
-  const keywordCoverage = totalKeywords > 0 ? keywordMatchCount / totalKeywords : 0;
-  const keywordScore = keywordCoverage * 0.5;
-  
-  // Combine all components
-  return Math.max(0, Math.min(1, textScore + imageScore + keywordScore));
 }
 
 Deno.serve(async (req) => {
@@ -250,6 +310,7 @@ Deno.serve(async (req) => {
 
   const startTime = Date.now();
   console.log('=== Search Recalls With Keywords Edge Function Started ===');
+  console.log('Timestamp:', new Date().toISOString());
 
   try {
     // Get the authorization header
@@ -278,6 +339,8 @@ Deno.serve(async (req) => {
       });
     }
 
+    console.log('User authenticated:', user.id);
+
     // Parse request body
     const { query, priorityRecallIds } = await req.json();
 
@@ -295,9 +358,11 @@ Deno.serve(async (req) => {
 
     // Convert priority IDs to Set for efficient lookup
     const priorityRecallIdsSet = new Set<string>(priorityRecallIds || []);
+    console.log(`Priority recall IDs: ${priorityRecallIdsSet.size}`);
 
     // If query is blank after cleaning and we have priority recalls, return them all
     if (!cleanedQuery.trim() && priorityRecallIdsSet.size > 0) {
+      console.log('Empty query with priority recalls - returning all priority recalls');
       const priorityIds = Array.from(priorityRecallIdsSet);
       const results = priorityIds.map((id: string) => ({
         recall_id: id,
@@ -319,6 +384,7 @@ Deno.serve(async (req) => {
 
     // If query is blank and no priority recalls, return empty results
     if (!cleanedQuery.trim()) {
+      console.log('Empty query with no priority recalls - returning empty results');
       return new Response(JSON.stringify({
         results: [],
         keywords: [],
@@ -339,10 +405,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // OPTIMIZATION: Run keyword extraction and database queries in parallel
+    // Run keyword extraction and database queries in parallel for performance
+    console.log('Starting parallel operations: keyword extraction and database queries');
     const [keywords, recallsResult, imagesResult] = await Promise.all([
       extractKeywords(cleanedQuery, openaiApiKey),
-      // Fetch recalls
+      // Fetch recalls with embeddings
       (async () => {
         let recallsQuery = supabase
           .from('recalls')
@@ -356,7 +423,7 @@ Deno.serve(async (req) => {
 
         return recallsQuery;
       })(),
-      // Fetch images
+      // Fetch images with embeddings
       (async () => {
         let imagesQuery = supabase
           .from('recall_images')
@@ -371,6 +438,8 @@ Deno.serve(async (req) => {
         return imagesQuery;
       })()
     ]);
+
+    console.log('Parallel operations completed');
 
     // Generate embeddings for keywords
     const keywordEmbeddings = await generateKeywordEmbeddings(keywords, openaiApiKey);
@@ -394,9 +463,9 @@ Deno.serve(async (req) => {
     const allRecalls = recallsResult.data || [];
     const allImages = imagesResult.data || [];
 
-    console.log(`Found ${allRecalls.length} recalls and ${allImages.length} images`);
+    console.log(`Found ${allRecalls.length} recalls and ${allImages.length} images with embeddings`);
 
-    // OPTIMIZATION: Group images by recall_id using Map for O(1) lookups
+    // Group images by recall_id using Map for O(1) lookups
     const imagesByRecall = new Map<string, typeof allImages>();
     for (const image of allImages) {
       if (!imagesByRecall.has(image.recall_id)) {
@@ -405,11 +474,13 @@ Deno.serve(async (req) => {
       imagesByRecall.get(image.recall_id)!.push(image);
     }
 
-    // OPTIMIZATION: Calculate matches in single pass
+    console.log('Processing recall matches...');
+
+    // Calculate matches in single pass
     const recallMatches: RecallMatch[] = [];
     
     for (const recall of allRecalls) {
-      // Calculate text similarity
+      // Calculate text similarity using cosine similarity
       const textMatch = calculateMultiKeywordMatch(keywordEmbeddings, recall.recall_embedding);
       
       // Calculate image similarities
@@ -431,18 +502,16 @@ Deno.serve(async (req) => {
         });
       }
       
-      // Total keyword matches
+      // Total keyword matches across text and images
       const totalKeywordMatches = textMatch.matchCount + totalImageKeywordMatches;
       
-      // Calculate aggregated match
-      const aggregatedMatch = calculateAggregatedMatch(
+      // Use the best similarity score across text and all images
+      const bestOverallSimilarity = Math.max(
         textMatch.bestSimilarity,
-        imageSimilarities,
-        totalKeywordMatches,
-        keywords.length
+        ...imageSimilarities
       );
       
-      const tier = getSimilarityTier(aggregatedMatch);
+      const tier = getSimilarityTier(bestOverallSimilarity);
       
       // Only include recalls that meet LOW threshold or higher
       if (tier !== 'NONE') {
@@ -451,7 +520,7 @@ Deno.serve(async (req) => {
           text_similarity: textMatch.bestSimilarity,
           image_similarities: imageSimilarities,
           keyword_matches: totalKeywordMatches,
-          aggregated_match: aggregatedMatch,
+          best_similarity: bestOverallSimilarity,
           tier,
           isPriority: priorityRecallIdsSet.has(recall.id),
           recall_data: {
@@ -466,21 +535,26 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${recallMatches.length} recalls meeting threshold`);
 
-    // Sort by priority, then tier, then aggregated match
+    // Sort by priority first, then tier, then best similarity score
     const tierOrder = { HIGH: 3, MEDIUM: 2, LOW: 1, NONE: 0 };
     recallMatches.sort((a, b) => {
+      // Priority recalls come first
       if (a.isPriority && !b.isPriority) return -1;
       if (!a.isPriority && b.isPriority) return 1;
+      
+      // Then sort by tier
       if (tierOrder[a.tier] !== tierOrder[b.tier]) {
         return tierOrder[b.tier] - tierOrder[a.tier];
       }
-      return b.aggregated_match - a.aggregated_match;
+      
+      // Finally sort by best similarity score
+      return b.best_similarity - a.best_similarity;
     });
 
     // Convert to result format
     const results = recallMatches.map(match => ({
       recall_id: match.recall_id,
-      matchPercentage: Math.round(match.aggregated_match * 100),
+      matchPercentage: Math.round(match.best_similarity * 100),
       tier: match.tier,
       keywordMatches: match.keyword_matches,
       totalKeywords: keywords.length,
@@ -489,7 +563,9 @@ Deno.serve(async (req) => {
     }));
 
     const processingTime = Date.now() - startTime;
-    console.log('=== Search completed in', processingTime, 'ms ===');
+    console.log('=== Search completed successfully ===');
+    console.log('Processing time:', processingTime, 'ms');
+    console.log('Results count:', results.length);
 
     return new Response(JSON.stringify({
       results,
@@ -502,7 +578,10 @@ Deno.serve(async (req) => {
   } catch (error) {
     const processingTime = Date.now() - startTime;
     console.error('=== Error in Search Recalls With Keywords ===');
-    console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('Error type:', error?.constructor?.name);
+    console.error('Error message:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('Processing time before error:', processingTime, 'ms');
 
     return new Response(JSON.stringify({
       error: 'Internal server error',
