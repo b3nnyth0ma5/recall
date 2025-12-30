@@ -20,7 +20,6 @@ import { SearchHistory } from '@/types/Note';
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
-import { SearchResultsProgressIndicator } from '@/components/SearchResultsProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function SearchScreen() {
@@ -52,7 +51,6 @@ export default function SearchScreen() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isProgressExpanded, setIsProgressExpanded] = useState(true);
-  const [isResultsProgressExpanded, setIsResultsProgressExpanded] = useState(false);
   const [isPerformanceExpanded, setIsPerformanceExpanded] = useState(true);
   const searchInputRef = useRef<TextInput>(null);
   const hasAutoSearchedRef = useRef(false);
@@ -414,37 +412,6 @@ export default function SearchScreen() {
             </View>
           </Pressable>
         </View>
-
-        {/* Intent Badges Container */}
-        {hasSearched && !isSearching && (locationInfo || personInfo) && (
-          <View style={styles.intentBadgesContainer}>
-            {/* Person Info Badge */}
-            {personInfo && personInfo.matchedNames.length > 0 && (
-              <Animated.View entering={FadeIn.duration(400)} style={styles.intentBadge}>
-                <IconSymbol name="person.circle.fill" size={20} color={colors.primary} />
-                <View style={styles.intentBadgeText}>
-                  <Text style={styles.intentBadgeTitle}>Person Search</Text>
-                  <Text style={styles.intentBadgeSubtitle}>
-                    {personInfo.matchedNames.join(', ')}
-                  </Text>
-                </View>
-              </Animated.View>
-            )}
-
-            {/* Location Info Badge */}
-            {locationInfo && (
-              <Animated.View entering={FadeIn.duration(400)} style={styles.intentBadge}>
-                <IconSymbol name="mappin.circle.fill" size={20} color={colors.primary} />
-                <View style={styles.intentBadgeText}>
-                  <Text style={styles.intentBadgeTitle}>Location Search</Text>
-                  <Text style={styles.intentBadgeSubtitle}>
-                    Within {locationInfo.proximity}km of {locationInfo.resolvedPlace}
-                  </Text>
-                </View>
-              </Animated.View>
-            )}
-          </View>
-        )}
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
@@ -478,16 +445,6 @@ export default function SearchScreen() {
             </Text>
             {searchTips}
           </Animated.View>
-        ) : isSearching ? (
-          // Show progress indicator when search is running
-          <SearchProgressIndicator 
-            stage={searchStage} 
-            locationName={searchLocationName}
-            personNames={searchPersonNames}
-            extractedKeywords={searchExtractedKeywords}
-            isExpanded={isProgressExpanded}
-            onToggle={() => setIsProgressExpanded(!isProgressExpanded)}
-          />
         ) : !hasSearched ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
             <IconSymbol 
@@ -503,32 +460,18 @@ export default function SearchScreen() {
             </Text>
             {featureList}
           </Animated.View>
-        ) : notes.length === 0 && !searchAnswer ? (
-          // Show empty state only when search is complete and no results
-          <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-            <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
-            <Text style={styles.emptyTitle}>No Results Found</Text>
-            <Text style={styles.emptyText}>
-              {locationInfo 
-                ? `No recalls found within ${locationInfo.proximity}km of ${locationInfo.resolvedPlace}`
-                : personInfo && personInfo.matchedNames.length > 0
-                ? `No recalls found for ${personInfo.matchedNames.join(', ')}`
-                : 'Try a different search term or add more details'
-              }
-            </Text>
-          </Animated.View>
         ) : (
-          // Show results only when search is complete
+          // Show results when search has been initiated
           <View style={styles.notesContainer}>
-            {/* Collapsed Progress Indicator - Shows after search completes on results screen */}
-            {hasSearched && searchStage === 'complete' && (
-              <SearchResultsProgressIndicator 
+            {/* Search Progress Indicator - Always visible above Search Performance */}
+            {hasSearched && (
+              <SearchProgressIndicator 
                 stage={searchStage} 
                 locationName={searchLocationName}
                 personNames={searchPersonNames}
                 extractedKeywords={searchExtractedKeywords}
-                isExpanded={isResultsProgressExpanded}
-                onToggle={() => setIsResultsProgressExpanded(!isResultsProgressExpanded)}
+                isExpanded={isProgressExpanded}
+                onToggle={() => setIsProgressExpanded(!isProgressExpanded)}
               />
             )}
 
@@ -541,64 +484,82 @@ export default function SearchScreen() {
               />
             )}
 
-            {/* Answer Section */}
-            {searchAnswer && searchConfidence !== undefined && (
-              <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
-                <View style={styles.answerHeader}>
-                  <View style={styles.answerHeaderLeft}>
-                    <IconSymbol name="lightbulb.fill" size={20} color={colors.primary} />
-                    <Text style={styles.answerTitle}>Answer</Text>
-                  </View>
-                  <View style={styles.confidenceBadge}>
-                    <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
-                    <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
-                  </View>
-                </View>
-                <Text style={styles.answerText}>
-                  {isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
+            {/* Show empty state when search is complete and no results */}
+            {notes.length === 0 && !searchAnswer && searchStage === 'complete' ? (
+              <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+                <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
+                <Text style={styles.emptyTitle}>No Results Found</Text>
+                <Text style={styles.emptyText}>
+                  {locationInfo 
+                    ? `No recalls found within ${locationInfo.proximity}km of ${locationInfo.resolvedPlace}`
+                    : personInfo && personInfo.matchedNames.length > 0
+                    ? `No recalls found for ${personInfo.matchedNames.join(', ')}`
+                    : 'Try a different search term or add more details'
+                  }
                 </Text>
-                {shouldShowAnswerToggle(searchAnswer) && (
-                  <Pressable 
-                    onPress={() => setIsAnswerExpanded(!isAnswerExpanded)}
-                    style={styles.answerToggleContainer}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Text style={styles.answerToggleText}>
-                      {isAnswerExpanded ? 'Show less' : 'Show more'}
-                    </Text>
-                  </Pressable>
-                )}
               </Animated.View>
-            )}
-
-            {/* Results Section */}
-            {notes.length > 0 && (
+            ) : (
               <React.Fragment>
-                <Text style={styles.resultsText}>
-                  {notes.length} {notes.length === 1 ? 'result' : 'results'} found
-                  {locationInfo && ` near ${locationInfo.resolvedPlace}`}
-                  {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
-                </Text>
-                {notes.map((note) => (
-                  <View key={note.id} style={styles.noteWrapper}>
-                    {/* Badge row with "used for answer" badge */}
-                    {note.used_for_answer && (
-                      <View style={styles.badgeRow}>
-                        <View style={styles.answerSourceBadge}>
-                          <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
-                          <Text style={styles.answerSourceText}>Used for answer</Text>
+                {/* Answer Section */}
+                {searchAnswer && searchConfidence !== undefined && (
+                  <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
+                    <View style={styles.answerHeader}>
+                      <View style={styles.answerHeaderLeft}>
+                        <IconSymbol name="lightbulb.fill" size={20} color={colors.primary} />
+                        <Text style={styles.answerTitle}>Answer</Text>
+                      </View>
+                      <View style={styles.confidenceBadge}>
+                        <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                        <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.answerText}>
+                      {isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
+                    </Text>
+                    {shouldShowAnswerToggle(searchAnswer) && (
+                      <Pressable 
+                        onPress={() => setIsAnswerExpanded(!isAnswerExpanded)}
+                        style={styles.answerToggleContainer}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Text style={styles.answerToggleText}>
+                          {isAnswerExpanded ? 'Show less' : 'Show more'}
+                        </Text>
+                      </Pressable>
+                    )}
+                  </Animated.View>
+                )}
+
+                {/* Results Section */}
+                {notes.length > 0 && (
+                  <React.Fragment>
+                    <Text style={styles.resultsText}>
+                      {notes.length} {notes.length === 1 ? 'result' : 'results'} found
+                      {locationInfo && ` near ${locationInfo.resolvedPlace}`}
+                      {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
+                    </Text>
+                    {notes.map((note) => (
+                      <View key={note.id} style={styles.noteWrapper}>
+                        {/* Badge row with "used for answer" badge */}
+                        {note.used_for_answer && (
+                          <View style={styles.badgeRow}>
+                            <View style={styles.answerSourceBadge}>
+                              <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                              <Text style={styles.answerSourceText}>Used for answer</Text>
+                            </View>
+                          </View>
+                        )}
+                        <View style={styles.noteCardContainer}>
+                          <NoteCard
+                            note={note}
+                            onPress={() => handleNotePress(note.id)}
+                            loading={false}
+                          />
                         </View>
                       </View>
-                    )}
-                    <View style={styles.noteCardContainer}>
-                      <NoteCard
-                        note={note}
-                        onPress={() => handleNotePress(note.id)}
-                        loading={false}
-                      />
-                    </View>
-                  </View>
-                ))}
+                    ))}
+                  </React.Fragment>
+                )}
               </React.Fragment>
             )}
           </View>
@@ -735,8 +696,6 @@ const styles = StyleSheet.create({
   searchContainer: {
     padding: 16,
     backgroundColor: colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   searchBar: {
     flexDirection: 'row',
@@ -773,32 +732,6 @@ const styles = StyleSheet.create({
   },
   searchIconDisabled: {
     opacity: 0.4,
-  },
-  intentBadgesContainer: {
-    marginTop: 12,
-    gap: 8,
-  },
-  intentBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: `${colors.primary}15`,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-  },
-  intentBadgeText: {
-    flex: 1,
-  },
-  intentBadgeTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.primary,
-    marginBottom: 2,
-  },
-  intentBadgeSubtitle: {
-    fontSize: 12,
-    color: colors.textSecondary,
   },
   scrollView: {
     flex: 1,

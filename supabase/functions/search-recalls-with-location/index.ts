@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 const corsHeaders = {
@@ -72,7 +71,7 @@ async function detectMultipleLocationIntents(query: string, openaiApiKey: string
     console.log('Detecting multiple location intents...');
 
     // Optimized prompt for faster processing with multiple location detection
-    const systemPrompt = `Detect ALL location intents in the query. Return JSON array:
+    const systemPrompt = `Detect ALL location intents in the query. Including names of cities, suburbs, venues and establishments. Return JSON array:
 [{"hasLocationIntent": true/false, "intentType": "in"|"near"|"near_me"|null, "location": "name"|null, "confidence": 0-100}]
 
 "in [location]" = within area (500m buffer)
@@ -82,9 +81,7 @@ async function detectMultipleLocationIntents(query: string, openaiApiKey: string
 Extract ALL locations mentioned. Examples:
 - "restaurants in Melbourne and Sydney" → [{"hasLocationIntent": true, "intentType": "in", "location": "Melbourne", "confidence": 95}, {"hasLocationIntent": true, "intentType": "in", "location": "Sydney", "confidence": 95}]
 - "near Collingwood or Richmond" → [{"hasLocationIntent": true, "intentType": "near", "location": "Collingwood", "confidence": 90}, {"hasLocationIntent": true, "intentType": "near", "location": "Richmond", "confidence": 90}]
-- "near me" → [{"hasLocationIntent": true, "intentType": "near_me", "location": null, "confidence": 100}]
-
-Be precise - only detect explicit location intent.`;
+- "near me" → [{"hasLocationIntent": true, "intentType": "near_me", "location": null, "confidence": 100}]`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
