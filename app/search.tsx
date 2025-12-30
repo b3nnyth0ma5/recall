@@ -20,6 +20,7 @@ import { SearchHistory } from '@/types/Note';
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
+import { SearchResultsProgressIndicator } from '@/components/SearchResultsProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function SearchScreen() {
@@ -51,6 +52,7 @@ export default function SearchScreen() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isProgressExpanded, setIsProgressExpanded] = useState(true);
+  const [isResultsProgressExpanded, setIsResultsProgressExpanded] = useState(false);
   const [isPerformanceExpanded, setIsPerformanceExpanded] = useState(true);
   const searchInputRef = useRef<TextInput>(null);
   const hasAutoSearchedRef = useRef(false);
@@ -518,15 +520,15 @@ export default function SearchScreen() {
         ) : (
           // Show results only when search is complete
           <View style={styles.notesContainer}>
-            {/* Collapsed Progress Indicator - Shows after search completes */}
+            {/* Collapsed Progress Indicator - Shows after search completes on results screen */}
             {hasSearched && searchStage === 'complete' && (
-              <SearchProgressIndicator 
+              <SearchResultsProgressIndicator 
                 stage={searchStage} 
                 locationName={searchLocationName}
                 personNames={searchPersonNames}
                 extractedKeywords={searchExtractedKeywords}
-                isExpanded={isProgressExpanded}
-                onToggle={() => setIsProgressExpanded(!isProgressExpanded)}
+                isExpanded={isResultsProgressExpanded}
+                onToggle={() => setIsResultsProgressExpanded(!isResultsProgressExpanded)}
               />
             )}
 

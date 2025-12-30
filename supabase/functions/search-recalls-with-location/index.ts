@@ -65,19 +65,24 @@ function extractDistanceFromQuery(query: string): number | null {
 }
 
 /**
- * Use GPT-4o-mini to detect location intent - OPTIMIZED
+ * Use GPT-4o-mini to detect multiple location intents - OPTIMIZED
  */
-async function detectLocationIntent(query: string, openaiApiKey: string) {
+async function detectMultipleLocationIntents(query: string, openaiApiKey: string) {
   try {
-    console.log('Detecting location intent...');
+    console.log('Detecting multiple location intents...');
 
-    // Optimized prompt for faster processing
-    const systemPrompt = `Detect location intent. Return JSON:
-{"hasLocationIntent": true/false, "intentType": "in"|"near"|"near_me"|null, "location": "name"|null, "cleanedQuery": "text", "confidence": 0-100}
+    // Optimized prompt for faster processing with multiple location detection
+    const systemPrompt = `Detect ALL location intents in the query. Return JSON array:
+[{"hasLocationIntent": true/false, "intentType": "in"|"near"|"near_me"|null, "location": "name"|null, "confidence": 0-100}]
 
 "in [location]" = within area (500m buffer)
 "near [location]" = near place (1km radius)
 "near me" = user location (1km radius)
+
+Extract ALL locations mentioned. Examples:
+- "restaurants in Melbourne and Sydney" → [{"hasLocationIntent": true, "intentType": "in", "location": "Melbourne", "confidence": 95}, {"hasLocationIntent": true, "intentType": "in", "location": "Sydney", "confidence": 95}]
+- "near Collingwood or Richmond" → [{"hasLocationIntent": true, "intentType": "near", "location": "Collingwood", "confidence": 90}, {"hasLocationIntent": true, "intentType": "near", "location": "Richmond", "confidence": 90}]
+- "near me" → [{"hasLocationIntent": true, "intentType": "near_me", "location": null, "confidence": 100}]
 
 Be precise - only detect explicit location intent.`;
 
@@ -94,7 +99,7 @@ Be precise - only detect explicit location intent.`;
           { role: 'user', content: `Analyze: "${query}"` },
         ],
         temperature: 0.1,
-        max_tokens: 100, // Reduced for speed
+        max_tokens: 200, // Increased slightly for multiple locations
       }),
     });
 
@@ -117,15 +122,20 @@ Be precise - only detect explicit location intent.`;
       jsonContent = jsonContent.replace(/^```\n/, '').replace(/\n```$/, '');
     }
 
-    const result = JSON.parse(jsonContent);
+    const results = JSON.parse(jsonContent);
 
-    if (!result.hasLocationIntent || result.confidence < 70) {
+    // Filter out low confidence results
+    const validResults = Array.isArray(results) 
+      ? results.filter((r: any) => r.hasLocationIntent && r.confidence >= 70)
+      : [];
+
+    if (validResults.length === 0) {
       return null;
     }
 
-    return result;
+    return validResults;
   } catch (error) {
-    console.error('Error detecting location intent:', error);
+    console.error('Error detecting location intents:', error);
     return null;
   }
 }
@@ -135,7 +145,7 @@ Be precise - only detect explicit location intent.`;
  */
 async function searchGooglePlaces(locationQuery: string, googleApiKey: string, userLocation?: { latitude: number; longitude: number }) {
   try {
-    console.log('Searching Google Places...');
+    console.log('Searching Google Places for:', locationQuery);
 
     const baseUrl = 'https://places.googleapis.com/v1/places:searchText';
 
@@ -189,6 +199,65 @@ async function searchGooglePlaces(locationQuery: string, googleApiKey: string, u
     console.error('Error searching Google Places:', error);
     return null;
   }
+}
+
+/**
+ * Filter recalls by location - OPTIMIZED for O(1) lookup
+ */
+function filterRecallsByLocation(
+  recallsData: any[],
+  placeResult: any,
+  searchStrategy: string,
+  bufferKm: number
+): any[] {
+  let filteredRecalls: any[];
+
+  if (searchStrategy === 'bounding_box') {
+    const bbox = calculateBoundingBox(
+      placeResult.latitude,
+      placeResult.longitude,
+      bufferKm
+    );
+
+    // O(n) single pass with early filtering
+    filteredRecalls = recallsData
+      .filter((recall) => {
+        const lat = recall.latitude!;
+        const lon = recall.longitude!;
+        return (
+          lat >= bbox.minLat &&
+          lat <= bbox.maxLat &&
+          lon >= bbox.minLon &&
+          lon <= bbox.maxLon
+        );
+      })
+      .map((recall) => ({
+        ...recall,
+        distance: calculateDistance(
+          placeResult.latitude,
+          placeResult.longitude,
+          recall.latitude!,
+          recall.longitude!
+        )
+      }))
+      .sort((a, b) => a.distance - b.distance);
+  } else {
+    // O(n) single pass with distance calculation and filtering
+    filteredRecalls = recallsData
+      .map((recall) => ({
+        ...recall,
+        distance: calculateDistance(
+          placeResult.latitude,
+          placeResult.longitude,
+          recall.latitude!,
+          recall.longitude!
+        )
+      }))
+      .filter((recall) => recall.distance <= bufferKm)
+      .sort((a, b) => a.distance - b.distance);
+  }
+
+  return filteredRecalls;
 }
 
 Deno.serve(async (req) => {
@@ -260,8 +329,8 @@ Deno.serve(async (req) => {
     }
 
     // OPTIMIZATION: Run location intent detection and recall fetching in parallel
-    const [locationIntent, recallsResult] = await Promise.all([
-      detectLocationIntent(query, openaiApiKey),
+    const [locationIntents, recallsResult] = await Promise.all([
+      detectMultipleLocationIntents(query, openaiApiKey),
       supabase
         .from('recalls')
         .select('id, latitude, longitude, location, location_primary_type')
@@ -271,7 +340,7 @@ Deno.serve(async (req) => {
     ]);
 
     // If no location intent detected, return early
-    if (!locationIntent) {
+    if (!locationIntents || locationIntents.length === 0) {
       return new Response(
         JSON.stringify({
           hasLocationIntent: false,
@@ -295,81 +364,115 @@ Deno.serve(async (req) => {
     }
 
     const recallsData = recallsResult.data || [];
+    console.log(`Processing ${locationIntents.length} location(s) for ${recallsData.length} recalls`);
 
-    // Handle "near me" or "around me"
-    if (locationIntent.intentType === 'near_me') {
-      if (!userLocation || !userLocation.latitude || !userLocation.longitude) {
-        return new Response(
-          JSON.stringify({
+    // Process all locations in parallel
+    const locationResults = await Promise.all(
+      locationIntents.map(async (locationIntent: any) => {
+        // Handle "near me" or "around me"
+        if (locationIntent.intentType === 'near_me') {
+          if (!userLocation || !userLocation.latitude || !userLocation.longitude) {
+            return {
+              hasLocationIntent: true,
+              locationResolved: false,
+              error: 'User location required for "near me" queries',
+            };
+          }
+
+          const extractedDistance = extractDistanceFromQuery(query);
+          const radiusKm = extractedDistance !== null ? extractedDistance : 1;
+
+          // Filter recalls by proximity - OPTIMIZED single pass
+          const filteredRecalls = recallsData
+            .map((recall) => ({
+              ...recall,
+              distance: calculateDistance(
+                userLocation.latitude,
+                userLocation.longitude,
+                recall.latitude!,
+                recall.longitude!
+              )
+            }))
+            .filter((recall) => recall.distance <= radiusKm)
+            .sort((a, b) => a.distance - b.distance);
+
+          const recallIds = filteredRecalls.map((r) => r.id);
+
+          return {
+            hasLocationIntent: true,
+            locationResolved: true,
+            recallIds,
+            locationInfo: {
+              location: 'Your current location',
+              resolvedPlace: 'Your current location',
+              proximity: radiusKm,
+              intentType: 'near_me',
+              coordinates: {
+                latitude: userLocation.latitude,
+                longitude: userLocation.longitude,
+              },
+            },
+          };
+        }
+
+        // Resolve location using Google Places API
+        const placeResult = await searchGooglePlaces(
+          locationIntent.location,
+          googleApiKey,
+          userLocation
+        );
+
+        if (!placeResult) {
+          return {
             hasLocationIntent: true,
             locationResolved: false,
-            shouldUseRegularSearch: true,
-            error: 'User location required for "near me" queries',
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
+            location: locationIntent.location,
+          };
+        }
+
+        // Determine search strategy
+        const searchStrategy = locationIntent.intentType === 'in' ? 'bounding_box' : 'radius';
+        const bufferKm = locationIntent.intentType === 'in' ? 0.5 : 1;
+
+        // Filter recalls - OPTIMIZED
+        const filteredRecalls = filterRecallsByLocation(
+          recallsData,
+          placeResult,
+          searchStrategy,
+          bufferKm
         );
-      }
 
-      const extractedDistance = extractDistanceFromQuery(query);
-      const radiusKm = extractedDistance !== null ? extractedDistance : 1;
+        const recallIds = filteredRecalls.map((r) => r.id);
 
-      // Filter recalls by proximity - OPTIMIZED single pass
-      const filteredRecalls = recallsData
-        .map((recall) => ({
-          ...recall,
-          distance: calculateDistance(
-            userLocation.latitude,
-            userLocation.longitude,
-            recall.latitude!,
-            recall.longitude!
-          )
-        }))
-        .filter((recall) => recall.distance <= radiusKm)
-        .sort((a, b) => a.distance - b.distance);
-
-      const recallIds = filteredRecalls.map((r) => r.id);
-
-      return new Response(
-        JSON.stringify({
+        return {
           hasLocationIntent: true,
           locationResolved: true,
           recallIds,
           locationInfo: {
-            location: 'Your current location',
-            resolvedPlace: 'Your current location',
-            proximity: radiusKm,
-            intentType: 'near_me',
+            location: locationIntent.location,
+            resolvedPlace: placeResult.displayName,
+            proximity: bufferKm,
+            intentType: locationIntent.intentType,
+            searchStrategy,
             coordinates: {
-              latitude: userLocation.latitude,
-              longitude: userLocation.longitude,
+              latitude: placeResult.latitude,
+              longitude: placeResult.longitude,
             },
           },
-          cleanedQuery: locationIntent.cleanedQuery,
-          processingTimeMs: Date.now() - startTime,
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
-    // Resolve location using Google Places API
-    const placeResult = await searchGooglePlaces(
-      locationIntent.location,
-      googleApiKey,
-      userLocation
+        };
+      })
     );
 
-    if (!placeResult) {
+    // Combine results from all locations
+    const resolvedLocations = locationResults.filter((r: any) => r.locationResolved);
+    
+    if (resolvedLocations.length === 0) {
       return new Response(
         JSON.stringify({
           hasLocationIntent: true,
           locationResolved: false,
           shouldUseRegularSearch: true,
+          attemptedLocations: locationIntents.length,
         }),
         {
           status: 200,
@@ -378,75 +481,38 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Determine search strategy
-    const searchStrategy = locationIntent.intentType === 'in' ? 'bounding_box' : 'radius';
-    const bufferKm = locationIntent.intentType === 'in' ? 0.5 : 1;
+    // Merge recall IDs from all locations (using Set for O(1) deduplication)
+    const allRecallIds = new Set<string>();
+    resolvedLocations.forEach((result: any) => {
+      result.recallIds.forEach((id: string) => allRecallIds.add(id));
+    });
 
-    // Filter recalls - OPTIMIZED
-    let filteredRecalls: any[];
+    const uniqueRecallIds = Array.from(allRecallIds);
 
-    if (searchStrategy === 'bounding_box') {
-      const bbox = calculateBoundingBox(
-        placeResult.latitude,
-        placeResult.longitude,
-        bufferKm
-      );
+    // Create combined location info
+    const locationNames = resolvedLocations
+      .map((r: any) => r.locationInfo.resolvedPlace)
+      .join(', ');
 
-      filteredRecalls = recallsData
-        .filter((recall) => {
-          const lat = recall.latitude!;
-          const lon = recall.longitude!;
-          return (
-            lat >= bbox.minLat &&
-            lat <= bbox.maxLat &&
-            lon >= bbox.minLon &&
-            lon <= bbox.maxLon
-          );
-        })
-        .map((recall) => ({
-          ...recall,
-          distance: calculateDistance(
-            placeResult.latitude,
-            placeResult.longitude,
-            recall.latitude!,
-            recall.longitude!
-          )
-        }))
-        .sort((a, b) => a.distance - b.distance);
-    } else {
-      filteredRecalls = recallsData
-        .map((recall) => ({
-          ...recall,
-          distance: calculateDistance(
-            placeResult.latitude,
-            placeResult.longitude,
-            recall.latitude!,
-            recall.longitude!
-          )
-        }))
-        .filter((recall) => recall.distance <= bufferKm)
-        .sort((a, b) => a.distance - b.distance);
-    }
-
-    const recallIds = filteredRecalls.map((r) => r.id);
+    const primaryLocation = resolvedLocations[0].locationInfo;
 
     return new Response(
       JSON.stringify({
         hasLocationIntent: true,
         locationResolved: true,
-        recallIds,
+        recallIds: uniqueRecallIds,
         locationInfo: {
-          location: locationIntent.location,
-          resolvedPlace: placeResult.displayName,
-          proximity: bufferKm,
-          intentType: locationIntent.intentType,
-          searchStrategy,
-          coordinates: {
-            latitude: placeResult.latitude,
-            longitude: placeResult.longitude,
-          },
+          location: locationNames,
+          resolvedPlace: locationNames,
+          proximity: primaryLocation.proximity,
+          intentType: primaryLocation.intentType,
+          searchStrategy: primaryLocation.searchStrategy,
+          coordinates: primaryLocation.coordinates,
+          multipleLocations: resolvedLocations.length > 1,
+          locationCount: resolvedLocations.length,
+          locations: resolvedLocations.map((r: any) => r.locationInfo),
         },
-        cleanedQuery: locationIntent.cleanedQuery,
+        cleanedQuery: query,
         processingTimeMs: Date.now() - startTime,
       }),
       {

@@ -673,9 +673,15 @@ export function useNotes() {
         console.log('Location intent detected and resolved!');
         console.log('Location info:', locationResult.data.locationInfo);
         
+        // Handle multiple locations
+        const locationInfo = locationResult.data.locationInfo;
+        const displayName = locationInfo.multipleLocations 
+          ? `${locationInfo.locationCount} locations: ${locationInfo.resolvedPlace}`
+          : locationInfo.resolvedPlace;
+        
         setSearchStage('resolving');
-        setSearchLocationName(locationResult.data.locationInfo?.resolvedPlace);
-        locationInfoData = locationResult.data.locationInfo;
+        setSearchLocationName(displayName);
+        locationInfoData = locationInfo;
         setLocationInfo(locationInfoData);
         
         // Add delay to show resolving stage
