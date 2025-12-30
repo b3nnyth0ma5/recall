@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 const corsHeaders = {
@@ -151,7 +150,8 @@ function calculateCosineSimilarity(embedding1: number[], embedding2: any): numbe
 async function extractKeywords(query: string, openaiApiKey: string): Promise<string[]> {
   console.log('Extracting keywords using OpenAI NER...');
   
-  const nerPrompt = `Extract key search terms (include related words/phrases too but prioritise the search terms in the query) from: "${query}"\nReturn comma-separated list only:`;
+  const nerPrompt = `Extract keywords from: "${query}". 
+  Don't include verbs, proper nouns, names of people, venues, suburbs or locations. Return comma-separated list only:`;
 
   const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -171,7 +171,7 @@ async function extractKeywords(query: string, openaiApiKey: string): Promise<str
           content: nerPrompt
         }
       ],
-      temperature: 0.1,
+      temperature: 0.2,
       max_tokens: 50
     })
   });

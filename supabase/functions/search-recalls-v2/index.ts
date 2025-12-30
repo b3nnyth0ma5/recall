@@ -65,66 +65,59 @@ Deno.serve(async (req) => {
     console.log('People recalls:', peopleRecalls ? `${peopleRecalls.length} recalls` : 'None');
     console.log('Keyword recalls:', keywordRecalls ? `${keywordRecalls.length} recalls` : 'None');
 
-    // Combine all recalls (deduplicate by recall_id) with VERY HIGH priority for location and people
+    // Combine all recalls (deduplicate by recall_id) without boosting
     const allRecallsMap = new Map();
     
-    // Add location recalls with VERY HIGH priority (150% match boost)
+    // Add location recalls without boosting
     if (locationRecalls && Array.isArray(locationRecalls)) {
       locationRecalls.forEach((recall: any) => {
         allRecallsMap.set(recall.recall_id, {
           ...recall,
-          matchPercentage: Math.min(100, (recall.matchPercentage || 100) * 1.5), // 150% boost
+          matchPercentage: recall.matchPercentage || 100,
           isLocationMatch: true,
           isPeopleMatch: false,
-          isKeywordMatch: false,
-          priorityScore: 1000 // Very high priority
+          isKeywordMatch: false
         });
       });
     }
     
-    // Add people recalls with VERY HIGH priority (150% match boost)
+    // Add people recalls without boosting
     if (peopleRecalls && Array.isArray(peopleRecalls)) {
       peopleRecalls.forEach((recall: any) => {
         if (allRecallsMap.has(recall.recall_id)) {
           const existing = allRecallsMap.get(recall.recall_id);
           allRecallsMap.set(recall.recall_id, {
             ...existing,
-            matchPercentage: Math.min(100, existing.matchPercentage * 1.3), // Additional 30% boost for multi-match
-            isPeopleMatch: true,
-            priorityScore: existing.priorityScore + 1000 // Stack priority
+            isPeopleMatch: true
           });
         } else {
           allRecallsMap.set(recall.recall_id, {
             ...recall,
-            matchPercentage: Math.min(100, (recall.matchPercentage || 100) * 1.5), // 150% boost
+            matchPercentage: recall.matchPercentage || 100,
             isLocationMatch: false,
             isPeopleMatch: true,
-            isKeywordMatch: false,
-            priorityScore: 1000 // Very high priority
+            isKeywordMatch: false
           });
         }
       });
     }
     
-    // Add keyword recalls with normal priority
+    // Add keyword recalls
     if (keywordRecalls && Array.isArray(keywordRecalls)) {
       keywordRecalls.forEach((recall: any) => {
         if (allRecallsMap.has(recall.recall_id)) {
           const existing = allRecallsMap.get(recall.recall_id);
           allRecallsMap.set(recall.recall_id, {
             ...existing,
-            isKeywordMatch: true,
-            // Boost match percentage if it matches multiple criteria
-            matchPercentage: Math.min(100, existing.matchPercentage + recall.matchPercentage * 0.2),
-            priorityScore: existing.priorityScore + 100 // Add keyword priority
+            isKeywordMatch: true
           });
         } else {
           allRecallsMap.set(recall.recall_id, {
             ...recall,
+            matchPercentage: recall.matchPercentage || 0,
             isLocationMatch: false,
             isPeopleMatch: false,
-            isKeywordMatch: true,
-            priorityScore: 100 // Normal priority
+            isKeywordMatch: true
           });
         }
       });
@@ -157,28 +150,25 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Step 4: Generate answer using OpenAI with ALL recall information
-    console.log('Step 4: Generating answer with OpenAI using all recall information...');
-    
-    // Sort recalls by priority score first, then match percentage
+    // Sort recalls by priority (created_at timestamp - most recent first)
+    console.log('Sorting recalls by priority (most recent first)...');
     allRecalls.sort((a, b) => {
-      // First by priority score (location and people get highest priority)
-      if (a.priorityScore !== b.priorityScore) {
-        return (b.priorityScore || 0) - (a.priorityScore || 0);
-      }
-      
-      // Then by match percentage
-      return (b.matchPercentage || 0) - (a.matchPercentage || 0);
+      const dateA = a.recall_data?.created_at ? new Date(a.recall_data.created_at).getTime() : 0;
+      const dateB = b.recall_data?.created_at ? new Date(b.recall_data.created_at).getTime() : 0;
+      return dateB - dateA; // Most recent first
     });
+    
+    // Generate answer using OpenAI with ALL recall information
+    console.log('Generating answer with OpenAI using all recall information...');
     
     // Build comprehensive context including all images
     const contextWithSources = allRecalls.map((recall: any, idx: number) => {
       const sourceId = `SOURCE_${idx + 1}`;
       
-      // Build match type indicators with priority markers
+      // Build match type indicators
       const matchTypes: string[] = [];
-      if (recall.isLocationMatch) matchTypes.push('LOCATION ⭐⭐⭐');
-      if (recall.isPeopleMatch) matchTypes.push('PEOPLE ⭐⭐⭐');
+      if (recall.isLocationMatch) matchTypes.push('LOCATION');
+      if (recall.isPeopleMatch) matchTypes.push('PEOPLE');
       if (recall.isKeywordMatch) matchTypes.push('KEYWORD');
       const matchTypeStr = matchTypes.length > 0 ? ` [${matchTypes.join(' + ')}]` : '';
       
@@ -214,14 +204,13 @@ Deno.serve(async (req) => {
         tier: recall.tier || 'MEDIUM',
         isLocationMatch: recall.isLocationMatch || false,
         isPeopleMatch: recall.isPeopleMatch || false,
-        isKeywordMatch: recall.isKeywordMatch || false,
-        priorityScore: recall.priorityScore || 0
+        isKeywordMatch: recall.isKeywordMatch || false
       };
     });
 
     const context = contextWithSources.map(c => c.text).join('\n');
 
-    const qaPrompt = `You are a search assistant that answers questions thoroughly based on the provided information.
+    const qaPrompt = `You are an intelligent search assistant that answers questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make.
 
 CRITICAL RULES:
 - Use information from BOTH the recall text AND all associated images
@@ -229,17 +218,16 @@ CRITICAL RULES:
 - Use bullet points when listing multiple items
 - Provide a confidence score (0-100) based on how well the recalls answer the question
 
-MATCH TYPE PRIORITY (VERY IMPORTANT):
-- Sources marked with [LOCATION ⭐⭐⭐] or [PEOPLE ⭐⭐⭐] have the HIGHEST PRIORITY and indicate the BEST matches
-- These sources should be STRONGLY PREFERRED when generating answers
-- Sources with both [LOCATION ⭐⭐⭐ + PEOPLE ⭐⭐⭐] are EXTREMELY relevant
-- Sources marked with [KEYWORD] alone have LOWER priority
+MATCH TYPE INDICATORS:
+- Sources marked with [LOCATION] indicate location-based matches
+- Sources marked with [PEOPLE] indicate people-based matches
+- Sources marked with [KEYWORD] indicate keyword-based matches
 - Pay attention to TIER markers: [HIGH TIER] (60%+), [MEDIUM TIER] (40-60%), [LOW TIER] (25-40%)
 - Pay attention to keyword match counts - more matched keywords indicate better relevance
 
 Question: ${query}
 
-Available Recalls (sorted by priority, with location and people matches at the top):
+Available Recalls (sorted by priority - most recent first):
 ${context}
 
 Provide your answer in JSON format: {"answer": "your comprehensive answer based on ALL provided information including images", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
@@ -309,31 +297,9 @@ If the recalls don't contain the requested information, respond with: {"answer":
 
     console.log('Recall IDs used for answer:', sourceRecallIds);
 
-    // Create results with proper ordering (priority score first)
-    const usedRecalls = allRecalls
-      .filter((recall: any) => sourceRecallIds.includes(recall.recall_id))
-      .sort((a: any, b: any) => {
-        // First by priority score
-        if (a.priorityScore !== b.priorityScore) {
-          return (b.priorityScore || 0) - (a.priorityScore || 0);
-        }
-        
-        // Then by match percentage
-        return (b.matchPercentage || 0) - (a.matchPercentage || 0);
-      });
-
-    const unusedRecalls = allRecalls
-      .filter((recall: any) => !sourceRecallIds.includes(recall.recall_id))
-      .sort((a: any, b: any) => {
-        // First by priority score
-        if (a.priorityScore !== b.priorityScore) {
-          return (b.priorityScore || 0) - (a.priorityScore || 0);
-        }
-        
-        // Then by match percentage
-        return (b.matchPercentage || 0) - (a.matchPercentage || 0);
-      });
-
+    // Create results with proper ordering (priority - most recent first)
+    const usedRecalls = allRecalls.filter((recall: any) => sourceRecallIds.includes(recall.recall_id));
+    const unusedRecalls = allRecalls.filter((recall: any) => !sourceRecallIds.includes(recall.recall_id));
     const orderedRecalls = [...usedRecalls, ...unusedRecalls];
 
     console.log(`Ordered results: ${usedRecalls.length} used for answer, ${unusedRecalls.length} others`);
@@ -348,8 +314,7 @@ If the recalls don't contain the requested information, respond with: {"answer":
       totalKeywords: recall.totalKeywords || 0,
       isLocationMatch: recall.isLocationMatch || false,
       isPeopleMatch: recall.isPeopleMatch || false,
-      isKeywordMatch: recall.isKeywordMatch || false,
-      priorityScore: recall.priorityScore || 0
+      isKeywordMatch: recall.isKeywordMatch || false
     }));
 
     const processingTime = Date.now() - startTime;
