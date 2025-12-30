@@ -123,14 +123,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     };
   }, []);
 
-  // Handle keyboard show/hide
+  // Handle keyboard show/hide - REDUCED GAP BY 50%
   useEffect(() => {
     const keyboardWillShowListener = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
         setKeyboardHeight(e.endCoordinates.height);
         setIsKeyboardVisible(true);
-        translateY.value = withTiming(-(e.endCoordinates.height + 10), { duration: 250 });
+        // Reduced from -(e.endCoordinates.height + 10) to -(e.endCoordinates.height / 2 + 5)
+        translateY.value = withTiming(-(e.endCoordinates.height / 2 + 5), { duration: 250 });
       }
     );
 
@@ -753,57 +754,57 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 {/* Spacer to push icons to the right */}
                 <View style={styles.iconSpacer} />
 
-                {/* Submit Button - Shows AI animation when detecting intent, disabled when images are being optimized */}
+                {/* Submit Button with Circular Border - Shows AI animation when detecting intent, disabled when images are being optimized */}
                 <Pressable
-                  style={[styles.submitButton, isSparkleDisabled && styles.submitButtonDisabled]}
+                  style={[styles.submitButtonContainer, isSparkleDisabled && styles.submitButtonDisabled]}
                   onPress={handleCreateRecall}
                   disabled={isSparkleDisabled || isCreating || isDetectingIntent}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  {isDetectingIntent ? (
-                    Platform.OS === 'ios' ? (
-                      <Animated.View style={aiIconAnimatedStyle}>
+                  <View style={styles.submitButtonBorder}>
+                    {isDetectingIntent ? (
+                      Platform.OS === 'ios' ? (
+                        <Animated.View style={aiIconAnimatedStyle}>
+                          <SymbolView
+                            name="sparkles"
+                            size={28}
+                            tintColor={colors.primary}
+                            type="hierarchical"
+                            animationSpec={{
+                              effect: {
+                                type: 'pulse',
+                              },
+                              repeating: true,
+                            }}
+                          />
+                        </Animated.View>
+                      ) : (
+                        <Animated.View style={aiIconAnimatedStyle}>
+                          <IconSymbol name="auto.awesome" size={28} color={colors.primary} />
+                        </Animated.View>
+                      )
+                    ) : (
+                      Platform.OS === 'ios' ? (
                         <SymbolView
                           name="sparkles"
                           size={28}
                           tintColor={colors.primary}
                           type="hierarchical"
-                          animationSpec={{
-                            effect: {
-                              type: 'pulse',
-                            },
-                            repeating: true,
-                          }}
                         />
-                      </Animated.View>
-                    ) : (
-                      <Animated.View style={aiIconAnimatedStyle}>
+                      ) : (
                         <IconSymbol name="auto.awesome" size={28} color={colors.primary} />
-                      </Animated.View>
-                    )
-                  ) : (
-                    Platform.OS === 'ios' ? (
-                      <SymbolView
-                        name="sparkles"
-                        size={28}
-                        tintColor={colors.primary}
-                        type="hierarchical"
-                      />
-                    ) : (
-                      <IconSymbol name="auto.awesome" size={28} color={colors.primary} />
-                    )
-                  )}
+                      )
+                    )}
+                  </View>
                 </Pressable>
 
-								{/* Plus Button with Circular Border */}
+								{/* Plus Button - No Border */}
                 <Pressable
-                  style={styles.plusButtonContainer}
+                  style={styles.plusButton}
                   onPress={handlePlusPress}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <View style={styles.plusButtonBorder}>
-                    <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
-                  </View>
+                  <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
                 </Pressable>
               </View>
             </View>
@@ -963,22 +964,22 @@ const styles = StyleSheet.create({
   locationSpinner: {
     marginLeft: 4,
   },
-  plusButtonContainer: {
+  plusButton: {
+    padding: 0,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitButtonContainer: {
     padding: 0,
   },
-  plusButtonBorder: {
+  submitButtonBorder: {
     width: 36,
     height: 36,
     borderRadius: 18,
     borderWidth: 1.5,
     borderColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitButton: {
-    padding: 0,
-    width: 32,
-    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
