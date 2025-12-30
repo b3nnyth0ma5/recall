@@ -150,12 +150,48 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Sort recalls by priority (created_at timestamp - most recent first)
-    console.log('Sorting recalls by priority (most recent first)...');
+    // Helper function to get tier priority (higher number = higher priority)
+    const getTierPriority = (tier: string): number => {
+      switch (tier?.toUpperCase()) {
+        case 'HIGH':
+          return 3;
+        case 'MEDIUM':
+          return 2;
+        case 'LOW':
+          return 1;
+        default:
+          return 2; // Default to MEDIUM if tier is not specified
+      }
+    };
+
+    // Sort recalls by priority: 1) Tier (HIGH > MEDIUM > LOW), 2) Match percentage (highest first), 3) Recency (most recent first)
+    console.log('Sorting recalls by tier, match percentage, and recency...');
     allRecalls.sort((a, b) => {
+      // First, sort by tier priority
+      const tierA = getTierPriority(a.tier);
+      const tierB = getTierPriority(b.tier);
+      
+      if (tierA !== tierB) {
+        return tierB - tierA; // Higher tier first
+      }
+      
+      // If tiers are equal, sort by match percentage
+      const matchA = a.matchPercentage || 0;
+      const matchB = b.matchPercentage || 0;
+      
+      if (matchA !== matchB) {
+        return matchB - matchA; // Higher match percentage first
+      }
+      
+      // If match percentages are equal, sort by recency
       const dateA = a.recall_data?.created_at ? new Date(a.recall_data.created_at).getTime() : 0;
       const dateB = b.recall_data?.created_at ? new Date(b.recall_data.created_at).getTime() : 0;
       return dateB - dateA; // Most recent first
+    });
+    
+    console.log('Top 5 recalls after sorting:');
+    allRecalls.slice(0, 5).forEach((recall: any, idx: number) => {
+      console.log(`  ${idx + 1}. Tier: ${recall.tier || 'MEDIUM'}, Match: ${Math.round(recall.matchPercentage || 0)}%, Created: ${recall.recall_data?.created_at || 'N/A'}`);
     });
     
     // Generate answer using OpenAI with ALL recall information
@@ -210,24 +246,21 @@ Deno.serve(async (req) => {
 
     const context = contextWithSources.map(c => c.text).join('\n');
 
-    const qaPrompt = `You are an intelligent search assistant that answers questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make.
+    const qaPrompt = `You are an intelligent search assistant that answers questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
 
 CRITICAL RULES:
 - Use information from BOTH the recall text AND all associated images
-- If the recalls don't contain enough information to answer the question, say so clearly
 - Use bullet points when listing multiple items
 - Provide a confidence score (0-100) based on how well the recalls answer the question
 
 MATCH TYPE INDICATORS:
-- Sources marked with [LOCATION] indicate location-based matches
-- Sources marked with [PEOPLE] indicate people-based matches
-- Sources marked with [KEYWORD] indicate keyword-based matches
 - Pay attention to TIER markers: [HIGH TIER] (60%+), [MEDIUM TIER] (40-60%), [LOW TIER] (25-40%)
 - Pay attention to keyword match counts - more matched keywords indicate better relevance
+- Recalls are sorted by priority: highest tier first, then highest match percentage, then most recent
 
 Question: ${query}
 
-Available Recalls (sorted by priority - most recent first):
+Available Recalls (sorted by tier, match percentage, and recency):
 ${context}
 
 Provide your answer in JSON format: {"answer": "your comprehensive answer based on ALL provided information including images", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
@@ -297,7 +330,7 @@ If the recalls don't contain the requested information, respond with: {"answer":
 
     console.log('Recall IDs used for answer:', sourceRecallIds);
 
-    // Create results with proper ordering (priority - most recent first)
+    // Create results with proper ordering (already sorted by tier, match percentage, and recency)
     const usedRecalls = allRecalls.filter((recall: any) => sourceRecallIds.includes(recall.recall_id));
     const unusedRecalls = allRecalls.filter((recall: any) => !sourceRecallIds.includes(recall.recall_id));
     const orderedRecalls = [...usedRecalls, ...unusedRecalls];
