@@ -795,13 +795,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   )}
                 </Pressable>
 
-								{/* Plus Button */}
+								{/* Plus Button with Circular Border */}
                 <Pressable
-                  style={styles.plusButton}
+                  style={styles.plusButtonContainer}
                   onPress={handlePlusPress}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+                  <View style={styles.plusButtonBorder}>
+                    <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+                  </View>
                 </Pressable>
               </View>
             </View>
@@ -961,8 +963,17 @@ const styles = StyleSheet.create({
   locationSpinner: {
     marginLeft: 4,
   },
-  plusButton: {
+  plusButtonContainer: {
     padding: 0,
+  },
+  plusButtonBorder: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   submitButton: {
     padding: 0,

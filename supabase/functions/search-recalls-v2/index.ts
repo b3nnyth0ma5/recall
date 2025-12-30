@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 const corsHeaders = {
@@ -249,12 +248,12 @@ Deno.serve(async (req) => {
     const qaPrompt = `You are an intelligent search assistant that answers questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
 
 CRITICAL RULES:
-- Use information from BOTH the recall text AND all associated images
+- Prioritise your answer based on the text or image that has the best matches
 - Use bullet points when listing multiple items
 - Provide a confidence score (0-100) based on how well the recalls answer the question
 
 MATCH TYPE INDICATORS:
-- Pay attention to TIER markers: [HIGH TIER] (60%+), [MEDIUM TIER] (40-60%), [LOW TIER] (25-40%)
+- Pay attention to TIER markers: [HIGH], [MEDIUM], [LOW]
 - Pay attention to keyword match counts - more matched keywords indicate better relevance
 - Recalls are sorted by priority: highest tier first, then highest match percentage, then most recent
 
@@ -281,8 +280,8 @@ If the recalls don't contain the requested information, respond with: {"answer":
             content: qaPrompt
           }
         ],
-        temperature: 0.3,
-        max_tokens: 500,
+        temperature: 0.35,
+        max_tokens: 700,
         response_format: { type: 'json_object' }
       })
     });
