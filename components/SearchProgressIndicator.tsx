@@ -18,6 +18,12 @@ interface SearchProgressIndicatorProps {
   extractedKeywords?: string[];
   isExpanded: boolean;
   onToggle: () => void;
+  locationInfo?: {
+    proximity?: number;
+    resolvedPlace?: string;
+    multipleLocations?: boolean;
+    locationCount?: number;
+  };
 }
 
 interface StepConfig {
@@ -32,14 +38,14 @@ const STEPS: StepConfig[] = [
   {
     id: 'resolving',
     icon: 'map.fill',
-    title: 'Resolving location',
+    title: 'Analysing for location(s)',
     description: 'Looking up location details',
     stages: ['resolving', 'people', 'keywords', 'searching', 'complete'],
   },
   {
     id: 'people',
     icon: 'person.2.fill',
-    title: 'Searching for people',
+    title: 'Analysing for people',
     description: 'Matching people in your recalls',
     stages: ['people', 'keywords', 'searching', 'complete'],
   },
@@ -73,6 +79,7 @@ export function SearchProgressIndicator({
   extractedKeywords,
   isExpanded,
   onToggle,
+  locationInfo,
 }: SearchProgressIndicatorProps) {
   const heightValue = useSharedValue(isExpanded ? 1 : 0);
 
@@ -89,7 +96,12 @@ export function SearchProgressIndicator({
   });
 
   const isStepComplete = (step: StepConfig): boolean => {
-    return step.stages.includes(stage) && stage !== step.id;
+    // Check if we've passed this stage
+    const stageOrder = ['resolving', 'people', 'keywords', 'searching', 'complete'];
+    const currentStageIndex = stageOrder.indexOf(stage);
+    const stepStageIndex = stageOrder.indexOf(step.id);
+    
+    return currentStageIndex > stepStageIndex || (stage === 'complete' && step.id !== 'complete');
   };
 
   const isStepActive = (step: StepConfig): boolean => {
@@ -116,32 +128,12 @@ export function SearchProgressIndicator({
     return step.title;
   };
 
-  // Determine if step should be visible (has data or is active/complete)
-  const shouldShowStep = (step: StepConfig): boolean => {
-    const status = getStepStatus(step);
-    
-    // Always show if active or complete
-    if (status === 'active' || status === 'complete') {
-      return true;
+  // Determine the header title based on stage
+  const getHeaderTitle = (): string => {
+    if (stage === 'complete') {
+      return 'Search Completed';
     }
-    
-    // For pending steps, only show if we have data
-    if (step.id === 'resolving' && locationName) {
-      return true;
-    }
-    if (step.id === 'people' && personNames && personNames.length > 0) {
-      return true;
-    }
-    if (step.id === 'keywords' && extractedKeywords && extractedKeywords.length > 0) {
-      return true;
-    }
-    
-    // Show searching and complete steps if they're in the current stage path
-    if (step.id === 'searching' || step.id === 'complete') {
-      return status !== 'pending';
-    }
-    
-    return false;
+    return 'Searching...';
   };
 
   return (
@@ -158,7 +150,7 @@ export function SearchProgressIndicator({
             color={stage === 'complete' ? colors.success : colors.primary} 
           />
           <Text style={styles.headerTitle}>
-            {stage === 'complete' ? 'Search Completed' : 'Searching...'}
+            {getHeaderTitle()}
           </Text>
         </View>
         <IconSymbol 
@@ -170,9 +162,9 @@ export function SearchProgressIndicator({
 
       <Animated.View style={animatedStyle}>
         <View style={styles.stepsContainer}>
-          {STEPS.filter(shouldShowStep).map((step, index, visibleSteps) => {
+          {STEPS.map((step, index) => {
             const status = getStepStatus(step);
-            const isLast = index === visibleSteps.length - 1;
+            const isLast = index === STEPS.length - 1;
 
             return (
               <React.Fragment key={step.id}>
@@ -184,6 +176,7 @@ export function SearchProgressIndicator({
                   extractedKeywords={extractedKeywords}
                   title={getStepTitle(step)}
                   isSearchComplete={stage === 'complete'}
+                  locationInfo={locationInfo}
                 />
                 {!isLast && <StepConnector status={status} isSearchComplete={stage === 'complete'} />}
               </React.Fragment>
@@ -203,6 +196,12 @@ interface StepItemProps {
   extractedKeywords?: string[];
   title: string;
   isSearchComplete: boolean;
+  locationInfo?: {
+    proximity?: number;
+    resolvedPlace?: string;
+    multipleLocations?: boolean;
+    locationCount?: number;
+  };
 }
 
 function StepItem({ 
@@ -213,6 +212,7 @@ function StepItem({
   extractedKeywords,
   title,
   isSearchComplete,
+  locationInfo,
 }: StepItemProps) {
   // Keep colors active even after search completes
   const iconColor = status === 'complete' 
@@ -223,7 +223,6 @@ function StepItem({
 
   // Keep text colors active (don't grey out after completion)
   const textColor = colors.text;
-  const descriptionColor = colors.textSecondary;
 
   const iconContainerStyle = useAnimatedStyle(() => {
     return {
@@ -234,6 +233,40 @@ function StepItem({
         : withTiming(`${colors.textTertiary}10`, { duration: 300, easing: Easing.bezier(0.25, 0.1, 0.25, 1) }),
     };
   });
+
+  // Determine what to show for location step
+  const getLocationDisplay = () => {
+    if (step.id === 'resolving') {
+      if (!locationName) {
+        return 'No location(s) detected';
+      }
+      
+      // Show location with search radius/area
+      if (locationInfo) {
+        const radiusText = locationInfo.proximity 
+          ? ` (${locationInfo.proximity}km radius)` 
+          : '';
+        return `${locationName}${radiusText}`;
+      }
+      
+      return locationName;
+    }
+    return null;
+  };
+
+  // Determine what to show for people step
+  const getPeopleDisplay = () => {
+    if (step.id === 'people') {
+      if (!personNames || personNames.length === 0) {
+        return 'No people detected';
+      }
+      return personNames.join(', ');
+    }
+    return null;
+  };
+
+  const locationDisplay = getLocationDisplay();
+  const peopleDisplay = getPeopleDisplay();
 
   return (
     <View style={styles.stepItem}>
@@ -248,23 +281,24 @@ function StepItem({
         <Text style={[styles.stepTitle, { color: textColor }]}>
           {title}
         </Text>
-        <Text style={[styles.stepDescription, { color: descriptionColor }]}>
+        {/* Step description commented out for now */}
+        {/* <Text style={[styles.stepDescription, { color: descriptionColor }]}>
           {step.description}
-        </Text>
+        </Text> */}
         
         {/* Show location badge - keep visible after search completes */}
-        {locationName && step.id === 'resolving' && (
+        {locationDisplay && step.id === 'resolving' && (
           <View style={styles.infoBadge}>
             <IconSymbol name="mappin.circle.fill" size={14} color={colors.primary} />
-            <Text style={styles.infoText}>{locationName}</Text>
+            <Text style={styles.infoText}>{locationDisplay}</Text>
           </View>
         )}
 
         {/* Show people badge - keep visible after search completes */}
-        {personNames && personNames.length > 0 && step.id === 'people' && (
+        {peopleDisplay && step.id === 'people' && (
           <View style={styles.infoBadge}>
             <IconSymbol name="person.circle.fill" size={14} color={colors.primary} />
-            <Text style={styles.infoText}>{personNames.join(', ')}</Text>
+            <Text style={styles.infoText}>{peopleDisplay}</Text>
           </View>
         )}
 
@@ -302,7 +336,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
-    marginBottom: 8,
+    marginBottom: 4,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -327,7 +361,7 @@ const styles = StyleSheet.create({
   },
   stepItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 16,
   },
   iconContainer: {
@@ -339,12 +373,11 @@ const styles = StyleSheet.create({
   },
   stepContent: {
     flex: 1,
-    paddingTop: 4,
+    justifyContent: 'center',
   },
   stepTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
   },
   stepDescription: {
     fontSize: 14,

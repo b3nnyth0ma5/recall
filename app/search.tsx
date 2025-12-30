@@ -472,6 +472,7 @@ export default function SearchScreen() {
                 extractedKeywords={searchExtractedKeywords}
                 isExpanded={isProgressExpanded}
                 onToggle={() => setIsProgressExpanded(!isProgressExpanded)}
+                locationInfo={locationInfo}
               />
             )}
 
