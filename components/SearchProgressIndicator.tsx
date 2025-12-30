@@ -82,8 +82,8 @@ export function SearchProgressIndicator({
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
-      maxHeight: heightValue.value === 0 ? 60 : 1000,
-      opacity: heightValue.value === 0 ? 0.8 : 1,
+      maxHeight: heightValue.value === 0 ? 0 : 1000,
+      opacity: heightValue.value === 0 ? 0 : 1,
       overflow: 'hidden',
     };
   });
@@ -116,6 +116,34 @@ export function SearchProgressIndicator({
     return step.title;
   };
 
+  // Determine if step should be visible (has data or is active/complete)
+  const shouldShowStep = (step: StepConfig): boolean => {
+    const status = getStepStatus(step);
+    
+    // Always show if active or complete
+    if (status === 'active' || status === 'complete') {
+      return true;
+    }
+    
+    // For pending steps, only show if we have data
+    if (step.id === 'resolving' && locationName) {
+      return true;
+    }
+    if (step.id === 'people' && personNames && personNames.length > 0) {
+      return true;
+    }
+    if (step.id === 'keywords' && extractedKeywords && extractedKeywords.length > 0) {
+      return true;
+    }
+    
+    // Show searching and complete steps if they're in the current stage path
+    if (step.id === 'searching' || step.id === 'complete') {
+      return status !== 'pending';
+    }
+    
+    return false;
+  };
+
   return (
     <Animated.View entering={FadeIn.duration(400)} style={styles.container}>
       <Pressable 
@@ -142,9 +170,9 @@ export function SearchProgressIndicator({
 
       <Animated.View style={animatedStyle}>
         <View style={styles.stepsContainer}>
-          {STEPS.map((step, index) => {
+          {STEPS.filter(shouldShowStep).map((step, index, visibleSteps) => {
             const status = getStepStatus(step);
-            const isLast = index === STEPS.length - 1;
+            const isLast = index === visibleSteps.length - 1;
 
             return (
               <React.Fragment key={step.id}>
@@ -155,8 +183,9 @@ export function SearchProgressIndicator({
                   personNames={personNames}
                   extractedKeywords={extractedKeywords}
                   title={getStepTitle(step)}
+                  isSearchComplete={stage === 'complete'}
                 />
-                {!isLast && <StepConnector status={status} />}
+                {!isLast && <StepConnector status={status} isSearchComplete={stage === 'complete'} />}
               </React.Fragment>
             );
           })}
@@ -173,6 +202,7 @@ interface StepItemProps {
   personNames?: string[];
   extractedKeywords?: string[];
   title: string;
+  isSearchComplete: boolean;
 }
 
 function StepItem({ 
@@ -181,16 +211,19 @@ function StepItem({
   locationName, 
   personNames, 
   extractedKeywords,
-  title 
+  title,
+  isSearchComplete,
 }: StepItemProps) {
+  // Keep colors active even after search completes
   const iconColor = status === 'complete' 
     ? colors.success 
     : status === 'active' 
     ? colors.primary 
     : colors.textTertiary;
 
-  const textColor = status === 'pending' ? colors.textTertiary : colors.text;
-  const descriptionColor = status === 'pending' ? colors.textTertiary : colors.textSecondary;
+  // Keep text colors active (don't grey out after completion)
+  const textColor = colors.text;
+  const descriptionColor = colors.textSecondary;
 
   const iconContainerStyle = useAnimatedStyle(() => {
     return {
@@ -219,24 +252,24 @@ function StepItem({
           {step.description}
         </Text>
         
-        {/* Show location badge when resolving */}
-        {locationName && step.id === 'resolving' && status !== 'pending' && (
+        {/* Show location badge - keep visible after search completes */}
+        {locationName && step.id === 'resolving' && (
           <View style={styles.infoBadge}>
             <IconSymbol name="mappin.circle.fill" size={14} color={colors.primary} />
             <Text style={styles.infoText}>{locationName}</Text>
           </View>
         )}
 
-        {/* Show people badge when searching for people */}
-        {personNames && personNames.length > 0 && step.id === 'people' && status !== 'pending' && (
+        {/* Show people badge - keep visible after search completes */}
+        {personNames && personNames.length > 0 && step.id === 'people' && (
           <View style={styles.infoBadge}>
             <IconSymbol name="person.circle.fill" size={14} color={colors.primary} />
             <Text style={styles.infoText}>{personNames.join(', ')}</Text>
           </View>
         )}
 
-        {/* Show extracted keywords badge when extracting keywords */}
-        {extractedKeywords && extractedKeywords.length > 0 && step.id === 'keywords' && status !== 'pending' && (
+        {/* Show extracted keywords badge - keep visible after search completes */}
+        {extractedKeywords && extractedKeywords.length > 0 && step.id === 'keywords' && (
           <View style={styles.infoBadge}>
             <IconSymbol name="text.word.spacing" size={14} color={colors.primary} />
             <Text style={styles.infoText}>{extractedKeywords.join(', ')}</Text>
@@ -249,9 +282,10 @@ function StepItem({
 
 interface StepConnectorProps {
   status: 'pending' | 'active' | 'complete';
+  isSearchComplete: boolean;
 }
 
-function StepConnector({ status }: StepConnectorProps) {
+function StepConnector({ status, isSearchComplete }: StepConnectorProps) {
   const connectorStyle = useAnimatedStyle(() => {
     return {
       backgroundColor: status === 'complete'

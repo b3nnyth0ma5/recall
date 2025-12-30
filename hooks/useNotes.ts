@@ -572,6 +572,13 @@ export function useNotes() {
       console.log('=== STARTING PARALLEL OPTIMIZED SEARCH ===');
       console.log('Search query:', query);
       setLoading(true);
+      
+      // Clear previous search results when starting a new search
+      console.log('[useNotes] Clearing previous search results');
+      setSearchAnswer(null);
+      setSearchConfidence(undefined);
+      setLocationInfo(null);
+      setPersonInfo(null);
       setSearchStage('resolving');
       setSearchLocationName(undefined);
       setSearchPersonNames(undefined);
