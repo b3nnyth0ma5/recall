@@ -12,7 +12,7 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 
 interface SearchProgressIndicatorProps {
-  stage: 'detecting' | 'resolving' | 'filtering' | 'people' | 'keywords' | 'searching' | 'complete' | 'idle';
+  stage: 'resolving' | 'people' | 'keywords' | 'searching' | 'complete' | 'idle';
   locationName?: string;
   personNames?: string[];
   extractedKeywords?: string[];
@@ -30,18 +30,11 @@ interface StepConfig {
 
 const STEPS: StepConfig[] = [
   {
-    id: 'detecting',
-    icon: 'magnifyingglass.circle.fill',
-    title: 'Analyzing search intent',
-    description: 'Understanding your search query',
-    stages: ['detecting', 'resolving', 'filtering', 'people', 'keywords', 'searching', 'complete'],
-  },
-  {
     id: 'resolving',
     icon: 'map.fill',
     title: 'Resolving location',
     description: 'Looking up location details',
-    stages: ['resolving', 'filtering', 'people', 'keywords', 'searching', 'complete'],
+    stages: ['resolving', 'people', 'keywords', 'searching', 'complete'],
   },
   {
     id: 'people',

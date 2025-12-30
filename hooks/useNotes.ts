@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
 import * as Location from 'expo-location';
 
-export type SearchStage = 'idle' | 'detecting' | 'resolving' | 'filtering' | 'people' | 'keywords' | 'searching' | 'complete';
+export type SearchStage = 'idle' | 'resolving' | 'people' | 'keywords' | 'searching' | 'complete';
 
 export interface PersonInfo {
   detectedNames: string[];
@@ -572,7 +572,7 @@ export function useNotes() {
       console.log('=== STARTING PARALLEL OPTIMIZED SEARCH ===');
       console.log('Search query:', query);
       setLoading(true);
-      setSearchStage('detecting');
+      setSearchStage('resolving');
       setSearchLocationName(undefined);
       setSearchPersonNames(undefined);
       setSearchExtractedKeywords(undefined);
@@ -593,7 +593,7 @@ export function useNotes() {
       const userLocation = await getUserLocation();
       console.log('[useNotes] User location for search:', userLocation);
 
-      // Add a small delay to ensure "detecting" stage is visible
+      // Add a small delay to ensure "resolving" stage is visible
       await new Promise(resolve => setTimeout(resolve, 300));
 
       // PARALLEL EXECUTION: Run all three search functions simultaneously

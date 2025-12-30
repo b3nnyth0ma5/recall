@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 const corsHeaders = {
@@ -64,42 +65,48 @@ Deno.serve(async (req) => {
     console.log('People recalls:', peopleRecalls ? `${peopleRecalls.length} recalls` : 'None');
     console.log('Keyword recalls:', keywordRecalls ? `${keywordRecalls.length} recalls` : 'None');
 
-    // Combine all recalls (deduplicate by recall_id)
+    // Combine all recalls (deduplicate by recall_id) with VERY HIGH priority for location and people
     const allRecallsMap = new Map();
     
-    // Add location recalls
+    // Add location recalls with VERY HIGH priority (150% match boost)
     if (locationRecalls && Array.isArray(locationRecalls)) {
       locationRecalls.forEach((recall: any) => {
         allRecallsMap.set(recall.recall_id, {
           ...recall,
+          matchPercentage: Math.min(100, (recall.matchPercentage || 100) * 1.5), // 150% boost
           isLocationMatch: true,
           isPeopleMatch: false,
-          isKeywordMatch: false
+          isKeywordMatch: false,
+          priorityScore: 1000 // Very high priority
         });
       });
     }
     
-    // Add people recalls
+    // Add people recalls with VERY HIGH priority (150% match boost)
     if (peopleRecalls && Array.isArray(peopleRecalls)) {
       peopleRecalls.forEach((recall: any) => {
         if (allRecallsMap.has(recall.recall_id)) {
           const existing = allRecallsMap.get(recall.recall_id);
           allRecallsMap.set(recall.recall_id, {
             ...existing,
-            isPeopleMatch: true
+            matchPercentage: Math.min(100, existing.matchPercentage * 1.3), // Additional 30% boost for multi-match
+            isPeopleMatch: true,
+            priorityScore: existing.priorityScore + 1000 // Stack priority
           });
         } else {
           allRecallsMap.set(recall.recall_id, {
             ...recall,
+            matchPercentage: Math.min(100, (recall.matchPercentage || 100) * 1.5), // 150% boost
             isLocationMatch: false,
             isPeopleMatch: true,
-            isKeywordMatch: false
+            isKeywordMatch: false,
+            priorityScore: 1000 // Very high priority
           });
         }
       });
     }
     
-    // Add keyword recalls
+    // Add keyword recalls with normal priority
     if (keywordRecalls && Array.isArray(keywordRecalls)) {
       keywordRecalls.forEach((recall: any) => {
         if (allRecallsMap.has(recall.recall_id)) {
@@ -108,14 +115,16 @@ Deno.serve(async (req) => {
             ...existing,
             isKeywordMatch: true,
             // Boost match percentage if it matches multiple criteria
-            matchPercentage: Math.min(100, existing.matchPercentage + recall.matchPercentage * 0.2)
+            matchPercentage: Math.min(100, existing.matchPercentage + recall.matchPercentage * 0.2),
+            priorityScore: existing.priorityScore + 100 // Add keyword priority
           });
         } else {
           allRecallsMap.set(recall.recall_id, {
             ...recall,
             isLocationMatch: false,
             isPeopleMatch: false,
-            isKeywordMatch: true
+            isKeywordMatch: true,
+            priorityScore: 100 // Normal priority
           });
         }
       });
@@ -151,14 +160,11 @@ Deno.serve(async (req) => {
     // Step 4: Generate answer using OpenAI with ALL recall information
     console.log('Step 4: Generating answer with OpenAI using all recall information...');
     
-    // Sort recalls by match percentage and match type priority
+    // Sort recalls by priority score first, then match percentage
     allRecalls.sort((a, b) => {
-      // Prioritize recalls that match multiple criteria
-      const aMultiMatch = (a.isLocationMatch ? 1 : 0) + (a.isPeopleMatch ? 1 : 0) + (a.isKeywordMatch ? 1 : 0);
-      const bMultiMatch = (b.isLocationMatch ? 1 : 0) + (b.isPeopleMatch ? 1 : 0) + (b.isKeywordMatch ? 1 : 0);
-      
-      if (aMultiMatch !== bMultiMatch) {
-        return bMultiMatch - aMultiMatch;
+      // First by priority score (location and people get highest priority)
+      if (a.priorityScore !== b.priorityScore) {
+        return (b.priorityScore || 0) - (a.priorityScore || 0);
       }
       
       // Then by match percentage
@@ -169,10 +175,10 @@ Deno.serve(async (req) => {
     const contextWithSources = allRecalls.map((recall: any, idx: number) => {
       const sourceId = `SOURCE_${idx + 1}`;
       
-      // Build match type indicators
+      // Build match type indicators with priority markers
       const matchTypes: string[] = [];
-      if (recall.isLocationMatch) matchTypes.push('LOCATION');
-      if (recall.isPeopleMatch) matchTypes.push('PEOPLE');
+      if (recall.isLocationMatch) matchTypes.push('LOCATION ⭐⭐⭐');
+      if (recall.isPeopleMatch) matchTypes.push('PEOPLE ⭐⭐⭐');
       if (recall.isKeywordMatch) matchTypes.push('KEYWORD');
       const matchTypeStr = matchTypes.length > 0 ? ` [${matchTypes.join(' + ')}]` : '';
       
@@ -208,7 +214,8 @@ Deno.serve(async (req) => {
         tier: recall.tier || 'MEDIUM',
         isLocationMatch: recall.isLocationMatch || false,
         isPeopleMatch: recall.isPeopleMatch || false,
-        isKeywordMatch: recall.isKeywordMatch || false
+        isKeywordMatch: recall.isKeywordMatch || false,
+        priorityScore: recall.priorityScore || 0
       };
     });
 
@@ -222,16 +229,17 @@ CRITICAL RULES:
 - Use bullet points when listing multiple items
 - Provide a confidence score (0-100) based on how well the recalls answer the question
 
-MATCH TYPE PRIORITY:
-- Sources marked with [LOCATION + PEOPLE + KEYWORD] have the HIGHEST priority (match all criteria)
-- Sources marked with [LOCATION + KEYWORD] or [PEOPLE + KEYWORD] or [LOCATION + PEOPLE] have HIGH priority (match two criteria)
-- Sources marked with [LOCATION], [PEOPLE], or [KEYWORD] alone have MEDIUM priority (match one criterion)
+MATCH TYPE PRIORITY (VERY IMPORTANT):
+- Sources marked with [LOCATION ⭐⭐⭐] or [PEOPLE ⭐⭐⭐] have the HIGHEST PRIORITY and indicate the BEST matches
+- These sources should be STRONGLY PREFERRED when generating answers
+- Sources with both [LOCATION ⭐⭐⭐ + PEOPLE ⭐⭐⭐] are EXTREMELY relevant
+- Sources marked with [KEYWORD] alone have LOWER priority
 - Pay attention to TIER markers: [HIGH TIER] (60%+), [MEDIUM TIER] (40-60%), [LOW TIER] (25-40%)
 - Pay attention to keyword match counts - more matched keywords indicate better relevance
 
 Question: ${query}
 
-Available Recalls (with all images):
+Available Recalls (sorted by priority, with location and people matches at the top):
 ${context}
 
 Provide your answer in JSON format: {"answer": "your comprehensive answer based on ALL provided information including images", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
@@ -301,32 +309,28 @@ If the recalls don't contain the requested information, respond with: {"answer":
 
     console.log('Recall IDs used for answer:', sourceRecallIds);
 
-    // Create results with proper ordering
+    // Create results with proper ordering (priority score first)
     const usedRecalls = allRecalls
       .filter((recall: any) => sourceRecallIds.includes(recall.recall_id))
       .sort((a: any, b: any) => {
-        // Prioritize multi-match recalls
-        const aMultiMatch = (a.isLocationMatch ? 1 : 0) + (a.isPeopleMatch ? 1 : 0) + (a.isKeywordMatch ? 1 : 0);
-        const bMultiMatch = (b.isLocationMatch ? 1 : 0) + (b.isPeopleMatch ? 1 : 0) + (b.isKeywordMatch ? 1 : 0);
-        
-        if (aMultiMatch !== bMultiMatch) {
-          return bMultiMatch - aMultiMatch;
+        // First by priority score
+        if (a.priorityScore !== b.priorityScore) {
+          return (b.priorityScore || 0) - (a.priorityScore || 0);
         }
         
+        // Then by match percentage
         return (b.matchPercentage || 0) - (a.matchPercentage || 0);
       });
 
     const unusedRecalls = allRecalls
       .filter((recall: any) => !sourceRecallIds.includes(recall.recall_id))
       .sort((a: any, b: any) => {
-        // Prioritize multi-match recalls
-        const aMultiMatch = (a.isLocationMatch ? 1 : 0) + (a.isPeopleMatch ? 1 : 0) + (a.isKeywordMatch ? 1 : 0);
-        const bMultiMatch = (b.isLocationMatch ? 1 : 0) + (b.isPeopleMatch ? 1 : 0) + (b.isKeywordMatch ? 1 : 0);
-        
-        if (aMultiMatch !== bMultiMatch) {
-          return bMultiMatch - aMultiMatch;
+        // First by priority score
+        if (a.priorityScore !== b.priorityScore) {
+          return (b.priorityScore || 0) - (a.priorityScore || 0);
         }
         
+        // Then by match percentage
         return (b.matchPercentage || 0) - (a.matchPercentage || 0);
       });
 
@@ -344,7 +348,8 @@ If the recalls don't contain the requested information, respond with: {"answer":
       totalKeywords: recall.totalKeywords || 0,
       isLocationMatch: recall.isLocationMatch || false,
       isPeopleMatch: recall.isPeopleMatch || false,
-      isKeywordMatch: recall.isKeywordMatch || false
+      isKeywordMatch: recall.isKeywordMatch || false,
+      priorityScore: recall.priorityScore || 0
     }));
 
     const processingTime = Date.now() - startTime;
