@@ -575,6 +575,7 @@ export function useNotes() {
       
       // Clear previous search results when starting a new search
       console.log('[useNotes] Clearing previous search results');
+      setNotes([]); // Clear existing recalls immediately
       setSearchAnswer(null);
       setSearchConfidence(undefined);
       setLocationInfo(null);

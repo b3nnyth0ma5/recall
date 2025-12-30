@@ -484,80 +484,88 @@ export default function SearchScreen() {
               />
             )}
 
-            {/* Show empty state when search is complete and no results */}
-            {notes.length === 0 && !searchAnswer && searchStage === 'complete' ? (
-              <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-                <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
-                <Text style={styles.emptyTitle}>No Results Found</Text>
-                <Text style={styles.emptyText}>
-                  {locationInfo 
-                    ? `No recalls found within ${locationInfo.proximity}km of ${locationInfo.resolvedPlace}`
-                    : personInfo && personInfo.matchedNames.length > 0
-                    ? `No recalls found for ${personInfo.matchedNames.join(', ')}`
-                    : 'Try a different search term or add more details'
-                  }
-                </Text>
-              </Animated.View>
+            {/* Only show results when search is complete (not in progress) */}
+            {isSearching ? (
+              // Show nothing while search is in progress
+              <View style={styles.searchingPlaceholder} />
             ) : (
               <React.Fragment>
-                {/* Answer Section */}
-                {searchAnswer && searchConfidence !== undefined && (
-                  <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
-                    <View style={styles.answerHeader}>
-                      <View style={styles.answerHeaderLeft}>
-                        <IconSymbol name="lightbulb.fill" size={20} color={colors.primary} />
-                        <Text style={styles.answerTitle}>Answer</Text>
-                      </View>
-                      <View style={styles.confidenceBadge}>
-                        <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
-                        <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.answerText}>
-                      {isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
+                {/* Show empty state when search is complete and no results */}
+                {notes.length === 0 && !searchAnswer && searchStage === 'complete' ? (
+                  <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+                    <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
+                    <Text style={styles.emptyTitle}>No Results Found</Text>
+                    <Text style={styles.emptyText}>
+                      {locationInfo 
+                        ? `No recalls found within ${locationInfo.proximity}km of ${locationInfo.resolvedPlace}`
+                        : personInfo && personInfo.matchedNames.length > 0
+                        ? `No recalls found for ${personInfo.matchedNames.join(', ')}`
+                        : 'Try a different search term or add more details'
+                      }
                     </Text>
-                    {shouldShowAnswerToggle(searchAnswer) && (
-                      <Pressable 
-                        onPress={() => setIsAnswerExpanded(!isAnswerExpanded)}
-                        style={styles.answerToggleContainer}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        <Text style={styles.answerToggleText}>
-                          {isAnswerExpanded ? 'Show less' : 'Show more'}
-                        </Text>
-                      </Pressable>
-                    )}
                   </Animated.View>
-                )}
-
-                {/* Results Section */}
-                {notes.length > 0 && (
+                ) : (
                   <React.Fragment>
-                    <Text style={styles.resultsText}>
-                      {notes.length} {notes.length === 1 ? 'result' : 'results'} found
-                      {locationInfo && ` near ${locationInfo.resolvedPlace}`}
-                      {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
-                    </Text>
-                    {notes.map((note) => (
-                      <View key={note.id} style={styles.noteWrapper}>
-                        {/* Badge row with "used for answer" badge */}
-                        {note.used_for_answer && (
-                          <View style={styles.badgeRow}>
-                            <View style={styles.answerSourceBadge}>
-                              <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
-                              <Text style={styles.answerSourceText}>Used for answer</Text>
+                    {/* Answer Section */}
+                    {searchAnswer && searchConfidence !== undefined && (
+                      <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
+                        <View style={styles.answerHeader}>
+                          <View style={styles.answerHeaderLeft}>
+                            <IconSymbol name="lightbulb.fill" size={20} color={colors.primary} />
+                            <Text style={styles.answerTitle}>Answer</Text>
+                          </View>
+                          <View style={styles.confidenceBadge}>
+                            <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                            <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.answerText}>
+                          {isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
+                        </Text>
+                        {shouldShowAnswerToggle(searchAnswer) && (
+                          <Pressable 
+                            onPress={() => setIsAnswerExpanded(!isAnswerExpanded)}
+                            style={styles.answerToggleContainer}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          >
+                            <Text style={styles.answerToggleText}>
+                              {isAnswerExpanded ? 'Show less' : 'Show more'}
+                            </Text>
+                          </Pressable>
+                        )}
+                      </Animated.View>
+                    )}
+
+                    {/* Results Section */}
+                    {notes.length > 0 && (
+                      <React.Fragment>
+                        <Text style={styles.resultsText}>
+                          {notes.length} {notes.length === 1 ? 'result' : 'results'} found
+                          {locationInfo && ` near ${locationInfo.resolvedPlace}`}
+                          {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
+                        </Text>
+                        {notes.map((note) => (
+                          <View key={note.id} style={styles.noteWrapper}>
+                            {/* Badge row with "used for answer" badge */}
+                            {note.used_for_answer && (
+                              <View style={styles.badgeRow}>
+                                <View style={styles.answerSourceBadge}>
+                                  <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                                  <Text style={styles.answerSourceText}>Used for answer</Text>
+                                </View>
+                              </View>
+                            )}
+                            <View style={styles.noteCardContainer}>
+                              <NoteCard
+                                note={note}
+                                onPress={() => handleNotePress(note.id)}
+                                loading={false}
+                              />
                             </View>
                           </View>
-                        )}
-                        <View style={styles.noteCardContainer}>
-                          <NoteCard
-                            note={note}
-                            onPress={() => handleNotePress(note.id)}
-                            loading={false}
-                          />
-                        </View>
-                      </View>
-                    ))}
+                        ))}
+                      </React.Fragment>
+                    )}
                   </React.Fragment>
                 )}
               </React.Fragment>
@@ -737,7 +745,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 16,
   },
   historyContainer: {
     width: '100%',
@@ -1036,5 +1046,8 @@ const styles = StyleSheet.create({
   noteCardContainer: {
     position: 'relative',
     zIndex: 1,
+  },
+  searchingPlaceholder: {
+    minHeight: 100,
   },
 });
