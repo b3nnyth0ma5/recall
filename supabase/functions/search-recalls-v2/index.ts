@@ -243,13 +243,11 @@ Deno.serve(async (req) => {
 
 CRITICAL RULES:
 - Prioritize your answer based on the recalls with the highest match percentages
-- Use the highest matching recalls as priority for answering
 - Use bullet points when listing multiple items
 - Provide a confidence score (0-100) based on how well the recalls answer the question
-- Be comprehensive and thorough in your answers
+- Research the answer thoroughly based on the provided information
 
 MATCH INFORMATION:
-- Recalls are sorted by highest match percentage first
 - Pay attention to match type indicators: [LOCATION], [PEOPLE], [KEYWORD]
 - Pay attention to TIER markers: [HIGH], [MEDIUM], [LOW]
 - Pay attention to keyword match counts - more matched keywords indicate better relevance
