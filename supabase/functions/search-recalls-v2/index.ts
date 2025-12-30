@@ -268,15 +268,19 @@ If the recalls don't contain the requested information, respond with: {"answer":
         'Authorization': `Bearer ${openaiApiKey}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        //model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
+
         messages: [
           {
             role: 'user',
             content: qaPrompt
           }
         ],
-        temperature: 0.3,
-        max_tokens: 700,
+        //temperature: 0.3,
+        //max_tokens: 700,
+        reasoning_effort: 'minimal', // e.g., 'minimal', 'low', 'medium', 'high'
+        verbosity: 'low', // e.g., 'low', 'medium', 'high'
         response_format: { type: 'json_object' }
       })
     });
