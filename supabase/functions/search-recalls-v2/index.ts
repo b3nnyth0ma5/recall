@@ -78,59 +78,187 @@ Deno.serve(async (req) => {
     console.log('People recalls:', peopleRecalls ? `${peopleRecalls.length} recalls` : 'None');
     console.log('Keyword recalls:', keywordRecalls ? `${keywordRecalls.length} recalls` : 'None');
 
+    // Collect all unique recall IDs that need to be fetched
+    const recallIdsToFetch = new Set<string>();
+    
+    // Keyword recalls already have full data
+    const keywordRecallsMap = new Map<string, any>();
+    if (keywordRecalls && Array.isArray(keywordRecalls)) {
+      keywordRecalls.forEach((recall: any) => {
+        keywordRecallsMap.set(recall.recall_id, recall);
+      });
+    }
+    
+    // Location recalls only have IDs - need to fetch
+    if (locationRecalls && Array.isArray(locationRecalls)) {
+      locationRecalls.forEach((recall: any) => {
+        if (recall.recall_id) {
+          recallIdsToFetch.add(recall.recall_id);
+        }
+      });
+    }
+    
+    // People recalls only have IDs - need to fetch
+    if (peopleRecalls && Array.isArray(peopleRecalls)) {
+      peopleRecalls.forEach((recall: any) => {
+        if (recall.recall_id) {
+          recallIdsToFetch.add(recall.recall_id);
+        }
+      });
+    }
+
+    console.log(`Need to fetch full data for ${recallIdsToFetch.size} recalls (location + people)`);
+
+    // Fetch full recall data for location and people recalls
+    let fetchedRecallsData: any[] = [];
+    if (recallIdsToFetch.size > 0) {
+      const { data: recallsData, error: recallsError } = await supabase
+        .from('recalls')
+        .select('id, text, location, location_primary_type, created_at')
+        .in('id', Array.from(recallIdsToFetch))
+        .eq('user_id', user.id);
+
+      if (recallsError) {
+        console.error('Error fetching recalls:', recallsError);
+      } else {
+        fetchedRecallsData = recallsData || [];
+        console.log(`Fetched full data for ${fetchedRecallsData.length} recalls`);
+      }
+    }
+
+    // Create a map of fetched recall data
+    const fetchedRecallsMap = new Map<string, any>();
+    fetchedRecallsData.forEach((recall: any) => {
+      fetchedRecallsMap.set(recall.id, {
+        text: recall.text || '',
+        location: recall.location || '',
+        location_primary_type: recall.location_primary_type || '',
+        created_at: recall.created_at
+      });
+    });
+
+    // Fetch ALL images for ALL unique recall IDs (keyword + location + people)
+    const allUniqueRecallIds = new Set<string>([
+      ...keywordRecallsMap.keys(),
+      ...recallIdsToFetch
+    ]);
+
+    console.log(`Fetching ALL images for ${allUniqueRecallIds.size} unique recalls...`);
+
+    let allImagesData: any[] = [];
+    if (allUniqueRecallIds.size > 0) {
+      const { data: imagesData, error: imagesError } = await supabase
+        .from('recall_images')
+        .select('id, recall_id, ocr_text, image_explanation')
+        .in('recall_id', Array.from(allUniqueRecallIds))
+        .eq('user_id', user.id);
+
+      if (imagesError) {
+        console.error('Error fetching images:', imagesError);
+      } else {
+        allImagesData = imagesData || [];
+        console.log(`Fetched ${allImagesData.length} total images for all recalls`);
+      }
+    }
+
+    // Group ALL images by recall_id
+    const imagesByRecallId = new Map<string, any[]>();
+    allImagesData.forEach((image: any) => {
+      if (!imagesByRecallId.has(image.recall_id)) {
+        imagesByRecallId.set(image.recall_id, []);
+      }
+      imagesByRecallId.get(image.recall_id)!.push({
+        id: image.id,
+        ocr_text: image.ocr_text || '',
+        image_explanation: image.image_explanation || '',
+        similarity: 1.0 // Default similarity for non-matched images
+      });
+    });
+
+    console.log(`Grouped images for ${imagesByRecallId.size} recalls`);
+
     // Combine all recalls and deduplicate by recall_id
     const allRecallsMap = new Map<string, Recall>();
     
     // Add location recalls
     if (locationRecalls && Array.isArray(locationRecalls)) {
-      locationRecalls.forEach((recall: Recall) => {
+      locationRecalls.forEach((recall: any) => {
+        const recallData = fetchedRecallsMap.get(recall.recall_id);
+        const allImages = imagesByRecallId.get(recall.recall_id) || [];
+        
         allRecallsMap.set(recall.recall_id, {
-          ...recall,
+          recall_id: recall.recall_id,
           matchPercentage: recall.matchPercentage || 100,
           isLocationMatch: true,
           isPeopleMatch: false,
-          isKeywordMatch: false
+          isKeywordMatch: false,
+          recall_data: recallData || { text: '', location: '', location_primary_type: '', created_at: null },
+          images_data: allImages
         });
       });
     }
     
     // Add people recalls
     if (peopleRecalls && Array.isArray(peopleRecalls)) {
-      peopleRecalls.forEach((recall: Recall) => {
+      peopleRecalls.forEach((recall: any) => {
+        const recallData = fetchedRecallsMap.get(recall.recall_id);
+        const allImages = imagesByRecallId.get(recall.recall_id) || [];
+        
         if (allRecallsMap.has(recall.recall_id)) {
           const existing = allRecallsMap.get(recall.recall_id)!;
           allRecallsMap.set(recall.recall_id, {
             ...existing,
-            isPeopleMatch: true
+            isPeopleMatch: true,
+            // Keep existing recall_data and images_data
           });
         } else {
           allRecallsMap.set(recall.recall_id, {
-            ...recall,
+            recall_id: recall.recall_id,
             matchPercentage: recall.matchPercentage || 100,
             isLocationMatch: false,
             isPeopleMatch: true,
-            isKeywordMatch: false
+            isKeywordMatch: false,
+            recall_data: recallData || { text: '', location: '', location_primary_type: '', created_at: null },
+            images_data: allImages
           });
         }
       });
     }
     
-    // Add keyword recalls
+    // Add keyword recalls (these already have full data)
     if (keywordRecalls && Array.isArray(keywordRecalls)) {
-      keywordRecalls.forEach((recall: Recall) => {
+      keywordRecalls.forEach((recall: any) => {
+        const allImages = imagesByRecallId.get(recall.recall_id) || [];
+        
         if (allRecallsMap.has(recall.recall_id)) {
           const existing = allRecallsMap.get(recall.recall_id)!;
           allRecallsMap.set(recall.recall_id, {
             ...existing,
-            isKeywordMatch: true
+            isKeywordMatch: true,
+            keywordMatches: recall.keywordMatches,
+            totalKeywords: recall.totalKeywords,
+            // Update match percentage if keyword match is higher
+            matchPercentage: Math.max(existing.matchPercentage || 0, recall.matchPercentage || 0),
+            // Merge images_data, preferring keyword recall's similarity scores
+            images_data: allImages.map((img: any) => {
+              const keywordImg = recall.images_data?.find((ki: any) => ki.id === img.id);
+              return keywordImg || img;
+            })
           });
         } else {
           allRecallsMap.set(recall.recall_id, {
-            ...recall,
+            recall_id: recall.recall_id,
             matchPercentage: recall.matchPercentage || 0,
             isLocationMatch: false,
             isPeopleMatch: false,
-            isKeywordMatch: true
+            isKeywordMatch: true,
+            keywordMatches: recall.keywordMatches,
+            totalKeywords: recall.totalKeywords,
+            recall_data: recall.recall_data || { text: '', location: '', location_primary_type: '', created_at: null },
+            images_data: allImages.map((img: any) => {
+              const keywordImg = recall.images_data?.find((ki: any) => ki.id === img.id);
+              return keywordImg || img;
+            })
           });
         }
       });
@@ -172,6 +300,10 @@ Deno.serve(async (req) => {
     console.log('Top 5 recalls after sorting:');
     allRecalls.slice(0, 5).forEach((recall: Recall, idx: number) => {
       console.log(`  ${idx + 1}. Match: ${Math.round(recall.matchPercentage || 0)}%, Created: ${recall.recall_data?.created_at || 'N/A'}`);
+      console.log(`     Text: "${(recall.recall_data?.text || '').substring(0, 50)}..."`);
+      console.log(`     Location: "${recall.recall_data?.location || 'N/A'}"`);
+      console.log(`     Location Type: "${recall.recall_data?.location_primary_type || 'N/A'}"`);
+      console.log(`     Images: ${recall.images_data?.length || 0}`);
     });
 
     // Get OpenAI API key
@@ -212,7 +344,11 @@ Deno.serve(async (req) => {
       if (recall.images_data && recall.images_data.length > 0) {
         contextText += `Images (${recall.images_data.length}):\n`;
         recall.images_data.forEach((img: any, imgIdx: number) => {
-          contextText += `  Image ${imgIdx + 1} (${Math.round(img.similarity * 100)}% match):\n`;
+          contextText += `  Image ${imgIdx + 1}`;
+          if (img.similarity && img.similarity < 1.0) {
+            contextText += ` (${Math.round(img.similarity * 100)}% match)`;
+          }
+          contextText += `:\n`;
           if (img.image_explanation) {
             contextText += `    Explanation: ${img.image_explanation}\n`;
           }
