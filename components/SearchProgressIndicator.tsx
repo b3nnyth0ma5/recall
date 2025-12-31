@@ -149,7 +149,7 @@ export function SearchProgressIndicator({
     if (stage === 'complete') {
       return 'Search Completed';
     }
-    return 'Search Steps.';
+    return 'Search Steps';
   };
 
   // Format timing for display

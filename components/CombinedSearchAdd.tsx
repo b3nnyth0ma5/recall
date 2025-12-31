@@ -733,7 +733,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 enablesReturnKeyAutomatically={false}
               />
 
-              {/* Button Row - Icons moved to the right */}
+              {/* Button Row - Icons swapped: Plus first, then Sparkles */}
               <View style={styles.inputRow}>
                 {/* Location Pill - Dynamic width to fit text */}
                 <Pressable
@@ -754,7 +754,16 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 {/* Spacer to push icons to the right */}
                 <View style={styles.iconSpacer} />
 
-                {/* Submit Button with Circular Border - Shows AI animation when detecting intent, disabled when images are being optimized */}
+                {/* Plus Button - No Border - NOW FIRST */}
+                <Pressable
+                  style={styles.plusButton}
+                  onPress={handlePlusPress}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+                </Pressable>
+
+                {/* Submit Button with Circular Border - Shows AI animation when detecting intent, disabled when images are being optimized - NOW SECOND */}
                 <Pressable
                   style={[styles.submitButtonContainer, isSparkleDisabled && styles.submitButtonDisabled]}
                   onPress={handleCreateRecall}
@@ -796,15 +805,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                       )
                     )}
                   </View>
-                </Pressable>
-
-								{/* Plus Button - No Border */}
-                <Pressable
-                  style={styles.plusButton}
-                  onPress={handlePlusPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
                 </Pressable>
               </View>
             </View>

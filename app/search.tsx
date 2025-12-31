@@ -374,11 +374,11 @@ export default function SearchScreen() {
             onChangeText={setSearchQuery}
             onSubmitEditing={handleSearch}
             returnKeyType="search"
-            enablesReturnKeyAutomatically={true}
-            blurOnSubmit={true}
-            multiline={true}
-            numberOfLines={1}
-            textAlignVertical="top"
+            blurOnSubmit={false}
+            multiline={false}
+            autoCorrect={false}
+            autoCapitalize="none"
+            keyboardType="default"
           />
           {searchQuery.length > 0 && (
             <Pressable 
@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 12,
     paddingHorizontal: 16 * 1.15,
-    paddingVertical: 8,
+    paddingVertical: 12,
     gap: 12,
     minHeight: 48 * 1.1,
   },
@@ -597,10 +597,8 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: colors.text,
-    minHeight: 24 * 1.5,
-    maxHeight: 150,
-    paddingTop: 4,
-    paddingBottom: 4,
+    minHeight: 24,
+    paddingVertical: 0,
   },
   clearButton: {
     padding: 4 * 1.15,
