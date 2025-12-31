@@ -236,6 +236,11 @@ Deno.serve(async (req) => {
 
     const context = contextWithSources.map(c => c.text).join('\n');
 
+    // Log the context being passed to OpenAI
+    console.log('=== CONTEXT BEING PASSED TO OPENAI ===');
+    console.log(context);
+    console.log('=== END OF CONTEXT ===');
+
     // Generate answer using OpenAI with temperature 0.3 and max_tokens 700
     console.log('Generating answer with OpenAI (temperature: 0.3, max_tokens: 700)...');
     
@@ -243,13 +248,11 @@ Deno.serve(async (req) => {
 
 CRITICAL RULES:
 - Prioritize your answer based on the recalls with the highest match percentages
-- Use the highest matching recalls as priority for answering
 - Use bullet points when listing multiple items
 - Provide a confidence score (0-100) based on how well the recalls answer the question
-- Be comprehensive and thorough in your answers
+- Research the answer thoroughly based on the provided information
 
 MATCH INFORMATION:
-- Recalls are sorted by highest match percentage first
 - Pay attention to match type indicators: [LOCATION], [PEOPLE], [KEYWORD]
 - Pay attention to TIER markers: [HIGH], [MEDIUM], [LOW]
 - Pay attention to keyword match counts - more matched keywords indicate better relevance
@@ -270,15 +273,19 @@ If the recalls don't contain the requested information, respond with: {"answer":
         'Authorization': `Bearer ${openaiApiKey}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        //model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
+
         messages: [
           {
             role: 'user',
             content: qaPrompt
           }
         ],
-        temperature: 0.3,
-        max_tokens: 700,
+        //temperature: 0.3,
+        //max_tokens: 700,
+        reasoning_effort: 'minimal', // e.g., 'minimal', 'low', 'medium', 'high'
+        verbosity: 'low', // e.g., 'low', 'medium', 'high'
         response_format: { type: 'json_object' }
       })
     });

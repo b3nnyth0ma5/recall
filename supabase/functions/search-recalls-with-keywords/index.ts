@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 const corsHeaders = {
@@ -6,21 +7,14 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-// Three-tier threshold configuration
-const SIMILARITY_THRESHOLDS = {
-  HIGH: 0.60,    // 60% similarity - High confidence matches
-  MEDIUM: 0.40,  // 40% similarity - Medium confidence matches
-  LOW: 0.25      // 25% similarity - Low confidence matches
-};
+// Single threshold configuration
+const SIMILARITY_THRESHOLD = 0.40;
 
 interface RecallMatch {
   recall_id: string;
   text_similarity: number;
   image_similarities: number[];
   keyword_matches: number;
-  best_similarity: number;
-  tier: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
-  isPriority: boolean;
   recall_data: {
     text: string;
     location: string;
@@ -45,16 +39,6 @@ function cleanRecallsFromQuery(query: string): string {
   
   console.log(`Cleaned query: "${query}" -> "${cleaned}"`);
   return cleaned;
-}
-
-/**
- * Determine the tier based on similarity score
- */
-function getSimilarityTier(similarity: number): 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE' {
-  if (similarity >= SIMILARITY_THRESHOLDS.HIGH) return 'HIGH';
-  if (similarity >= SIMILARITY_THRESHOLDS.MEDIUM) return 'MEDIUM';
-  if (similarity >= SIMILARITY_THRESHOLDS.LOW) return 'LOW';
-  return 'NONE';
 }
 
 /**
@@ -285,8 +269,8 @@ function calculateMultiKeywordMatch(
   for (const keywordEmb of keywordEmbeddings) {
     const sim = calculateCosineSimilarity(keywordEmb, targetEmbedding);
     
-    // Count matches above LOW threshold
-    if (sim >= SIMILARITY_THRESHOLDS.LOW) {
+    // Count matches above threshold
+    if (sim >= SIMILARITY_THRESHOLD) {
       matchCount++;
     }
     
@@ -342,7 +326,7 @@ Deno.serve(async (req) => {
     console.log('User authenticated:', user.id);
 
     // Parse request body
-    const { query, priorityRecallIds } = await req.json();
+    const { query } = await req.json();
 
     if (!query || typeof query !== 'string') {
       return new Response(JSON.stringify({ error: 'Query parameter is required' }), {
@@ -356,35 +340,9 @@ Deno.serve(async (req) => {
     // Clean the query
     const cleanedQuery = cleanRecallsFromQuery(query);
 
-    // Convert priority IDs to Set for efficient lookup
-    const priorityRecallIdsSet = new Set<string>(priorityRecallIds || []);
-    console.log(`Priority recall IDs: ${priorityRecallIdsSet.size}`);
-
-    // If query is blank after cleaning and we have priority recalls, return them all
-    if (!cleanedQuery.trim() && priorityRecallIdsSet.size > 0) {
-      console.log('Empty query with priority recalls - returning all priority recalls');
-      const priorityIds = Array.from(priorityRecallIdsSet);
-      const results = priorityIds.map((id: string) => ({
-        recall_id: id,
-        matchPercentage: 100,
-        tier: 'HIGH',
-        keywordMatches: 0,
-        totalKeywords: 0
-      }));
-
-      return new Response(JSON.stringify({
-        results,
-        keywords: [],
-        processingTimeMs: Date.now() - startTime,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    // If query is blank and no priority recalls, return empty results
+    // If query is blank after cleaning, return empty results
     if (!cleanedQuery.trim()) {
-      console.log('Empty query with no priority recalls - returning empty results');
+      console.log('Empty query - returning empty results');
       return new Response(JSON.stringify({
         results: [],
         keywords: [],
@@ -405,44 +363,29 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Run keyword extraction and database queries in parallel for performance
-    console.log('Starting parallel operations: keyword extraction and database queries');
-    const [keywords, recallsResult, imagesResult] = await Promise.all([
-      extractKeywords(cleanedQuery, openaiApiKey),
-      // Fetch recalls with embeddings
-      (async () => {
-        let recallsQuery = supabase
-          .from('recalls')
-          .select('id, text, location, location_primary_type, recall_embedding')
-          .eq('user_id', user.id)
-          .not('recall_embedding', 'is', null);
-
-        if (priorityRecallIdsSet.size > 0) {
-          recallsQuery = recallsQuery.in('id', Array.from(priorityRecallIdsSet));
-        }
-
-        return recallsQuery;
-      })(),
-      // Fetch images with embeddings
-      (async () => {
-        let imagesQuery = supabase
-          .from('recall_images')
-          .select('id, recall_id, ocr_text, image_explanation, recall_image_embedding')
-          .eq('user_id', user.id)
-          .not('recall_image_embedding', 'is', null);
-
-        if (priorityRecallIdsSet.size > 0) {
-          imagesQuery = imagesQuery.in('recall_id', Array.from(priorityRecallIdsSet));
-        }
-
-        return imagesQuery;
-      })()
-    ]);
-
-    console.log('Parallel operations completed');
-
-    // Generate embeddings for keywords
+    // Step 1: Extract keywords first
+    console.log('Step 1: Extracting keywords...');
+    const keywords = await extractKeywords(cleanedQuery, openaiApiKey);
+    
+    // Step 2: Generate embeddings for each keyword
+    console.log('Step 2: Generating embeddings for each keyword...');
     const keywordEmbeddings = await generateKeywordEmbeddings(keywords, openaiApiKey);
+    
+    // Step 3: Fetch recalls and images from database
+    console.log('Step 3: Fetching recalls and images from database...');
+    const recallsQuery = supabase
+      .from('recalls')
+      .select('id, text, location, location_primary_type, recall_embedding')
+      .eq('user_id', user.id)
+      .not('recall_embedding', 'is', null);
+
+    const imagesQuery = supabase
+      .from('recall_images')
+      .select('id, recall_id, ocr_text, image_explanation, recall_image_embedding')
+      .eq('user_id', user.id)
+      .not('recall_image_embedding', 'is', null);
+
+    const [recallsResult, imagesResult] = await Promise.all([recallsQuery, imagesQuery]);
 
     if (recallsResult.error) {
       console.error('Error fetching recalls:', recallsResult.error);
@@ -480,10 +423,10 @@ Deno.serve(async (req) => {
     const recallMatches: RecallMatch[] = [];
     
     for (const recall of allRecalls) {
-      // Calculate text similarity using cosine similarity
+      // Calculate text similarity using cosine similarity for each keyword
       const textMatch = calculateMultiKeywordMatch(keywordEmbeddings, recall.recall_embedding);
       
-      // Calculate image similarities
+      // Calculate image similarities for each keyword
       const recallImages = imagesByRecall.get(recall.id) || [];
       const imageSimilarities: number[] = [];
       const imagesData: RecallMatch['images_data'] = [];
@@ -505,24 +448,13 @@ Deno.serve(async (req) => {
       // Total keyword matches across text and images
       const totalKeywordMatches = textMatch.matchCount + totalImageKeywordMatches;
       
-      // Use the best similarity score across text and all images
-      const bestOverallSimilarity = Math.max(
-        textMatch.bestSimilarity,
-        ...imageSimilarities
-      );
-      
-      const tier = getSimilarityTier(bestOverallSimilarity);
-      
-      // Only include recalls that meet LOW threshold or higher
-      if (tier !== 'NONE') {
+      // Only include recalls that meet threshold
+      if (textMatch.bestSimilarity >= SIMILARITY_THRESHOLD || imageSimilarities.some(sim => sim >= SIMILARITY_THRESHOLD)) {
         recallMatches.push({
           recall_id: recall.id,
           text_similarity: textMatch.bestSimilarity,
           image_similarities: imageSimilarities,
           keyword_matches: totalKeywordMatches,
-          best_similarity: bestOverallSimilarity,
-          tier,
-          isPriority: priorityRecallIdsSet.has(recall.id),
           recall_data: {
             text: recall.text || '',
             location: recall.location || '',
@@ -535,27 +467,10 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${recallMatches.length} recalls meeting threshold`);
 
-    // Sort by priority first, then tier, then best similarity score
-    const tierOrder = { HIGH: 3, MEDIUM: 2, LOW: 1, NONE: 0 };
-    recallMatches.sort((a, b) => {
-      // Priority recalls come first
-      if (a.isPriority && !b.isPriority) return -1;
-      if (!a.isPriority && b.isPriority) return 1;
-      
-      // Then sort by tier
-      if (tierOrder[a.tier] !== tierOrder[b.tier]) {
-        return tierOrder[b.tier] - tierOrder[a.tier];
-      }
-      
-      // Finally sort by best similarity score
-      return b.best_similarity - a.best_similarity;
-    });
-
     // Convert to result format
     const results = recallMatches.map(match => ({
       recall_id: match.recall_id,
-      matchPercentage: Math.round(match.best_similarity * 100),
-      tier: match.tier,
+      matchPercentage: Math.round(match.text_similarity * 100),
       keywordMatches: match.keyword_matches,
       totalKeywords: keywords.length,
       recall_data: match.recall_data,

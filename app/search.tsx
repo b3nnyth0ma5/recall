@@ -51,7 +51,7 @@ export default function SearchScreen() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isProgressExpanded, setIsProgressExpanded] = useState(true);
-  const [isPerformanceExpanded, setIsPerformanceExpanded] = useState(true);
+  const [isPerformanceExpanded, setIsPerformanceExpanded] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
   const hasAutoSearchedRef = useRef(false);
 
