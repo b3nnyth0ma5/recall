@@ -172,24 +172,29 @@ export default function OnboardingScreen() {
             <View style={styles.featuresContainer}>
               <View style={styles.featureIconWrapper}>
                 <View style={styles.featureIconCircle}>
-                  <IconSymbol name="text.alignleft" size={40} color={colors.primary} />
+                  <IconSymbol name="text.alignleft" size={36} color={colors.primary} />
                 </View>
               </View>
               <View style={styles.featureIconWrapper}>
                 <View style={styles.featureIconCircle}>
-                  <IconSymbol name="camera.fill" size={40} color={colors.primary} />
+                  <IconSymbol name="camera.fill" size={36} color={colors.primary} />
                 </View>
               </View>
               <View style={styles.featureIconWrapper}>
                 <View style={styles.featureIconCircle}>
-                  <IconSymbol name="map.fill" size={40} color={colors.primary} />
+                  <IconSymbol name="map.fill" size={36} color={colors.primary} />
                 </View>
               </View>
             </View>
             <Text style={styles.title}>Capture Everything</Text>
             <Text style={styles.description}>
-              Save whatever you want to Recall: use your words, add photos, link that location...or all three! People mentioned anywhere will automatically get tagged to the Recall.
-							The more you capture the more you can Recall.
+              Capture whatever you want to Recall: use your words, add photos, link that location...or all three!
+            </Text>
+						<Text style={styles.description}>
+              Mention people and let our AI detect and tag them to the Recall.
+            </Text>
+						<Text style={styles.description}>
+							The more you capture the more you can Recall!
             </Text>
           </View>
         </View>
@@ -321,9 +326,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   featureIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: colors.card,
     justifyContent: 'center',
     alignItems: 'center',
