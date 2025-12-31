@@ -208,7 +208,7 @@ export default function OnboardingScreen() {
             <View style={styles.benefitsContainer}>
               <View style={styles.benefitRow}>
                 <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>What was that wine I had at Estelle&apos;s?</Text>
+                <Text style={styles.benefitText}>What was that wine I had at Estelle&apos;s with James?</Text>
               </View>
               <View style={styles.benefitRow}>
                 <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
@@ -216,7 +216,7 @@ export default function OnboardingScreen() {
               </View>
               <View style={styles.benefitRow}>
                 <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>Show me everything I&apos;ve rated 7/10 or higher</Text>
+                <Text style={styles.benefitText}>Restaurants near me I&apos;ve rated 7/10 or higher</Text>
               </View>
 							<View style={styles.benefitRow}>
                 <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
