@@ -17,7 +17,7 @@ import { NoteCard } from '@/components/NoteCard';
 import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
 import { SearchHistory } from '@/types/Note';
-import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
@@ -51,7 +51,6 @@ export default function SearchScreen() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isProgressExpanded, setIsProgressExpanded] = useState(true);
-  const [isPerformanceExpanded, setIsPerformanceExpanded] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
   const hasAutoSearchedRef = useRef(false);
 
@@ -463,7 +462,7 @@ export default function SearchScreen() {
         ) : (
           // Show results when search has been initiated
           <View style={styles.notesContainer}>
-            {/* Search Progress Indicator - Always visible above Search Performance */}
+            {/* Search Progress Indicator with timings */}
             {hasSearched && (
               <SearchProgressIndicator 
                 stage={searchStage} 
@@ -473,15 +472,8 @@ export default function SearchScreen() {
                 isExpanded={isProgressExpanded}
                 onToggle={() => setIsProgressExpanded(!isProgressExpanded)}
                 locationInfo={locationInfo}
-              />
-            )}
-
-            {/* Search Time Display - Only for specific user */}
-            {shouldShowSearchTime && searchTimings.totalMs !== undefined && (
-              <CollapsiblePerformance
                 searchTimings={searchTimings}
-                isExpanded={isPerformanceExpanded}
-                onToggle={() => setIsPerformanceExpanded(!isPerformanceExpanded)}
+                shouldShowTimings={shouldShowSearchTime}
               />
             )}
 
@@ -575,121 +567,6 @@ export default function SearchScreen() {
         )}
       </ScrollView>
     </View>
-  );
-}
-
-// Collapsible Performance Component
-interface CollapsiblePerformanceProps {
-  searchTimings: {
-    locationSearchMs?: number;
-    peopleSearchMs?: number;
-    keywordSearchMs?: number;
-    aiAnswerMs?: number;
-    totalMs?: number;
-  };
-  isExpanded: boolean;
-  onToggle: () => void;
-}
-
-function CollapsiblePerformance({ searchTimings, isExpanded, onToggle }: CollapsiblePerformanceProps) {
-  const heightValue = useSharedValue(isExpanded ? 1 : 0);
-
-  useEffect(() => {
-    heightValue.value = withTiming(isExpanded ? 1 : 0, { duration: 300 });
-  }, [isExpanded, heightValue]);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      maxHeight: heightValue.value === 0 ? 0 : 1000,
-      opacity: heightValue.value,
-      overflow: 'hidden',
-    };
-  });
-
-  return (
-    <Animated.View entering={FadeIn.duration(400)} style={styles.searchTimingsContainer}>
-      <Pressable 
-        onPress={onToggle}
-        style={styles.searchTimingsHeader}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <View style={styles.searchTimingsHeaderLeft}>
-          <IconSymbol name="clock.fill" size={18} color={colors.primary} />
-          <Text style={styles.searchTimingsTitle}>Search Performance</Text>
-        </View>
-        <IconSymbol 
-          name={isExpanded ? "chevron.up" : "chevron.down"} 
-          size={20} 
-          color={colors.textSecondary} 
-        />
-      </Pressable>
-      
-      <Animated.View style={animatedStyle}>
-        <View style={styles.searchTimingsList}>
-          {searchTimings.locationSearchMs !== undefined && (
-            <View style={styles.searchTimingRow}>
-              <View style={styles.searchTimingLabel}>
-                <IconSymbol name="mappin.circle.fill" size={14} color={colors.textSecondary} />
-                <Text style={styles.searchTimingText}>Location Search</Text>
-              </View>
-              <Text style={styles.searchTimingValue}>
-                {(searchTimings.locationSearchMs / 1000).toFixed(2)}s
-              </Text>
-            </View>
-          )}
-          
-          {searchTimings.peopleSearchMs !== undefined && (
-            <View style={styles.searchTimingRow}>
-              <View style={styles.searchTimingLabel}>
-                <IconSymbol name="person.2.fill" size={14} color={colors.textSecondary} />
-                <Text style={styles.searchTimingText}>People Search</Text>
-              </View>
-              <Text style={styles.searchTimingValue}>
-                {(searchTimings.peopleSearchMs / 1000).toFixed(2)}s
-              </Text>
-            </View>
-          )}
-          
-          {searchTimings.keywordSearchMs !== undefined && (
-            <View style={styles.searchTimingRow}>
-              <View style={styles.searchTimingLabel}>
-                <IconSymbol name="text.word.spacing" size={14} color={colors.textSecondary} />
-                <Text style={styles.searchTimingText}>Keyword Search</Text>
-              </View>
-              <Text style={styles.searchTimingValue}>
-                {(searchTimings.keywordSearchMs / 1000).toFixed(2)}s
-              </Text>
-            </View>
-          )}
-          
-          {searchTimings.aiAnswerMs !== undefined && (
-            <View style={styles.searchTimingRow}>
-              <View style={styles.searchTimingLabel}>
-                <IconSymbol name="sparkles" size={14} color={colors.textSecondary} />
-                <Text style={styles.searchTimingText}>AI Answer Generation</Text>
-              </View>
-              <Text style={styles.searchTimingValue}>
-                {(searchTimings.aiAnswerMs / 1000).toFixed(2)}s
-              </Text>
-            </View>
-          )}
-          
-          <View style={styles.searchTimingDivider} />
-          
-          <View style={styles.searchTimingRow}>
-            <View style={styles.searchTimingLabel}>
-              <IconSymbol name="clock.fill" size={14} color={colors.primary} />
-              <Text style={[styles.searchTimingText, styles.searchTimingTextBold]}>
-                Total Time
-              </Text>
-            </View>
-            <Text style={[styles.searchTimingValue, styles.searchTimingValueBold]}>
-              {(searchTimings.totalMs! / 1000).toFixed(2)}s
-            </Text>
-          </View>
-        </View>
-      </Animated.View>
-    </Animated.View>
   );
 }
 
@@ -890,68 +767,6 @@ const styles = StyleSheet.create({
   },
   notesContainer: {
     width: '100%',
-  },
-  searchTimingsContainer: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  searchTimingsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  searchTimingsHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  searchTimingsTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  searchTimingsList: {
-    gap: 8,
-    marginTop: 12,
-  },
-  searchTimingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  searchTimingLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-  },
-  searchTimingText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  searchTimingTextBold: {
-    fontWeight: '700',
-    color: colors.text,
-  },
-  searchTimingValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  searchTimingValueBold: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  searchTimingDivider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: 4,
   },
   answerContainer: {
     backgroundColor: colors.card,

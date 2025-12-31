@@ -24,6 +24,14 @@ interface SearchProgressIndicatorProps {
     multipleLocations?: boolean;
     locationCount?: number;
   };
+  searchTimings?: {
+    locationSearchMs?: number;
+    peopleSearchMs?: number;
+    keywordSearchMs?: number;
+    aiAnswerMs?: number;
+    totalMs?: number;
+  };
+  shouldShowTimings?: boolean;
 }
 
 interface StepConfig {
@@ -32,6 +40,7 @@ interface StepConfig {
   title: string;
   description: string;
   stages: string[];
+  timingKey?: 'locationSearchMs' | 'peopleSearchMs' | 'keywordSearchMs' | 'aiAnswerMs' | 'totalMs';
 }
 
 const STEPS: StepConfig[] = [
@@ -41,6 +50,7 @@ const STEPS: StepConfig[] = [
     title: 'Analysing for location(s)',
     description: 'Looking up location details',
     stages: ['resolving', 'people', 'keywords', 'searching', 'complete'],
+    timingKey: 'locationSearchMs',
   },
   {
     id: 'people',
@@ -48,6 +58,7 @@ const STEPS: StepConfig[] = [
     title: 'Analysing for people',
     description: 'Matching people in your recalls',
     stages: ['people', 'keywords', 'searching', 'complete'],
+    timingKey: 'peopleSearchMs',
   },
   {
     id: 'keywords',
@@ -55,6 +66,7 @@ const STEPS: StepConfig[] = [
     title: 'Extracting keywords',
     description: 'Analyzing content and images',
     stages: ['keywords', 'searching', 'complete'],
+    timingKey: 'keywordSearchMs',
   },
   {
     id: 'searching',
@@ -62,6 +74,7 @@ const STEPS: StepConfig[] = [
     title: 'Generating answer with AI',
     description: 'Crafting your personalized answer',
     stages: ['searching', 'complete'],
+    timingKey: 'aiAnswerMs',
   },
   {
     id: 'complete',
@@ -69,6 +82,7 @@ const STEPS: StepConfig[] = [
     title: 'Complete',
     description: 'Search completed successfully',
     stages: ['complete'],
+    timingKey: 'totalMs',
   },
 ];
 
@@ -80,6 +94,8 @@ export function SearchProgressIndicator({
   isExpanded,
   onToggle,
   locationInfo,
+  searchTimings,
+  shouldShowTimings = false,
 }: SearchProgressIndicatorProps) {
   const heightValue = useSharedValue(isExpanded ? 1 : 0);
 
@@ -133,7 +149,13 @@ export function SearchProgressIndicator({
     if (stage === 'complete') {
       return 'Search Completed';
     }
-    return 'Searching...';
+    return 'Search Steps.';
+  };
+
+  // Format timing for display
+  const formatTiming = (ms?: number): string => {
+    if (ms === undefined) return '';
+    return `${(ms / 1000).toFixed(2)}s`;
   };
 
   return (
@@ -165,6 +187,7 @@ export function SearchProgressIndicator({
           {STEPS.map((step, index) => {
             const status = getStepStatus(step);
             const isLast = index === STEPS.length - 1;
+            const timing = step.timingKey && searchTimings ? searchTimings[step.timingKey] : undefined;
 
             return (
               <React.Fragment key={step.id}>
@@ -177,6 +200,9 @@ export function SearchProgressIndicator({
                   title={getStepTitle(step)}
                   isSearchComplete={stage === 'complete'}
                   locationInfo={locationInfo}
+                  timing={timing}
+                  shouldShowTimings={shouldShowTimings}
+                  formatTiming={formatTiming}
                 />
                 {!isLast && <StepConnector status={status} isSearchComplete={stage === 'complete'} />}
               </React.Fragment>
@@ -202,6 +228,9 @@ interface StepItemProps {
     multipleLocations?: boolean;
     locationCount?: number;
   };
+  timing?: number;
+  shouldShowTimings?: boolean;
+  formatTiming: (ms?: number) => string;
 }
 
 function StepItem({ 
@@ -213,6 +242,9 @@ function StepItem({
   title,
   isSearchComplete,
   locationInfo,
+  timing,
+  shouldShowTimings,
+  formatTiming,
 }: StepItemProps) {
   // Keep colors active even after search completes
   const iconColor = status === 'complete' 
@@ -278,9 +310,16 @@ function StepItem({
         />
       </Animated.View>
       <View style={styles.stepContent}>
-        <Text style={[styles.stepTitle, { color: textColor }]}>
-          {title}
-        </Text>
+        <View style={styles.stepTitleRow}>
+          <Text style={[styles.stepTitle, { color: textColor }]}>
+            {title}
+          </Text>
+          {shouldShowTimings && timing !== undefined && (
+            <Text style={styles.timingText}>
+              {formatTiming(timing)}
+            </Text>
+          )}
+        </View>
         {/* Step description commented out for now */}
         {/* <Text style={[styles.stepDescription, { color: descriptionColor }]}>
           {step.description}
@@ -375,9 +414,21 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
+  stepTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   stepTitle: {
     fontSize: 16,
     fontWeight: '600',
+    flex: 1,
+  },
+  timingText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
   },
   stepDescription: {
     fontSize: 14,
