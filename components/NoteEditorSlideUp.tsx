@@ -53,7 +53,7 @@ interface ImageData {
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 // FIXED: Reduced image size by 50% (from 0.8 to 0.4)
-const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 32) * 0.4;
+const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 40) * 0.35;
 const IMAGE_CAROUSEL_SPACING = 12;
 
 const hasUrl = (text: string): boolean => {
@@ -118,44 +118,56 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     }
   }, [images.length, images]);
 
+  // FIXED: Improved image scroll handler with better index calculation
   const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / (IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING));
+    const itemWidth = IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING;
     
-    if (index >= 0 && index < images.length) {
-      setCurrentImageIndex(index);
+    // Calculate index based on scroll position
+    // Add half of item width to snap to center of visible item
+    const calculatedIndex = Math.round((contentOffsetX + (itemWidth / 2)) / itemWidth);
+    
+    // Clamp index to valid range based on total images count
+    const clampedIndex = Math.max(0, Math.min(calculatedIndex, images.length - 1));
+    
+    console.log(`[NoteEditorSlideUp] Scroll position: ${contentOffsetX}, Calculated index: ${calculatedIndex}, Clamped index: ${clampedIndex}, Total images: ${images.length}`);
+    
+    if (clampedIndex !== currentImageIndex) {
+      setCurrentImageIndex(clampedIndex);
+      console.log(`[NoteEditorSlideUp] Updated current image index to: ${clampedIndex}`);
+    }
+    
+    // Lazy load next image if needed
+    if (images.length > 2 && clampedIndex >= 1 && !isLazyLoading) {
+      const nextIndex = clampedIndex + 1;
       
-      if (images.length > 2 && index >= 1 && !isLazyLoading) {
-        const nextIndex = index + 1;
+      if (nextIndex < images.length && nextIndex >= lazyLoadedImages.length) {
+        setIsLazyLoading(true);
+        console.log(`[NoteEditorSlideUp] Lazy loading image at index ${nextIndex}`);
         
-        if (nextIndex < images.length && nextIndex >= lazyLoadedImages.length) {
-          setIsLazyLoading(true);
-          console.log(`[NoteEditorSlideUp] Lazy loading image at index ${nextIndex}`);
-          
-          try {
-            const imageToLoad = images[nextIndex];
-            if (imageToLoad.id) {
-              const imageUrl = await getImageDataUrl(imageToLoad.id);
-              if (imageUrl) {
-                setLazyLoadedImages(prev => {
-                  const newImages = [...prev];
-                  newImages[nextIndex] = { ...imageToLoad, uri: imageUrl };
-                  return newImages;
-                });
-                console.log(`[NoteEditorSlideUp] Successfully lazy loaded image at index ${nextIndex}`);
-              }
-            } else {
+        try {
+          const imageToLoad = images[nextIndex];
+          if (imageToLoad.id) {
+            const imageUrl = await getImageDataUrl(imageToLoad.id);
+            if (imageUrl) {
               setLazyLoadedImages(prev => {
                 const newImages = [...prev];
-                newImages[nextIndex] = imageToLoad;
+                newImages[nextIndex] = { ...imageToLoad, uri: imageUrl };
                 return newImages;
               });
+              console.log(`[NoteEditorSlideUp] Successfully lazy loaded image at index ${nextIndex}`);
             }
-          } catch (error) {
-            console.error(`[NoteEditorSlideUp] Error lazy loading image at index ${nextIndex}:`, error);
-          } finally {
-            setIsLazyLoading(false);
+          } else {
+            setLazyLoadedImages(prev => {
+              const newImages = [...prev];
+              newImages[nextIndex] = imageToLoad;
+              return newImages;
+            });
           }
+        } catch (error) {
+          console.error(`[NoteEditorSlideUp] Error lazy loading image at index ${nextIndex}:`, error);
+        } finally {
+          setIsLazyLoading(false);
         }
       }
     }
@@ -1005,7 +1017,28 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     setShowFullScreenImage(false);
   }, []);
 
-  const displayImages = images.length > 1 ? lazyLoadedImages : images;
+  // FIXED: Use images array for display, but show placeholders for lazy-loaded images
+  const displayImages = images.map((img, index) => {
+    // If image has no URI (lazy loading placeholder), show loading state
+    if (!img.uri) {
+      return {
+        ...img,
+        isLoading: true,
+      };
+    }
+    // If we have lazy loaded this image, use the lazy loaded version
+    if (lazyLoadedImages[index] && lazyLoadedImages[index].uri) {
+      return {
+        ...lazyLoadedImages[index],
+        isLoading: false,
+      };
+    }
+    // Otherwise use the original image
+    return {
+      ...img,
+      isLoading: false,
+    };
+  });
 
   useEffect(() => {
     console.log('[NoteEditorSlideUp] People state changed. Current count:', people.length);
@@ -1187,7 +1220,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                         onPress={() => handleImagePress(index)}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        {!image.uri ? (
+                        {image.isLoading || !image.uri ? (
                           <View style={styles.imageLoadingContainer}>
                             <ActivityIndicator size="large" color={colors.primary} />
                             <Text style={styles.loadingImageText}>Loading...</Text>
@@ -1341,7 +1374,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     // FIXED: Reduced padding by 25% (from 16 to 12)
-    paddingVertical: 12,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -1396,7 +1429,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   textInput: {
-    fontSize: 17,
+    fontSize: 16,
     lineHeight: 26,
     color: colors.text,
     textAlignVertical: 'top',
@@ -1478,13 +1511,13 @@ const styles = StyleSheet.create({
   },
   image: {
     width: IMAGE_CAROUSEL_WIDTH,
-    height: IMAGE_CAROUSEL_WIDTH * 0.75,
+    height: IMAGE_CAROUSEL_WIDTH * 0.5,
     borderRadius: 16,
     backgroundColor: colors.cardDark,
   },
   imageLoadingContainer: {
     width: IMAGE_CAROUSEL_WIDTH,
-    height: IMAGE_CAROUSEL_WIDTH * 0.75,
+    height: IMAGE_CAROUSEL_WIDTH * 0.5,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.cardDark,
