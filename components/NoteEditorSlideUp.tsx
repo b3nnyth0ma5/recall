@@ -52,7 +52,8 @@ interface ImageData {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 32) * 0.8;
+// FIXED: Reduced image size by 50% (from 0.8 to 0.4)
+const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 32) * 0.4;
 const IMAGE_CAROUSEL_SPACING = 12;
 
 const hasUrl = (text: string): boolean => {
@@ -94,6 +95,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
 
   const [lazyLoadedImages, setLazyLoadedImages] = useState<ImageData[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
+  const [initialImageCount, setInitialImageCount] = useState(0);
 
   const isEditing = !!noteId;
   
@@ -101,7 +103,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const hasImages = images.length > 0;
   const textHasUrl = hasUrl(text);
   
-  const textInputHeight = hasImages ? 340 : 480 * 1.1;
+  // FIXED: Increased text area height proportionally (from 340 to 510 when images present, from 528 to 792 when no images)
+  const textInputHeight = hasImages ? 510 : 792;
 
   useEffect(() => {
     if (images.length > 1) {
@@ -216,6 +219,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
               contentType: 'image/jpeg',
             }));
             setImages(cachedImages);
+            setInitialImageCount(cachedImages.length);
             console.log(`[NoteEditorSlideUp] Loaded ${cachedImages.length} images from cache`);
           }
 
@@ -295,6 +299,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                 }
                 
                 setImages(loadedImages);
+                setInitialImageCount(loadedImages.length);
               }
             } else {
               console.log('[NoteEditorSlideUp] Data unchanged, using cache');
@@ -402,6 +407,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
           }
           
           setImages(loadedImages);
+          setInitialImageCount(loadedImages.length);
           console.log(`[NoteEditorSlideUp] Loaded ${imagesToLoadImmediately.length}/${imagesData.length} images immediately, ${imagesData.length - imagesToLoadImmediately.length} will be lazy loaded`);
         }
       } catch (error) {
@@ -632,6 +638,14 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
             
             const newImages = images.filter((_, i) => i !== index);
             setImages(newImages);
+            
+            // FIXED: Trigger refresh of originating screen's recall card with lazy loading
+            if (isEditing && noteId) {
+              console.log('[NoteEditorSlideUp] Image removed - triggering background refresh of recall card');
+              setTimeout(() => {
+                refreshSingleNote(noteId);
+              }, 100);
+            }
           },
         },
       ]
@@ -712,6 +726,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
       console.log('[NoteEditorSlideUp] People count:', people.length);
 
       let recallId: string;
+      let imagesChanged = false;
 
       if (isEditing && noteId) {
         console.log('[NoteEditorSlideUp] Updating existing recall:', noteId);
@@ -734,10 +749,22 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
             if (!currentImageIds.has(img.id)) {
               console.log('[NoteEditorSlideUp] Deleting removed image:', img.id);
               await deleteImageRecord(img.id);
+              imagesChanged = true;
             } else {
               console.log('[NoteEditorSlideUp] Keeping existing image:', img.id);
             }
           }
+        }
+        
+        // Check if new images were added
+        const newImagesCount = images.filter(img => !img.id).length;
+        if (newImagesCount > 0) {
+          imagesChanged = true;
+        }
+        
+        // Check if image count changed
+        if (images.length !== initialImageCount) {
+          imagesChanged = true;
         }
       } else {
         console.log('[NoteEditorSlideUp] Creating new recall');
@@ -795,8 +822,10 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
         onSave();
       }
       
+      // FIXED: Trigger refresh with lazy loading for originating screen
       setTimeout(() => {
         if (isEditing && noteId) {
+          console.log('[NoteEditorSlideUp] Triggering background refresh of recall card with lazy loading');
           refreshSingleNote(noteId);
         } else {
           refreshNotes();
@@ -836,6 +865,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                   console.error('[NoteEditorSlideUp] [ASYNC] Error triggering OCR processing:', error);
                 });
                 
+                // FIXED: Refresh recall card with lazy loading after each image upload
+                console.log('[NoteEditorSlideUp] [ASYNC] Refreshing recall card with lazy loading');
                 await refreshSingleNote(recallId);
               } else {
                 failedCount++;
@@ -849,8 +880,16 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
 
           console.log(`[NoteEditorSlideUp] [ASYNC] Upload complete: ${uploadedCount} images uploaded, ${failedCount} failed`);
           
+          // FIXED: Final refresh with lazy loading
+          console.log('[NoteEditorSlideUp] [ASYNC] Final refresh of recall card with lazy loading');
           await refreshSingleNote(recallId);
         })();
+      } else if (imagesChanged && isEditing) {
+        // FIXED: If images were removed but none added, still trigger refresh
+        console.log('[NoteEditorSlideUp] Images changed (removed) - triggering background refresh');
+        setTimeout(() => {
+          refreshSingleNote(recallId);
+        }, 100);
       }
 
       console.log('[NoteEditorSlideUp] [ASYNC] Processing URLs in note text for recall:', recallId);
@@ -1290,6 +1329,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    // FIXED: Added border with rounded corners
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderBottomWidth: 0,
     overflow: 'hidden',
   },
   header: {
@@ -1297,7 +1340,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    // FIXED: Reduced padding by 25% (from 16 to 12)
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
