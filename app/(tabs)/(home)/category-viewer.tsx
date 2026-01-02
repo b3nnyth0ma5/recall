@@ -506,13 +506,40 @@ export default function CategoryViewerScreen() {
     router.back();
   }, [router]);
 
-  const handleNotePress = useCallback((noteId: string) => {
+  const handleNoteUpdate = useCallback(async (noteId: string) => {
     try {
-      router.push(`/note-editor?id=${noteId}`);
+      console.log('[CategoryViewer] Refreshing note:', noteId);
+      // Refresh the specific note in the list
+      const { data: recallData, error: recallError } = await supabase
+        .from('recalls')
+        .select('*')
+        .eq('id', noteId)
+        .single();
+
+      if (!recallError && recallData) {
+        // Update the note in the list
+        setNotes(prevNotes => {
+          const index = prevNotes.findIndex(n => n.id === noteId);
+          if (index !== -1) {
+            const updatedNotes = [...prevNotes];
+            updatedNotes[index] = {
+              ...updatedNotes[index],
+              text: recallData.text || '',
+              location: recallData.location,
+              latitude: recallData.latitude,
+              longitude: recallData.longitude,
+              location_primary_type: recallData.location_primary_type,
+              updated_at: recallData.updated_at,
+            };
+            return updatedNotes;
+          }
+          return prevNotes;
+        });
+      }
     } catch (error) {
-      console.error('Error navigating to note editor:', error);
+      console.error('[CategoryViewer] Error refreshing note:', error);
     }
-  }, [router]);
+  }, []);
 
   const handleEditPress = () => {
     if (!category) return;
@@ -1121,7 +1148,7 @@ export default function CategoryViewerScreen() {
                 <NoteCard
                   key={`${note.id}-${index}`}
                   note={note}
-                  onPress={() => handleNotePress(note.id)}
+                  onUpdate={() => handleNoteUpdate(note.id)}
                 />
               ))}
               

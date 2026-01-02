@@ -161,7 +161,7 @@ export default function OnboardingScreen() {
             </View>
             <Text style={styles.title}>Welcome to Recall</Text>
             <Text style={styles.description}>
-              The smart way to never forget
+              The smart way to remember
             </Text>
           </View>
         </View>
@@ -172,23 +172,29 @@ export default function OnboardingScreen() {
             <View style={styles.featuresContainer}>
               <View style={styles.featureIconWrapper}>
                 <View style={styles.featureIconCircle}>
-                  <IconSymbol name="text.alignleft" size={48} color={colors.primary} />
+                  <IconSymbol name="text.alignleft" size={36} color={colors.primary} />
                 </View>
               </View>
               <View style={styles.featureIconWrapper}>
                 <View style={styles.featureIconCircle}>
-                  <IconSymbol name="camera.fill" size={48} color={colors.primary} />
+                  <IconSymbol name="camera.fill" size={36} color={colors.primary} />
                 </View>
               </View>
               <View style={styles.featureIconWrapper}>
                 <View style={styles.featureIconCircle}>
-                  <IconSymbol name="map.fill" size={48} color={colors.primary} />
+                  <IconSymbol name="map.fill" size={36} color={colors.primary} />
                 </View>
               </View>
             </View>
             <Text style={styles.title}>Capture Everything</Text>
             <Text style={styles.description}>
-              Save your thoughts, those photos, that location...or all three! The more you capture the more you can Recall.
+              Capture whatever you want to Recall: use your words, add photos, link that location...or all three!
+            </Text>
+						<Text style={styles.description}>
+              Mention people and let our AI detect and tag them to the Recall.
+            </Text>
+						<Text style={styles.description}>
+							The more you capture the more you can Recall!
             </Text>
           </View>
         </View>
@@ -201,13 +207,13 @@ export default function OnboardingScreen() {
             </View>
             <Text style={styles.title}>Recall Anything!</Text>
             <Text style={styles.description}>
-              Just ask and let Recall do the work.
+              Just ask and let Recall do the work
             </Text>
             
             <View style={styles.benefitsContainer}>
               <View style={styles.benefitRow}>
                 <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>What was that wine I had at Estelle&apos;s?</Text>
+                <Text style={styles.benefitText}>What was that wine I had at Estelle&apos;s with James?</Text>
               </View>
               <View style={styles.benefitRow}>
                 <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
@@ -215,15 +221,19 @@ export default function OnboardingScreen() {
               </View>
               <View style={styles.benefitRow}>
                 <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>Show me everything I&apos;ve rated 7/10 or higher</Text>
+                <Text style={styles.benefitText}>Restaurants near me I&apos;ve rated 7/10 or higher</Text>
               </View>
 							<View style={styles.benefitRow}>
                 <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>Where did I take a picture of that lemon tree?</Text>
+                <Text style={styles.benefitText}>Where did I take that picture of a lemon tree?</Text>
               </View>
 							<View style={styles.benefitRow}>
                 <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
                 <Text style={styles.benefitText}>All my recalls that mention Elly</Text>
+              </View>
+							<View style={styles.benefitRow}>
+                <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
+                <Text style={styles.benefitText}>What gins do I have in my drinks trolley?</Text>
               </View>
             </View>
           </View>
@@ -316,9 +326,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   featureIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: colors.card,
     justifyContent: 'center',
     alignItems: 'center',

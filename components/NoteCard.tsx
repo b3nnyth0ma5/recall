@@ -22,14 +22,16 @@ import Animated, {
   FadeOut,
   SlideOutLeft,
 } from 'react-native-reanimated';
+import { NoteEditorSlideUp } from './NoteEditorSlideUp';
 
 interface NoteCardProps {
   note: Note;
-  onPress: () => void;
+  onPress?: () => void;
   onImagePress?: () => void;
   onDelete?: () => void;
   loading?: boolean;
   expectedImageCount?: number;
+  onUpdate?: () => void;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -60,7 +62,7 @@ const countNewlines = (text: string): number => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount, onUpdate }: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -70,6 +72,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const imageScrollRef = useRef<ScrollView>(null);
   const swipeableRef = useRef<Swipeable>(null);
+  const [showEditorSlideUp, setShowEditorSlideUp] = useState(false);
   
   // Optimized lazy loading state for images
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
@@ -272,8 +275,24 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   const handleTextPress = () => {
-    // Open note editor when text is clicked
-    onPress();
+    // Open slide-up editor when text is clicked
+    setShowEditorSlideUp(true);
+  };
+
+  const handleCardPress = () => {
+    // Open slide-up editor when card is clicked
+    setShowEditorSlideUp(true);
+  };
+
+  const handleEditorClose = () => {
+    setShowEditorSlideUp(false);
+  };
+
+  const handleEditorSave = () => {
+    // Trigger update callback to refresh the card
+    if (onUpdate) {
+      onUpdate();
+    }
   };
 
   const handleToggleExpand = (e: any) => {
@@ -496,7 +515,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         rightThreshold={40}
         containerStyle={styles.swipeableContainer}
       >
-        <Pressable onPress={onPress} style={styles.cardContent}>
+        <Pressable onPress={handleCardPress} style={styles.cardContent}>
           {/* People Avatars - For text-only notes, show at top of card content */}
           {!hasImages && hasPeople && (
             <View style={styles.peopleAvatarsContainerNoImages}>
@@ -572,6 +591,14 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           onClose={() => setShowFullScreenImage(false)}
         />
       )}
+
+      {/* Note Editor Slide-Up Component */}
+      <NoteEditorSlideUp
+        visible={showEditorSlideUp}
+        noteId={note.id}
+        onClose={handleEditorClose}
+        onSave={handleEditorSave}
+      />
     </Animated.View>
   );
 }, (prevProps, nextProps) => {
