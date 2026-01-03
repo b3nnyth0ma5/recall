@@ -8,8 +8,10 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Modal,
+  Dimensions,
 } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { PersonAvatar } from '@/components/PersonAvatar';
@@ -17,6 +19,7 @@ import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
+import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 
 interface Person {
   id: string;
@@ -24,6 +27,8 @@ interface Person {
   photo_url?: string | null;
   mention_count?: number;
 }
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function PeopleWordCloudScreen() {
   const router = useRouter();
@@ -34,6 +39,7 @@ export default function PeopleWordCloudScreen() {
   const [initialSelectedPeople, setInitialSelectedPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [visible, setVisible] = useState(true);
 
   const recallId = params.recallId as string | undefined;
 
@@ -173,12 +179,17 @@ export default function PeopleWordCloudScreen() {
         photo_url: p.photo_url,
       }));
       
-      router.setParams({
-        selectedPeople: JSON.stringify(cleanedPeople),
-        peopleUpdatedTimestamp: Date.now().toString(),
-      });
+      // Close modal
+      setVisible(false);
       
-      router.back();
+      setTimeout(() => {
+        router.back();
+        router.setParams({
+          selectedPeople: JSON.stringify(cleanedPeople),
+          peopleUpdatedTimestamp: Date.now().toString(),
+        });
+      }, 100);
+      
       return;
     }
 
@@ -328,14 +339,17 @@ export default function PeopleWordCloudScreen() {
         photo_url: p.photo_url,
       }));
       
-      router.setParams({
-        selectedPeople: JSON.stringify(cleanedPeople),
-        peopleUpdatedTimestamp: Date.now().toString(),
-        databaseUpdated: 'true',
-      });
+      // Close modal
+      setVisible(false);
       
-      // Navigate back
-      router.back();
+      setTimeout(() => {
+        router.back();
+        router.setParams({
+          selectedPeople: JSON.stringify(cleanedPeople),
+          peopleUpdatedTimestamp: Date.now().toString(),
+          databaseUpdated: 'true',
+        });
+      }, 100);
     } catch (error: any) {
       console.error('[PeopleWordCloud] 🔥 CRITICAL ERROR saving people:', error);
       console.error('[PeopleWordCloud] Error stack:', error.stack);
@@ -350,7 +364,10 @@ export default function PeopleWordCloudScreen() {
 
   const handleCancel = () => {
     console.log('[PeopleWordCloud] Cancelling - navigating back without saving');
-    router.back();
+    setVisible(false);
+    setTimeout(() => {
+      router.back();
+    }, 100);
   };
 
   // Truncate name to 18 characters
@@ -362,28 +379,36 @@ export default function PeopleWordCloudScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerTitle: 'Select People',
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerTintColor: colors.text,
-          headerTitleStyle: {
-            color: colors.primary,
-          },
-          headerLeft: () => (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="none"
+      onRequestClose={handleCancel}
+    >
+      <Animated.View
+        entering={FadeIn.duration(200)}
+        style={styles.overlay}
+      >
+        <Pressable 
+          style={StyleSheet.absoluteFill} 
+          onPress={handleCancel}
+        />
+        
+        <Animated.View
+          entering={SlideInDown.duration(300).springify()}
+          style={styles.slideUpContainer}
+        >
+          <View style={styles.header}>
             <Pressable 
               onPress={handleCancel} 
               style={styles.headerButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="chevron.left" size={24} color={colors.text} />
+              <IconSymbol name="xmark" size={24} color={colors.text} />
             </Pressable>
-          ),
-          headerRight: () => (
+            
+            <Text style={styles.headerTitle}>Select People</Text>
+            
             <Pressable
               onPress={handleSave}
               disabled={saving || !hasChanges()}
@@ -401,128 +426,152 @@ export default function PeopleWordCloudScreen() {
                 </View>
               )}
             </Pressable>
-          ),
-        }}
-      />
-
-      {selectedPeople.length > 0 && (
-        <View style={styles.selectedCountContainer}>
-          <Text style={styles.selectedCountText}>
-            {selectedPeople.length} {selectedPeople.length === 1 ? 'person' : 'people'} selected
-          </Text>
-        </View>
-      )}
-
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading people...</Text>
-        </View>
-      ) : allPeople.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyIconContainer}>
-            <IconSymbol name="person.2" size={64} color={colors.textTertiary} />
           </View>
-          <Text style={styles.emptyTitle}>No People Yet</Text>
-          <Text style={styles.emptyText}>
-            People from your recalls will show up here
-          </Text>
-          <View style={styles.emptyTipsContainer}>
-            <Text style={styles.emptyTipsTitle}>Smart people finder:</Text>
-            <View style={styles.emptyTipsList}>
-              <View style={styles.emptyTipItem}>
-                <View style={styles.emptyTipNumber}>
-                  <Text style={styles.emptyTipNumberText}>1</Text>
-                </View>
-                <Text style={styles.emptyTipText}>Mention a name in a Recall</Text>
-              </View>
 
-							<View style={styles.emptyTipItem}>
-                <Text style={styles.emptyTipText}>OR</Text>
+          {selectedPeople.length > 0 && (
+            <View style={styles.selectedCountContainer}>
+              <Text style={styles.selectedCountText}>
+                {selectedPeople.length} {selectedPeople.length === 1 ? 'person' : 'people'} selected
+              </Text>
+            </View>
+          )}
+
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Loading people...</Text>
+            </View>
+          ) : allPeople.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconContainer}>
+                <IconSymbol name="person.2" size={64} color={colors.textTertiary} />
               </View>
-							
-              <View style={styles.emptyTipItem}>
-                <View style={styles.emptyTipNumber}>
-                  <Text style={styles.emptyTipNumberText}>2</Text>
+              <Text style={styles.emptyTitle}>No People Yet</Text>
+              <Text style={styles.emptyText}>
+                People from your recalls will show up here
+              </Text>
+              <View style={styles.emptyTipsContainer}>
+                <Text style={styles.emptyTipsTitle}>Smart people finder:</Text>
+                <View style={styles.emptyTipsList}>
+                  <View style={styles.emptyTipItem}>
+                    <View style={styles.emptyTipNumber}>
+                      <Text style={styles.emptyTipNumberText}>1</Text>
+                    </View>
+                    <Text style={styles.emptyTipText}>Mention a name in a Recall</Text>
+                  </View>
+
+                  <View style={styles.emptyTipItem}>
+                    <Text style={styles.emptyTipText}>OR</Text>
+                  </View>
+                  
+                  <View style={styles.emptyTipItem}>
+                    <View style={styles.emptyTipNumber}>
+                      <Text style={styles.emptyTipNumberText}>2</Text>
+                    </View>
+                    <Text style={styles.emptyTipText}>Add images that have names in it</Text>
+                  </View>
                 </View>
-                <Text style={styles.emptyTipText}>Add images that have names in it</Text>
               </View>
             </View>
-          </View>
-        </View>
-      ) : (
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.wordCloudContainer}
-          showsVerticalScrollIndicator={true}
-        >
-          {allPeople.map((person) => {
-            const isSelected = selectedPeople.some(p => p.id === person.id);
-            
-            return (
-              <Pressable
-                key={person.id}
-                onPress={() => togglePerson(person)}
-                style={[
-                  styles.personChip,
-                  isSelected && styles.personChipSelected,
-                ]}
-                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-              >
-                <PersonAvatar 
-                  personName={person.person_name}
-                  photoUrl={person.photo_url}
-                  size={32}
-                />
-                <Text
-                  style={[
-                    styles.personName,
-                    isSelected && styles.personNameSelected,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {truncateName(person.person_name)}
-                </Text>
-                {person.mention_count !== undefined && person.mention_count > 0 && (
-                  <View style={[
-                    styles.mentionBadge,
-                    isSelected && styles.mentionBadgeSelected,
-                  ]}>
-                    <Text style={[
-                      styles.mentionCount,
-                      isSelected && styles.mentionCountSelected,
-                    ]}>
-                      {person.mention_count}
+          ) : (
+            <ScrollView 
+              style={styles.scrollView}
+              contentContainerStyle={styles.wordCloudContainer}
+              showsVerticalScrollIndicator={true}
+            >
+              {allPeople.map((person) => {
+                const isSelected = selectedPeople.some(p => p.id === person.id);
+                
+                return (
+                  <Pressable
+                    key={person.id}
+                    onPress={() => togglePerson(person)}
+                    style={[
+                      styles.personChip,
+                      isSelected && styles.personChipSelected,
+                    ]}
+                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                  >
+                    <PersonAvatar 
+                      personName={person.person_name}
+                      photoUrl={person.photo_url}
+                      size={32}
+                    />
+                    <Text
+                      style={[
+                        styles.personName,
+                        isSelected && styles.personNameSelected,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {truncateName(person.person_name)}
                     </Text>
-                  </View>
-                )}
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      )}
+                    {person.mention_count !== undefined && person.mention_count > 0 && (
+                      <View style={[
+                        styles.mentionBadge,
+                        isSelected && styles.mentionBadgeSelected,
+                      ]}>
+                        <Text style={[
+                          styles.mentionCount,
+                          isSelected && styles.mentionCountSelected,
+                        ]}>
+                          {person.mention_count}
+                        </Text>
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
 
-      {/* Saving Modal */}
-      {saving && (
-        <View style={styles.savingModalContainer}>
-          <View style={styles.savingModalContent}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.savingModalText}>Saving people...</Text>
-          </View>
-        </View>
-      )}
-    </View>
+          {/* Saving Modal */}
+          {saving && (
+            <View style={styles.savingModalContainer}>
+              <View style={styles.savingModalContent}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.savingModalText}>Saving people...</Text>
+              </View>
+            </View>
+          )}
+        </Animated.View>
+      </Animated.View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  overlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  slideUpContainer: {
+    height: SCREEN_HEIGHT * 0.85,
     backgroundColor: colors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderBottomWidth: 0,
+    overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   headerButton: {
     padding: 8,
-    marginHorizontal: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.primary,
   },
   saveButton: {
     backgroundColor: colors.primary,
@@ -532,7 +581,6 @@ const styles = StyleSheet.create({
     minWidth: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
   },
   saveButtonDisabled: {
     opacity: 0.4,

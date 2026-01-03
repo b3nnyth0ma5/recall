@@ -12,14 +12,18 @@ import {
   Platform,
   Alert,
   Keyboard,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import * as Location from 'expo-location';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import Animated, { FadeIn, FadeInDown, SlideInDown } from 'react-native-reanimated';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/utils/supabase';
 import { searchPlaces, searchNearbyPlaces, PlaceResult, extractShortLocationName, isGooglePlacesConfigured } from '@/utils/googlePlaces';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function LocationSearchScreen() {
   const router = useRouter();
@@ -32,6 +36,7 @@ export default function LocationSearchScreen() {
   const [apiConfigured, setApiConfigured] = useState(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const searchInputRef = React.useRef<TextInput>(null);
+  const [visible, setVisible] = useState(true);
 
   const checkApiConfiguration = useCallback(() => {
     const configured = isGooglePlacesConfigured();
@@ -215,24 +220,20 @@ export default function LocationSearchScreen() {
         }
       }
 
-      // FIXED: Navigate back first, then set params in a separate event loop tick
-      router.back();
+      // Close modal
+      setVisible(false);
       
-      // FIXED: Use setTimeout to break the call stack and prevent recursion
+      // Navigate back and set params immediately
       setTimeout(() => {
-        try {
-          console.log('[LocationSearch] Setting location params');
-          router.setParams({
-            selectedLatitude: location.latitude.toString(),
-            selectedLongitude: location.longitude.toString(),
-            selectedLocationName: formattedLocationName,
-            selectedDisplayName: location.displayName,
-            selectedFullAddress: location.formattedAddress,
-            selectedPrimaryType: location.primaryTypeDisplayName || '',
-          });
-        } catch (error) {
-          console.error('[LocationSearch] Error setting params:', error);
-        }
+        router.back();
+        router.setParams({
+          selectedLatitude: location.latitude.toString(),
+          selectedLongitude: location.longitude.toString(),
+          selectedLocationName: formattedLocationName,
+          selectedDisplayName: location.displayName,
+          selectedFullAddress: location.formattedAddress,
+          selectedPrimaryType: location.primaryTypeDisplayName || '',
+        });
       }, 100);
     } catch (error) {
       console.error('[LocationSearch] Error processing location:', error);
@@ -252,207 +253,261 @@ export default function LocationSearchScreen() {
     }
   };
 
-  return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerTitle: 'Location of your Recall',
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerTintColor: colors.text,
-          headerLeft: () => (
-            <Pressable 
-              onPress={() => router.back()} 
-              style={styles.headerButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <IconSymbol name="chevron.left" size={24} color={colors.text} />
-            </Pressable>
-          ),
-        }}
-      />
+  const handleClose = () => {
+    setVisible(false);
+    setTimeout(() => {
+      router.back();
+    }, 100);
+  };
 
-      <View style={styles.content}>
-        <Animated.View entering={FadeIn.duration(600)} style={styles.searchSection}>
-          <View style={styles.searchContainer}>
-            <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
-            <TextInput
-              ref={searchInputRef}
-              style={styles.searchInput}
-              placeholder="Search location..."
-              placeholderTextColor={colors.textTertiary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              returnKeyType="search"
-              onSubmitEditing={handleSubmitEditing}
-              editable={apiConfigured}
-              selectTextOnFocus={true}
-              autoFocus={false}
-            />
-            {searchQuery.length > 0 && (
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="none"
+      onRequestClose={handleClose}
+    >
+      <Animated.View
+        entering={FadeIn.duration(200)}
+        style={styles.overlay}
+      >
+        <Pressable 
+          style={StyleSheet.absoluteFill} 
+          onPress={handleClose}
+        />
+        
+        <Animated.View
+          entering={SlideInDown.duration(300).springify()}
+          style={styles.slideUpContainer}
+        >
+          <KeyboardAvoidingView
+            style={styles.container}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={0}
+          >
+            <View style={styles.header}>
               <Pressable 
-                onPress={() => setSearchQuery('')}
+                onPress={handleClose} 
+                style={styles.headerButton}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
+                <IconSymbol name="xmark" size={24} color={colors.text} />
               </Pressable>
-            )}
-            <Pressable 
-              onPress={toggleKeyboard} 
-              style={styles.keyboardToggle}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <IconSymbol 
-                name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-                size={20} 
-                color={colors.primary} 
-              />
-            </Pressable>
-          </View>
-          {(loading || loadingNearby) && (
-            <View style={styles.searchingIndicator}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.searchingText}>
-                {loading ? 'Searching...' : 'Loading nearby places...'}
-              </Text>
+              
+              <Text style={styles.headerTitle}>Location of your Recall</Text>
+              
+              <View style={styles.headerSpacer} />
             </View>
-          )}
-        </Animated.View>
 
-        <ScrollView
-          style={styles.resultsContainer}
-          contentContainerStyle={styles.resultsContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          {!apiConfigured ? (
-            <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-              <IconSymbol name="exclamationmark.triangle" size={60} color={colors.error} />
-              <Text style={styles.emptyTitle}>API Not Configured</Text>
-              <Text style={styles.emptyText}>
-                Please configure your Google Places API key in utils/googlePlaces.ts
-              </Text>
-              <View style={styles.instructionsContainer}>
-                <Text style={styles.instructionsTitle}>Setup Instructions:</Text>
-                <Text style={styles.instructionsText}>
-                  1. Go to Google Cloud Console{'\n'}
-                  2. Enable Places API (New){'\n'}
-                  3. Enable Geocoding API{'\n'}
-                  4. Create an API key{'\n'}
-                  5. Add key to utils/googlePlaces.ts
-                </Text>
-              </View>
-            </Animated.View>
-          ) : (loading || loadingNearby) ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>
-                {loading ? 'Searching with Google Places...' : 'Finding nearby places...'}
-              </Text>
-            </View>
-          ) : results.length > 0 ? (
-            <Animated.View entering={FadeInDown.duration(600)}>
-              <Text style={styles.resultsTitle}>
-                {searchQuery.trim() ? `Top ${results.length} Results` : `${results.length} Nearby Places`}
-              </Text>
-              {results.map((result) => {
-                const shortName = extractShortLocationName(
-                  result.displayName,
-                  result.suburb,
-                  result.locality
-                );
-                return (
-                  <Pressable
-                    key={result.placeId}
-                    style={styles.resultItem}
-                    onPress={() => handleSelectLocation(result)}
+            <View style={styles.content}>
+              <Animated.View entering={FadeIn.duration(600)} style={styles.searchSection}>
+                <View style={styles.searchContainer}>
+                  <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
+                  <TextInput
+                    ref={searchInputRef}
+                    style={styles.searchInput}
+                    placeholder="Search location..."
+                    placeholderTextColor={colors.textTertiary}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    returnKeyType="search"
+                    onSubmitEditing={handleSubmitEditing}
+                    editable={apiConfigured}
+                    selectTextOnFocus={true}
+                    autoFocus={false}
+                  />
+                  {searchQuery.length > 0 && (
+                    <Pressable 
+                      onPress={() => setSearchQuery('')}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
+                    </Pressable>
+                  )}
+                  <Pressable 
+                    onPress={toggleKeyboard} 
+                    style={styles.keyboardToggle}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <View style={styles.resultIconContainer}>
-                      <IconSymbol name="mappin.circle.fill" size={24} color={colors.primary} />
-                    </View>
-                    <View style={styles.resultTextContainer}>
-                      <Text style={styles.resultTextBold} numberOfLines={1}>
-                        {result.displayName}
-                      </Text>
-                      {result.primaryTypeDisplayName && (
-                        <Text style={styles.resultTypeBadge} numberOfLines={1}>
-                          {result.primaryTypeDisplayName}
-                        </Text>
-                      )}
-                      <Text style={styles.resultTextFormatted} numberOfLines={1}>
-                        Will be saved as: {shortName}
-                      </Text>
-                      <Text style={styles.resultText} numberOfLines={2}>
-                        {result.formattedAddress}
-                      </Text>
-                      {result.distance !== undefined && (
-                        <Text style={styles.distanceText}>
-                          {result.distance < 1 
-                            ? `${Math.round(result.distance * 1000)}m away`
-                            : `${result.distance.toFixed(1)}km away`}
-                        </Text>
-                      )}
-                    </View>
-                    <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
+                    <IconSymbol 
+                      name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+                      size={20} 
+                      color={colors.primary} 
+                    />
                   </Pressable>
-                );
-              })}
-            </Animated.View>
-          ) : searchQuery.trim() && !loading ? (
-            <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-              <IconSymbol name="magnifyingglass" size={60} color={colors.textTertiary} />
-              <Text style={styles.emptyTitle}>No Results Found</Text>
-              <Text style={styles.emptyText}>
-                Try searching with a different location name
-              </Text>
-            </Animated.View>
-          ) : !userLocation ? (
-            <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-              <IconSymbol name="location.fill" size={60} color={colors.textTertiary} />
-              <Text style={styles.emptyTitle}>Getting Your Location</Text>
-              <Text style={styles.emptyText}>
-                Please allow location access to see nearby places
-              </Text>
-            </Animated.View>
-          ) : (
-            <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-              <IconSymbol name="location.fill" size={60} color={colors.textTertiary} />
-              <Text style={styles.emptyTitle}>Search for a Location</Text>
-              <Text style={styles.emptyText}>
-                Enter a place name, address, or landmark
-              </Text>
-            </Animated.View>
-          )}
-        </ScrollView>
+                </View>
+                {(loading || loadingNearby) && (
+                  <View style={styles.searchingIndicator}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.searchingText}>
+                      {loading ? 'Searching...' : 'Loading nearby places...'}
+                    </Text>
+                  </View>
+                )}
+              </Animated.View>
 
-        <View style={styles.noteContainer}>
-          <IconSymbol name="info.circle" size={16} color={colors.textTertiary} />
-          <Text style={styles.noteText}>
-            Powered by Google Places API
-          </Text>
-        </View>
-      </View>
-    </KeyboardAvoidingView>
+              <ScrollView
+                style={styles.resultsContainer}
+                contentContainerStyle={styles.resultsContent}
+                keyboardShouldPersistTaps="handled"
+              >
+                {!apiConfigured ? (
+                  <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+                    <IconSymbol name="exclamationmark.triangle" size={60} color={colors.error} />
+                    <Text style={styles.emptyTitle}>API Not Configured</Text>
+                    <Text style={styles.emptyText}>
+                      Please configure your Google Places API key in utils/googlePlaces.ts
+                    </Text>
+                    <View style={styles.instructionsContainer}>
+                      <Text style={styles.instructionsTitle}>Setup Instructions:</Text>
+                      <Text style={styles.instructionsText}>
+                        1. Go to Google Cloud Console{'\n'}
+                        2. Enable Places API (New){'\n'}
+                        3. Enable Geocoding API{'\n'}
+                        4. Create an API key{'\n'}
+                        5. Add key to utils/googlePlaces.ts
+                      </Text>
+                    </View>
+                  </Animated.View>
+                ) : (loading || loadingNearby) ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={styles.loadingText}>
+                      {loading ? 'Searching with Google Places...' : 'Finding nearby places...'}
+                    </Text>
+                  </View>
+                ) : results.length > 0 ? (
+                  <Animated.View entering={FadeInDown.duration(600)}>
+                    <Text style={styles.resultsTitle}>
+                      {searchQuery.trim() ? `Top ${results.length} Results` : `${results.length} Nearby Places`}
+                    </Text>
+                    {results.map((result) => {
+                      const shortName = extractShortLocationName(
+                        result.displayName,
+                        result.suburb,
+                        result.locality
+                      );
+                      return (
+                        <Pressable
+                          key={result.placeId}
+                          style={styles.resultItem}
+                          onPress={() => handleSelectLocation(result)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <View style={styles.resultIconContainer}>
+                            <IconSymbol name="mappin.circle.fill" size={24} color={colors.primary} />
+                          </View>
+                          <View style={styles.resultTextContainer}>
+                            <Text style={styles.resultTextBold} numberOfLines={1}>
+                              {result.displayName}
+                            </Text>
+                            {result.primaryTypeDisplayName && (
+                              <Text style={styles.resultTypeBadge} numberOfLines={1}>
+                                {result.primaryTypeDisplayName}
+                              </Text>
+                            )}
+                            <Text style={styles.resultTextFormatted} numberOfLines={1}>
+                              Will be saved as: {shortName}
+                            </Text>
+                            <Text style={styles.resultText} numberOfLines={2}>
+                              {result.formattedAddress}
+                            </Text>
+                            {result.distance !== undefined && (
+                              <Text style={styles.distanceText}>
+                                {result.distance < 1 
+                                  ? `${Math.round(result.distance * 1000)}m away`
+                                  : `${result.distance.toFixed(1)}km away`}
+                              </Text>
+                            )}
+                          </View>
+                          <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
+                        </Pressable>
+                      );
+                    })}
+                  </Animated.View>
+                ) : searchQuery.trim() && !loading ? (
+                  <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+                    <IconSymbol name="magnifyingglass" size={60} color={colors.textTertiary} />
+                    <Text style={styles.emptyTitle}>No Results Found</Text>
+                    <Text style={styles.emptyText}>
+                      Try searching with a different location name
+                    </Text>
+                  </Animated.View>
+                ) : !userLocation ? (
+                  <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+                    <IconSymbol name="location.fill" size={60} color={colors.textTertiary} />
+                    <Text style={styles.emptyTitle}>Getting Your Location</Text>
+                    <Text style={styles.emptyText}>
+                      Please allow location access to see nearby places
+                    </Text>
+                  </Animated.View>
+                ) : (
+                  <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+                    <IconSymbol name="location.fill" size={60} color={colors.textTertiary} />
+                    <Text style={styles.emptyTitle}>Search for a Location</Text>
+                    <Text style={styles.emptyText}>
+                      Enter a place name, address, or landmark
+                    </Text>
+                  </Animated.View>
+                )}
+              </ScrollView>
+
+              <View style={styles.noteContainer}>
+                <IconSymbol name="info.circle" size={16} color={colors.textTertiary} />
+                <Text style={styles.noteText}>
+                  Powered by Google Places API
+                </Text>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  slideUpContainer: {
+    height: SCREEN_HEIGHT * 0.85,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderBottomWidth: 0,
+    overflow: 'hidden',
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  content: {
-    flex: 1,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   headerButton: {
-    padding: 8 * 1.15,
-    marginHorizontal: 8,
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  content: {
+    flex: 1,
   },
   searchSection: {
     padding: 16,

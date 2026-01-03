@@ -118,54 +118,88 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     }
   }, [images.length, images]);
 
-  // FIXED: Improved image scroll handler with better index calculation
+  // FIXED: Improved image scroll handler with better index calculation and lazy loading
   const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const itemWidth = IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING;
     
     // Calculate index based on scroll position
-    // Add half of item width to snap to center of visible item
-    const calculatedIndex = Math.round((contentOffsetX + (itemWidth / 2)) / itemWidth);
+    // Use floor to get the leftmost visible item, then add 0.5 threshold for snapping
+    const rawIndex = contentOffsetX / itemWidth;
+    const calculatedIndex = Math.floor(rawIndex + 0.5);
     
     // Clamp index to valid range based on total images count
     const clampedIndex = Math.max(0, Math.min(calculatedIndex, images.length - 1));
     
-    console.log(`[NoteEditorSlideUp] Scroll position: ${contentOffsetX}, Calculated index: ${calculatedIndex}, Clamped index: ${clampedIndex}, Total images: ${images.length}`);
+    console.log(`[NoteEditorSlideUp] Scroll position: ${contentOffsetX.toFixed(1)}, Raw index: ${rawIndex.toFixed(2)}, Calculated index: ${calculatedIndex}, Clamped index: ${clampedIndex}, Total images: ${images.length}`);
     
     if (clampedIndex !== currentImageIndex) {
       setCurrentImageIndex(clampedIndex);
       console.log(`[NoteEditorSlideUp] Updated current image index to: ${clampedIndex}`);
     }
     
-    // Lazy load next image if needed
-    if (images.length > 2 && clampedIndex >= 1 && !isLazyLoading) {
-      const nextIndex = clampedIndex + 1;
+    // FIXED: Improved lazy loading logic - load current, next, and previous images
+    if (images.length > 2 && !isLazyLoading) {
+      const indicesToLoad: number[] = [];
       
-      if (nextIndex < images.length && nextIndex >= lazyLoadedImages.length) {
+      // Load current image if not loaded
+      if (clampedIndex < images.length && !lazyLoadedImages[clampedIndex]?.uri) {
+        indicesToLoad.push(clampedIndex);
+      }
+      
+      // Load next image if exists and not loaded
+      const nextIndex = clampedIndex + 1;
+      if (nextIndex < images.length && !lazyLoadedImages[nextIndex]?.uri) {
+        indicesToLoad.push(nextIndex);
+      }
+      
+      // Load previous image if exists and not loaded
+      const prevIndex = clampedIndex - 1;
+      if (prevIndex >= 0 && !lazyLoadedImages[prevIndex]?.uri) {
+        indicesToLoad.push(prevIndex);
+      }
+      
+      // Load images that need loading
+      if (indicesToLoad.length > 0) {
         setIsLazyLoading(true);
-        console.log(`[NoteEditorSlideUp] Lazy loading image at index ${nextIndex}`);
+        console.log(`[NoteEditorSlideUp] Lazy loading images at indices: ${indicesToLoad.join(', ')}`);
         
         try {
-          const imageToLoad = images[nextIndex];
-          if (imageToLoad.id) {
-            const imageUrl = await getImageDataUrl(imageToLoad.id);
-            if (imageUrl) {
+          for (const indexToLoad of indicesToLoad) {
+            const imageToLoad = images[indexToLoad];
+            
+            if (imageToLoad.id && !imageToLoad.uri) {
+              console.log(`[NoteEditorSlideUp] Loading image ${indexToLoad} with ID: ${imageToLoad.id}`);
+              const imageUrl = await getImageDataUrl(imageToLoad.id);
+              
+              if (imageUrl) {
+                setLazyLoadedImages(prev => {
+                  const newImages = [...prev];
+                  // Ensure array is large enough
+                  while (newImages.length <= indexToLoad) {
+                    newImages.push({ uri: '', contentType: 'image/jpeg' });
+                  }
+                  newImages[indexToLoad] = { ...imageToLoad, uri: imageUrl };
+                  console.log(`[NoteEditorSlideUp] Successfully lazy loaded image at index ${indexToLoad}`);
+                  return newImages;
+                });
+              } else {
+                console.error(`[NoteEditorSlideUp] Failed to get image URL for index ${indexToLoad}`);
+              }
+            } else if (imageToLoad.uri) {
+              // Image already has URI (newly added image)
               setLazyLoadedImages(prev => {
                 const newImages = [...prev];
-                newImages[nextIndex] = { ...imageToLoad, uri: imageUrl };
+                while (newImages.length <= indexToLoad) {
+                  newImages.push({ uri: '', contentType: 'image/jpeg' });
+                }
+                newImages[indexToLoad] = imageToLoad;
                 return newImages;
               });
-              console.log(`[NoteEditorSlideUp] Successfully lazy loaded image at index ${nextIndex}`);
             }
-          } else {
-            setLazyLoadedImages(prev => {
-              const newImages = [...prev];
-              newImages[nextIndex] = imageToLoad;
-              return newImages;
-            });
           }
         } catch (error) {
-          console.error(`[NoteEditorSlideUp] Error lazy loading image at index ${nextIndex}:`, error);
+          console.error(`[NoteEditorSlideUp] Error lazy loading images:`, error);
         } finally {
           setIsLazyLoading(false);
         }
@@ -1511,13 +1545,13 @@ const styles = StyleSheet.create({
   },
   image: {
     width: IMAGE_CAROUSEL_WIDTH,
-    height: IMAGE_CAROUSEL_WIDTH * 0.5,
+    height: IMAGE_CAROUSEL_WIDTH * 0.75,
     borderRadius: 16,
     backgroundColor: colors.cardDark,
   },
   imageLoadingContainer: {
     width: IMAGE_CAROUSEL_WIDTH,
-    height: IMAGE_CAROUSEL_WIDTH * 0.5,
+    height: IMAGE_CAROUSEL_WIDTH * 0.75,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.cardDark,
