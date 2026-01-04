@@ -89,7 +89,6 @@ export default function LocationSearchScreen() {
         setUserLocation(location);
         console.log('User location obtained for proximity sorting');
         
-        // Automatically load nearby places when location is obtained
         loadNearbyPlaces(location);
       }
     } catch (error) {
@@ -101,7 +100,6 @@ export default function LocationSearchScreen() {
     getUserLocation();
     checkApiConfiguration();
 
-    // Listen to keyboard events
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
       setKeyboardVisible(true);
     });
@@ -117,7 +115,6 @@ export default function LocationSearchScreen() {
 
   const performSearch = useCallback(async (searchText: string) => {
     if (!searchText.trim()) {
-      // If search is cleared, reload nearby places
       if (userLocation) {
         loadNearbyPlaces(userLocation);
       } else {
@@ -166,7 +163,6 @@ export default function LocationSearchScreen() {
 
       return () => clearTimeout(timeoutId);
     } else if (searchQuery.trim().length === 0) {
-      // When search is cleared, reload nearby places
       if (userLocation) {
         loadNearbyPlaces(userLocation);
       } else {
@@ -177,7 +173,6 @@ export default function LocationSearchScreen() {
 
   const handleSelectLocation = async (location: PlaceResult) => {
     try {
-      // Format location as "DisplayName, Suburb" or "DisplayName, Locality"
       const formattedLocationName = extractShortLocationName(
         location.displayName,
         location.suburb,
@@ -199,7 +194,6 @@ export default function LocationSearchScreen() {
         const noteId = params.id as string;
         console.log('[LocationSearch] Updating location for note:', noteId);
 
-        // Update location-related fields including primary type
         const { error } = await supabase
           .from('recalls')
           .update({
@@ -220,10 +214,8 @@ export default function LocationSearchScreen() {
         }
       }
 
-      // Close modal
       setVisible(false);
       
-      // Navigate back and set params immediately
       setTimeout(() => {
         router.back();
         router.setParams({
@@ -471,6 +463,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+    // FIXED: Increased z-index to appear above NoteEditorSlideUp
+    zIndex: 2000,
   },
   slideUpContainer: {
     height: SCREEN_HEIGHT * 0.85,
@@ -481,6 +475,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderBottomWidth: 0,
     overflow: 'hidden',
+    // FIXED: Increased z-index to appear above NoteEditorSlideUp
+    zIndex: 2001,
   },
   container: {
     flex: 1,

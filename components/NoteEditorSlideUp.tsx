@@ -52,7 +52,6 @@ interface ImageData {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-// FIXED: Reduced image size by 50% (from 0.8 to 0.4)
 const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 40) * 0.35;
 const IMAGE_CAROUSEL_SPACING = 12;
 
@@ -93,8 +92,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
 
-  const [lazyLoadedImages, setLazyLoadedImages] = useState<ImageData[]>([]);
-  const [isLazyLoading, setIsLazyLoading] = useState(false);
+  const [loadedImageIndices, setLoadedImageIndices] = useState<Set<number>>(new Set());
   const [initialImageCount, setInitialImageCount] = useState(0);
 
   const isEditing = !!noteId;
@@ -103,105 +101,88 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const hasImages = images.length > 0;
   const textHasUrl = hasUrl(text);
   
-  // FIXED: Increased text area height proportionally (from 340 to 510 when images present, from 528 to 792 when no images)
   const textInputHeight = hasImages ? 510 : 792;
 
+  // FIXED: Track which images have been loaded
   useEffect(() => {
-    if (images.length > 1) {
-      const initialImages = images.slice(0, 2);
-      setLazyLoadedImages(initialImages);
-      console.log(`[NoteEditorSlideUp] Initialized with first ${initialImages.length} images`);
-    } else if (images.length === 1) {
-      setLazyLoadedImages(images);
+    if (images.length > 0) {
+      // Mark first 2 images as loaded initially
+      const initialLoaded = new Set<number>();
+      for (let i = 0; i < Math.min(2, images.length); i++) {
+        if (images[i].uri) {
+          initialLoaded.add(i);
+        }
+      }
+      setLoadedImageIndices(initialLoaded);
+      console.log(`[NoteEditorSlideUp] Initialized with ${initialLoaded.size} loaded images`);
     } else {
-      setLazyLoadedImages([]);
+      setLoadedImageIndices(new Set());
     }
-  }, [images.length, images]);
+  }, [images.length]);
 
-  // FIXED: Improved image scroll handler with better index calculation and lazy loading
+  // FIXED: Improved image scroll handler - load images as user scrolls
   const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const itemWidth = IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING;
     
-    // Calculate index based on scroll position
-    // Use floor to get the leftmost visible item, then add 0.5 threshold for snapping
     const rawIndex = contentOffsetX / itemWidth;
     const calculatedIndex = Math.floor(rawIndex + 0.5);
-    
-    // Clamp index to valid range based on total images count
     const clampedIndex = Math.max(0, Math.min(calculatedIndex, images.length - 1));
-    
-    console.log(`[NoteEditorSlideUp] Scroll position: ${contentOffsetX.toFixed(1)}, Raw index: ${rawIndex.toFixed(2)}, Calculated index: ${calculatedIndex}, Clamped index: ${clampedIndex}, Total images: ${images.length}`);
     
     if (clampedIndex !== currentImageIndex) {
       setCurrentImageIndex(clampedIndex);
-      console.log(`[NoteEditorSlideUp] Updated current image index to: ${clampedIndex}`);
     }
     
-    // FIXED: Improved lazy loading logic - load current, next, and previous images
-    if (images.length > 2 && !isLazyLoading) {
-      const indicesToLoad: number[] = [];
+    // Load current, next, and previous images if not already loaded
+    const indicesToLoad: number[] = [];
+    
+    // Current image
+    if (!loadedImageIndices.has(clampedIndex) && images[clampedIndex] && images[clampedIndex].id && !images[clampedIndex].uri) {
+      indicesToLoad.push(clampedIndex);
+    }
+    
+    // Next image
+    const nextIndex = clampedIndex + 1;
+    if (nextIndex < images.length && !loadedImageIndices.has(nextIndex) && images[nextIndex] && images[nextIndex].id && !images[nextIndex].uri) {
+      indicesToLoad.push(nextIndex);
+    }
+    
+    // Previous image
+    const prevIndex = clampedIndex - 1;
+    if (prevIndex >= 0 && !loadedImageIndices.has(prevIndex) && images[prevIndex] && images[prevIndex].id && !images[prevIndex].uri) {
+      indicesToLoad.push(prevIndex);
+    }
+    
+    // Load images that need loading
+    if (indicesToLoad.length > 0) {
+      console.log(`[NoteEditorSlideUp] Loading images at indices: ${indicesToLoad.join(', ')}`);
       
-      // Load current image if not loaded
-      if (clampedIndex < images.length && !lazyLoadedImages[clampedIndex]?.uri) {
-        indicesToLoad.push(clampedIndex);
-      }
-      
-      // Load next image if exists and not loaded
-      const nextIndex = clampedIndex + 1;
-      if (nextIndex < images.length && !lazyLoadedImages[nextIndex]?.uri) {
-        indicesToLoad.push(nextIndex);
-      }
-      
-      // Load previous image if exists and not loaded
-      const prevIndex = clampedIndex - 1;
-      if (prevIndex >= 0 && !lazyLoadedImages[prevIndex]?.uri) {
-        indicesToLoad.push(prevIndex);
-      }
-      
-      // Load images that need loading
-      if (indicesToLoad.length > 0) {
-        setIsLazyLoading(true);
-        console.log(`[NoteEditorSlideUp] Lazy loading images at indices: ${indicesToLoad.join(', ')}`);
+      for (const indexToLoad of indicesToLoad) {
+        const imageToLoad = images[indexToLoad];
         
-        try {
-          for (const indexToLoad of indicesToLoad) {
-            const imageToLoad = images[indexToLoad];
+        if (imageToLoad.id) {
+          try {
+            console.log(`[NoteEditorSlideUp] Loading image ${indexToLoad} with ID: ${imageToLoad.id}`);
+            const imageUrl = await getImageDataUrl(imageToLoad.id);
             
-            if (imageToLoad.id && !imageToLoad.uri) {
-              console.log(`[NoteEditorSlideUp] Loading image ${indexToLoad} with ID: ${imageToLoad.id}`);
-              const imageUrl = await getImageDataUrl(imageToLoad.id);
-              
-              if (imageUrl) {
-                setLazyLoadedImages(prev => {
-                  const newImages = [...prev];
-                  // Ensure array is large enough
-                  while (newImages.length <= indexToLoad) {
-                    newImages.push({ uri: '', contentType: 'image/jpeg' });
-                  }
-                  newImages[indexToLoad] = { ...imageToLoad, uri: imageUrl };
-                  console.log(`[NoteEditorSlideUp] Successfully lazy loaded image at index ${indexToLoad}`);
-                  return newImages;
-                });
-              } else {
-                console.error(`[NoteEditorSlideUp] Failed to get image URL for index ${indexToLoad}`);
-              }
-            } else if (imageToLoad.uri) {
-              // Image already has URI (newly added image)
-              setLazyLoadedImages(prev => {
+            if (imageUrl) {
+              setImages(prev => {
                 const newImages = [...prev];
-                while (newImages.length <= indexToLoad) {
-                  newImages.push({ uri: '', contentType: 'image/jpeg' });
-                }
-                newImages[indexToLoad] = imageToLoad;
+                newImages[indexToLoad] = { ...imageToLoad, uri: imageUrl };
                 return newImages;
               });
+              
+              setLoadedImageIndices(prev => {
+                const newSet = new Set(prev);
+                newSet.add(indexToLoad);
+                return newSet;
+              });
+              
+              console.log(`[NoteEditorSlideUp] Successfully loaded image at index ${indexToLoad}`);
             }
+          } catch (error) {
+            console.error(`[NoteEditorSlideUp] Error loading image at index ${indexToLoad}:`, error);
           }
-        } catch (error) {
-          console.error(`[NoteEditorSlideUp] Error lazy loading images:`, error);
-        } finally {
-          setIsLazyLoading(false);
         }
       }
     }
@@ -685,7 +666,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
             const newImages = images.filter((_, i) => i !== index);
             setImages(newImages);
             
-            // FIXED: Trigger refresh of originating screen's recall card with lazy loading
             if (isEditing && noteId) {
               console.log('[NoteEditorSlideUp] Image removed - triggering background refresh of recall card');
               setTimeout(() => {
@@ -802,13 +782,11 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
           }
         }
         
-        // Check if new images were added
         const newImagesCount = images.filter(img => !img.id).length;
         if (newImagesCount > 0) {
           imagesChanged = true;
         }
         
-        // Check if image count changed
         if (images.length !== initialImageCount) {
           imagesChanged = true;
         }
@@ -868,7 +846,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
         onSave();
       }
       
-      // FIXED: Trigger refresh with lazy loading for originating screen
       setTimeout(() => {
         if (isEditing && noteId) {
           console.log('[NoteEditorSlideUp] Triggering background refresh of recall card with lazy loading');
@@ -911,7 +888,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                   console.error('[NoteEditorSlideUp] [ASYNC] Error triggering OCR processing:', error);
                 });
                 
-                // FIXED: Refresh recall card with lazy loading after each image upload
                 console.log('[NoteEditorSlideUp] [ASYNC] Refreshing recall card with lazy loading');
                 await refreshSingleNote(recallId);
               } else {
@@ -926,12 +902,10 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
 
           console.log(`[NoteEditorSlideUp] [ASYNC] Upload complete: ${uploadedCount} images uploaded, ${failedCount} failed`);
           
-          // FIXED: Final refresh with lazy loading
           console.log('[NoteEditorSlideUp] [ASYNC] Final refresh of recall card with lazy loading');
           await refreshSingleNote(recallId);
         })();
       } else if (imagesChanged && isEditing) {
-        // FIXED: If images were removed but none added, still trigger refresh
         console.log('[NoteEditorSlideUp] Images changed (removed) - triggering background refresh');
         setTimeout(() => {
           refreshSingleNote(recallId);
@@ -996,7 +970,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   };
 
   const handleLocationSearch = () => {
-    // Pass the noteId if editing so location-search can update the database
     if (noteId) {
       router.push(`/location-search?id=${noteId}`);
     } else {
@@ -1004,7 +977,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     }
   };
 
-  // Handle location updates from search
   useEffect(() => {
     if (!visible) {
       return;
@@ -1024,7 +996,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
       setLocationName(formattedName);
       setLocationPrimaryType(primaryType);
 
-      // Clear the params
       router.setParams({
         selectedLatitude: undefined,
         selectedLongitude: undefined,
@@ -1051,29 +1022,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     setShowFullScreenImage(false);
   }, []);
 
-  // FIXED: Use images array for display, but show placeholders for lazy-loaded images
-  const displayImages = images.map((img, index) => {
-    // If image has no URI (lazy loading placeholder), show loading state
-    if (!img.uri) {
-      return {
-        ...img,
-        isLoading: true,
-      };
-    }
-    // If we have lazy loaded this image, use the lazy loaded version
-    if (lazyLoadedImages[index] && lazyLoadedImages[index].uri) {
-      return {
-        ...lazyLoadedImages[index],
-        isLoading: false,
-      };
-    }
-    // Otherwise use the original image
-    return {
-      ...img,
-      isLoading: false,
-    };
-  });
-
   useEffect(() => {
     console.log('[NoteEditorSlideUp] People state changed. Current count:', people.length);
     if (people.length > 0) {
@@ -1084,6 +1032,9 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   if (!visible) {
     return null;
   }
+
+  // FIXED: Check if images > 2 are all loaded
+  const allImagesLoaded = images.length <= 2 || images.every((img, index) => index < 2 || loadedImageIndices.has(index) || img.uri);
 
   return (
     <Modal
@@ -1223,17 +1174,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                 <View style={styles.imagesContainer}>
                   <View style={styles.imagesHeader}>
                     <Text style={styles.imagesTitle}>{images.length} {images.length === 1 ? 'Image' : 'Images'}</Text>
-                    <View style={styles.paginationDots}>
-                      {images.map((_, index) => (
-                        <View
-                          key={index}
-                          style={[
-                            styles.paginationDot,
-                            index === currentImageIndex && styles.paginationDotActive,
-                          ]}
-                        />
-                      ))}
-                    </View>
                   </View>
                   <ScrollView
                     ref={imageScrollRef}
@@ -1247,34 +1187,38 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                     snapToInterval={IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING}
                     snapToAlignment="start"
                   >
-                    {displayImages.map((image, index) => (
-                      <Pressable 
-                        key={`${image.id || 'new'}-${index}`} 
-                        style={styles.imageWrapper}
-                        onPress={() => handleImagePress(index)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        {image.isLoading || !image.uri ? (
-                          <View style={styles.imageLoadingContainer}>
-                            <ActivityIndicator size="large" color={colors.primary} />
-                            <Text style={styles.loadingImageText}>Loading...</Text>
-                          </View>
-                        ) : (
-                          <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
-                        )}
-                        <View style={styles.imageActions}>
-                          <Pressable
-                            onPress={() => removeImage(index)}
-                            style={styles.imageActionButton}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <View style={styles.actionButtonCircle}>
-                              <IconSymbol name="xmark" size={14} color="#FFFFFF" />
+                    {images.map((image, index) => {
+                      const isLoaded = loadedImageIndices.has(index) || image.uri;
+                      
+                      return (
+                        <Pressable 
+                          key={`${image.id || 'new'}-${index}`} 
+                          style={styles.imageWrapper}
+                          onPress={() => handleImagePress(index)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          {!isLoaded ? (
+                            <View style={styles.imageLoadingContainer}>
+                              <ActivityIndicator size="large" color={colors.primary} />
+                              <Text style={styles.loadingImageText}>Loading...</Text>
                             </View>
-                          </Pressable>
-                        </View>
-                      </Pressable>
-                    ))}
+                          ) : (
+                            <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
+                          )}
+                          <View style={styles.imageActions}>
+                            <Pressable
+                              onPress={() => removeImage(index)}
+                              style={styles.imageActionButton}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <View style={styles.actionButtonCircle}>
+                                <IconSymbol name="xmark" size={14} color="#FFFFFF" />
+                              </View>
+                            </Pressable>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
                   </ScrollView>
                 </View>
               )}
@@ -1396,7 +1340,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    // FIXED: Added border with rounded corners
     borderWidth: 2,
     borderColor: colors.border,
     borderBottomWidth: 0,
@@ -1407,7 +1350,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    // FIXED: Reduced padding by 25% (from 16 to 12)
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -1518,20 +1460,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: colors.text,
-  },
-  paginationDots: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  paginationDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.border,
-  },
-  paginationDotActive: {
-    backgroundColor: colors.primary,
-    width: 20,
   },
   imagesScrollContent: {
     paddingHorizontal: 16,
