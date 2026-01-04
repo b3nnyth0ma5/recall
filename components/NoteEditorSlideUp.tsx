@@ -1,17 +1,5 @@
 
-import * as Location from 'expo-location';
-import * as Haptics from 'expo-haptics';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system/legacy';
-import { Note, Person } from '@/types/Note';
-import { IconSymbol } from '@/components/IconSymbol';
-import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
-import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import * as ImagePicker from 'expo-image-picker';
-import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
-import { useNotes } from '@/hooks/useNotes';
-import { useAuth } from '@/contexts/AuthContext';
 import {
   View,
   Text,
@@ -30,7 +18,11 @@ import {
   NativeSyntheticEvent,
   Modal,
 } from 'react-native';
-import { processRecallUrls } from '@/utils/urlProcessor';
+import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as Location from 'expo-location';
+import * as FileSystem from 'expo-file-system/legacy';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -40,9 +32,17 @@ import Animated, {
   FadeIn,
   SlideInDown,
 } from 'react-native-reanimated';
-import { FullScreenImage } from '@/components/FullScreenImage';
-import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
+import { useNotes } from '@/hooks/useNotes';
+import { Note, Person } from '@/types/Note';
+import { IconSymbol } from '@/components/IconSymbol';
+import { FullScreenImage } from '@/components/FullScreenImage';
+import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
+import { processRecallUrls } from '@/utils/urlProcessor';
+import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
+import { useAuth } from '@/contexts/AuthContext';
+import * as Haptics from 'expo-haptics';
 
 interface ImageData {
   id?: string;
@@ -51,6 +51,16 @@ interface ImageData {
   contentType: string;
 }
 
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+// FIXED: Reduced image size by 50% (from 0.8 to 0.4)
+const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 40) * 0.35;
+const IMAGE_CAROUSEL_SPACING = 12;
+
+const hasUrl = (text: string): boolean => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  return urlRegex.test(text);
+};
+
 interface NoteEditorSlideUpProps {
   visible: boolean;
   noteId?: string;
@@ -58,692 +68,1325 @@ interface NoteEditorSlideUpProps {
   onSave?: () => void;
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const IMAGE_CAROUSEL_WIDTH = SCREEN_WIDTH * 0.35;
-const IMAGE_CAROUSEL_SPACING = 8;
-
-const hasUrl = (text: string): boolean => {
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  return urlRegex.test(text);
-};
-
 export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEditorSlideUpProps) {
-  const { user } = useAuth();
   const router = useRouter();
-  const { getCachedNote, updateNote } = useNotes();
-  
+  const { user } = useAuth();
+  const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote, getCachedNote } = useNotes();
+
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageData[]>([]);
-  const [loadedImages, setLoadedImages] = useState<Record<number, boolean>>({});
-  const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string; primaryType?: string } | null>(null);
-  const [people, setPeople] = useState<Person[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isLoadingNote, setIsLoadingNote] = useState(false);
-  const [showPlusMenu, setShowPlusMenu] = useState(false);
-  const [fullScreenImageVisible, setFullScreenImageVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loadingNote, setLoadingNote] = useState(false);
+  const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locationName, setLocationName] = useState<string>('');
+  const [locationPrimaryType, setLocationPrimaryType] = useState<string>('');
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  
+  const [showFABs, setShowFABs] = useState(false);
+  const [people, setPeople] = useState<Person[]>([]);
+  const [initialPeople, setInitialPeople] = useState<Person[]>([]);
   const textInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const imageScrollRef = useRef<ScrollView>(null);
 
-  // Load note data when modal opens
+  const [lazyLoadedImages, setLazyLoadedImages] = useState<ImageData[]>([]);
+  const [isLazyLoading, setIsLazyLoading] = useState(false);
+  const [initialImageCount, setInitialImageCount] = useState(0);
+
+  const isEditing = !!noteId;
+  
+  const canSave = text.trim().length > 0 || images.length > 0;
+  const hasImages = images.length > 0;
+  const textHasUrl = hasUrl(text);
+  
+  // FIXED: Increased text area height proportionally (from 340 to 510 when images present, from 528 to 792 when no images)
+  const textInputHeight = hasImages ? 510 : 792;
+
   useEffect(() => {
-    if (visible && noteId && user) {
-      loadNoteData();
-    } else if (!visible) {
-      // Reset state when modal closes
-      setText('');
-      setImages([]);
-      setLoadedImages({});
-      setLocation(null);
-      setPeople([]);
-      setShowPlusMenu(false);
+    if (images.length > 1) {
+      const initialImages = images.slice(0, 2);
+      setLazyLoadedImages(initialImages);
+      console.log(`[NoteEditorSlideUp] Initialized with first ${initialImages.length} images`);
+    } else if (images.length === 1) {
+      setLazyLoadedImages(images);
+    } else {
+      setLazyLoadedImages([]);
     }
-  }, [visible, noteId, user]);
+  }, [images.length, images]);
 
-  // Handle router params for location and people selection
-  useEffect(() => {
-    if (!visible) return;
-
-    const handleRouterParams = () => {
-      const params = router.params as any;
+  // FIXED: Improved image scroll handler with better index calculation and lazy loading
+  const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const itemWidth = IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING;
+    
+    // Calculate index based on scroll position
+    // Use floor to get the leftmost visible item, then add 0.5 threshold for snapping
+    const rawIndex = contentOffsetX / itemWidth;
+    const calculatedIndex = Math.floor(rawIndex + 0.5);
+    
+    // Clamp index to valid range based on total images count
+    const clampedIndex = Math.max(0, Math.min(calculatedIndex, images.length - 1));
+    
+    console.log(`[NoteEditorSlideUp] Scroll position: ${contentOffsetX.toFixed(1)}, Raw index: ${rawIndex.toFixed(2)}, Calculated index: ${calculatedIndex}, Clamped index: ${clampedIndex}, Total images: ${images.length}`);
+    
+    if (clampedIndex !== currentImageIndex) {
+      setCurrentImageIndex(clampedIndex);
+      console.log(`[NoteEditorSlideUp] Updated current image index to: ${clampedIndex}`);
+    }
+    
+    // FIXED: Improved lazy loading logic - load current, next, and previous images
+    if (images.length > 2 && !isLazyLoading) {
+      const indicesToLoad: number[] = [];
       
-      // Handle location selection
-      if (params?.selectedLatitude && params?.selectedLongitude) {
-        setLocation({
-          latitude: parseFloat(params.selectedLatitude),
-          longitude: parseFloat(params.selectedLongitude),
-          name: params.selectedLocationName || 'Selected Location',
-          primaryType: params.selectedPrimaryType,
-        });
-        
-        // Clear the params
-        router.setParams({
-          selectedLatitude: undefined,
-          selectedLongitude: undefined,
-          selectedLocationName: undefined,
-          selectedPrimaryType: undefined,
-        });
+      // Load current image if not loaded
+      if (clampedIndex < images.length && !lazyLoadedImages[clampedIndex]?.uri) {
+        indicesToLoad.push(clampedIndex);
       }
-
-      // Handle people selection
-      if (params?.selectedPeople) {
+      
+      // Load next image if exists and not loaded
+      const nextIndex = clampedIndex + 1;
+      if (nextIndex < images.length && !lazyLoadedImages[nextIndex]?.uri) {
+        indicesToLoad.push(nextIndex);
+      }
+      
+      // Load previous image if exists and not loaded
+      const prevIndex = clampedIndex - 1;
+      if (prevIndex >= 0 && !lazyLoadedImages[prevIndex]?.uri) {
+        indicesToLoad.push(prevIndex);
+      }
+      
+      // Load images that need loading
+      if (indicesToLoad.length > 0) {
+        setIsLazyLoading(true);
+        console.log(`[NoteEditorSlideUp] Lazy loading images at indices: ${indicesToLoad.join(', ')}`);
+        
         try {
-          const selectedPeople = JSON.parse(params.selectedPeople);
-          setPeople(selectedPeople);
-          
-          // Clear the params
-          router.setParams({
-            selectedPeople: undefined,
-          });
+          for (const indexToLoad of indicesToLoad) {
+            const imageToLoad = images[indexToLoad];
+            
+            if (imageToLoad.id && !imageToLoad.uri) {
+              console.log(`[NoteEditorSlideUp] Loading image ${indexToLoad} with ID: ${imageToLoad.id}`);
+              const imageUrl = await getImageDataUrl(imageToLoad.id);
+              
+              if (imageUrl) {
+                setLazyLoadedImages(prev => {
+                  const newImages = [...prev];
+                  // Ensure array is large enough
+                  while (newImages.length <= indexToLoad) {
+                    newImages.push({ uri: '', contentType: 'image/jpeg' });
+                  }
+                  newImages[indexToLoad] = { ...imageToLoad, uri: imageUrl };
+                  console.log(`[NoteEditorSlideUp] Successfully lazy loaded image at index ${indexToLoad}`);
+                  return newImages;
+                });
+              } else {
+                console.error(`[NoteEditorSlideUp] Failed to get image URL for index ${indexToLoad}`);
+              }
+            } else if (imageToLoad.uri) {
+              // Image already has URI (newly added image)
+              setLazyLoadedImages(prev => {
+                const newImages = [...prev];
+                while (newImages.length <= indexToLoad) {
+                  newImages.push({ uri: '', contentType: 'image/jpeg' });
+                }
+                newImages[indexToLoad] = imageToLoad;
+                return newImages;
+              });
+            }
+          }
         } catch (error) {
-          console.error('Error parsing selected people:', error);
+          console.error(`[NoteEditorSlideUp] Error lazy loading images:`, error);
+        } finally {
+          setIsLazyLoading(false);
         }
       }
-    };
-
-    handleRouterParams();
-  }, [visible, router]);
-
-  // Keyboard listeners
-  useEffect(() => {
-    const keyboardWillShow = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      () => setIsKeyboardVisible(true)
-    );
-    const keyboardWillHide = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => setIsKeyboardVisible(false)
-    );
-
-    return () => {
-      keyboardWillShow.remove();
-      keyboardWillHide.remove();
-    };
-  }, []);
-
-  const loadNoteData = async () => {
-    if (!noteId || !user) return;
-
-    setIsLoadingNote(true);
-    try {
-      const note = await getCachedNote(noteId);
-      
-      if (note) {
-        setText(note.text || '');
-        
-        // Load images
-        if (note.images && note.images.length > 0) {
-          const imagePromises = note.images.map(async (img) => {
-            const imageUrl = await getImageDataUrl(img.id);
-            return {
-              id: img.id,
-              uri: imageUrl,
-              contentType: img.content_type || 'image/jpeg',
-            };
-          });
-          
-          const loadedImgs = await Promise.all(imagePromises);
-          setImages(loadedImgs);
-          
-          // Mark all images as loaded initially
-          const initialLoadedState: Record<number, boolean> = {};
-          loadedImgs.forEach((_, index) => {
-            initialLoadedState[index] = false;
-          });
-          setLoadedImages(initialLoadedState);
-        }
-        
-        // Load location
-        if (note.latitude && note.longitude) {
-          setLocation({
-            latitude: note.latitude,
-            longitude: note.longitude,
-            name: note.location_name || 'Location',
-            primaryType: note.primary_type,
-          });
-        }
-        
-        // Load people
-        if (note.people && note.people.length > 0) {
-          setPeople(note.people);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading note:', error);
-      Alert.alert('Error', 'Failed to load note');
-    } finally {
-      setIsLoadingNote(false);
     }
   };
 
-  const handleSave = async () => {
-    if (!noteId || !user) return;
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardVisible(true);
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      keyboardDidHideListener.remove();
+      keyboardDidShowListener.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadNoteFromCacheOrDatabase = async () => {
+      if (!isEditing || !noteId || !user) {
+        return;
+      }
+
+      try {
+        console.log('[NoteEditorSlideUp] ===== OPTIMIZED LOADING =====');
+        console.log('[NoteEditorSlideUp] Loading note:', noteId);
+
+        const cachedNote = getCachedNote(noteId);
+        
+        if (cachedNote) {
+          console.log('[NoteEditorSlideUp] ✅ Using CACHED data for instant load');
+          
+          setText(cachedNote.text || '');
+          setLocationName(cachedNote.location || '');
+          setLocationPrimaryType(cachedNote.location_primary_type || '');
+          
+          if (cachedNote.latitude && cachedNote.longitude) {
+            setLocation({
+              latitude: cachedNote.latitude,
+              longitude: cachedNote.longitude,
+            });
+          }
+
+          if (cachedNote.people && cachedNote.people.length > 0) {
+            console.log('[NoteEditorSlideUp] Loaded people from cache:', cachedNote.people);
+            setPeople(cachedNote.people);
+            setInitialPeople(cachedNote.people);
+          } else {
+            setPeople([]);
+            setInitialPeople([]);
+          }
+
+          if (cachedNote.images && cachedNote.images.length > 0) {
+            const cachedImages: ImageData[] = cachedNote.images.map((url, index) => ({
+              id: cachedNote.imageIds?.[index],
+              uri: url,
+              contentType: 'image/jpeg',
+            }));
+            setImages(cachedImages);
+            setInitialImageCount(cachedImages.length);
+            console.log(`[NoteEditorSlideUp] Loaded ${cachedImages.length} images from cache`);
+          }
+
+          console.log('[NoteEditorSlideUp] Refreshing data in background...');
+          
+          const { data: recallData, error: recallError } = await supabase
+            .from('recalls')
+            .select('*')
+            .eq('id', noteId)
+            .eq('user_id', user.id)
+            .single();
+
+          if (!recallError && recallData) {
+            if (recallData.updated_at !== cachedNote.updated_at) {
+              console.log('[NoteEditorSlideUp] Data changed, updating from database');
+              
+              setText(recallData.text || '');
+              setLocationName(recallData.location || '');
+              setLocationPrimaryType(recallData.location_primary_type || '');
+              
+              if (recallData.latitude && recallData.longitude) {
+                setLocation({
+                  latitude: recallData.latitude,
+                  longitude: recallData.longitude,
+                });
+              }
+
+              const { data: recallPeopleData } = await supabase
+                .from('recall_people')
+                .select('person_id, persons(id, person_name, photo_url)')
+                .eq('recall_id', noteId);
+
+              if (recallPeopleData && recallPeopleData.length > 0) {
+                const loadedPeople: Person[] = recallPeopleData
+                  .filter((rp: any) => rp.persons)
+                  .map((rp: any) => ({
+                    id: rp.persons.id,
+                    person_name: rp.persons.person_name,
+                    photo_url: rp.persons.photo_url,
+                  }));
+                setPeople(loadedPeople);
+                setInitialPeople(loadedPeople);
+              }
+
+              const { data: imagesData } = await supabase
+                .from('recall_images')
+                .select('id')
+                .eq('recall_id', noteId)
+                .order('created_at', { ascending: true });
+
+              if (imagesData && imagesData.length > 0) {
+                const loadedImages: ImageData[] = [];
+                
+                const imagesToLoadImmediately = imagesData.slice(0, 2);
+                
+                for (const img of imagesToLoadImmediately) {
+                  try {
+                    const dataUrl = await getImageDataUrl(img.id);
+                    if (dataUrl) {
+                      loadedImages.push({
+                        id: img.id,
+                        uri: dataUrl,
+                        contentType: 'image/jpeg',
+                      });
+                    }
+                  } catch (error) {
+                    console.error(`[NoteEditorSlideUp] Error loading image ${img.id}:`, error);
+                  }
+                }
+                
+                for (let i = 2; i < imagesData.length; i++) {
+                  loadedImages.push({
+                    id: imagesData[i].id,
+                    uri: '',
+                    contentType: 'image/jpeg',
+                  });
+                }
+                
+                setImages(loadedImages);
+                setInitialImageCount(loadedImages.length);
+              }
+            } else {
+              console.log('[NoteEditorSlideUp] Data unchanged, using cache');
+            }
+          }
+          
+          return;
+        }
+
+        console.log('[NoteEditorSlideUp] ⚠️ No cache available, loading from database');
+        setLoadingNote(true);
+
+        const { data: recallData, error: recallError } = await supabase
+          .from('recalls')
+          .select('*')
+          .eq('id', noteId)
+          .eq('user_id', user.id)
+          .single();
+
+        if (recallError || !recallData) {
+          console.error('[NoteEditorSlideUp] Error loading recall:', recallError);
+          Alert.alert('Error', 'Failed to load note');
+          onClose();
+          return;
+        }
+
+        console.log('[NoteEditorSlideUp] Note loaded from database:', recallData);
+
+        setText(recallData.text || '');
+        setLocationName(recallData.location || '');
+        setLocationPrimaryType(recallData.location_primary_type || '');
+        
+        if (recallData.latitude && recallData.longitude) {
+          setLocation({
+            latitude: recallData.latitude,
+            longitude: recallData.longitude,
+          });
+        }
+
+        console.log('[NoteEditorSlideUp] Loading people for recall:', noteId);
+        const { data: recallPeopleData, error: recallPeopleError } = await supabase
+          .from('recall_people')
+          .select('person_id, persons(id, person_name, photo_url)')
+          .eq('recall_id', noteId);
+
+        if (recallPeopleError) {
+          console.error('[NoteEditorSlideUp] Error loading recall_people:', recallPeopleError);
+        } else if (recallPeopleData && recallPeopleData.length > 0) {
+          const loadedPeople: Person[] = recallPeopleData
+            .filter((rp: any) => rp.persons)
+            .map((rp: any) => ({
+              id: rp.persons.id,
+              person_name: rp.persons.person_name,
+              photo_url: rp.persons.photo_url,
+            }));
+          console.log('[NoteEditorSlideUp] Loaded people from database:', loadedPeople);
+          setPeople(loadedPeople);
+          setInitialPeople(loadedPeople);
+          console.log(`[NoteEditorSlideUp] Set ${loadedPeople.length} people in state`);
+        } else {
+          console.log('[NoteEditorSlideUp] No people found for this recall');
+          setPeople([]);
+          setInitialPeople([]);
+        }
+
+        const { data: imagesData, error: imagesError } = await supabase
+          .from('recall_images')
+          .select('id')
+          .eq('recall_id', noteId)
+          .order('created_at', { ascending: true });
+
+        if (imagesError) {
+          console.error('[NoteEditorSlideUp] Error loading images:', imagesError);
+        } else if (imagesData && imagesData.length > 0) {
+          console.log(`[NoteEditorSlideUp] Loading ${imagesData.length} images for note`);
+          
+          const loadedImages: ImageData[] = [];
+          
+          const imagesToLoadImmediately = imagesData.slice(0, 2);
+          
+          for (const img of imagesToLoadImmediately) {
+            try {
+              const dataUrl = await getImageDataUrl(img.id);
+              if (dataUrl) {
+                loadedImages.push({
+                  id: img.id,
+                  uri: dataUrl,
+                  contentType: 'image/jpeg',
+                });
+                console.log(`[NoteEditorSlideUp] Image ${img.id} loaded successfully`);
+              } else {
+                console.error(`[NoteEditorSlideUp] Failed to load image ${img.id}`);
+              }
+            } catch (error) {
+              console.error(`[NoteEditorSlideUp] Error loading image ${img.id}:`, error);
+            }
+          }
+          
+          for (let i = 2; i < imagesData.length; i++) {
+            loadedImages.push({
+              id: imagesData[i].id,
+              uri: '',
+              contentType: 'image/jpeg',
+            });
+          }
+          
+          setImages(loadedImages);
+          setInitialImageCount(loadedImages.length);
+          console.log(`[NoteEditorSlideUp] Loaded ${imagesToLoadImmediately.length}/${imagesData.length} images immediately, ${imagesData.length - imagesToLoadImmediately.length} will be lazy loaded`);
+        }
+      } catch (error) {
+        console.error('[NoteEditorSlideUp] Error loading note:', error);
+        Alert.alert('Error', 'Failed to load note');
+        onClose();
+      } finally {
+        setLoadingNote(false);
+      }
+    };
+
+    if (visible && noteId) {
+      loadNoteFromCacheOrDatabase();
+    }
+  }, [visible, noteId, user, getCachedNote, onClose]);
+
+  const takePhoto = useCallback(async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant camera permissions');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.9,
+        exif: true,
+      });
+
+      if (!result.canceled && result.assets) {
+        setLoading(true);
+        const asset = result.assets[0];
+        
+        if (!location) {
+          console.log('Attempting to extract location from captured photo...');
+          try {
+            const imageLocation = await extractLocationFromImage(asset);
+            
+            if (imageLocation.latitude && imageLocation.longitude) {
+              console.log('Location extracted from photo:', imageLocation);
+              setLocation({
+                latitude: imageLocation.latitude,
+                longitude: imageLocation.longitude,
+              });
+              
+              if (imageLocation.locationName) {
+                setLocationName(imageLocation.locationName);
+                console.log('Location name set from photo:', imageLocation.locationName);
+              }
+            } else {
+              console.log('No location data found in photo');
+            }
+          } catch (error) {
+            console.error('Error extracting location from photo:', error);
+          }
+        }
+        
+        const converted = await convertImageToSuitableFormat(asset.uri);
+        setImages([...images, {
+          uri: converted.uri,
+          localUri: converted.uri,
+          contentType: converted.contentType,
+        }]);
+        
+        setLoading(false);
+        
+        if (Platform.OS !== 'web') {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        
+        console.log('Photo captured and added successfully');
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      setLoading(false);
+      Alert.alert('Error', 'Failed to take photo');
+    }
+  }, [images, location]);
+
+  const pickImage = useCallback(async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant camera roll permissions');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        allowsEditing: false,
+        quality: 0.9,
+        exif: true,
+      });
+
+      if (!result.canceled && result.assets) {
+        setLoading(true);
+        const newImages: ImageData[] = [];
+
+        if (!location && result.assets.length > 0) {
+          console.log('Attempting to extract location from first selected image...');
+          try {
+            const imageLocation = await extractLocationFromImage(result.assets[0]);
+            
+            if (imageLocation.latitude && imageLocation.longitude) {
+              console.log('Location extracted from image:', imageLocation);
+              setLocation({
+                latitude: imageLocation.latitude,
+                longitude: imageLocation.longitude,
+              });
+              
+              if (imageLocation.locationName) {
+                setLocationName(imageLocation.locationName);
+                console.log('Location name set from image:', imageLocation.locationName);
+              }
+            } else {
+              console.log('No location data found in image');
+            }
+          } catch (error) {
+            console.error('Error extracting location from image:', error);
+          }
+        }
+
+        for (const asset of result.assets) {
+          const converted = await convertImageToSuitableFormat(asset.uri);
+
+          newImages.push({
+            uri: converted.uri,
+            localUri: converted.uri,
+            contentType: converted.contentType,
+          });
+        }
+
+        setImages([...images, ...newImages]);
+        setLoading(false);
+        
+        if (Platform.OS !== 'web') {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      setLoading(false);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  }, [images, location]);
+
+  const handlePlusPress = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setShowFABs(!showFABs);
+  };
+
+  const handleTakePhoto = () => {
+    setShowFABs(false);
+    setTimeout(() => {
+      takePhoto();
+    }, 300);
+  };
+
+  const handleChooseFromLibrary = () => {
+    setShowFABs(false);
+    setTimeout(() => {
+      pickImage();
+    }, 300);
+  };
+
+  const handleBackdropPress = () => {
+    if (showFABs) {
+      setShowFABs(false);
+    }
+  };
+
+  const convertImageToSuitableFormat = async (uri: string): Promise<{ uri: string; contentType: string }> => {
+    try {
+      console.log('Converting image to suitable format:', uri);
+      
+      const manipulatedImage = await ImageManipulator.manipulateAsync(
+        uri,
+        [
+          { resize: { width: 2048 } }
+        ],
+        {
+          compress: 0.8,
+          format: ImageManipulator.SaveFormat.JPEG,
+        }
+      );
+
+      console.log('Image converted successfully:', manipulatedImage.uri);
+      return {
+        uri: manipulatedImage.uri,
+        contentType: 'image/jpeg',
+      };
+    } catch (error) {
+      console.error('Error converting image:', error);
+      return {
+        uri: uri,
+        contentType: 'image/jpeg',
+      };
+    }
+  };
+
+  const removeImage = async (index: number) => {
+    const image = images[index];
     
-    if (!text.trim() && images.length === 0) {
-      Alert.alert('Empty Note', 'Please add some text or images before saving.');
+    Alert.alert(
+      'Delete Image',
+      'Are you sure you want to delete this image?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            if (image.id) {
+              try {
+                await deleteImageRecord(image.id);
+              } catch (error) {
+                console.error('Error deleting image:', error);
+              }
+            }
+            
+            const newImages = images.filter((_, i) => i !== index);
+            setImages(newImages);
+            
+            // FIXED: Trigger refresh of originating screen's recall card with lazy loading
+            if (isEditing && noteId) {
+              console.log('[NoteEditorSlideUp] Image removed - triggering background refresh of recall card');
+              setTimeout(() => {
+                refreshSingleNote(noteId);
+              }, 100);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const renderTextWithLinks = (text: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    
+    return parts.map((part, index) => {
+      if (part.match(urlRegex)) {
+        return (
+          <Text
+            key={index}
+            style={styles.linkText}
+            onPress={(e) => {
+              e.stopPropagation();
+              console.log('Opening URL:', part);
+              Linking.openURL(part).catch(err => {
+                console.error('Failed to open URL:', err);
+              });
+            }}
+          >
+            {part}
+          </Text>
+        );
+      }
+      return <Text key={index} style={styles.normalText}>{part}</Text>;
+    });
+  };
+
+  const handleLocationPress = () => {
+    if (!location) {
+      console.log('No location available');
       return;
     }
 
-    setIsSaving(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    console.log('Navigating to location search screen');
+    router.push('/location-search');
+  };
+
+  const handlePeopleChange = useCallback((newPeople: Person[]) => {
+    console.log('[NoteEditorSlideUp] ===== PEOPLE CHANGED =====');
+    console.log('[NoteEditorSlideUp] Previous people count:', people.length);
+    console.log('[NoteEditorSlideUp] New people count:', newPeople.length);
+    console.log('[NoteEditorSlideUp] New people:', newPeople.map(p => p.person_name).join(', '));
+    setPeople(newPeople);
+    console.log('[NoteEditorSlideUp] People state updated');
+  }, [people.length]);
+
+  const handleSave = async () => {
+    if (!canSave) {
+      Alert.alert('Empty Recall', 'Please add some text or images');
+      return;
+    }
+
+    if (!user) {
+      console.error('[NoteEditorSlideUp] ERROR: No user found, cannot save');
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
 
     try {
-      // Upload new images
-      const uploadedImages = await Promise.all(
-        images.map(async (img) => {
-          if (img.id) {
-            return img.id;
-          } else {
-            const uploadedId = await uploadImageToDatabase(img.uri, noteId, img.contentType);
-            return uploadedId;
-          }
-        })
-      );
+      setSaving(true);
+      console.log('[NoteEditorSlideUp] ===== STARTING SAVE PROCESS =====');
 
-      // Update note
-      const { error: updateError } = await supabase
-        .from('recalls')
-        .update({
-          text: text.trim(),
-          latitude: location?.latitude || null,
-          longitude: location?.longitude || null,
-          location_name: location?.name || null,
-          primary_type: location?.primaryType || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', noteId)
-        .eq('user_id', user.id);
+      const noteData = {
+        text: text.trim(),
+        latitude: location?.latitude,
+        longitude: location?.longitude,
+        location: locationName,
+        location_primary_type: locationPrimaryType || null,
+      };
 
-      if (updateError) throw updateError;
+      console.log('[NoteEditorSlideUp] Note data to save:', noteData);
+      console.log('[NoteEditorSlideUp] Current people state:', people);
+      console.log('[NoteEditorSlideUp] People count:', people.length);
 
-      // Update people associations
-      if (people.length > 0) {
-        await supabase
-          .from('recall_people')
-          .delete()
-          .eq('recall_id', noteId);
+      let recallId: string;
+      let imagesChanged = false;
 
-        const peopleInserts = people.map((person) => ({
-          recall_id: noteId,
-          person_id: person.id,
-          user_id: user.id,
-        }));
+      if (isEditing && noteId) {
+        console.log('[NoteEditorSlideUp] Updating existing recall:', noteId);
+        await updateNote(noteId, noteData);
+        recallId = noteId;
 
-        await supabase.from('recall_people').insert(peopleInserts);
-      }
+        const { data: existingImages } = await supabase
+          .from('recall_images')
+          .select('id')
+          .eq('recall_id', recallId);
 
-      // Trigger edge functions
-      if (uploadedImages.length > 0) {
-        for (const imageId of uploadedImages) {
-          if (!images.find(img => img.id === imageId)) {
-            await triggerOCRProcessing(imageId);
+        const currentImageIds = new Set(
+          images
+            .filter(img => img.id)
+            .map(img => img.id!)
+        );
+
+        if (existingImages) {
+          for (const img of existingImages) {
+            if (!currentImageIds.has(img.id)) {
+              console.log('[NoteEditorSlideUp] Deleting removed image:', img.id);
+              await deleteImageRecord(img.id);
+              imagesChanged = true;
+            } else {
+              console.log('[NoteEditorSlideUp] Keeping existing image:', img.id);
+            }
           }
         }
+        
+        // Check if new images were added
+        const newImagesCount = images.filter(img => !img.id).length;
+        if (newImagesCount > 0) {
+          imagesChanged = true;
+        }
+        
+        // Check if image count changed
+        if (images.length !== initialImageCount) {
+          imagesChanged = true;
+        }
+      } else {
+        console.log('[NoteEditorSlideUp] Creating new recall');
+        recallId = await addNote(noteData);
+        console.log('[NoteEditorSlideUp] New recall created with ID:', recallId);
       }
 
-      await triggerCategoryMatching(noteId);
-      await triggerRecallEmbedding(noteId);
-
-      // Process URLs if present
-      if (hasUrl(text)) {
-        await processRecallUrls(noteId, text);
+      if (!isEditing && people.length > 0) {
+        try {
+          console.log('[NoteEditorSlideUp] ===== SAVING PEOPLE ASSOCIATIONS FOR NEW NOTE =====');
+          console.log('[NoteEditorSlideUp] Recall ID:', recallId);
+          console.log('[NoteEditorSlideUp] User ID:', user.id);
+          console.log('[NoteEditorSlideUp] People to save:', people);
+          console.log('[NoteEditorSlideUp] People count:', people.length);
+          
+          const insertData = people.map(person => ({
+            recall_id: recallId,
+            person_id: person.id,
+            user_id: user.id,
+          }));
+          
+          console.log('[NoteEditorSlideUp] Data to insert:', JSON.stringify(insertData, null, 2));
+          
+          const { data: insertedData, error: peopleError } = await supabase
+            .from('recall_people')
+            .insert(insertData)
+            .select();
+          
+          if (peopleError) {
+            console.error('[NoteEditorSlideUp] ❌ ERROR inserting people associations:', peopleError);
+            console.error('[NoteEditorSlideUp] Error details:', JSON.stringify(peopleError, null, 2));
+          } else {
+            console.log('[NoteEditorSlideUp] ✅ SUCCESS! Inserted', people.length, 'people associations');
+            console.log('[NoteEditorSlideUp] Inserted data:', JSON.stringify(insertedData, null, 2));
+          }
+        } catch (error: any) {
+          console.error('[NoteEditorSlideUp] 🔥 CRITICAL ERROR managing people associations:', error);
+          console.error('[NoteEditorSlideUp] Error stack:', error.stack);
+        }
+      } else if (isEditing) {
+        console.log('[NoteEditorSlideUp] Skipping people save - editing existing note (people saved from word cloud)');
+      } else {
+        console.log('[NoteEditorSlideUp] No people to save');
       }
 
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      console.log('[NoteEditorSlideUp] ===== CLOSING SLIDE-UP IMMEDIATELY =====');
       
-      // Call onSave callback to refresh the parent screen
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      
+      onClose();
+      
       if (onSave) {
         onSave();
       }
       
-      onClose();
-    } catch (error) {
-      console.error('Error saving note:', error);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Error', 'Failed to save note. Please try again.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handlePlusPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setShowPlusMenu(!showPlusMenu);
-  };
-
-  const handleTakePhoto = async () => {
-    setShowPlusMenu(false);
-    
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Camera permission is required to take photos.');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      allowsEditing: false,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      const convertedUri = await convertImageToSuitableFormat(asset.uri);
-      
-      const newImage: ImageData = {
-        uri: convertedUri,
-        contentType: 'image/jpeg',
-      };
-      
-      setImages([...images, newImage]);
-      
-      // Try to extract location from image
-      try {
-        const imageLocation = await extractLocationFromImage(asset.uri);
-        if (imageLocation && !location) {
-          const locationName = await reverseGeocode(imageLocation.latitude, imageLocation.longitude);
-          setLocation({
-            latitude: imageLocation.latitude,
-            longitude: imageLocation.longitude,
-            name: locationName,
-          });
+      // FIXED: Trigger refresh with lazy loading for originating screen
+      setTimeout(() => {
+        if (isEditing && noteId) {
+          console.log('[NoteEditorSlideUp] Triggering background refresh of recall card with lazy loading');
+          refreshSingleNote(noteId);
+        } else {
+          refreshNotes();
         }
-      } catch (error) {
-        console.log('Could not extract location from image:', error);
-      }
-    }
-  };
+      }, 100);
 
-  const handleChooseFromLibrary = async () => {
-    setShowPlusMenu(false);
-    
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Photo library permission is required.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets.length > 0) {
-      const newImages = await Promise.all(
-        result.assets.map(async (asset) => {
-          const convertedUri = await convertImageToSuitableFormat(asset.uri);
-          return {
-            uri: convertedUri,
-            contentType: 'image/jpeg',
-          };
-        })
-      );
+      const imagesToUpload = images.filter(img => !img.id && (img.localUri || img.uri));
       
-      setImages([...images, ...newImages]);
-    }
-  };
+      if (imagesToUpload.length > 0) {
+        console.log(`[NoteEditorSlideUp] [ASYNC] Starting background upload of ${imagesToUpload.length} images...`);
+        
+        (async () => {
+          let uploadedCount = 0;
+          let failedCount = 0;
+          const uploadedImageIds: string[] = [];
 
-  const convertImageToSuitableFormat = async (uri: string): Promise<string> => {
-    try {
-      const manipResult = await ImageManipulator.manipulateAsync(
-        uri,
-        [{ resize: { width: 1200 } }],
-        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
-      );
-      return manipResult.uri;
-    } catch (error) {
-      console.error('Error converting image:', error);
-      return uri;
-    }
-  };
+          for (const image of imagesToUpload) {
+            const imageUri = image.localUri || image.uri;
+            console.log('[NoteEditorSlideUp] [ASYNC] Uploading image to database:', imageUri);
+            
+            try {
+              const imageId = await uploadImageToDatabase(imageUri, recallId, image.contentType);
+              
+              if (imageId) {
+                uploadedCount++;
+                uploadedImageIds.push(imageId);
+                console.log('[NoteEditorSlideUp] [ASYNC] Image uploaded successfully to database');
+                
+                console.log('[NoteEditorSlideUp] [ASYNC] Triggering OCR processing for image:', imageId);
+                triggerOCRProcessing(imageId).then(result => {
+                  if (result.success) {
+                    console.log('[NoteEditorSlideUp] [ASYNC] OCR processing triggered successfully for image:', imageId);
+                  } else {
+                    console.error('[NoteEditorSlideUp] [ASYNC] Failed to trigger OCR processing:', result.error);
+                  }
+                }).catch(error => {
+                  console.error('[NoteEditorSlideUp] [ASYNC] Error triggering OCR processing:', error);
+                });
+                
+                // FIXED: Refresh recall card with lazy loading after each image upload
+                console.log('[NoteEditorSlideUp] [ASYNC] Refreshing recall card with lazy loading');
+                await refreshSingleNote(recallId);
+              } else {
+                failedCount++;
+                console.error('[NoteEditorSlideUp] [ASYNC] Failed to upload image to database');
+              }
+            } catch (error) {
+              failedCount++;
+              console.error('[NoteEditorSlideUp] [ASYNC] Exception uploading image:', error);
+            }
+          }
 
-  const removeImage = (index: number) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newImages = images.filter((_, i) => i !== index);
-    setImages(newImages);
-    
-    // Update loaded images state
-    const newLoadedImages: Record<number, boolean> = {};
-    Object.keys(loadedImages).forEach((key) => {
-      const idx = parseInt(key);
-      if (idx < index) {
-        newLoadedImages[idx] = loadedImages[idx];
-      } else if (idx > index) {
-        newLoadedImages[idx - 1] = loadedImages[idx];
+          console.log(`[NoteEditorSlideUp] [ASYNC] Upload complete: ${uploadedCount} images uploaded, ${failedCount} failed`);
+          
+          // FIXED: Final refresh with lazy loading
+          console.log('[NoteEditorSlideUp] [ASYNC] Final refresh of recall card with lazy loading');
+          await refreshSingleNote(recallId);
+        })();
+      } else if (imagesChanged && isEditing) {
+        // FIXED: If images were removed but none added, still trigger refresh
+        console.log('[NoteEditorSlideUp] Images changed (removed) - triggering background refresh');
+        setTimeout(() => {
+          refreshSingleNote(recallId);
+        }, 100);
       }
-    });
-    setLoadedImages(newLoadedImages);
-  };
 
-  const handleLocationPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push({
-      pathname: '/location-search',
-      params: { 
-        returnTo: 'noteEditorSlideUp',
-        noteId: noteId,
-      },
-    });
-  };
+      console.log('[NoteEditorSlideUp] [ASYNC] Processing URLs in note text for recall:', recallId);
+      processRecallUrls(user.id, recallId, noteData.text).then(result => {
+        if (result.success) {
+          console.log('[NoteEditorSlideUp] [ASYNC] URLs processed successfully');
+        } else {
+          console.error('[NoteEditorSlideUp] [ASYNC] Failed to process URLs:', result.error);
+        }
+      }).catch(error => {
+        console.error('[NoteEditorSlideUp] [ASYNC] Error processing URLs:', error);
+      });
 
-  const handleLocationSearch = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push({
-      pathname: '/location-search',
-      params: { 
-        returnTo: 'noteEditorSlideUp',
-        noteId: noteId,
-      },
-    });
-  };
+      setTimeout(() => {
+        triggerCategoryMatching(recallId).then(result => {
+          if (result.success) {
+            console.log('[NoteEditorSlideUp] [ASYNC] Category matching triggered successfully after note save');
+          } else {
+            console.error('[NoteEditorSlideUp] [ASYNC] Failed to trigger category matching:', result.error);
+          }
+        }).catch(error => {
+          console.error('[NoteEditorSlideUp] [ASYNC] Error triggering category matching:', error);
+        });
+      }, 500);
 
-  const handleRichTextPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const currentPeople = JSON.stringify(people);
-    router.push({
-      pathname: '/people-word-cloud',
-      params: { 
-        returnTo: 'noteEditorSlideUp',
-        noteId: noteId,
-        initialSelectedPeople: currentPeople,
-      },
-    });
-  };
+      setTimeout(() => {
+        triggerRecallEmbedding(
+          recallId,
+          noteData.text,
+          noteData.location,
+          noteData.location_primary_type || undefined
+        ).then(result => {
+          if (result.success) {
+            console.log('[NoteEditorSlideUp] [ASYNC] Embedding generation triggered successfully after note save');
+          } else {
+            console.error('[NoteEditorSlideUp] [ASYNC] Failed to trigger embedding generation:', result.error);
+          }
+        }).catch(error => {
+          console.error('[NoteEditorSlideUp] [ASYNC] Error triggering embedding generation:', error);
+        });
+      }, 500);
 
-  const handleImagePress = (index: number) => {
-    setFullScreenImageIndex(index);
-    setFullScreenImageVisible(true);
+    } catch (error: any) {
+      console.error('[NoteEditorSlideUp] 🔥 CRITICAL ERROR saving recall:', error);
+      console.error('[NoteEditorSlideUp] Error stack:', error.stack);
+      Alert.alert('Error', `Failed to save recall: ${error.message || 'Unknown error'}. Check console logs for details.`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const toggleKeyboard = () => {
-    if (isKeyboardVisible) {
+    if (keyboardVisible) {
       Keyboard.dismiss();
     } else {
       textInputRef.current?.focus();
     }
   };
 
-  const renderTextWithLinks = (text: string) => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = text.split(urlRegex);
-
-    return (
-      <Text style={styles.noteText}>
-        {parts.map((part, index) => {
-          if (part.match(urlRegex)) {
-            return (
-              <Text
-                key={index}
-                style={styles.linkText}
-                onPress={() => Linking.openURL(part)}
-              >
-                {part}
-              </Text>
-            );
-          }
-          return <Text key={index}>{part}</Text>;
-        })}
-      </Text>
-    );
-  };
-
-  const handleBackdropPress = () => {
-    if (showPlusMenu) {
-      setShowPlusMenu(false);
+  const handleLocationSearch = () => {
+    // Pass the noteId if editing so location-search can update the database
+    if (noteId) {
+      router.push(`/location-search?id=${noteId}`);
     } else {
-      onClose();
+      router.push('/location-search');
     }
   };
 
-  if (!visible) return null;
+  // Handle location updates from search
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+
+    const params = router.params as any;
+    
+    if (params?.selectedLatitude && params?.selectedLongitude && params?.selectedLocationName) {
+      const latitude = parseFloat(params.selectedLatitude);
+      const longitude = parseFloat(params.selectedLongitude);
+      const formattedName = params.selectedLocationName;
+      const primaryType = params.selectedPrimaryType || '';
+
+      console.log('[NoteEditorSlideUp] Location updated from search:', { latitude, longitude, formattedName, primaryType });
+      
+      setLocation({ latitude, longitude });
+      setLocationName(formattedName);
+      setLocationPrimaryType(primaryType);
+
+      // Clear the params
+      router.setParams({
+        selectedLatitude: undefined,
+        selectedLongitude: undefined,
+        selectedLocationName: undefined,
+        selectedDisplayName: undefined,
+        selectedFullAddress: undefined,
+        selectedPrimaryType: undefined,
+      });
+    }
+  }, [visible, router]);
+
+  const handleImagePress = (index: number) => {
+    setFullScreenImageIndex(index);
+    setShowFullScreenImage(true);
+  };
+
+  const handleRichTextPress = () => {
+    console.log('Rich text pressed, focusing input');
+    textInputRef.current?.focus();
+  };
+
+  const handleCloseFullScreenImage = useCallback(() => {
+    console.log('Closing full screen image modal - no route refresh');
+    setShowFullScreenImage(false);
+  }, []);
+
+  // FIXED: Use images array for display, but show placeholders for lazy-loaded images
+  const displayImages = images.map((img, index) => {
+    // If image has no URI (lazy loading placeholder), show loading state
+    if (!img.uri) {
+      return {
+        ...img,
+        isLoading: true,
+      };
+    }
+    // If we have lazy loaded this image, use the lazy loaded version
+    if (lazyLoadedImages[index] && lazyLoadedImages[index].uri) {
+      return {
+        ...lazyLoadedImages[index],
+        isLoading: false,
+      };
+    }
+    // Otherwise use the original image
+    return {
+      ...img,
+      isLoading: false,
+    };
+  });
+
+  useEffect(() => {
+    console.log('[NoteEditorSlideUp] People state changed. Current count:', people.length);
+    if (people.length > 0) {
+      console.log('[NoteEditorSlideUp] Current people:', people.map(p => p.person_name).join(', '));
+    }
+  }, [people]);
+
+  if (!visible) {
+    return null;
+  }
 
   return (
     <Modal
       visible={visible}
-      animationType="none"
       transparent={true}
+      animationType="none"
       onRequestClose={onClose}
-      statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={handleBackdropPress}>
-        <Animated.View 
-          entering={SlideInDown.duration(300)}
+      <Animated.View
+        entering={FadeIn.duration(200)}
+        style={styles.overlay}
+      >
+        <Pressable 
+          style={StyleSheet.absoluteFill} 
+          onPress={onClose}
+        />
+        
+        <Animated.View
+          entering={SlideInDown.duration(300).springify()}
           style={styles.slideUpContainer}
         >
-          <Pressable onPress={(e) => e.stopPropagation()}>
-            {/* Header with rounded top border */}
-            <View style={styles.header}>
-              <Pressable onPress={onClose} style={styles.closeButton}>
-                <IconSymbol 
-                  ios_icon_name="xmark" 
-                  android_material_icon_name="close" 
-                  size={24} 
-                  color={colors.text} 
-                />
-              </Pressable>
-              <Text style={styles.headerTitle}>Edit Recall</Text>
-              <Pressable 
-                onPress={handleSave} 
-                disabled={isSaving || (!text.trim() && images.length === 0)}
-                style={styles.saveButton}
-              >
-                {isSaving ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Text style={[
-                    styles.saveButtonText,
-                    (!text.trim() && images.length === 0) && styles.saveButtonTextDisabled
-                  ]}>
-                    Save
-                  </Text>
-                )}
-              </Pressable>
+          {loadingNote ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Loading note...</Text>
             </View>
-
-            {isLoadingNote ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={colors.primary} />
+          ) : (
+            <>
+              <View style={styles.header}>
+                <Pressable 
+                  onPress={onClose} 
+                  style={styles.headerButton}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <IconSymbol name="xmark" size={24} color={colors.text} />
+                </Pressable>
+                
+                <Text style={styles.headerTitle}>
+                  {isEditing ? 'Edit Recall' : 'New Recall'}
+                </Text>
+                
+                <Pressable
+                  onPress={handleSave}
+                  disabled={saving || !canSave}
+                  style={[
+                    styles.saveButton,
+                    (saving || !canSave) && styles.saveButtonDisabled,
+                  ]}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  {saving ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <View style={styles.checkmarkContainer}>
+                      <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
+                    </View>
+                  )}
+                </Pressable>
               </View>
-            ) : (
+
+              {showFABs && (
+                <Pressable 
+                  style={styles.fabBackdrop} 
+                  onPress={handleBackdropPress}
+                />
+              )}
+
               <ScrollView 
                 ref={scrollViewRef}
-                style={styles.content}
-                showsVerticalScrollIndicator={false}
+                style={styles.scrollView} 
+                contentContainerStyle={styles.scrollContent}
                 keyboardShouldPersistTaps="handled"
+                scrollEnabled={true}
               >
-                {/* Text Input */}
-                <TextInput
-                  ref={textInputRef}
-                  style={styles.textInput}
-                  placeholder="What's on your mind?"
-                  placeholderTextColor={colors.textTertiary}
-                  value={text}
-                  onChangeText={setText}
-                  multiline
-                  textAlignVertical="top"
-                  autoFocus={false}
-                />
+                <Pressable 
+                  onPress={handleRichTextPress}
+                  style={[styles.textInputContainer, { height: textInputHeight }]}
+                >
+                  {textHasUrl ? (
+                    <View style={styles.richTextContainer}>
+                      <ScrollView 
+                        style={styles.textInputScrollView}
+                        nestedScrollEnabled={true}
+                        showsVerticalScrollIndicator={true}
+                      >
+                        <Pressable onPress={handleRichTextPress}>
+                          <Text style={styles.richText}>
+                            {renderTextWithLinks(text)}
+                          </Text>
+                        </Pressable>
+                      </ScrollView>
+                      <TextInput
+                        ref={textInputRef}
+                        style={[styles.textInput, styles.overlayInput]}
+                        placeholder="What do you want to Recall?"
+                        placeholderTextColor={colors.textTertiary}
+                        value={text}
+                        onChangeText={setText}
+                        multiline
+                        autoFocus={false}
+                        scrollEnabled={false}
+                        caretHidden={false}
+                      />
+                    </View>
+                  ) : (
+                    <ScrollView 
+                      style={styles.textInputScrollView}
+                      nestedScrollEnabled={true}
+                      showsVerticalScrollIndicator={true}
+                    >
+                      <TextInput
+                        ref={textInputRef}
+                        style={styles.textInputMultiline}
+                        placeholder="What do you want to Recall?"
+                        placeholderTextColor={colors.textTertiary}
+                        value={text}
+                        onChangeText={setText}
+                        multiline
+                        autoFocus={false}
+                        scrollEnabled={false}
+                      />
+                    </ScrollView>
+                  )}
+                </Pressable>
 
-                {/* Image Counter */}
-                {images.length > 0 && (
-                  <View style={styles.imageCounterContainer}>
-                    <Text style={styles.imageCounter}>
-                      {images.length} {images.length === 1 ? 'image' : 'images'}
-                    </Text>
+                <View style={styles.spacer} />
+              </ScrollView>
+
+              <PeopleAvatarsRow 
+                people={people} 
+                avatarSize={44} 
+                onPeopleChange={handlePeopleChange}
+                recallId={isEditing ? noteId : undefined}
+              />
+
+              {hasImages && (
+                <View style={styles.imagesContainer}>
+                  <View style={styles.imagesHeader}>
+                    <Text style={styles.imagesTitle}>{images.length} {images.length === 1 ? 'Image' : 'Images'}</Text>
+                    <View style={styles.paginationDots}>
+                      {images.map((_, index) => (
+                        <View
+                          key={index}
+                          style={[
+                            styles.paginationDot,
+                            index === currentImageIndex && styles.paginationDotActive,
+                          ]}
+                        />
+                      ))}
+                    </View>
                   </View>
-                )}
-
-                {/* Horizontally Scrollable Image Carousel - No lazy loading */}
-                {images.length > 0 && (
                   <ScrollView
+                    ref={imageScrollRef}
                     horizontal
                     pagingEnabled={false}
                     showsHorizontalScrollIndicator={false}
-                    style={styles.imageCarousel}
-                    contentContainerStyle={styles.imageCarouselContent}
+                    contentContainerStyle={styles.imagesScrollContent}
+                    onScroll={handleImageScroll}
+                    scrollEventThrottle={16}
+                    decelerationRate={0.9}
+                    snapToInterval={IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING}
+                    snapToAlignment="start"
                   >
-                    {images.map((image, index) => (
-                      <View key={index} style={styles.imageContainer}>
-                        <Pressable onPress={() => handleImagePress(index)}>
-                          <Image
-                            source={{ uri: image.uri }}
-                            style={styles.carouselImage}
-                            onLoadEnd={() => {
-                              // Mark image as loaded
-                              setLoadedImages(prev => ({ ...prev, [index]: true }));
-                            }}
-                          />
-                          {!loadedImages[index] && (
-                            <View style={styles.imageLoadingOverlay}>
-                              <ActivityIndicator size="small" color={colors.primary} />
+                    {displayImages.map((image, index) => (
+                      <Pressable 
+                        key={`${image.id || 'new'}-${index}`} 
+                        style={styles.imageWrapper}
+                        onPress={() => handleImagePress(index)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        {image.isLoading || !image.uri ? (
+                          <View style={styles.imageLoadingContainer}>
+                            <ActivityIndicator size="large" color={colors.primary} />
+                            <Text style={styles.loadingImageText}>Loading...</Text>
+                          </View>
+                        ) : (
+                          <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
+                        )}
+                        <View style={styles.imageActions}>
+                          <Pressable
+                            onPress={() => removeImage(index)}
+                            style={styles.imageActionButton}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <View style={styles.actionButtonCircle}>
+                              <IconSymbol name="xmark" size={14} color="#FFFFFF" />
                             </View>
-                          )}
-                        </Pressable>
-                        <Pressable
-                          style={styles.removeImageButton}
-                          onPress={() => removeImage(index)}
-                        >
-                          <IconSymbol 
-                            ios_icon_name="xmark.circle.fill" 
-                            android_material_icon_name="cancel" 
-                            size={24} 
-                            color="#FF3B30" 
-                          />
-                        </Pressable>
-                      </View>
+                          </Pressable>
+                        </View>
+                      </Pressable>
                     ))}
                   </ScrollView>
-                )}
+                </View>
+              )}
 
-                {/* Location Display */}
-                {location && (
-                  <Pressable style={styles.locationContainer} onPress={handleLocationPress}>
-                    <IconSymbol 
-                      ios_icon_name="location.fill" 
-                      android_material_icon_name="location-on" 
-                      size={20} 
-                      color={colors.primary} 
-                    />
-                    <Text style={styles.locationText} numberOfLines={1}>
-                      {location.name}
-                    </Text>
-                    <Pressable
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        setLocation(null);
-                      }}
-                      style={styles.removeLocationButton}
-                    >
-                      <IconSymbol 
-                        ios_icon_name="xmark.circle.fill" 
-                        android_material_icon_name="cancel" 
-                        size={18} 
-                        color={colors.textSecondary} 
-                      />
-                    </Pressable>
-                  </Pressable>
-                )}
-
-                {/* People Display */}
-                {people.length > 0 && (
-                  <Pressable style={styles.peopleContainer} onPress={handleRichTextPress}>
-                    <PeopleAvatarsRow people={people} maxVisible={5} size={32} />
-                    <Pressable
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        setPeople([]);
-                      }}
-                      style={styles.removePeopleButton}
-                    >
-                      <IconSymbol 
-                        ios_icon_name="xmark.circle.fill" 
-                        android_material_icon_name="cancel" 
-                        size={18} 
-                        color={colors.textSecondary} 
-                      />
-                    </Pressable>
-                  </Pressable>
-                )}
-
-                {/* Action Buttons */}
-                <View style={styles.actionButtons}>
-                  <Pressable style={styles.actionButton} onPress={handlePlusPress}>
-                    <IconSymbol 
-                      ios_icon_name="photo" 
-                      android_material_icon_name="image" 
-                      size={24} 
-                      color={colors.primary} 
-                    />
-                    <Text style={styles.actionButtonText}>Photos</Text>
+              {showFABs && (
+                <Animated.View
+                  entering={FadeIn.duration(200)}
+                  style={[
+                    styles.floatingActionsContainer,
+                    keyboardVisible && Platform.OS === 'ios' && {
+                      bottom: keyboardHeight + 60,
+                    },
+                  ]}
+                >
+                  <Pressable
+                    style={styles.floatingActionButton}
+                    onPress={handleChooseFromLibrary}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol name="photo.fill" size={28} color={colors.primary} />
                   </Pressable>
 
-                  <Pressable style={styles.actionButton} onPress={handleLocationSearch}>
-                    <IconSymbol 
-                      ios_icon_name="location" 
-                      android_material_icon_name="location-on" 
-                      size={24} 
-                      color={colors.primary} 
-                    />
-                    <Text style={styles.actionButtonText}>Location</Text>
+                  <Pressable
+                    style={styles.floatingActionButton}
+                    onPress={handleTakePhoto}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol name="camera.fill" size={28} color={colors.primary} />
                   </Pressable>
+                </Animated.View>
+              )}
 
-                  <Pressable style={styles.actionButton} onPress={handleRichTextPress}>
+              <View style={[
+                styles.toolbar,
+                keyboardVisible && Platform.OS === 'ios' && { 
+                  position: 'absolute',
+                  bottom: keyboardHeight,
+                  left: 0,
+                  right: 0,
+                }
+              ]}>
+                <View style={styles.toolbarLeft}>
+                  <Pressable
+                    onPress={toggleKeyboard}
+                    style={styles.toolbarButton}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
                     <IconSymbol 
-                      ios_icon_name="person.2" 
-                      android_material_icon_name="group" 
-                      size={24} 
+                      name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+                      size={26} 
                       color={colors.primary} 
                     />
-                    <Text style={styles.actionButtonText}>People</Text>
                   </Pressable>
                 </View>
-              </ScrollView>
-            )}
 
-            {/* Plus Menu */}
-            {showPlusMenu && (
-              <Animated.View entering={FadeIn.duration(200)} style={styles.plusMenu}>
-                <Pressable style={styles.plusMenuItem} onPress={handleTakePhoto}>
-                  <IconSymbol 
-                    ios_icon_name="camera.fill" 
-                    android_material_icon_name="camera" 
-                    size={24} 
-                    color={colors.primary} 
-                  />
-                  <Text style={styles.plusMenuItemText}>Take Photo</Text>
-                </Pressable>
-                <Pressable style={styles.plusMenuItem} onPress={handleChooseFromLibrary}>
-                  <IconSymbol 
-                    ios_icon_name="photo.on.rectangle" 
-                    android_material_icon_name="photo-library" 
-                    size={24} 
-                    color={colors.primary} 
-                  />
-                  <Text style={styles.plusMenuItemText}>Choose from Library</Text>
-                </Pressable>
-              </Animated.View>
-            )}
-          </Pressable>
+                <View style={styles.toolbarCenter}>
+                  <Pressable
+                    style={styles.locationPill}
+                    onPress={handleLocationSearch}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
+                    <Text style={styles.locationPillText} numberOfLines={1}>
+                      {locationName || 'Add Location'}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <View style={styles.toolbarRight}>
+                  <Pressable
+                    onPress={handlePlusPress}
+                    disabled={loading}
+                    style={styles.toolbarButton}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    {loading ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+                    )}
+                  </Pressable>
+                </View>
+              </View>
+
+              {saving && (
+                <View style={styles.savingModalContainer}>
+                  <View style={styles.savingModalContent}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={styles.savingModalText}>Saving Recall...</Text>
+                  </View>
+                </View>
+              )}
+
+              {hasImages && (
+                <FullScreenImage
+                  visible={showFullScreenImage}
+                  images={images.map(img => img.uri)}
+                  imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
+                  initialIndex={fullScreenImageIndex}
+                  onClose={handleCloseFullScreenImage}
+                />
+              )}
+            </>
+          )}
         </Animated.View>
-      </Pressable>
-
-      {/* Full Screen Image Viewer */}
-      <FullScreenImage
-        visible={fullScreenImageVisible}
-        images={images.map(img => img.uri)}
-        imageIds={images.map(img => img.id).filter(Boolean) as string[]}
-        initialIndex={fullScreenImageIndex}
-        onClose={() => setFullScreenImageVisible(false)}
-      />
+      </Animated.View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
@@ -751,8 +1394,12 @@ const styles = StyleSheet.create({
   slideUpContainer: {
     height: SCREEN_HEIGHT * 0.85,
     backgroundColor: colors.background,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    // FIXED: Added border with rounded corners
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderBottomWidth: 0,
     overflow: 'hidden',
   },
   header: {
@@ -760,170 +1407,282 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    // FIXED: Reduced padding by 25% (from 16 to 12)
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    backgroundColor: colors.background,
   },
-  closeButton: {
+  headerButton: {
     padding: 8,
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: colors.text,
-  },
-  saveButton: {
-    padding: 8,
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
     color: colors.primary,
   },
-  saveButtonTextDisabled: {
-    color: colors.textTertiary,
+  saveButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12 * 1.15,
+    paddingVertical: 8 * 1.15,
+    borderRadius: 20,
+    minWidth: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveButtonDisabled: {
+    opacity: 0.4,
+  },
+  checkmarkContainer: {
+    width: 24,
+    height: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 16,
   },
-  content: {
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  scrollView: {
     flex: 1,
-    padding: 16,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 20,
+  },
+  textInputContainer: {
+    padding: 20,
+  },
+  textInputScrollView: {
+    flex: 1,
   },
   textInput: {
     fontSize: 16,
+    lineHeight: 26,
     color: colors.text,
-    minHeight: 180,
     textAlignVertical: 'top',
-    marginBottom: 16,
+    minHeight: 48 * 1.1,
   },
-  imageCounterContainer: {
-    marginBottom: 8,
+  textInputMultiline: {
+    fontSize: 17,
+    lineHeight: 26,
+    color: colors.text,
+    textAlignVertical: 'top',
   },
-  imageCounter: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    fontWeight: '500',
-  },
-  imageCarousel: {
-    marginBottom: 16,
-  },
-  imageCarouselContent: {
-    paddingRight: 16,
-  },
-  imageContainer: {
-    marginRight: IMAGE_CAROUSEL_SPACING,
+  richTextContainer: {
     position: 'relative',
+    flex: 1,
   },
-  carouselImage: {
-    width: IMAGE_CAROUSEL_WIDTH,
-    height: IMAGE_CAROUSEL_WIDTH * 1.2,
-    borderRadius: 12,
-    backgroundColor: colors.border,
+  richText: {
+    fontSize: 17,
+    lineHeight: 26,
+    color: colors.text,
   },
-  imageLoadingOverlay: {
+  overlayInput: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    borderRadius: 12,
+    color: 'transparent',
+    backgroundColor: 'transparent',
   },
-  removeImageButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 12,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.secondaryBackground,
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  locationText: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 14,
+  normalText: {
     color: colors.text,
-  },
-  removeLocationButton: {
-    padding: 4,
-  },
-  peopleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.secondaryBackground,
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  removePeopleButton: {
-    marginLeft: 8,
-    padding: 4,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 16,
-    paddingBottom: 16,
-  },
-  actionButton: {
-    alignItems: 'center',
-    padding: 12,
-  },
-  actionButtonText: {
-    marginTop: 4,
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  plusMenu: {
-    position: 'absolute',
-    bottom: 80,
-    left: 16,
-    right: 16,
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    padding: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  plusMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 8,
-  },
-  plusMenuItemText: {
-    marginLeft: 12,
-    fontSize: 16,
-    color: colors.text,
-  },
-  noteText: {
-    fontSize: 16,
-    color: colors.text,
-    lineHeight: 24,
   },
   linkText: {
     color: colors.primary,
     textDecorationLine: 'underline',
+  },
+  spacer: {
+    flex: 1,
+  },
+  imagesContainer: {
+    paddingVertical: 16,
+    marginBottom: 8,
+  },
+  imagesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  imagesTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  paginationDots: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  paginationDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.border,
+  },
+  paginationDotActive: {
+    backgroundColor: colors.primary,
+    width: 20,
+  },
+  imagesScrollContent: {
+    paddingHorizontal: 16,
+  },
+  imageWrapper: {
+    position: 'relative',
+    marginRight: IMAGE_CAROUSEL_SPACING,
+    width: IMAGE_CAROUSEL_WIDTH,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  image: {
+    width: IMAGE_CAROUSEL_WIDTH,
+    height: IMAGE_CAROUSEL_WIDTH * 0.75,
+    borderRadius: 16,
+    backgroundColor: colors.cardDark,
+  },
+  imageLoadingContainer: {
+    width: IMAGE_CAROUSEL_WIDTH,
+    height: IMAGE_CAROUSEL_WIDTH * 0.75,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.cardDark,
+    borderRadius: 16,
+  },
+  loadingImageText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 8,
+  },
+  imageActions: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  imageActionButton: {
+    // No additional styles needed
+  },
+  actionButtonCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fabBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 1001,
+  },
+  floatingActionsContainer: {
+    position: 'absolute',
+    bottom: 95,
+    right: 20,
+    flexDirection: 'column',
+    gap: 12,
+    zIndex: 1002,
+  },
+  floatingActionButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.primary,
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
+    elevation: 8,
+  },
+  toolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 12 * 1.15,
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 12 * 1.15,
+  },
+  toolbarLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 60,
+  },
+  toolbarCenter: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  toolbarRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    width: 60,
+  },
+  toolbarButton: {
+    padding: 8 * 1.15,
+  },
+  locationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: `${colors.primary}20`,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    flex: 1,
+    minWidth: 0,
+    maxWidth: 280,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  locationPillText: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '600',
+    flex: 1,
+  },
+  savingModalContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2000,
+  },
+  savingModalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    gap: 16,
+    minWidth: 200,
+  },
+  savingModalText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
   },
 });
