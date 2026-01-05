@@ -708,7 +708,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <View style={styles.searchButtonBorder}>
-                    <IconSymbol name="magnifyingglass" size={24} color={colors.primary} />
+                    <IconSymbol name="magnifyingglass" size={16} color={colors.primary} />
                   </View>
                 </Pressable>
 
@@ -720,7 +720,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <View style={styles.submitButtonBorder}>
-                    <IconSymbol name="arrow.up" size={24} color={colors.primary} />
+                    <IconSymbol name="arrow.up" size={16} color={colors.primary} />
                   </View>
                 </Pressable>
               </View>
@@ -890,9 +890,9 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   searchButtonBorder: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 16,
     borderWidth: 1.5,
     borderColor: colors.primary,
     alignItems: 'center',
@@ -902,9 +902,9 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   submitButtonBorder: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 16,
     borderWidth: 1.5,
     borderColor: colors.primary,
     alignItems: 'center',
