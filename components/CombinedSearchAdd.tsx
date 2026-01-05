@@ -16,7 +16,7 @@ import {
   AppState,
   AppStateStatus,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
@@ -35,6 +35,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { supabase } from '@/utils/supabase';
 import { SymbolView } from 'expo-symbols';
+import LocationSearchScreen from '@/app/location-search';
 
 interface CombinedSearchAddProps {
   onCreateRecall: (data: {
@@ -53,7 +54,6 @@ interface ImageState {
 
 export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
   const router = useRouter();
-  const params = useLocalSearchParams();
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageState[]>([]);
   const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string; primaryType?: string } | null>(null);
@@ -70,7 +70,8 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const lastLocationFetchRef = useRef<number>(0);
   const locationRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
-  const processedParamsRef = useRef<string>('');
+  // FIXED: Add state for location search modal
+  const [showLocationSearch, setShowLocationSearch] = useState(false);
 
   const aiIconRotation = useSharedValue(0);
   const aiIconScale = useSharedValue(1);
@@ -219,50 +220,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       setIsRefreshingLocation(false);
     }
   };
-
-  useEffect(() => {
-    if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
-      const paramsKey = `${params.selectedLatitude}-${params.selectedLongitude}-${params.selectedLocationName}`;
-      
-      if (processedParamsRef.current === paramsKey) {
-        console.log('[CombinedSearchAdd] Already processed these params, skipping');
-        return;
-      }
-      
-      processedParamsRef.current = paramsKey;
-      
-      const selectedLocation = {
-        latitude: parseFloat(params.selectedLatitude as string),
-        longitude: parseFloat(params.selectedLongitude as string),
-        name: params.selectedLocationName as string,
-        primaryType: params.selectedPrimaryType ? (params.selectedPrimaryType as string) : undefined,
-      };
-      
-      console.log('[CombinedSearchAdd] Location selected from location-search:', selectedLocation);
-      setLocation(selectedLocation);
-      setShowDrawer(false);
-      
-      setTimeout(() => {
-        try {
-          console.log('[CombinedSearchAdd] Clearing location params');
-          router.setParams({
-            selectedLatitude: undefined,
-            selectedLongitude: undefined,
-            selectedLocationName: undefined,
-            selectedDisplayName: undefined,
-            selectedFullAddress: undefined,
-            selectedPrimaryType: undefined,
-          });
-          
-          setTimeout(() => {
-            processedParamsRef.current = '';
-          }, 1000);
-        } catch (error) {
-          console.error('[CombinedSearchAdd] Error clearing params:', error);
-        }
-      }, 0);
-    }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router]);
 
   const handlePlusPress = () => {
     if (Platform.OS !== 'web') {
@@ -444,16 +401,31 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     }
   };
 
+  // FIXED: Open location search modal instead of navigating
   const handleLocationPress = () => {
     setShowDrawer(false);
+    setShowLocationSearch(true);
+  };
+
+  // FIXED: Callback for when location is selected
+  const handleLocationSelected = (selectedLocation: {
+    latitude: number;
+    longitude: number;
+    name: string;
+    primaryType?: string;
+    displayName: string;
+    formattedAddress: string;
+  }) => {
+    console.log('[CombinedSearchAdd] Location selected from modal:', selectedLocation);
     
-    setTimeout(() => {
-      try {
-        router.push('/location-search');
-      } catch (error) {
-        console.error('[CombinedSearchAdd] Error navigating to location search:', error);
-      }
-    }, 0);
+    setLocation({
+      latitude: selectedLocation.latitude,
+      longitude: selectedLocation.longitude,
+      name: selectedLocation.name,
+      primaryType: selectedLocation.primaryType,
+    });
+    
+    setShowLocationSearch(false);
   };
 
   const handleIntentChoice = (choice: 'create' | 'search') => {
@@ -513,73 +485,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       return;
     }
 
-    // FIXED: Comment out intent detector call - go straight to create recall
-    // if (images.length > 0) {
-    //   console.log('[CombinedSearchAdd] Images attached - skipping intent detection');
-    //   await handleCreateRecallDirect();
-    //   return;
-    // }
-
-    // try {
-    //   setIsDetectingIntent(true);
-    //   console.log('[CombinedSearchAdd] Running intent detector...');
-
-    //   const { data: { session } } = await supabase.auth.getSession();
-    //   if (!session) {
-    //     console.error('No active session');
-    //     Alert.alert('Error', 'Please log in to continue');
-    //     return;
-    //   }
-
-    //   const { data: intentData, error: intentError } = await supabase.functions.invoke('intent-detector', {
-    //     body: { text: text.trim() },
-    //   });
-
-    //   if (intentError) {
-    //     console.error('Error detecting intent:', intentError);
-    //     await handleCreateRecallDirect();
-    //     return;
-    //   }
-
-    //   console.log('[CombinedSearchAdd] Intent detected:', intentData);
-
-    //   const { intent, confidence } = intentData;
-
-    //   if (intent === 'create') {
-    //     console.log('[CombinedSearchAdd] Intent: CREATE recall');
-    //     await handleCreateRecallDirect();
-    //   } else if (intent === 'search') {
-    //     console.log('[CombinedSearchAdd] Intent: SEARCH');
-    //     await handleSearchPress();
-    //   } else {
-    //     console.log('[CombinedSearchAdd] Intent: UNKNOWN - presenting choice');
-    //     Alert.alert(
-    //       'What would you like to do?',
-    //       'Would you like to create a recall or search for existing recalls?',
-    //       [
-    //         {
-    //           text: 'Create Recall',
-    //           onPress: () => handleIntentChoice('create'),
-    //         },
-    //         {
-    //           text: 'Search',
-    //           onPress: () => handleIntentChoice('search'),
-    //         },
-    //         {
-    //           text: 'Cancel',
-    //           style: 'cancel',
-    //         },
-    //       ]
-    //     );
-    //   }
-    // } catch (error) {
-    //   console.error('Error in intent detection:', error);
-    //   await handleCreateRecallDirect();
-    // } finally {
-    //   setIsDetectingIntent(false);
-    // }
-
-    // FIXED: Always create recall directly
+    // FIXED: Always create recall directly (intent detector commented out)
     await handleCreateRecallDirect();
   };
 
@@ -596,153 +502,162 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const isUpArrowDisabled = (!text.trim() && images.length === 0) || !allImagesOptimized;
 
   return (
-    <TouchableWithoutFeedback onPress={dismissKeyboard}>
-      <Animated.View style={[styles.outerContainer, animatedStyle]}>
-        {showDrawer && (
-          <Animated.View
-            entering={FadeIn.duration(200)}
-            style={styles.floatingActionsContainer}
-          >
-            <Pressable
-              style={styles.floatingActionButton}
-              onPress={handleImagePick}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    <>
+      <TouchableWithoutFeedback onPress={dismissKeyboard}>
+        <Animated.View style={[styles.outerContainer, animatedStyle]}>
+          {showDrawer && (
+            <Animated.View
+              entering={FadeIn.duration(200)}
+              style={styles.floatingActionsContainer}
             >
-              <IconSymbol name="photo.fill" size={28} color={colors.primary} />
-            </Pressable>
+              <Pressable
+                style={styles.floatingActionButton}
+                onPress={handleImagePick}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+              </Pressable>
 
-            <Pressable
-              style={styles.floatingActionButton}
-              onPress={handleCameraPress}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <IconSymbol name="camera.fill" size={28} color={colors.primary} />
-            </Pressable>
-          </Animated.View>
-        )}
+              <Pressable
+                style={styles.floatingActionButton}
+                onPress={handleCameraPress}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+              </Pressable>
+            </Animated.View>
+          )}
 
-        <View style={styles.containerWrapper}>
-          <View style={styles.container}>
-            <View style={styles.inputContainer}>
-              {images.length > 0 && (
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false} 
-                  style={styles.imagesScroll}
-                  contentContainerStyle={styles.imagesScrollContent}
-                  decelerationRate="fast"
-                  snapToInterval={88}
-                  snapToAlignment="start"
-                  scrollEnabled={true}
-                  nestedScrollEnabled={true}
-                  removeClippedSubviews={false}
-                  keyboardShouldPersistTaps="handled"
-                >
-                  {images.map((imageState, index) => (
-                    <View key={index} style={styles.imageContainer}>
-                      <Image source={{ uri: imageState.uri }} style={styles.image} />
-                      {imageState.isPlaceholder && (
-                        <View style={styles.placeholderOverlay}>
-                          <ActivityIndicator size="small" color={colors.primary} />
-                          <Text style={styles.placeholderText}>Optimizing...</Text>
-                        </View>
-                      )}
-                      <Pressable
-                        style={styles.removeImageButton}
-                        onPress={() => handleRemoveImage(index)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
-                      </Pressable>
+          <View style={styles.containerWrapper}>
+            <View style={styles.container}>
+              <View style={styles.inputContainer}>
+                {images.length > 0 && (
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false} 
+                    style={styles.imagesScroll}
+                    contentContainerStyle={styles.imagesScrollContent}
+                    decelerationRate="fast"
+                    snapToInterval={88}
+                    snapToAlignment="start"
+                    scrollEnabled={true}
+                    nestedScrollEnabled={true}
+                    removeClippedSubviews={false}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {images.map((imageState, index) => (
+                      <View key={index} style={styles.imageContainer}>
+                        <Image source={{ uri: imageState.uri }} style={styles.image} />
+                        {imageState.isPlaceholder && (
+                          <View style={styles.placeholderOverlay}>
+                            <ActivityIndicator size="small" color={colors.primary} />
+                            <Text style={styles.placeholderText}>Optimizing...</Text>
+                          </View>
+                        )}
+                        <Pressable
+                          style={styles.removeImageButton}
+                          onPress={() => handleRemoveImage(index)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </ScrollView>
+                )}
+
+                <TextInput
+                  ref={textInputRef}
+                  style={styles.textInput}
+                  placeholder="Add a Recall or Search..."
+                  placeholderTextColor={colors.textTertiary}
+                  value={text}
+                  onChangeText={handleTextChange}
+                  multiline
+                  maxLength={1000}
+                  returnKeyType="default"
+                  blurOnSubmit={false}
+                  enablesReturnKeyAutomatically={false}
+                />
+
+                <View style={styles.inputRow}>
+                  {/* FIXED: Plus icon moved to the left of location */}
+                  <Pressable
+                    style={styles.plusButton}
+                    onPress={handlePlusPress}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+                  </Pressable>
+
+                  {/* Location Pill */}
+                  <Pressable
+                    style={styles.locationPillExtended}
+                    onPress={handleLocationPress}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
+                    {isRefreshingLocation ? (
+                      <ActivityIndicator size="small" color={colors.primary} style={styles.locationSpinner} />
+                    ) : (
+                      <Text style={styles.locationPillText} numberOfLines={1}>
+                        {location?.name || currentLocation?.name || 'Add Location'}
+                      </Text>
+                    )}
+                  </Pressable>
+                  
+                  <View style={styles.iconSpacer} />
+
+                  {/* FIXED: Search icon added above up arrow */}
+                  <Pressable
+                    style={styles.searchButtonContainer}
+                    onPress={handleSearchPress}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <View style={styles.searchButtonBorder}>
+                      <IconSymbol name="magnifyingglass" size={16} color={colors.primary} />
                     </View>
-                  ))}
-                </ScrollView>
-              )}
+                  </Pressable>
 
-              <TextInput
-                ref={textInputRef}
-                style={styles.textInput}
-                placeholder="Add a Recall or Search..."
-                placeholderTextColor={colors.textTertiary}
-                value={text}
-                onChangeText={handleTextChange}
-                multiline
-                maxLength={1000}
-                returnKeyType="default"
-                blurOnSubmit={false}
-                enablesReturnKeyAutomatically={false}
-              />
-
-              <View style={styles.inputRow}>
-                {/* FIXED: Plus icon moved to the left of location */}
-                <Pressable
-                  style={styles.plusButton}
-                  onPress={handlePlusPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
-                </Pressable>
-
-                {/* Location Pill */}
-                <Pressable
-                  style={styles.locationPillExtended}
-                  onPress={handleLocationPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
-                  {isRefreshingLocation ? (
-                    <ActivityIndicator size="small" color={colors.primary} style={styles.locationSpinner} />
-                  ) : (
-                    <Text style={styles.locationPillText} numberOfLines={1}>
-                      {location?.name || currentLocation?.name || 'Add Location'}
-                    </Text>
-                  )}
-                </Pressable>
-								
-                <View style={styles.iconSpacer} />
-
-                {/* FIXED: Search icon added above up arrow */}
-                <Pressable
-                  style={styles.searchButtonContainer}
-                  onPress={handleSearchPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <View style={styles.searchButtonBorder}>
-                    <IconSymbol name="magnifyingglass" size={24} color={colors.primary} />
-                  </View>
-                </Pressable>
-
-                {/* FIXED: Up arrow icon (changed from sparkles) */}
-                <Pressable
-                  style={[styles.submitButtonContainer, isUpArrowDisabled && styles.submitButtonDisabled]}
-                  onPress={handleCreateRecall}
-                  disabled={isUpArrowDisabled || isCreating || isDetectingIntent}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <View style={styles.submitButtonBorder}>
-                    <IconSymbol name="arrow.up" size={24} color={colors.primary} />
-                  </View>
-                </Pressable>
+                  {/* FIXED: Up arrow icon (changed from sparkles) */}
+                  <Pressable
+                    style={[styles.submitButtonContainer, isUpArrowDisabled && styles.submitButtonDisabled]}
+                    onPress={handleCreateRecall}
+                    disabled={isUpArrowDisabled || isCreating || isDetectingIntent}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <View style={styles.submitButtonBorder}>
+                      <IconSymbol name="arrow.up" size={16} color={colors.primary} />
+                    </View>
+                  </Pressable>
+                </View>
               </View>
             </View>
           </View>
-        </View>
 
-        {showDrawer && (
-          <Pressable 
-            style={styles.drawerBackdrop} 
-            onPress={() => setShowDrawer(false)} 
-          />
-        )}
+          {showDrawer && (
+            <Pressable 
+              style={styles.drawerBackdrop} 
+              onPress={() => setShowDrawer(false)} 
+            />
+          )}
 
-        {isCreating && savingStage && (
-          <View style={styles.savingIndicator}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.savingText}>{savingStage}</Text>
-          </View>
-        )}
-      </Animated.View>
-    </TouchableWithoutFeedback>
+          {isCreating && savingStage && (
+            <View style={styles.savingIndicator}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.savingText}>{savingStage}</Text>
+            </View>
+          )}
+        </Animated.View>
+      </TouchableWithoutFeedback>
+
+      {/* FIXED: Location search modal */}
+      <LocationSearchScreen
+        visible={showLocationSearch}
+        onClose={() => setShowLocationSearch(false)}
+        onSelectLocation={handleLocationSelected}
+      />
+    </>
   );
 }
 
@@ -890,9 +805,9 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   searchButtonBorder: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 16,
     borderWidth: 1.5,
     borderColor: colors.primary,
     alignItems: 'center',
@@ -902,9 +817,9 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   submitButtonBorder: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 16,
     borderWidth: 1.5,
     borderColor: colors.primary,
     alignItems: 'center',

@@ -18,7 +18,6 @@ import {
   NativeSyntheticEvent,
   Modal,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
@@ -43,6 +42,7 @@ import { processRecallUrls } from '@/utils/urlProcessor';
 import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
+import LocationSearchScreen from '@/app/location-search';
 
 interface ImageData {
   id?: string;
@@ -52,8 +52,8 @@ interface ImageData {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 40) * 0.35;
-const IMAGE_CAROUSEL_SPACING = 12;
+const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 40) * 0.48;
+const IMAGE_CAROUSEL_SPACING = 10;
 
 const hasUrl = (text: string): boolean => {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -68,7 +68,6 @@ interface NoteEditorSlideUpProps {
 }
 
 export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEditorSlideUpProps) {
-  const router = useRouter();
   const { user } = useAuth();
   const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote, getCachedNote } = useNotes();
 
@@ -95,6 +94,9 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const [loadedImageIndices, setLoadedImageIndices] = useState<Set<number>>(new Set());
   const [initialImageCount, setInitialImageCount] = useState(0);
 
+  // FIXED: Add state for location search modal
+  const [showLocationSearch, setShowLocationSearch] = useState(false);
+
   const isEditing = !!noteId;
   
   const canSave = text.trim().length > 0 || images.length > 0;
@@ -103,12 +105,10 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   
   const textInputHeight = hasImages ? 510 : 792;
 
-  // FIXED: Track which images have been loaded
   useEffect(() => {
     if (images.length > 0) {
-      // Mark first 2 images as loaded initially
       const initialLoaded = new Set<number>();
-      for (let i = 0; i < Math.min(2, images.length); i++) {
+      for (let i = 0; i < Math.min(3, images.length); i++) {
         if (images[i].uri) {
           initialLoaded.add(i);
         }
@@ -120,7 +120,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     }
   }, [images.length]);
 
-  // FIXED: Improved image scroll handler - load images as user scrolls
   const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const itemWidth = IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING;
@@ -133,27 +132,22 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
       setCurrentImageIndex(clampedIndex);
     }
     
-    // Load current, next, and previous images if not already loaded
     const indicesToLoad: number[] = [];
     
-    // Current image
     if (!loadedImageIndices.has(clampedIndex) && images[clampedIndex] && images[clampedIndex].id && !images[clampedIndex].uri) {
       indicesToLoad.push(clampedIndex);
     }
     
-    // Next image
     const nextIndex = clampedIndex + 1;
     if (nextIndex < images.length && !loadedImageIndices.has(nextIndex) && images[nextIndex] && images[nextIndex].id && !images[nextIndex].uri) {
       indicesToLoad.push(nextIndex);
     }
     
-    // Previous image
     const prevIndex = clampedIndex - 1;
     if (prevIndex >= 0 && !loadedImageIndices.has(prevIndex) && images[prevIndex] && images[prevIndex].id && !images[prevIndex].uri) {
       indicesToLoad.push(prevIndex);
     }
     
-    // Load images that need loading
     if (indicesToLoad.length > 0) {
       console.log(`[NoteEditorSlideUp] Loading images at indices: ${indicesToLoad.join(', ')}`);
       
@@ -704,14 +698,30 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     });
   };
 
+  // FIXED: Open location search modal instead of navigating
   const handleLocationPress = () => {
-    if (!location) {
-      console.log('No location available');
-      return;
-    }
+    setShowLocationSearch(true);
+  };
 
-    console.log('Navigating to location search screen');
-    router.push('/location-search');
+  // FIXED: Callback for when location is selected
+  const handleLocationSelected = (selectedLocation: {
+    latitude: number;
+    longitude: number;
+    name: string;
+    primaryType?: string;
+    displayName: string;
+    formattedAddress: string;
+  }) => {
+    console.log('[NoteEditorSlideUp] Location selected from modal:', selectedLocation);
+    
+    setLocation({
+      latitude: selectedLocation.latitude,
+      longitude: selectedLocation.longitude,
+    });
+    setLocationName(selectedLocation.name);
+    setLocationPrimaryType(selectedLocation.primaryType || '');
+    
+    setShowLocationSearch(false);
   };
 
   const handlePeopleChange = useCallback((newPeople: Person[]) => {
@@ -970,42 +980,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   };
 
   const handleLocationSearch = () => {
-    if (noteId) {
-      router.push(`/location-search?id=${noteId}`);
-    } else {
-      router.push('/location-search');
-    }
+    setShowLocationSearch(true);
   };
-
-  useEffect(() => {
-    if (!visible) {
-      return;
-    }
-
-    const params = router.params as any;
-    
-    if (params?.selectedLatitude && params?.selectedLongitude && params?.selectedLocationName) {
-      const latitude = parseFloat(params.selectedLatitude);
-      const longitude = parseFloat(params.selectedLongitude);
-      const formattedName = params.selectedLocationName;
-      const primaryType = params.selectedPrimaryType || '';
-
-      console.log('[NoteEditorSlideUp] Location updated from search:', { latitude, longitude, formattedName, primaryType });
-      
-      setLocation({ latitude, longitude });
-      setLocationName(formattedName);
-      setLocationPrimaryType(primaryType);
-
-      router.setParams({
-        selectedLatitude: undefined,
-        selectedLongitude: undefined,
-        selectedLocationName: undefined,
-        selectedDisplayName: undefined,
-        selectedFullAddress: undefined,
-        selectedPrimaryType: undefined,
-      });
-    }
-  }, [visible, router]);
 
   const handleImagePress = (index: number) => {
     setFullScreenImageIndex(index);
@@ -1033,299 +1009,307 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     return null;
   }
 
-  // FIXED: Check if images > 2 are all loaded
   const allImagesLoaded = images.length <= 2 || images.every((img, index) => index < 2 || loadedImageIndices.has(index) || img.uri);
 
   return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="none"
-      onRequestClose={onClose}
-    >
-      <Animated.View
-        entering={FadeIn.duration(200)}
-        style={styles.overlay}
+    <>
+      <Modal
+        visible={visible}
+        transparent={true}
+        animationType="none"
+        onRequestClose={onClose}
       >
-        <Pressable 
-          style={StyleSheet.absoluteFill} 
-          onPress={onClose}
-        />
-        
         <Animated.View
-          entering={SlideInDown.duration(300).springify()}
-          style={styles.slideUpContainer}
+          entering={FadeIn.duration(200)}
+          style={styles.overlay}
         >
-          {loadingNote ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>Loading note...</Text>
-            </View>
-          ) : (
-            <>
-              <View style={styles.header}>
-                <Pressable 
-                  onPress={onClose} 
-                  style={styles.headerButton}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol name="xmark" size={24} color={colors.text} />
-                </Pressable>
-                
-                <Text style={styles.headerTitle}>
-                  {isEditing ? 'Edit Recall' : 'New Recall'}
-                </Text>
-                
-                <Pressable
-                  onPress={handleSave}
-                  disabled={saving || !canSave}
-                  style={[
-                    styles.saveButton,
-                    (saving || !canSave) && styles.saveButtonDisabled,
-                  ]}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  {saving ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <View style={styles.checkmarkContainer}>
-                      <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
-                    </View>
-                  )}
-                </Pressable>
+          <Pressable 
+            style={StyleSheet.absoluteFill} 
+            onPress={onClose}
+          />
+          
+          <Animated.View
+            entering={SlideInDown.duration(300).springify()}
+            style={styles.slideUpContainer}
+          >
+            {loadingNote ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.loadingText}>Loading note...</Text>
               </View>
+            ) : (
+              <>
+                <View style={styles.header}>
+                  <Pressable 
+                    onPress={onClose} 
+                    style={styles.headerButton}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol name="xmark" size={24} color={colors.text} />
+                  </Pressable>
+                  
+                  <Text style={styles.headerTitle}>
+                    {isEditing ? 'Edit Recall' : 'New Recall'}
+                  </Text>
+                  
+                  <Pressable
+                    onPress={handleSave}
+                    disabled={saving || !canSave}
+                    style={[
+                      styles.saveButton,
+                      (saving || !canSave) && styles.saveButtonDisabled,
+                    ]}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    {saving ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <View style={styles.checkmarkContainer}>
+                        <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
+                      </View>
+                    )}
+                  </Pressable>
+                </View>
 
-              {showFABs && (
-                <Pressable 
-                  style={styles.fabBackdrop} 
-                  onPress={handleBackdropPress}
-                />
-              )}
+                {showFABs && (
+                  <Pressable 
+                    style={styles.fabBackdrop} 
+                    onPress={handleBackdropPress}
+                  />
+                )}
 
-              <ScrollView 
-                ref={scrollViewRef}
-                style={styles.scrollView} 
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
-                scrollEnabled={true}
-              >
-                <Pressable 
-                  onPress={handleRichTextPress}
-                  style={[styles.textInputContainer, { height: textInputHeight }]}
+                <ScrollView 
+                  ref={scrollViewRef}
+                  style={styles.scrollView} 
+                  contentContainerStyle={styles.scrollContent}
+                  keyboardShouldPersistTaps="handled"
+                  scrollEnabled={true}
                 >
-                  {textHasUrl ? (
-                    <View style={styles.richTextContainer}>
+                  <Pressable 
+                    onPress={handleRichTextPress}
+                    style={[styles.textInputContainer, { height: textInputHeight }]}
+                  >
+                    {textHasUrl ? (
+                      <View style={styles.richTextContainer}>
+                        <ScrollView 
+                          style={styles.textInputScrollView}
+                          nestedScrollEnabled={true}
+                          showsVerticalScrollIndicator={true}
+                        >
+                          <Pressable onPress={handleRichTextPress}>
+                            <Text style={styles.richText}>
+                              {renderTextWithLinks(text)}
+                            </Text>
+                          </Pressable>
+                        </ScrollView>
+                        <TextInput
+                          ref={textInputRef}
+                          style={[styles.textInput, styles.overlayInput]}
+                          placeholder="What do you want to Recall?"
+                          placeholderTextColor={colors.textTertiary}
+                          value={text}
+                          onChangeText={setText}
+                          multiline
+                          autoFocus={false}
+                          scrollEnabled={false}
+                          caretHidden={false}
+                        />
+                      </View>
+                    ) : (
                       <ScrollView 
                         style={styles.textInputScrollView}
                         nestedScrollEnabled={true}
                         showsVerticalScrollIndicator={true}
                       >
-                        <Pressable onPress={handleRichTextPress}>
-                          <Text style={styles.richText}>
-                            {renderTextWithLinks(text)}
-                          </Text>
-                        </Pressable>
+                        <TextInput
+                          ref={textInputRef}
+                          style={styles.textInputMultiline}
+                          placeholder="What do you want to Recall?"
+                          placeholderTextColor={colors.textTertiary}
+                          value={text}
+                          onChangeText={setText}
+                          multiline
+                          autoFocus={false}
+                          scrollEnabled={false}
+                        />
                       </ScrollView>
-                      <TextInput
-                        ref={textInputRef}
-                        style={[styles.textInput, styles.overlayInput]}
-                        placeholder="What do you want to Recall?"
-                        placeholderTextColor={colors.textTertiary}
-                        value={text}
-                        onChangeText={setText}
-                        multiline
-                        autoFocus={false}
-                        scrollEnabled={false}
-                        caretHidden={false}
-                      />
-                    </View>
-                  ) : (
-                    <ScrollView 
-                      style={styles.textInputScrollView}
-                      nestedScrollEnabled={true}
-                      showsVerticalScrollIndicator={true}
-                    >
-                      <TextInput
-                        ref={textInputRef}
-                        style={styles.textInputMultiline}
-                        placeholder="What do you want to Recall?"
-                        placeholderTextColor={colors.textTertiary}
-                        value={text}
-                        onChangeText={setText}
-                        multiline
-                        autoFocus={false}
-                        scrollEnabled={false}
-                      />
-                    </ScrollView>
-                  )}
-                </Pressable>
-
-                <View style={styles.spacer} />
-              </ScrollView>
-
-              <PeopleAvatarsRow 
-                people={people} 
-                avatarSize={44} 
-                onPeopleChange={handlePeopleChange}
-                recallId={isEditing ? noteId : undefined}
-              />
-
-              {hasImages && (
-                <View style={styles.imagesContainer}>
-                  <View style={styles.imagesHeader}>
-                    <Text style={styles.imagesTitle}>{images.length} {images.length === 1 ? 'Image' : 'Images'}</Text>
-                  </View>
-                  <ScrollView
-                    ref={imageScrollRef}
-                    horizontal
-                    pagingEnabled={false}
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.imagesScrollContent}
-                    onScroll={handleImageScroll}
-                    scrollEventThrottle={16}
-                    decelerationRate={0.9}
-                    snapToInterval={IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING}
-                    snapToAlignment="start"
-                  >
-                    {images.map((image, index) => {
-                      const isLoaded = loadedImageIndices.has(index) || image.uri;
-                      
-                      return (
-                        <Pressable 
-                          key={`${image.id || 'new'}-${index}`} 
-                          style={styles.imageWrapper}
-                          onPress={() => handleImagePress(index)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          {!isLoaded ? (
-                            <View style={styles.imageLoadingContainer}>
-                              <ActivityIndicator size="large" color={colors.primary} />
-                              <Text style={styles.loadingImageText}>Loading...</Text>
-                            </View>
-                          ) : (
-                            <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
-                          )}
-                          <View style={styles.imageActions}>
-                            <Pressable
-                              onPress={() => removeImage(index)}
-                              style={styles.imageActionButton}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <View style={styles.actionButtonCircle}>
-                                <IconSymbol name="xmark" size={14} color="#FFFFFF" />
-                              </View>
-                            </Pressable>
-                          </View>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-              )}
-
-              {showFABs && (
-                <Animated.View
-                  entering={FadeIn.duration(200)}
-                  style={[
-                    styles.floatingActionsContainer,
-                    keyboardVisible && Platform.OS === 'ios' && {
-                      bottom: keyboardHeight + 60,
-                    },
-                  ]}
-                >
-                  <Pressable
-                    style={styles.floatingActionButton}
-                    onPress={handleChooseFromLibrary}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <IconSymbol name="photo.fill" size={28} color={colors.primary} />
-                  </Pressable>
-
-                  <Pressable
-                    style={styles.floatingActionButton}
-                    onPress={handleTakePhoto}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <IconSymbol name="camera.fill" size={28} color={colors.primary} />
-                  </Pressable>
-                </Animated.View>
-              )}
-
-              <View style={[
-                styles.toolbar,
-                keyboardVisible && Platform.OS === 'ios' && { 
-                  position: 'absolute',
-                  bottom: keyboardHeight,
-                  left: 0,
-                  right: 0,
-                }
-              ]}>
-                <View style={styles.toolbarLeft}>
-                  <Pressable
-                    onPress={toggleKeyboard}
-                    style={styles.toolbarButton}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <IconSymbol 
-                      name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-                      size={26} 
-                      color={colors.primary} 
-                    />
-                  </Pressable>
-                </View>
-
-                <View style={styles.toolbarCenter}>
-                  <Pressable
-                    style={styles.locationPill}
-                    onPress={handleLocationSearch}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
-                    <Text style={styles.locationPillText} numberOfLines={1}>
-                      {locationName || 'Add Location'}
-                    </Text>
-                  </Pressable>
-                </View>
-
-                <View style={styles.toolbarRight}>
-                  <Pressable
-                    onPress={handlePlusPress}
-                    disabled={loading}
-                    style={styles.toolbarButton}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    {loading ? (
-                      <ActivityIndicator size="small" color={colors.primary} />
-                    ) : (
-                      <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
                     )}
                   </Pressable>
-                </View>
-              </View>
 
-              {saving && (
-                <View style={styles.savingModalContainer}>
-                  <View style={styles.savingModalContent}>
-                    <ActivityIndicator size="large" color={colors.primary} />
-                    <Text style={styles.savingModalText}>Saving Recall...</Text>
+                  <View style={styles.spacer} />
+                </ScrollView>
+
+                <PeopleAvatarsRow 
+                  people={people} 
+                  avatarSize={44} 
+                  onPeopleChange={handlePeopleChange}
+                  recallId={isEditing ? noteId : undefined}
+                />
+
+                {hasImages && (
+                  <View style={styles.imagesContainer}>
+                    <View style={styles.imagesHeader}>
+                      <Text style={styles.imagesTitle}>{images.length} {images.length === 1 ? 'Image' : 'Images'}</Text>
+                    </View>
+                    <ScrollView
+                      ref={imageScrollRef}
+                      horizontal
+                      pagingEnabled={false}
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.imagesScrollContent}
+                      onScroll={handleImageScroll}
+                      scrollEventThrottle={16}
+                      decelerationRate={0.9}
+                      snapToInterval={IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING}
+                      snapToAlignment="start"
+                    >
+                      {images.map((image, index) => {
+                        const isLoaded = loadedImageIndices.has(index) || image.uri;
+                        
+                        return (
+                          <Pressable 
+                            key={`${image.id || 'new'}-${index}`} 
+                            style={styles.imageWrapper}
+                            onPress={() => handleImagePress(index)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            {!isLoaded ? (
+                              <View style={styles.imageLoadingContainer}>
+                                <ActivityIndicator size="large" color={colors.primary} />
+                                <Text style={styles.loadingImageText}>Loading...</Text>
+                              </View>
+                            ) : (
+                              <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
+                            )}
+                            <View style={styles.imageActions}>
+                              <Pressable
+                                onPress={() => removeImage(index)}
+                                style={styles.imageActionButton}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <View style={styles.actionButtonCircle}>
+                                  <IconSymbol name="xmark" size={12} color="#FFFFFF" />
+                                </View>
+                              </Pressable>
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {showFABs && (
+                  <Animated.View
+                    entering={FadeIn.duration(200)}
+                    style={[
+                      styles.floatingActionsContainer,
+                      keyboardVisible && Platform.OS === 'ios' && {
+                        bottom: keyboardHeight + 60,
+                      },
+                    ]}
+                  >
+                    <Pressable
+                      style={styles.floatingActionButton}
+                      onPress={handleChooseFromLibrary}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+                    </Pressable>
+
+                    <Pressable
+                      style={styles.floatingActionButton}
+                      onPress={handleTakePhoto}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+                    </Pressable>
+                  </Animated.View>
+                )}
+
+                <View style={[
+                  styles.toolbar,
+                  keyboardVisible && Platform.OS === 'ios' && { 
+                    position: 'absolute',
+                    bottom: keyboardHeight,
+                    left: 0,
+                    right: 0,
+                  }
+                ]}>
+                  <View style={styles.toolbarLeft}>
+                    <Pressable
+                      onPress={toggleKeyboard}
+                      style={styles.toolbarButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <IconSymbol 
+                        name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+                        size={26} 
+                        color={colors.primary} 
+                      />
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.toolbarCenter}>
+                    <Pressable
+                      style={styles.locationPill}
+                      onPress={handleLocationSearch}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
+                      <Text style={styles.locationPillText} numberOfLines={1}>
+                        {locationName || 'Add Location'}
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.toolbarRight}>
+                    <Pressable
+                      onPress={handlePlusPress}
+                      disabled={loading}
+                      style={styles.toolbarButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      {loading ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      ) : (
+                        <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+                      )}
+                    </Pressable>
                   </View>
                 </View>
-              )}
 
-              {hasImages && (
-                <FullScreenImage
-                  visible={showFullScreenImage}
-                  images={images.map(img => img.uri)}
-                  imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
-                  initialIndex={fullScreenImageIndex}
-                  onClose={handleCloseFullScreenImage}
-                />
-              )}
-            </>
-          )}
+                {saving && (
+                  <View style={styles.savingModalContainer}>
+                    <View style={styles.savingModalContent}>
+                      <ActivityIndicator size="large" color={colors.primary} />
+                      <Text style={styles.savingModalText}>Saving Recall...</Text>
+                    </View>
+                  </View>
+                )}
+
+                {hasImages && (
+                  <FullScreenImage
+                    visible={showFullScreenImage}
+                    images={images.map(img => img.uri)}
+                    imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
+                    initialIndex={fullScreenImageIndex}
+                    onClose={handleCloseFullScreenImage}
+                  />
+                )}
+              </>
+            )}
+          </Animated.View>
         </Animated.View>
-      </Animated.View>
-    </Modal>
+      </Modal>
+
+      {/* FIXED: Location search modal */}
+      <LocationSearchScreen
+        visible={showLocationSearch}
+        onClose={() => setShowLocationSearch(false)}
+        onSelectLocation={handleLocationSelected}
+      />
+    </>
   );
 }
 
@@ -1492,8 +1476,8 @@ const styles = StyleSheet.create({
   },
   imageActions: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: 6,
+    right: 6,
     flexDirection: 'row',
     gap: 8,
   },
@@ -1501,8 +1485,8 @@ const styles = StyleSheet.create({
     // No additional styles needed
   },
   actionButtonCircle: {
-    width: 28,
-    height: 28,
+    width: 24,
+    height: 24,
     borderRadius: 14,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',

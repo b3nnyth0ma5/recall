@@ -16,19 +16,29 @@ import {
   Dimensions,
 } from 'react-native';
 import * as Location from 'expo-location';
-import { useRouter, useLocalSearchParams } from 'expo-router';
 import Animated, { FadeIn, FadeInDown, SlideInDown } from 'react-native-reanimated';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
-import { supabase } from '@/utils/supabase';
 import { searchPlaces, searchNearbyPlaces, PlaceResult, extractShortLocationName, isGooglePlacesConfigured } from '@/utils/googlePlaces';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-export default function LocationSearchScreen() {
-  const router = useRouter();
-  const params = useLocalSearchParams();
-  const [searchQuery, setSearchQuery] = useState('');
+interface LocationSearchProps {
+  visible: boolean;
+  onClose: () => void;
+  onSelectLocation: (location: {
+    latitude: number;
+    longitude: number;
+    name: string;
+    primaryType?: string;
+    displayName: string;
+    formattedAddress: string;
+  }) => void;
+  initialQuery?: string;
+}
+
+export default function LocationSearchScreen({ visible, onClose, onSelectLocation, initialQuery }: LocationSearchProps) {
+  const [searchQuery, setSearchQuery] = useState(initialQuery || '');
   const [results, setResults] = useState<PlaceResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingNearby, setLoadingNearby] = useState(false);
@@ -36,7 +46,6 @@ export default function LocationSearchScreen() {
   const [apiConfigured, setApiConfigured] = useState(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const searchInputRef = React.useRef<TextInput>(null);
-  const [visible, setVisible] = useState(true);
 
   const checkApiConfiguration = useCallback(() => {
     const configured = isGooglePlacesConfigured();
@@ -97,8 +106,10 @@ export default function LocationSearchScreen() {
   }, [loadNearbyPlaces]);
 
   useEffect(() => {
-    getUserLocation();
-    checkApiConfiguration();
+    if (visible) {
+      getUserLocation();
+      checkApiConfiguration();
+    }
 
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
       setKeyboardVisible(true);
@@ -111,7 +122,7 @@ export default function LocationSearchScreen() {
       keyboardDidHideListener.remove();
       keyboardDidShowListener.remove();
     };
-  }, [getUserLocation, checkApiConfiguration]);
+  }, [visible, getUserLocation, checkApiConfiguration]);
 
   const performSearch = useCallback(async (searchText: string) => {
     if (!searchText.trim()) {
@@ -149,11 +160,11 @@ export default function LocationSearchScreen() {
   }, [userLocation, apiConfigured, loadNearbyPlaces]);
 
   useEffect(() => {
-    if (params.query && typeof params.query === 'string') {
-      setSearchQuery(params.query);
-      performSearch(params.query);
+    if (initialQuery && visible) {
+      setSearchQuery(initialQuery);
+      performSearch(initialQuery);
     }
-  }, [params.query, performSearch]);
+  }, [initialQuery, visible, performSearch]);
 
   useEffect(() => {
     if (searchQuery.trim().length > 2) {
@@ -190,43 +201,18 @@ export default function LocationSearchScreen() {
         locality: location.locality,
       });
 
-      if (params.id) {
-        const noteId = params.id as string;
-        console.log('[LocationSearch] Updating location for note:', noteId);
+      // FIXED: Call the callback instead of using router.setParams
+      onSelectLocation({
+        latitude: location.latitude,
+        longitude: location.longitude,
+        name: formattedLocationName,
+        primaryType: location.primaryTypeDisplayName || undefined,
+        displayName: location.displayName,
+        formattedAddress: location.formattedAddress,
+      });
 
-        const { error } = await supabase
-          .from('recalls')
-          .update({
-            latitude: location.latitude,
-            longitude: location.longitude,
-            location: formattedLocationName,
-            location_primary_type: location.primaryTypeDisplayName || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', noteId);
-
-        if (error) {
-          console.error('[LocationSearch] Error updating location in database:', error);
-          Alert.alert('Error', 'Failed to update location');
-        } else {
-          console.log('[LocationSearch] Location updated successfully in database with formatted name:', formattedLocationName);
-          console.log('[LocationSearch] Primary type:', location.primaryTypeDisplayName || 'Not available');
-        }
-      }
-
-      setVisible(false);
-      
-      setTimeout(() => {
-        router.back();
-        router.setParams({
-          selectedLatitude: location.latitude.toString(),
-          selectedLongitude: location.longitude.toString(),
-          selectedLocationName: formattedLocationName,
-          selectedDisplayName: location.displayName,
-          selectedFullAddress: location.formattedAddress,
-          selectedPrimaryType: location.primaryTypeDisplayName || '',
-        });
-      }, 100);
+      // Close the modal
+      onClose();
     } catch (error) {
       console.error('[LocationSearch] Error processing location:', error);
       Alert.alert('Error', 'Failed to process location');
@@ -246,10 +232,7 @@ export default function LocationSearchScreen() {
   };
 
   const handleClose = () => {
-    setVisible(false);
-    setTimeout(() => {
-      router.back();
-    }, 100);
+    onClose();
   };
 
   return (
@@ -463,7 +446,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
-    // FIXED: Increased z-index to appear above NoteEditorSlideUp
     zIndex: 2000,
   },
   slideUpContainer: {
@@ -475,7 +457,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderBottomWidth: 0,
     overflow: 'hidden',
-    // FIXED: Increased z-index to appear above NoteEditorSlideUp
     zIndex: 2001,
   },
   container: {
