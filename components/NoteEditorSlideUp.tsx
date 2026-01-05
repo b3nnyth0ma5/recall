@@ -52,8 +52,8 @@ interface ImageData {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 40) * 0.35;
-const IMAGE_CAROUSEL_SPACING = 12;
+const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 40) * 0.48;
+const IMAGE_CAROUSEL_SPACING = 10;
 
 const hasUrl = (text: string): boolean => {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -106,9 +106,9 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   // FIXED: Track which images have been loaded
   useEffect(() => {
     if (images.length > 0) {
-      // Mark first 2 images as loaded initially
+      // Mark first 3 images as loaded initially
       const initialLoaded = new Set<number>();
-      for (let i = 0; i < Math.min(2, images.length); i++) {
+      for (let i = 0; i < Math.min(3, images.length); i++) {
         if (images[i].uri) {
           initialLoaded.add(i);
         }
@@ -1212,7 +1212,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             >
                               <View style={styles.actionButtonCircle}>
-                                <IconSymbol name="xmark" size={14} color="#FFFFFF" />
+                                <IconSymbol name="xmark" size={12} color="#FFFFFF" />
                               </View>
                             </Pressable>
                           </View>
@@ -1492,8 +1492,8 @@ const styles = StyleSheet.create({
   },
   imageActions: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: 6,
+    right: 6,
     flexDirection: 'row',
     gap: 8,
   },
@@ -1501,8 +1501,8 @@ const styles = StyleSheet.create({
     // No additional styles needed
   },
   actionButtonCircle: {
-    width: 28,
-    height: 28,
+    width: 24,
+    height: 24,
     borderRadius: 14,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
