@@ -780,9 +780,9 @@ const styles = StyleSheet.create({
     backgroundColor: `${colors.primary}20`,
     paddingVertical: 6,
     paddingRight: 8,
-    paddingLeft: 8,
+    paddingLeft: 4,
     borderRadius: 16,
-    maxWidth: '70%',
+    maxWidth: '65%',
     borderWidth: 1,
     borderColor: colors.primary,
     flexShrink: 1,
@@ -800,11 +800,11 @@ const styles = StyleSheet.create({
   rightIconsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
     flexShrink: 0,
   },
   searchButtonContainer: {
-    padding: 0,
+    padding: 4,
     flexShrink: 0,
   },
   searchButtonBorder: {
@@ -817,7 +817,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   submitButtonContainer: {
-    padding: 0,
+    padding: 4,
     flexShrink: 0,
   },
   submitButtonBorder: {
