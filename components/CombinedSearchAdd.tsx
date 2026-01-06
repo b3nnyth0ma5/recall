@@ -35,7 +35,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { supabase } from '@/utils/supabase';
 import { SymbolView } from 'expo-symbols';
-import LocationSearchScreen from '@/app/location-search';
 
 interface CombinedSearchAddProps {
   onCreateRecall: (data: {
@@ -69,8 +68,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const translateY = useSharedValue(0);
   const lastLocationFetchRef = useRef<number>(0);
   const locationRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const [showLocationSearch, setShowLocationSearch] = useState(false);
 
   const aiIconRotation = useSharedValue(0);
   const aiIconScale = useSharedValue(1);
@@ -402,27 +399,8 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
   const handleLocationPress = () => {
     setShowDrawer(false);
-    setShowLocationSearch(true);
-  };
-
-  const handleLocationSelected = (selectedLocation: {
-    latitude: number;
-    longitude: number;
-    name: string;
-    primaryType?: string;
-    displayName: string;
-    formattedAddress: string;
-  }) => {
-    console.log('[CombinedSearchAdd] Location selected from modal:', selectedLocation);
-    
-    setLocation({
-      latitude: selectedLocation.latitude,
-      longitude: selectedLocation.longitude,
-      name: selectedLocation.name,
-      primaryType: selectedLocation.primaryType,
-    });
-    
-    setShowLocationSearch(false);
+    // Navigate to location search route
+    router.push('/location-search');
   };
 
   const handleIntentChoice = (choice: 'create' | 'search') => {
@@ -498,162 +476,154 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const isUpArrowDisabled = (!text.trim() && images.length === 0) || !allImagesOptimized;
 
   return (
-    <>
-      <TouchableWithoutFeedback onPress={dismissKeyboard}>
-        <Animated.View style={[styles.outerContainer, animatedStyle]}>
-          {showDrawer && (
-            <Animated.View
-              entering={FadeIn.duration(200)}
-              style={styles.floatingActionsContainer}
+    <TouchableWithoutFeedback onPress={dismissKeyboard}>
+      <Animated.View style={[styles.outerContainer, animatedStyle]}>
+        {showDrawer && (
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={styles.floatingActionsContainer}
+          >
+            <Pressable
+              style={styles.floatingActionButton}
+              onPress={handleImagePick}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Pressable
-                style={styles.floatingActionButton}
-                onPress={handleImagePick}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <IconSymbol name="photo.fill" size={28} color={colors.primary} />
-              </Pressable>
+              <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+            </Pressable>
 
-              <Pressable
-                style={styles.floatingActionButton}
-                onPress={handleCameraPress}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <IconSymbol name="camera.fill" size={28} color={colors.primary} />
-              </Pressable>
-            </Animated.View>
-          )}
+            <Pressable
+              style={styles.floatingActionButton}
+              onPress={handleCameraPress}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+            </Pressable>
+          </Animated.View>
+        )}
 
-          <View style={styles.containerWrapper}>
-            <View style={styles.container}>
-              <View style={styles.inputContainer}>
-                {images.length > 0 && (
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false} 
-                    style={styles.imagesScroll}
-                    contentContainerStyle={styles.imagesScrollContent}
-                    decelerationRate="fast"
-                    snapToInterval={88}
-                    snapToAlignment="start"
-                    scrollEnabled={true}
-                    nestedScrollEnabled={true}
-                    removeClippedSubviews={false}
-                    keyboardShouldPersistTaps="handled"
-                  >
-                    {images.map((imageState, index) => (
-                      <View key={index} style={styles.imageContainer}>
-                        <Image source={{ uri: imageState.uri }} style={styles.image} />
-                        {imageState.isPlaceholder && (
-                          <View style={styles.placeholderOverlay}>
-                            <ActivityIndicator size="small" color={colors.primary} />
-                            <Text style={styles.placeholderText}>Optimizing...</Text>
-                          </View>
-                        )}
-                        <Pressable
-                          style={styles.removeImageButton}
-                          onPress={() => handleRemoveImage(index)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
-                        </Pressable>
-                      </View>
-                    ))}
-                  </ScrollView>
-                )}
+        <View style={styles.containerWrapper}>
+          <View style={styles.container}>
+            <View style={styles.inputContainer}>
+              {images.length > 0 && (
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  style={styles.imagesScroll}
+                  contentContainerStyle={styles.imagesScrollContent}
+                  decelerationRate="fast"
+                  snapToInterval={88}
+                  snapToAlignment="start"
+                  scrollEnabled={true}
+                  nestedScrollEnabled={true}
+                  removeClippedSubviews={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {images.map((imageState, index) => (
+                    <View key={index} style={styles.imageContainer}>
+                      <Image source={{ uri: imageState.uri }} style={styles.image} />
+                      {imageState.isPlaceholder && (
+                        <View style={styles.placeholderOverlay}>
+                          <ActivityIndicator size="small" color={colors.primary} />
+                          <Text style={styles.placeholderText}>Optimizing...</Text>
+                        </View>
+                      )}
+                      <Pressable
+                        style={styles.removeImageButton}
+                        onPress={() => handleRemoveImage(index)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
+                      </Pressable>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
 
-                <TextInput
-                  ref={textInputRef}
-                  style={styles.textInput}
-                  placeholder="Add a Recall or Search..."
-                  placeholderTextColor={colors.textTertiary}
-                  value={text}
-                  onChangeText={handleTextChange}
-                  multiline
-                  maxLength={1000}
-                  returnKeyType="default"
-                  blurOnSubmit={false}
-                  enablesReturnKeyAutomatically={false}
-                />
+              <TextInput
+                ref={textInputRef}
+                style={styles.textInput}
+                placeholder="Add a Recall or Search..."
+                placeholderTextColor={colors.textTertiary}
+                value={text}
+                onChangeText={handleTextChange}
+                multiline
+                maxLength={1000}
+                returnKeyType="default"
+                blurOnSubmit={false}
+                enablesReturnKeyAutomatically={false}
+              />
 
-                <View style={styles.inputRow}>
-                  {/* Plus icon - fixed position on the left */}
+              <View style={styles.inputRow}>
+                {/* Plus icon - fixed position on the left */}
+                <Pressable
+                  style={styles.plusButton}
+                  onPress={handlePlusPress}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+                </Pressable>
+
+                {/* Location Pill - flexible, expands/collapses up to 70% */}
+                <Pressable
+                  style={styles.locationPillExtended}
+                  onPress={handleLocationPress}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
+                  {isRefreshingLocation ? (
+                    <ActivityIndicator size="small" color={colors.primary} style={styles.locationSpinner} />
+                  ) : (
+                    <Text style={styles.locationPillText} numberOfLines={1}>
+                      {location?.name || currentLocation?.name || 'Add Location'}
+                    </Text>
+                  )}
+                </Pressable>
+
+                {/* Right side icons container - fixed position */}
+                <View style={styles.rightIconsContainer}>
+                  {/* Search icon - bottom right */}
                   <Pressable
-                    style={styles.plusButton}
-                    onPress={handlePlusPress}
+                    style={styles.searchButtonContainer}
+                    onPress={handleSearchPress}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+                    <View style={styles.searchButtonBorder}>
+                      <IconSymbol name="magnifyingglass" size={16} color={colors.primary} />
+                    </View>
                   </Pressable>
 
-                  {/* Location Pill - flexible, expands/collapses up to 70% */}
+                  {/* Up arrow icon - top right, vertically aligned with search */}
                   <Pressable
-                    style={styles.locationPillExtended}
-                    onPress={handleLocationPress}
+                    style={[styles.submitButtonContainer, isUpArrowDisabled && styles.submitButtonDisabled]}
+                    onPress={handleCreateRecall}
+                    disabled={isUpArrowDisabled || isCreating || isDetectingIntent}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
-                    {isRefreshingLocation ? (
-                      <ActivityIndicator size="small" color={colors.primary} style={styles.locationSpinner} />
-                    ) : (
-                      <Text style={styles.locationPillText} numberOfLines={1}>
-                        {location?.name || currentLocation?.name || 'Add Location'}
-                      </Text>
-                    )}
+                    <View style={styles.submitButtonBorder}>
+                      <IconSymbol name="arrow.up" size={16} color={colors.primary} />
+                    </View>
                   </Pressable>
-
-                  {/* Right side icons container - fixed position */}
-                  <View style={styles.rightIconsContainer}>
-                    {/* Search icon - bottom right */}
-                    <Pressable
-                      style={styles.searchButtonContainer}
-                      onPress={handleSearchPress}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <View style={styles.searchButtonBorder}>
-                        <IconSymbol name="magnifyingglass" size={16} color={colors.primary} />
-                      </View>
-                    </Pressable>
-
-                    {/* Up arrow icon - top right, vertically aligned with search */}
-                    <Pressable
-                      style={[styles.submitButtonContainer, isUpArrowDisabled && styles.submitButtonDisabled]}
-                      onPress={handleCreateRecall}
-                      disabled={isUpArrowDisabled || isCreating || isDetectingIntent}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <View style={styles.submitButtonBorder}>
-                        <IconSymbol name="arrow.up" size={16} color={colors.primary} />
-                      </View>
-                    </Pressable>
-                  </View>
                 </View>
               </View>
             </View>
           </View>
+        </View>
 
-          {showDrawer && (
-            <Pressable 
-              style={styles.drawerBackdrop} 
-              onPress={() => setShowDrawer(false)} 
-            />
-          )}
+        {showDrawer && (
+          <Pressable 
+            style={styles.drawerBackdrop} 
+            onPress={() => setShowDrawer(false)} 
+          />
+        )}
 
-          {isCreating && savingStage && (
-            <View style={styles.savingIndicator}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.savingText}>{savingStage}</Text>
-            </View>
-          )}
-        </Animated.View>
-      </TouchableWithoutFeedback>
-
-      <LocationSearchScreen
-        visible={showLocationSearch}
-        onClose={() => setShowLocationSearch(false)}
-        onSelectLocation={handleLocationSelected}
-      />
-    </>
+        {isCreating && savingStage && (
+          <View style={styles.savingIndicator}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.savingText}>{savingStage}</Text>
+          </View>
+        )}
+      </Animated.View>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -780,9 +750,9 @@ const styles = StyleSheet.create({
     backgroundColor: `${colors.primary}20`,
     paddingVertical: 6,
     paddingRight: 8,
-    paddingLeft: 8,
+    paddingLeft: 4,
     borderRadius: 16,
-    maxWidth: '70%',
+    maxWidth: '65%',
     borderWidth: 1,
     borderColor: colors.primary,
     flexShrink: 1,
@@ -800,11 +770,11 @@ const styles = StyleSheet.create({
   rightIconsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
     flexShrink: 0,
   },
   searchButtonContainer: {
-    padding: 0,
+    padding: 4,
     flexShrink: 0,
   },
   searchButtonBorder: {
@@ -817,7 +787,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   submitButtonContainer: {
-    padding: 0,
+    padding: 8,
     flexShrink: 0,
   },
   submitButtonBorder: {
