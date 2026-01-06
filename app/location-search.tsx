@@ -185,8 +185,7 @@ export default function LocationSearchScreen() {
         locality: location.locality,
       });
 
-      // Navigate back with location data
-      router.back();
+      // Pass location data back to the originating component via router.setParams()
       router.setParams({
         selectedLatitude: location.latitude.toString(),
         selectedLongitude: location.longitude.toString(),
@@ -195,6 +194,9 @@ export default function LocationSearchScreen() {
         selectedFullAddress: location.formattedAddress,
         selectedPrimaryType: location.primaryTypeDisplayName || '',
       });
+      
+      // Navigate back after setting params
+      router.back();
     } catch (error) {
       console.error('[LocationSearch] Error processing location:', error);
       Alert.alert('Error', 'Failed to process location');

@@ -1528,18 +1528,19 @@ export default function NoteEditorScreen() {
           right: 0,
         }
       ]}>
-        {/* Keyboard icons - Left aligned (swapped from right) */}
+        {/* Plus icon - Left aligned (swapped positions) */}
         <View style={styles.toolbarLeft}>
           <Pressable
-            onPress={toggleKeyboard}
+            onPress={handlePlusPress}
+            disabled={loading}
             style={styles.toolbarButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <IconSymbol 
-              name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-              size={26} 
-              color={colors.primary} 
-            />
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+            )}
           </Pressable>
         </View>
 
@@ -1557,19 +1558,18 @@ export default function NoteEditorScreen() {
           </Pressable>
         </View>
 
-        {/* Plus icon - Right aligned (swapped from left) */}
+        {/* Keyboard icons - Right aligned (swapped positions) */}
         <View style={styles.toolbarRight}>
           <Pressable
-            onPress={handlePlusPress}
-            disabled={loading}
+            onPress={toggleKeyboard}
             style={styles.toolbarButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            {loading ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
-            )}
+            <IconSymbol 
+              name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+              size={26} 
+              color={colors.primary} 
+            />
           </Pressable>
         </View>
       </View>

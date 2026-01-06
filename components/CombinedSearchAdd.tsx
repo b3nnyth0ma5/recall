@@ -16,7 +16,7 @@ import {
   AppState,
   AppStateStatus,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
@@ -53,6 +53,7 @@ interface ImageState {
 
 export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageState[]>([]);
   const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string; primaryType?: string } | null>(null);
@@ -173,6 +174,35 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       aiIconScale.value = withTiming(1, { duration: 300 });
     }
   }, [isDetectingIntent, aiIconRotation, aiIconScale]);
+
+  // Listen for location updates from location-search screen
+  useEffect(() => {
+    if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
+      const latitude = parseFloat(params.selectedLatitude as string);
+      const longitude = parseFloat(params.selectedLongitude as string);
+      const formattedName = params.selectedLocationName as string;
+      const primaryType = params.selectedPrimaryType as string || '';
+
+      console.log('[CombinedSearchAdd] Location updated from search:', { latitude, longitude, formattedName, primaryType });
+      
+      setLocation({ 
+        latitude, 
+        longitude, 
+        name: formattedName,
+        primaryType: primaryType || undefined,
+      });
+
+      // Clear the params after processing
+      router.setParams({
+        selectedLatitude: undefined,
+        selectedLongitude: undefined,
+        selectedLocationName: undefined,
+        selectedDisplayName: undefined,
+        selectedFullAddress: undefined,
+        selectedPrimaryType: undefined,
+      });
+    }
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router]);
 
   const getCurrentLocation = async () => {
     try {
