@@ -175,16 +175,27 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     }
   }, [isDetectingIntent, aiIconRotation, aiIconScale]);
 
-  // Listen for location updates from location-search screen
+  // CRITICAL FIX: Listen for location updates from location-search screen
   useEffect(() => {
+    console.log('[CombinedSearchAdd] ===== PARAMS CHANGED =====');
+    console.log('[CombinedSearchAdd] All params:', JSON.stringify(params, null, 2));
+    
     if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
+      console.log('[CombinedSearchAdd] ✅ Location params detected!');
+      
       const latitude = parseFloat(params.selectedLatitude as string);
       const longitude = parseFloat(params.selectedLongitude as string);
       const formattedName = params.selectedLocationName as string;
-      const primaryType = params.selectedPrimaryType as string || '';
+      const primaryType = (params.selectedPrimaryType as string) || '';
 
-      console.log('[CombinedSearchAdd] Location updated from search:', { latitude, longitude, formattedName, primaryType });
+      console.log('[CombinedSearchAdd] Parsed location data:', { 
+        latitude, 
+        longitude, 
+        formattedName, 
+        primaryType 
+      });
       
+      // Update location state
       setLocation({ 
         latitude, 
         longitude, 
@@ -192,17 +203,30 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         primaryType: primaryType || undefined,
       });
 
-      // Clear the params after processing
-      router.setParams({
-        selectedLatitude: undefined,
-        selectedLongitude: undefined,
-        selectedLocationName: undefined,
-        selectedDisplayName: undefined,
-        selectedFullAddress: undefined,
-        selectedPrimaryType: undefined,
-      });
+      console.log('[CombinedSearchAdd] ✅ Location state updated successfully');
+
+      // Clear the params after processing to prevent re-triggering
+      setTimeout(() => {
+        console.log('[CombinedSearchAdd] Clearing location params');
+        router.setParams({
+          selectedLatitude: undefined,
+          selectedLongitude: undefined,
+          selectedLocationName: undefined,
+          selectedDisplayName: undefined,
+          selectedFullAddress: undefined,
+          selectedPrimaryType: undefined,
+        });
+      }, 100);
+    } else {
+      console.log('[CombinedSearchAdd] ⚠️ No location params found in route params');
     }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router]);
+  }, [
+    params.selectedLatitude, 
+    params.selectedLongitude, 
+    params.selectedLocationName, 
+    params.selectedPrimaryType, 
+    router
+  ]);
 
   const getCurrentLocation = async () => {
     try {
@@ -428,6 +452,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   };
 
   const handleLocationPress = () => {
+    console.log('[CombinedSearchAdd] Location button pressed - navigating to location-search');
     setShowDrawer(false);
     // Navigate to location search route
     router.push('/location-search');
@@ -518,7 +543,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
               onPress={handleImagePick}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+              <IconSymbol 
+                ios_icon_name="photo.fill" 
+                android_material_icon_name="photo" 
+                size={28} 
+                color={colors.primary} 
+              />
             </Pressable>
 
             <Pressable
@@ -526,7 +556,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
               onPress={handleCameraPress}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+              <IconSymbol 
+                ios_icon_name="camera.fill" 
+                android_material_icon_name="camera" 
+                size={28} 
+                color={colors.primary} 
+              />
             </Pressable>
           </Animated.View>
         )}
@@ -562,7 +597,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                         onPress={() => handleRemoveImage(index)}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
+                        <IconSymbol 
+                          ios_icon_name="xmark.circle.fill" 
+                          android_material_icon_name="cancel" 
+                          size={20} 
+                          color="#FFFFFF" 
+                        />
                       </Pressable>
                     </View>
                   ))}
@@ -590,7 +630,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   onPress={handlePlusPress}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+                  <IconSymbol 
+                    ios_icon_name="plus.circle.fill" 
+                    android_material_icon_name="add-circle" 
+                    size={28} 
+                    color={colors.text} 
+                  />
                 </Pressable>
 
                 {/* Location Pill - flexible, expands/collapses up to 70% */}
@@ -599,7 +644,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   onPress={handleLocationPress}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
+                  <IconSymbol 
+                    ios_icon_name="mappin.circle.fill" 
+                    android_material_icon_name="location-on" 
+                    size={16} 
+                    color={colors.primary} 
+                  />
                   {isRefreshingLocation ? (
                     <ActivityIndicator size="small" color={colors.primary} style={styles.locationSpinner} />
                   ) : (
@@ -618,7 +668,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <View style={styles.searchButtonBorder}>
-                      <IconSymbol name="magnifyingglass" size={16} color={colors.primary} />
+                      <IconSymbol 
+                        ios_icon_name="magnifyingglass" 
+                        android_material_icon_name="search" 
+                        size={16} 
+                        color={colors.primary} 
+                      />
                     </View>
                   </Pressable>
 
@@ -630,7 +685,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <View style={styles.submitButtonBorder}>
-                      <IconSymbol name="arrow.up" size={16} color={colors.primary} />
+                      <IconSymbol 
+                        ios_icon_name="arrow.up" 
+                        android_material_icon_name="arrow-upward" 
+                        size={16} 
+                        color={colors.primary} 
+                      />
                     </View>
                   </Pressable>
                 </View>
