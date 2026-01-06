@@ -70,7 +70,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const lastLocationFetchRef = useRef<number>(0);
   const locationRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
-  // FIXED: Add state for location search modal
   const [showLocationSearch, setShowLocationSearch] = useState(false);
 
   const aiIconRotation = useSharedValue(0);
@@ -401,13 +400,11 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     }
   };
 
-  // FIXED: Open location search modal instead of navigating
   const handleLocationPress = () => {
     setShowDrawer(false);
     setShowLocationSearch(true);
   };
 
-  // FIXED: Callback for when location is selected
   const handleLocationSelected = (selectedLocation: {
     latitude: number;
     longitude: number;
@@ -485,7 +482,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       return;
     }
 
-    // FIXED: Always create recall directly (intent detector commented out)
     await handleCreateRecallDirect();
   };
 
@@ -581,7 +577,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 />
 
                 <View style={styles.inputRow}>
-                  {/* FIXED: Plus icon moved to the left of location */}
+                  {/* Plus icon - fixed position on the left */}
                   <Pressable
                     style={styles.plusButton}
                     onPress={handlePlusPress}
@@ -590,7 +586,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                     <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
                   </Pressable>
 
-                  {/* Location Pill */}
+                  {/* Location Pill - flexible, expands/collapses up to 70% */}
                   <Pressable
                     style={styles.locationPillExtended}
                     onPress={handleLocationPress}
@@ -605,31 +601,32 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                       </Text>
                     )}
                   </Pressable>
-                  
-                  <View style={styles.iconSpacer} />
 
-                  {/* FIXED: Search icon added above up arrow */}
-                  <Pressable
-                    style={styles.searchButtonContainer}
-                    onPress={handleSearchPress}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <View style={styles.searchButtonBorder}>
-                      <IconSymbol name="magnifyingglass" size={16} color={colors.primary} />
-                    </View>
-                  </Pressable>
+                  {/* Right side icons container - fixed position */}
+                  <View style={styles.rightIconsContainer}>
+                    {/* Search icon - bottom right */}
+                    <Pressable
+                      style={styles.searchButtonContainer}
+                      onPress={handleSearchPress}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <View style={styles.searchButtonBorder}>
+                        <IconSymbol name="magnifyingglass" size={16} color={colors.primary} />
+                      </View>
+                    </Pressable>
 
-                  {/* FIXED: Up arrow icon (changed from sparkles) */}
-                  <Pressable
-                    style={[styles.submitButtonContainer, isUpArrowDisabled && styles.submitButtonDisabled]}
-                    onPress={handleCreateRecall}
-                    disabled={isUpArrowDisabled || isCreating || isDetectingIntent}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <View style={styles.submitButtonBorder}>
-                      <IconSymbol name="arrow.up" size={16} color={colors.primary} />
-                    </View>
-                  </Pressable>
+                    {/* Up arrow icon - top right, vertically aligned with search */}
+                    <Pressable
+                      style={[styles.submitButtonContainer, isUpArrowDisabled && styles.submitButtonDisabled]}
+                      onPress={handleCreateRecall}
+                      disabled={isUpArrowDisabled || isCreating || isDetectingIntent}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <View style={styles.submitButtonBorder}>
+                        <IconSymbol name="arrow.up" size={16} color={colors.primary} />
+                      </View>
+                    </Pressable>
+                  </View>
                 </View>
               </View>
             </View>
@@ -651,7 +648,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         </Animated.View>
       </TouchableWithoutFeedback>
 
-      {/* FIXED: Location search modal */}
       <LocationSearchScreen
         visible={showLocationSearch}
         onClose={() => setShowLocationSearch(false)}
@@ -673,7 +669,7 @@ const styles = StyleSheet.create({
   floatingActionsContainer: {
     position: 'absolute',
     bottom: 109.25,
-    right: 16,
+    left: 16,
     flexDirection: 'column',
     gap: 12,
     zIndex: 1002,
@@ -764,9 +760,10 @@ const styles = StyleSheet.create({
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
     zIndex: 1,
     paddingTop: 4,
+    flexWrap: 'nowrap',
   },
   plusButton: {
     padding: 0,
@@ -774,6 +771,7 @@ const styles = StyleSheet.create({
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   locationPillExtended: {
     flexDirection: 'row',
@@ -784,25 +782,30 @@ const styles = StyleSheet.create({
     paddingRight: 8,
     paddingLeft: 8,
     borderRadius: 16,
-    alignSelf: 'flex-start',
     maxWidth: '70%',
     borderWidth: 1,
     borderColor: colors.primary,
+    flexShrink: 1,
+    flex: 1,
   },
   locationPillText: {
     fontSize: 13,
     color: colors.primary,
-    maxWidth: '90%',
     fontWeight: '600',
-  },
-  iconSpacer: {
-    flex: 1,
+    flexShrink: 1,
   },
   locationSpinner: {
     marginLeft: 4,
   },
+  rightIconsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
+  },
   searchButtonContainer: {
     padding: 0,
+    flexShrink: 0,
   },
   searchButtonBorder: {
     width: 28,
@@ -815,6 +818,7 @@ const styles = StyleSheet.create({
   },
   submitButtonContainer: {
     padding: 0,
+    flexShrink: 0,
   },
   submitButtonBorder: {
     width: 28,
