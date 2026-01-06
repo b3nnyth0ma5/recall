@@ -1,105 +1,414 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
+  Text,
   TextInput,
-  Pressable,
   StyleSheet,
-  Keyboard,
-  Modal,
+  Pressable,
+  Image,
+  ScrollView,
   Platform,
+  Keyboard,
+  Alert,
+  TouchableWithoutFeedback,
+  ActivityIndicator,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
-import { useTheme } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
-import * as ImagePicker from 'expo-image-picker';
-import { IconSymbol } from './IconSymbol';
-import LocationSearchScreen from '@/app/location-search';
 import { colors } from '@/styles/commonStyles';
+import { IconSymbol } from '@/components/IconSymbol';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
+import * as Haptics from 'expo-haptics';
+import Animated, { 
+  FadeIn, 
+  SlideInDown, 
+  SlideOutDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  withRepeat,
+  withSequence,
+  Easing,
+} from 'react-native-reanimated';
+import { supabase } from '@/utils/supabase';
+import { SymbolView } from 'expo-symbols';
+import LocationSearchScreen from '@/app/location-search';
 
 interface CombinedSearchAddProps {
-  onCreateRecall?: (data: {
+  onCreateRecall: (data: {
     text: string;
     images: string[];
     location?: { latitude: number; longitude: number; name: string; primaryType?: string };
-  }) => void;
-  onLocationSelected?: (location: string | null) => void;
+  }, onProgress?: (stage: string) => void) => Promise<void>;
+  userId: string;
 }
 
-export function CombinedSearchAdd({ onCreateRecall, onLocationSelected }: CombinedSearchAddProps) {
-  const theme = useTheme();
+interface ImageState {
+  uri: string;
+  isPlaceholder: boolean;
+  originalUri?: string;
+}
+
+export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
   const router = useRouter();
   const [text, setText] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState<{
-    latitude: number;
-    longitude: number;
-    name: string;
-    primaryType?: string;
-  } | null>(null);
-  const [images, setImages] = useState<string[]>([]);
-  const [showLocationModal, setShowLocationModal] = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const [images, setImages] = useState<ImageState[]>([]);
+  const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string; primaryType?: string } | null>(null);
+  const [showDrawer, setShowDrawer] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [savingStage, setSavingStage] = useState<string>('');
+  const [isDetectingIntent, setIsDetectingIntent] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number; name: string; primaryType?: string } | null>(null);
+  const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const textInputRef = useRef<TextInput>(null);
+  const translateY = useSharedValue(0);
+  const lastLocationFetchRef = useRef<number>(0);
+  const locationRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // FIXED: Add state for location search modal
+  const [showLocationSearch, setShowLocationSearch] = useState(false);
 
-  const handleCreateRecall = async () => {
-    if (!text.trim() && images.length === 0) return;
+  const aiIconRotation = useSharedValue(0);
+  const aiIconScale = useSharedValue(1);
 
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  useEffect(() => {
+    getCurrentLocation();
+  }, []);
+
+  const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
+    if (nextAppState === 'active') {
+      console.log('[CombinedSearchAdd] App became active - refreshing location');
+      getCurrentLocation();
+    }
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
     
-    if (onCreateRecall) {
-      onCreateRecall({
-        text: text.trim(),
-        images,
-        location: selectedLocation || undefined,
-      });
+    return () => {
+      subscription.remove();
+    };
+  }, [handleAppStateChange]);
+
+  useEffect(() => {
+    if (locationRefreshIntervalRef.current) {
+      clearInterval(locationRefreshIntervalRef.current);
     }
 
-    // Reset state
-    setText('');
-    setImages([]);
-    setSelectedLocation(null);
-    Keyboard.dismiss();
-  };
+    locationRefreshIntervalRef.current = setInterval(() => {
+      const timeSinceLastFetch = Date.now() - lastLocationFetchRef.current;
+      const fiveMinutes = 5 * 60 * 1000;
+      
+      if (timeSinceLastFetch > fiveMinutes) {
+        console.log('[CombinedSearchAdd] Auto-refreshing location after 5 minutes of inactivity');
+        getCurrentLocation();
+      }
+    }, 60000);
 
-  const handleSearch = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    if (text.trim()) {
-      router.push({
-        pathname: '/search',
-        params: { q: text.trim(), autoSearch: 'true' },
-      });
+    return () => {
+      if (locationRefreshIntervalRef.current) {
+        clearInterval(locationRefreshIntervalRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+        setIsKeyboardVisible(true);
+        translateY.value = withTiming(-(e.endCoordinates.height - 10), { duration: 250 });
+      }
+    );
+
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+        setIsKeyboardVisible(false);
+        translateY.value = withTiming(0, { duration: 250 });
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, [translateY]);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: translateY.value }],
+    };
+  });
+
+  const aiIconAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { rotate: `${aiIconRotation.value}deg` },
+        { scale: aiIconScale.value },
+      ],
+    };
+  }, [aiIconRotation, aiIconScale]);
+
+  useEffect(() => {
+    if (isDetectingIntent) {
+      aiIconRotation.value = withRepeat(
+        withTiming(360, { duration: 2000, easing: Easing.linear }),
+        -1,
+        false
+      );
+      aiIconScale.value = withRepeat(
+        withSequence(
+          withTiming(1.2, { duration: 600, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 600, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        false
+      );
     } else {
-      router.push('/search');
+      aiIconRotation.value = withTiming(0, { duration: 300 });
+      aiIconScale.value = withTiming(1, { duration: 300 });
+    }
+  }, [isDetectingIntent, aiIconRotation, aiIconScale]);
+
+  const getCurrentLocation = async () => {
+    try {
+      setIsRefreshingLocation(true);
+      console.log('[CombinedSearchAdd] Fetching current location...');
+      
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('Location permission not granted');
+        setIsRefreshingLocation(false);
+        return;
+      }
+
+      const currentPosition = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const { latitude, longitude } = currentPosition.coords;
+
+      console.log('[CombinedSearchAdd] GPS coordinates:', { latitude, longitude });
+
+      const { reverseGeocodeGoogle } = await import('@/utils/googlePlaces');
+      const locationName = await reverseGeocodeGoogle(latitude, longitude);
+
+      console.log('[CombinedSearchAdd] Resolved location name:', locationName);
+
+      const locationData = {
+        latitude,
+        longitude,
+        name: locationName,
+        primaryType: undefined,
+      };
+
+      setCurrentLocation(locationData);
+      setLocation(locationData);
+      lastLocationFetchRef.current = Date.now();
+      
+      console.log('[CombinedSearchAdd] Current location obtained:', locationData);
+    } catch (error) {
+      console.error('[CombinedSearchAdd] Error getting current location:', error);
+    } finally {
+      setIsRefreshingLocation(false);
     }
   };
 
-  const handlePlusPress = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  const handlePlusPress = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setShowDrawer(true);
+  };
+
+  const handleSearchPress = async () => {
+    const searchQuery = text.trim();
     
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      alert('Sorry, we need camera roll permissions to upload images.');
+    console.log('[CombinedSearchAdd] Dismissing keyboard');
+    Keyboard.dismiss();
+    
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    if (!searchQuery) {
+      console.log('[CombinedSearchAdd] Empty search query - navigating to search screen to show history');
+      
+      setTimeout(() => {
+        try {
+          router.push('/search');
+        } catch (error) {
+          console.error('[CombinedSearchAdd] Error navigating to search:', error);
+        }
+      }, 0);
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      quality: 0.8,
-    });
+    console.log('[CombinedSearchAdd] Search icon pressed with query:', searchQuery);
 
-    if (!result.canceled && result.assets) {
-      const newImages = result.assets.map((asset) => asset.uri);
-      setImages((prev) => [...prev, ...newImages]);
+    const encodedQuery = encodeURIComponent(searchQuery);
+    const searchRoute = `/search?q=${encodedQuery}&autoSearch=true`;
+    
+    console.log('[CombinedSearchAdd] Navigating to search screen:', searchRoute);
+    
+    setTimeout(() => {
+      try {
+        router.push(searchRoute);
+      } catch (error) {
+        console.error('[CombinedSearchAdd] Error navigating to search:', error);
+      }
+    }, 0);
+
+    setText('');
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { saveSearchHistory } = await import('@/utils/supabase');
+        await saveSearchHistory(user.id, searchQuery);
+        console.log('[CombinedSearchAdd] Search history saved');
+      }
+    } catch (error) {
+      console.error('[CombinedSearchAdd] Error saving search history:', error);
     }
   };
 
-  const handleLocationPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setShowLocationModal(true);
+  const handleTextChange = (newText: string) => {
+    setText(newText);
   };
 
-  const handleLocationSelected = (location: {
+  const handleImagePick = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant permission to access your photos');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets) {
+        console.log('[CombinedSearchAdd] Selected images:', result.assets.length);
+        
+        const placeholderImages: ImageState[] = result.assets.map(asset => ({
+          uri: asset.uri,
+          isPlaceholder: true,
+          originalUri: asset.uri,
+        }));
+        
+        setImages(prev => [...prev, ...placeholderImages]);
+        setShowDrawer(false);
+        
+        console.log('[CombinedSearchAdd] Starting image optimization for uploaded photos...');
+        
+        for (let i = 0; i < result.assets.length; i++) {
+          const asset = result.assets[i];
+          const originalUri = asset.uri;
+          
+          console.log(`[CombinedSearchAdd] Processing uploaded image ${i + 1}/${result.assets.length}`);
+          
+          const { compressImageForUpload } = await import('@/utils/imageOptimization');
+          
+          const optimizedUri = await compressImageForUpload(originalUri);
+          
+          console.log(`[CombinedSearchAdd] Image ${i + 1}/${result.assets.length} optimized`);
+          
+          setImages(prev => {
+            const newImages = [...prev];
+            const placeholderIndex = newImages.findIndex(
+              img => img.isPlaceholder && img.originalUri === originalUri
+            );
+            
+            if (placeholderIndex !== -1) {
+              newImages[placeholderIndex] = {
+                uri: optimizedUri,
+                isPlaceholder: false,
+              };
+            }
+            
+            return newImages;
+          });
+        }
+        
+        console.log('[CombinedSearchAdd] All uploaded images optimized successfully');
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const handleCameraPress = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant permission to access your camera');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 0.8,
+        allowsEditing: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        console.log('[CombinedSearchAdd] Camera photo taken');
+        
+        const placeholderImage: ImageState = {
+          uri: result.assets[0].uri,
+          isPlaceholder: true,
+          originalUri: result.assets[0].uri,
+        };
+        
+        setImages(prev => [...prev, placeholderImage]);
+        setShowDrawer(false);
+        
+        console.log('[CombinedSearchAdd] Compressing camera photo...');
+        const { compressImageForUpload } = await import('@/utils/imageOptimization');
+        const compressedUri = await compressImageForUpload(result.assets[0].uri);
+        console.log('[CombinedSearchAdd] Camera photo compressed successfully');
+        
+        setImages(prev => {
+          const newImages = [...prev];
+          const placeholderIndex = newImages.findIndex(
+            img => img.isPlaceholder && img.originalUri === result.assets[0].uri
+          );
+          
+          if (placeholderIndex !== -1) {
+            newImages[placeholderIndex] = {
+              uri: compressedUri,
+              isPlaceholder: false,
+            };
+          }
+          
+          return newImages;
+        });
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo');
+    }
+  };
+
+  // FIXED: Open location search modal instead of navigating
+  const handleLocationPress = () => {
+    setShowDrawer(false);
+    setShowLocationSearch(true);
+  };
+
+  // FIXED: Callback for when location is selected
+  const handleLocationSelected = (selectedLocation: {
     latitude: number;
     longitude: number;
     name: string;
@@ -107,146 +416,447 @@ export function CombinedSearchAdd({ onCreateRecall, onLocationSelected }: Combin
     displayName: string;
     formattedAddress: string;
   }) => {
-    setSelectedLocation({
-      latitude: location.latitude,
-      longitude: location.longitude,
-      name: location.name,
-      primaryType: location.primaryType,
-    });
-    setShowLocationModal(false);
+    console.log('[CombinedSearchAdd] Location selected from modal:', selectedLocation);
     
-    if (onLocationSelected) {
-      onLocationSelected(location.name);
+    setLocation({
+      latitude: selectedLocation.latitude,
+      longitude: selectedLocation.longitude,
+      name: selectedLocation.name,
+      primaryType: selectedLocation.primaryType,
+    });
+    
+    setShowLocationSearch(false);
+  };
+
+  const handleIntentChoice = (choice: 'create' | 'search') => {
+    if (choice === 'create') {
+      handleCreateRecallDirect();
+    } else {
+      handleSearchPress();
     }
   };
 
+  const handleCreateRecallDirect = async () => {
+    if (!text.trim() && images.length === 0) {
+      Alert.alert('Empty Recall', 'Please add some text or images');
+      return;
+    }
+
+    console.log('[CombinedSearchAdd] Dismissing keyboard immediately on recall creation');
+    Keyboard.dismiss();
+    if (textInputRef.current) {
+      textInputRef.current.blur();
+    }
+
+    try {
+      setIsCreating(true);
+      
+      const locationToSave = location || currentLocation;
+      
+      const imageUris = images.map(img => img.uri);
+      
+      await onCreateRecall(
+        {
+          text: text.trim(),
+          images: imageUris,
+          location: locationToSave || undefined,
+        },
+        (stage: string) => {
+          setSavingStage(stage);
+        }
+      );
+
+      setText('');
+      setImages([]);
+      setLocation(currentLocation);
+      setSavingStage('');
+    } catch (error) {
+      console.error('Error creating recall:', error);
+      Alert.alert('Error', 'Failed to create recall');
+    } finally {
+      setIsCreating(false);
+      setSavingStage('');
+    }
+  };
+
+  const handleCreateRecall = async () => {
+    if (!text.trim() && images.length === 0) {
+      Alert.alert('Empty Recall', 'Please add some text or images');
+      return;
+    }
+
+    // FIXED: Always create recall directly (intent detector commented out)
+    await handleCreateRecallDirect();
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const dismissKeyboard = () => {
+    Keyboard.dismiss();
+  };
+
+  const allImagesOptimized = images.length === 0 || images.every(img => !img.isPlaceholder);
+  
+  const isUpArrowDisabled = (!text.trim() && images.length === 0) || !allImagesOptimized;
+
   return (
     <>
-      <View style={[styles.container, { backgroundColor: theme.colors.card }]}>
-        {/* Top Row: TextInput + Up Arrow */}
-        <View style={styles.topRow}>
-          <TextInput
-            ref={inputRef}
-            style={[styles.input, { color: theme.colors.text }]}
-            placeholder="Add a Recall or Search..."
-            placeholderTextColor={colors.textSecondary}
-            value={text}
-            onChangeText={setText}
-            multiline
-            maxLength={5000}
-          />
-          <Pressable
-            style={styles.upArrowButton}
-            onPress={handleCreateRecall}
-            disabled={!text.trim() && images.length === 0}
-          >
-            <IconSymbol
-              name="arrow.up.circle.fill"
-              size={32}
-              color={text.trim() || images.length > 0 ? colors.primary : colors.textSecondary}
-            />
-          </Pressable>
-        </View>
+      <TouchableWithoutFeedback onPress={dismissKeyboard}>
+        <Animated.View style={[styles.outerContainer, animatedStyle]}>
+          {showDrawer && (
+            <Animated.View
+              entering={FadeIn.duration(200)}
+              style={styles.floatingActionsContainer}
+            >
+              <Pressable
+                style={styles.floatingActionButton}
+                onPress={handleImagePick}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+              </Pressable>
 
-        {/* Bottom Row: Plus + Location + Search */}
-        <View style={styles.bottomRow}>
-          <Pressable style={styles.plusButton} onPress={handlePlusPress}>
-            <IconSymbol name="plus.circle.fill" size={32} color={colors.primary} />
-          </Pressable>
+              <Pressable
+                style={styles.floatingActionButton}
+                onPress={handleCameraPress}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+              </Pressable>
+            </Animated.View>
+          )}
 
-          <Pressable
-            style={[styles.locationButton, { backgroundColor: theme.colors.background }]}
-            onPress={handleLocationPress}
-          >
-            <IconSymbol
-              name="location.fill"
-              size={16}
-              color={selectedLocation ? colors.primary : colors.textSecondary}
-            />
-            <View style={styles.locationTextContainer}>
-              {selectedLocation ? (
-                <View style={styles.locationText}>
-                  <IconSymbol name="checkmark" size={12} color={colors.primary} />
+          <View style={styles.containerWrapper}>
+            <View style={styles.container}>
+              <View style={styles.inputContainer}>
+                {images.length > 0 && (
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false} 
+                    style={styles.imagesScroll}
+                    contentContainerStyle={styles.imagesScrollContent}
+                    decelerationRate="fast"
+                    snapToInterval={88}
+                    snapToAlignment="start"
+                    scrollEnabled={true}
+                    nestedScrollEnabled={true}
+                    removeClippedSubviews={false}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {images.map((imageState, index) => (
+                      <View key={index} style={styles.imageContainer}>
+                        <Image source={{ uri: imageState.uri }} style={styles.image} />
+                        {imageState.isPlaceholder && (
+                          <View style={styles.placeholderOverlay}>
+                            <ActivityIndicator size="small" color={colors.primary} />
+                            <Text style={styles.placeholderText}>Optimizing...</Text>
+                          </View>
+                        )}
+                        <Pressable
+                          style={styles.removeImageButton}
+                          onPress={() => handleRemoveImage(index)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </ScrollView>
+                )}
+
+                <TextInput
+                  ref={textInputRef}
+                  style={styles.textInput}
+                  placeholder="Add a Recall or Search..."
+                  placeholderTextColor={colors.textTertiary}
+                  value={text}
+                  onChangeText={handleTextChange}
+                  multiline
+                  maxLength={1000}
+                  returnKeyType="default"
+                  blurOnSubmit={false}
+                  enablesReturnKeyAutomatically={false}
+                />
+
+                <View style={styles.inputRow}>
+                  {/* FIXED: Plus icon moved to the left of location */}
+                  <Pressable
+                    style={styles.plusButton}
+                    onPress={handlePlusPress}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+                  </Pressable>
+
+                  {/* Location Pill */}
+                  <Pressable
+                    style={styles.locationPillExtended}
+                    onPress={handleLocationPress}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
+                    {isRefreshingLocation ? (
+                      <ActivityIndicator size="small" color={colors.primary} style={styles.locationSpinner} />
+                    ) : (
+                      <Text style={styles.locationPillText} numberOfLines={1}>
+                        {location?.name || currentLocation?.name || 'Add Location'}
+                      </Text>
+                    )}
+                  </Pressable>
+                  
+                  <View style={styles.iconSpacer} />
+
+                  {/* FIXED: Search icon added above up arrow */}
+                  <Pressable
+                    style={styles.searchButtonContainer}
+                    onPress={handleSearchPress}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <View style={styles.searchButtonBorder}>
+                      <IconSymbol name="magnifyingglass" size={16} color={colors.primary} />
+                    </View>
+                  </Pressable>
+
+                  {/* FIXED: Up arrow icon (changed from sparkles) */}
+                  <Pressable
+                    style={[styles.submitButtonContainer, isUpArrowDisabled && styles.submitButtonDisabled]}
+                    onPress={handleCreateRecall}
+                    disabled={isUpArrowDisabled || isCreating || isDetectingIntent}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <View style={styles.submitButtonBorder}>
+                      <IconSymbol name="arrow.up" size={16} color={colors.primary} />
+                    </View>
+                  </Pressable>
                 </View>
-              ) : null}
+              </View>
             </View>
-          </Pressable>
+          </View>
 
-          <Pressable style={styles.searchButton} onPress={handleSearch}>
-            <IconSymbol name="magnifyingglass.circle.fill" size={32} color={colors.primary} />
-          </Pressable>
-        </View>
-      </View>
+          {showDrawer && (
+            <Pressable 
+              style={styles.drawerBackdrop} 
+              onPress={() => setShowDrawer(false)} 
+            />
+          )}
 
-      <Modal
-        visible={showLocationModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowLocationModal(false)}
-      >
-        <LocationSearchScreen
-          visible={showLocationModal}
-          onClose={() => setShowLocationModal(false)}
-          onSelectLocation={handleLocationSelected}
-        />
-      </Modal>
+          {isCreating && savingStage && (
+            <View style={styles.savingIndicator}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.savingText}>{savingStage}</Text>
+            </View>
+          )}
+        </Animated.View>
+      </TouchableWithoutFeedback>
+
+      {/* FIXED: Location search modal */}
+      <LocationSearchScreen
+        visible={showLocationSearch}
+        onClose={() => setShowLocationSearch(false)}
+        onSelectLocation={handleLocationSelected}
+      />
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    borderRadius: 16,
-    padding: 12,
+  outerContainer: {
+    position: 'absolute',
+    bottom: 25,
+    left: 10,
+    right: 10,
+    zIndex: 1000,
+    elevation: 1000,
+  },
+  floatingActionsContainer: {
+    position: 'absolute',
+    bottom: 109.25,
+    right: 16,
+    flexDirection: 'column',
+    gap: 12,
+    zIndex: 1002,
+  },
+  floatingActionButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.primary,
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
+    elevation: 8,
+  },
+  containerWrapper: {
+    position: 'relative',
     marginHorizontal: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+  container: {
+    backgroundColor: colors.background,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    overflow: 'hidden',
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.3)',
+    elevation: 8,
   },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    minHeight: 40,
-    maxHeight: 100,
+  inputContainer: {
+    backgroundColor: '#333333',
+    borderRadius: 18,
+    paddingTop: 10,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    gap: 4,
+    minHeight: 103.5,
+  },
+  imagesScroll: {
+    maxHeight: 150,
+  },
+  imagesScrollContent: {
     paddingRight: 8,
   },
-  upArrowButton: {
-    padding: 4,
+  imageContainer: {
+    position: 'relative',
+    marginRight: 8,
   },
-  bottomRow: {
+  image: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+  },
+  placeholderOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  placeholderText: {
+    fontSize: 10,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 10,
+  },
+  textInput: {
+    fontSize: 16,
+    color: colors.text,
+    minHeight: 43.7,
+    maxHeight: 172.5,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    zIndex: 1,
+  },
+  inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
+    zIndex: 1,
+    paddingTop: 4,
   },
   plusButton: {
-    padding: 4,
+    padding: 0,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  locationButton: {
+  locationPillExtended: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: `${colors.primary}20`,
+    paddingVertical: 6,
+    paddingRight: 8,
+    paddingLeft: 8,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+    maxWidth: '70%',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  locationPillText: {
+    fontSize: 13,
+    color: colors.primary,
+    maxWidth: '90%',
+    fontWeight: '600',
+  },
+  iconSpacer: {
     flex: 1,
+  },
+  locationSpinner: {
+    marginLeft: 4,
+  },
+  searchButtonContainer: {
+    padding: 0,
+  },
+  searchButtonBorder: {
+    width: 28,
+    height: 28,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitButtonContainer: {
+    padding: 0,
+  },
+  submitButtonBorder: {
+    width: 28,
+    height: 28,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitButtonDisabled: {
+    opacity: 0.4,
+  },
+  drawerBackdrop: {
+    position: 'absolute',
+    top: -1000,
+    left: -1000,
+    right: -1000,
+    bottom: -1000,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 999,
+  },
+  savingIndicator: {
+    position: 'absolute',
+    bottom: -50,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.card,
     paddingVertical: 8,
+    paddingHorizontal: 16,
     borderRadius: 20,
-    marginHorizontal: 8,
-    maxWidth: 200,
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary,
   },
-  locationTextContainer: {
-    marginLeft: 6,
-  },
-  locationText: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchButton: {
-    padding: 4,
+  savingText: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '600',
   },
 });
