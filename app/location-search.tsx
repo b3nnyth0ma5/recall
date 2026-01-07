@@ -174,7 +174,6 @@ export default function LocationSearchScreen() {
         location.locality
       );
       
-      console.log('[LocationSearch] ===== LOCATION SELECTED =====');
       console.log('[LocationSearch] Selected location data:', {
         latitude: location.latitude,
         longitude: location.longitude,
@@ -186,32 +185,18 @@ export default function LocationSearchScreen() {
         locality: location.locality,
       });
 
-      // CRITICAL FIX: Use router.push with params instead of setParams + back
-      // This ensures the params are properly passed to the previous screen
-      const locationParams = {
+      // Pass location data back to the originating component via router.setParams()
+      router.setParams({
         selectedLatitude: location.latitude.toString(),
         selectedLongitude: location.longitude.toString(),
         selectedLocationName: formattedLocationName,
         selectedDisplayName: location.displayName,
         selectedFullAddress: location.formattedAddress,
         selectedPrimaryType: location.primaryTypeDisplayName || '',
-      };
-
-      console.log('[LocationSearch] Navigating back with params:', locationParams);
+      });
       
-      // Navigate back with params - this will trigger the useEffect in the calling screen
-      if (router.canGoBack()) {
-        // Set params on the current navigation state before going back
-        router.setParams(locationParams);
-        
-        // Small delay to ensure params are set before navigation
-        setTimeout(() => {
-          router.back();
-        }, 50);
-      } else {
-        console.error('[LocationSearch] Cannot go back - no previous screen');
-        Alert.alert('Error', 'Cannot return to previous screen');
-      }
+      // Navigate back after setting params
+      router.back();
     } catch (error) {
       console.error('[LocationSearch] Error processing location:', error);
       Alert.alert('Error', 'Failed to process location');
@@ -257,12 +242,7 @@ export default function LocationSearchScreen() {
               style={styles.headerButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol 
-                ios_icon_name="xmark" 
-                android_material_icon_name="close" 
-                size={24} 
-                color={colors.text} 
-              />
+              <IconSymbol name="xmark" size={24} color={colors.text} />
             </Pressable>
           ),
         }}
@@ -271,12 +251,7 @@ export default function LocationSearchScreen() {
       <View style={styles.content}>
         <Animated.View entering={FadeIn.duration(600)} style={styles.searchSection}>
           <View style={styles.searchContainer}>
-            <IconSymbol 
-              ios_icon_name="magnifyingglass" 
-              android_material_icon_name="search" 
-              size={20} 
-              color={colors.textSecondary} 
-            />
+            <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
             <TextInput
               ref={searchInputRef}
               style={styles.searchInput}
@@ -295,12 +270,7 @@ export default function LocationSearchScreen() {
                 onPress={() => setSearchQuery('')}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <IconSymbol 
-                  ios_icon_name="xmark.circle.fill" 
-                  android_material_icon_name="cancel" 
-                  size={20} 
-                  color={colors.textSecondary} 
-                />
+                <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
               </Pressable>
             )}
             <Pressable 
@@ -309,8 +279,7 @@ export default function LocationSearchScreen() {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <IconSymbol 
-                ios_icon_name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-                android_material_icon_name={keyboardVisible ? "keyboard-hide" : "keyboard"}
+                name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
                 size={20} 
                 color={colors.primary} 
               />
@@ -333,12 +302,7 @@ export default function LocationSearchScreen() {
         >
           {!apiConfigured ? (
             <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-              <IconSymbol 
-                ios_icon_name="exclamationmark.triangle" 
-                android_material_icon_name="warning" 
-                size={60} 
-                color={colors.error} 
-              />
+              <IconSymbol name="exclamationmark.triangle" size={60} color={colors.error} />
               <Text style={styles.emptyTitle}>API Not Configured</Text>
               <Text style={styles.emptyText}>
                 Please configure your Google Places API key in utils/googlePlaces.ts
@@ -380,12 +344,7 @@ export default function LocationSearchScreen() {
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <View style={styles.resultIconContainer}>
-                      <IconSymbol 
-                        ios_icon_name="mappin.circle.fill" 
-                        android_material_icon_name="location-on" 
-                        size={24} 
-                        color={colors.primary} 
-                      />
+                      <IconSymbol name="mappin.circle.fill" size={24} color={colors.primary} />
                     </View>
                     <View style={styles.resultTextContainer}>
                       <Text style={styles.resultTextBold} numberOfLines={1}>
@@ -410,24 +369,14 @@ export default function LocationSearchScreen() {
                         </Text>
                       )}
                     </View>
-                    <IconSymbol 
-                      ios_icon_name="chevron.right" 
-                      android_material_icon_name="chevron-right" 
-                      size={20} 
-                      color={colors.textSecondary} 
-                    />
+                    <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
                   </Pressable>
                 );
               })}
             </Animated.View>
           ) : searchQuery.trim() && !loading ? (
             <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-              <IconSymbol 
-                ios_icon_name="magnifyingglass" 
-                android_material_icon_name="search" 
-                size={60} 
-                color={colors.textTertiary} 
-              />
+              <IconSymbol name="magnifyingglass" size={60} color={colors.textTertiary} />
               <Text style={styles.emptyTitle}>No Results Found</Text>
               <Text style={styles.emptyText}>
                 Try searching with a different location name
@@ -435,12 +384,7 @@ export default function LocationSearchScreen() {
             </Animated.View>
           ) : !userLocation ? (
             <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-              <IconSymbol 
-                ios_icon_name="location.fill" 
-                android_material_icon_name="location-on" 
-                size={60} 
-                color={colors.textTertiary} 
-              />
+              <IconSymbol name="location.fill" size={60} color={colors.textTertiary} />
               <Text style={styles.emptyTitle}>Getting Your Location</Text>
               <Text style={styles.emptyText}>
                 Please allow location access to see nearby places
@@ -448,12 +392,7 @@ export default function LocationSearchScreen() {
             </Animated.View>
           ) : (
             <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-              <IconSymbol 
-                ios_icon_name="location.fill" 
-                android_material_icon_name="location-on" 
-                size={60} 
-                color={colors.textTertiary} 
-              />
+              <IconSymbol name="location.fill" size={60} color={colors.textTertiary} />
               <Text style={styles.emptyTitle}>Search for a Location</Text>
               <Text style={styles.emptyText}>
                 Enter a place name, address, or landmark
@@ -463,12 +402,7 @@ export default function LocationSearchScreen() {
         </ScrollView>
 
         <View style={styles.noteContainer}>
-          <IconSymbol 
-            ios_icon_name="info.circle" 
-            android_material_icon_name="info" 
-            size={16} 
-            color={colors.textTertiary} 
-          />
+          <IconSymbol name="info.circle" size={16} color={colors.textTertiary} />
           <Text style={styles.noteText}>
             Powered by Google Places API
           </Text>
