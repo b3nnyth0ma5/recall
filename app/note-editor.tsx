@@ -819,11 +819,11 @@ export default function NoteEditorScreen() {
     }
   }, [isEditing, isSharedRecall, openLocation, fromShare]);
 
-  // Handle location updates from search (but not for shared recalls)
+  // FIXED: Handle location updates from search (but not for shared recalls)
   useEffect(() => {
     // Skip location updates for shared recalls
     if (isSharedRecall) {
-      console.log('Skipping location update for shared recall');
+      console.log('[NoteEditor] Skipping location update for shared recall');
       return;
     }
 
@@ -833,20 +833,30 @@ export default function NoteEditorScreen() {
       const formattedName = params.selectedLocationName as string;
       const primaryType = params.selectedPrimaryType as string || '';
 
-      console.log('Location updated from search:', { latitude, longitude, formattedName, primaryType });
+      console.log('[NoteEditor] ===== LOCATION UPDATED FROM SEARCH =====');
+      console.log('[NoteEditor] Latitude:', latitude);
+      console.log('[NoteEditor] Longitude:', longitude);
+      console.log('[NoteEditor] Location Name:', formattedName);
+      console.log('[NoteEditor] Primary Type:', primaryType);
       
       setLocation({ latitude, longitude });
       setLocationName(formattedName);
       setLocationPrimaryType(primaryType);
 
-      router.setParams({
-        selectedLatitude: undefined,
-        selectedLongitude: undefined,
-        selectedLocationName: undefined,
-        selectedDisplayName: undefined,
-        selectedFullAddress: undefined,
-        selectedPrimaryType: undefined,
-      });
+      console.log('[NoteEditor] Location state updated');
+
+      // Clear params after processing to prevent re-triggering
+      setTimeout(() => {
+        router.setParams({
+          selectedLatitude: undefined,
+          selectedLongitude: undefined,
+          selectedLocationName: undefined,
+          selectedDisplayName: undefined,
+          selectedFullAddress: undefined,
+          selectedPrimaryType: undefined,
+        });
+        console.log('[NoteEditor] Params cleared');
+      }, 100);
     }
   }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router, isSharedRecall]);
 
@@ -1028,6 +1038,7 @@ export default function NoteEditorScreen() {
       setSaving(true);
       console.log('[NoteEditor] ===== STARTING SAVE PROCESS =====');
 
+      // FIXED: Ensure location data is properly included
       const noteData = {
         text: text.trim(),
         latitude: location?.latitude,
@@ -1037,6 +1048,13 @@ export default function NoteEditorScreen() {
       };
 
       console.log('[NoteEditor] Note data to save:', noteData);
+      console.log('[NoteEditor] Location details:', {
+        hasLocation: !!location,
+        latitude: location?.latitude,
+        longitude: location?.longitude,
+        locationName,
+        locationPrimaryType,
+      });
       console.log('[NoteEditor] Current people state:', people);
       console.log('[NoteEditor] People count:', people.length);
 

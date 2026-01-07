@@ -175,7 +175,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     }
   }, [isDetectingIntent, aiIconRotation, aiIconScale]);
 
-  // Listen for location updates from location-search screen
+  // FIXED: Listen for location updates from location-search screen
   useEffect(() => {
     if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
       const latitude = parseFloat(params.selectedLatitude as string);
@@ -183,24 +183,35 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       const formattedName = params.selectedLocationName as string;
       const primaryType = params.selectedPrimaryType as string || '';
 
-      console.log('[CombinedSearchAdd] Location updated from search:', { latitude, longitude, formattedName, primaryType });
+      console.log('[CombinedSearchAdd] ===== LOCATION UPDATED FROM SEARCH =====');
+      console.log('[CombinedSearchAdd] Latitude:', latitude);
+      console.log('[CombinedSearchAdd] Longitude:', longitude);
+      console.log('[CombinedSearchAdd] Location Name:', formattedName);
+      console.log('[CombinedSearchAdd] Primary Type:', primaryType);
       
-      setLocation({ 
+      // Update location state with all details
+      const newLocation = { 
         latitude, 
         longitude, 
         name: formattedName,
         primaryType: primaryType || undefined,
-      });
+      };
+      
+      setLocation(newLocation);
+      console.log('[CombinedSearchAdd] Location state updated:', newLocation);
 
-      // Clear the params after processing
-      router.setParams({
-        selectedLatitude: undefined,
-        selectedLongitude: undefined,
-        selectedLocationName: undefined,
-        selectedDisplayName: undefined,
-        selectedFullAddress: undefined,
-        selectedPrimaryType: undefined,
-      });
+      // Clear the params after processing to prevent re-triggering
+      setTimeout(() => {
+        router.setParams({
+          selectedLatitude: undefined,
+          selectedLongitude: undefined,
+          selectedLocationName: undefined,
+          selectedDisplayName: undefined,
+          selectedFullAddress: undefined,
+          selectedPrimaryType: undefined,
+        });
+        console.log('[CombinedSearchAdd] Params cleared');
+      }, 100);
     }
   }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router]);
 
@@ -236,7 +247,10 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       };
 
       setCurrentLocation(locationData);
-      setLocation(locationData);
+      // Only set location if user hasn't manually selected a location
+      if (!location) {
+        setLocation(locationData);
+      }
       lastLocationFetchRef.current = Date.now();
       
       console.log('[CombinedSearchAdd] Current location obtained:', locationData);
@@ -429,6 +443,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
   const handleLocationPress = () => {
     setShowDrawer(false);
+    console.log('[CombinedSearchAdd] Navigating to location search');
     // Navigate to location search route
     router.push('/location-search');
   };
@@ -456,7 +471,11 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     try {
       setIsCreating(true);
       
+      // FIXED: Use the location state (which includes manually selected location or current location)
       const locationToSave = location || currentLocation;
+      
+      console.log('[CombinedSearchAdd] ===== CREATING RECALL WITH LOCATION =====');
+      console.log('[CombinedSearchAdd] Location to save:', locationToSave);
       
       const imageUris = images.map(img => img.uri);
       
@@ -471,10 +490,14 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         }
       );
 
+      // Reset form after successful creation
       setText('');
       setImages([]);
+      // Reset location to current location (not null)
       setLocation(currentLocation);
       setSavingStage('');
+      
+      console.log('[CombinedSearchAdd] Recall created successfully');
     } catch (error) {
       console.error('Error creating recall:', error);
       Alert.alert('Error', 'Failed to create recall');
