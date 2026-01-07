@@ -180,25 +180,28 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
       const latitude = parseFloat(params.selectedLatitude as string);
       const longitude = parseFloat(params.selectedLongitude as string);
+      // FIXED: Use selectedLocationName which already contains "DisplayName, Suburb" format
       const formattedName = params.selectedLocationName as string;
       const primaryType = params.selectedPrimaryType as string || '';
 
       console.log('[CombinedSearchAdd] ===== LOCATION UPDATED FROM SEARCH =====');
       console.log('[CombinedSearchAdd] Latitude:', latitude);
       console.log('[CombinedSearchAdd] Longitude:', longitude);
-      console.log('[CombinedSearchAdd] Location Name:', formattedName);
+      console.log('[CombinedSearchAdd] Location Name (formatted with suburb):', formattedName);
       console.log('[CombinedSearchAdd] Primary Type:', primaryType);
+      console.log('[CombinedSearchAdd] Display Name:', params.selectedDisplayName);
+      console.log('[CombinedSearchAdd] Full Address:', params.selectedFullAddress);
       
-      // Update location state with all details
+      // Update location state with the formatted name (which includes suburb)
       const newLocation = { 
         latitude, 
         longitude, 
-        name: formattedName,
+        name: formattedName, // This already contains "DisplayName, Suburb"
         primaryType: primaryType || undefined,
       };
       
       setLocation(newLocation);
-      console.log('[CombinedSearchAdd] Location state updated:', newLocation);
+      console.log('[CombinedSearchAdd] Location state updated with formatted name:', newLocation);
 
       // Clear the params after processing to prevent re-triggering
       setTimeout(() => {
@@ -237,12 +240,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       const { reverseGeocodeGoogle } = await import('@/utils/googlePlaces');
       const locationName = await reverseGeocodeGoogle(latitude, longitude);
 
-      console.log('[CombinedSearchAdd] Resolved location name:', locationName);
+      console.log('[CombinedSearchAdd] Resolved location name (with suburb):', locationName);
 
       const locationData = {
         latitude,
         longitude,
-        name: locationName,
+        name: locationName, // This already contains "Street, Suburb" format
         primaryType: undefined,
       };
 
@@ -253,7 +256,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       }
       lastLocationFetchRef.current = Date.now();
       
-      console.log('[CombinedSearchAdd] Current location obtained:', locationData);
+      console.log('[CombinedSearchAdd] Current location obtained with formatted name:', locationData);
     } catch (error) {
       console.error('[CombinedSearchAdd] Error getting current location:', error);
     } finally {
@@ -476,6 +479,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       
       console.log('[CombinedSearchAdd] ===== CREATING RECALL WITH LOCATION =====');
       console.log('[CombinedSearchAdd] Location to save:', locationToSave);
+      console.log('[CombinedSearchAdd] Location name (should include suburb):', locationToSave?.name);
       
       const imageUris = images.map(img => img.uri);
       
