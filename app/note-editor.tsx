@@ -51,11 +51,9 @@ interface ImageData {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-// REDUCED BY 20%: Changed from (SCREEN_WIDTH - 32) to (SCREEN_WIDTH - 32) * 0.8
 const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 32) * 0.8;
 const IMAGE_CAROUSEL_SPACING = 12;
 
-// Helper function to check if text contains URLs - defined outside component
 const hasUrl = (text: string): boolean => {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   return urlRegex.test(text);
@@ -90,7 +88,6 @@ export default function NoteEditorScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
 
-  // Lazy loading state for images
   const [lazyLoadedImages, setLazyLoadedImages] = useState<ImageData[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
 
@@ -100,7 +97,6 @@ export default function NoteEditorScreen() {
   const openCamera = params.openCamera === 'true';
   const openLocation = params.openLocation === 'true';
   
-  // Check if people have changed
   const peopleChanged = useCallback(() => {
     if (initialPeople.length !== people.length) {
       return true;
@@ -124,26 +120,20 @@ export default function NoteEditorScreen() {
   const hasImages = images.length > 0;
   const textHasUrl = hasUrl(text);
   
-  // ADJUSTED: Dynamic text area height based on whether there are images
-  // Increased text area height since images are now smaller
   const textInputHeight = hasImages ? 340 : 480 * 1.1;
 
-  // Initialize lazy loading with first 2 images
   useEffect(() => {
     if (images.length > 1) {
-      // Set first 2 images immediately
       const initialImages = images.slice(0, 2);
       setLazyLoadedImages(initialImages);
       console.log(`[NoteEditor] Initialized with first ${initialImages.length} images`);
     } else if (images.length === 1) {
-      // If only 1 image, load it immediately
       setLazyLoadedImages(images);
     } else {
       setLazyLoadedImages([]);
     }
   }, [images.length, images]);
 
-  // Lazy load remaining images when user swipes to them
   const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / (IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING));
@@ -151,17 +141,14 @@ export default function NoteEditorScreen() {
     if (index >= 0 && index < images.length) {
       setCurrentImageIndex(index);
       
-      // If we're approaching an image that hasn't been loaded yet, load it
       if (images.length > 2 && index >= 1 && !isLazyLoading) {
         const nextIndex = index + 1;
         
-        // Check if the next image needs to be loaded
         if (nextIndex < images.length && nextIndex >= lazyLoadedImages.length) {
           setIsLazyLoading(true);
           console.log(`[NoteEditor] Lazy loading image at index ${nextIndex}`);
           
           try {
-            // Load the next image
             const imageToLoad = images[nextIndex];
             if (imageToLoad.id) {
               const imageUrl = await getImageDataUrl(imageToLoad.id);
@@ -174,7 +161,6 @@ export default function NoteEditorScreen() {
                 console.log(`[NoteEditor] Successfully lazy loaded image at index ${nextIndex}`);
               }
             } else {
-              // For new images without ID, they're already loaded
               setLazyLoadedImages(prev => {
                 const newImages = [...prev];
                 newImages[nextIndex] = imageToLoad;
@@ -207,7 +193,6 @@ export default function NoteEditorScreen() {
     };
   }, []);
 
-  // Handle shared content from other apps
   useEffect(() => {
     const loadSharedContent = async () => {
       if (!fromShare) {
@@ -216,14 +201,12 @@ export default function NoteEditorScreen() {
 
       console.log('Loading shared content from params');
       
-      // Set shared text
       if (params.sharedText) {
         const sharedTextValue = typeof params.sharedText === 'string' ? params.sharedText : '';
         console.log('Setting shared text:', sharedTextValue);
         setText(sharedTextValue);
       }
 
-      // Load shared images
       if (params.sharedImages) {
         try {
           const imageUris = JSON.parse(params.sharedImages as string) as string[];
@@ -236,10 +219,8 @@ export default function NoteEditorScreen() {
             try {
               console.log('Processing shared image:', uri);
               
-              // Handle different URI schemes
               let localUri = uri;
               
-              // For content:// URIs (Android), copy to cache
               if (uri.startsWith('content://')) {
                 console.log('Copying Android content URI to cache');
                 const filename = `shared_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
@@ -254,12 +235,10 @@ export default function NoteEditorScreen() {
                   console.log('Copied to:', localUri);
                 } catch (copyError) {
                   console.error('Error copying content URI:', copyError);
-                  // Try to use the original URI
                   localUri = uri;
                 }
               }
               
-              // Convert and optimize the image
               const converted = await convertImageToSuitableFormat(localUri);
               
               loadedImages.push({
@@ -283,7 +262,6 @@ export default function NoteEditorScreen() {
         }
       }
 
-      // Get current location for shared content
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
@@ -329,7 +307,6 @@ export default function NoteEditorScreen() {
         setLoading(true);
         const asset = result.assets[0];
         
-        // Try to extract location from the captured photo if we don't have a location yet
         if (!location) {
           console.log('Attempting to extract location from captured photo...');
           try {
@@ -354,7 +331,6 @@ export default function NoteEditorScreen() {
           }
         }
         
-        // Convert and add the image
         const converted = await convertImageToSuitableFormat(asset.uri);
         setImages([...images, {
           uri: converted.uri,
@@ -397,7 +373,6 @@ export default function NoteEditorScreen() {
         setLoading(true);
         const newImages: ImageData[] = [];
 
-        // Try to extract location from the first image if we don't have a location yet
         if (!location && result.assets.length > 0) {
           console.log('Attempting to extract location from first selected image...');
           try {
@@ -467,45 +442,37 @@ export default function NoteEditorScreen() {
     }, 300);
   };
 
-  // Handler to close FABs when tapping anywhere
   const handleBackdropPress = () => {
     if (showFABs) {
       setShowFABs(false);
     }
   };
 
-  // Auto-launch camera when openCamera flag is set - FIXED: Only run once
   useEffect(() => {
     if (openCamera && !isEditing && !isSharedRecall && !fromShare && !cameraLaunched) {
       console.log('Auto-launching camera for new note');
       setCameraLaunched(true);
-      // Small delay to ensure component is mounted
       setTimeout(() => {
         takePhoto();
       }, 300);
     }
   }, [openCamera, isEditing, isSharedRecall, fromShare, cameraLaunched, takePhoto]);
 
-  // Auto-launch location search when openLocation flag is set
   useEffect(() => {
     if (openLocation && !isEditing && !isSharedRecall && !fromShare) {
       console.log('Auto-launching location search for new note');
-      // Small delay to ensure component is mounted
       setTimeout(() => {
         router.push('/location-search');
       }, 300);
     }
   }, [openLocation, isEditing, isSharedRecall, fromShare, router]);
 
-  // Handle shared recall data
   useEffect(() => {
     if (isSharedRecall && params.sharedText) {
       console.log('Loading shared recall data');
       
-      // Set text
       setText(params.sharedText as string);
       
-      // Set location data from shared recall (don't fetch current location)
       if (params.selectedLatitude && params.selectedLongitude) {
         const latitude = parseFloat(params.selectedLatitude as string);
         const longitude = parseFloat(params.selectedLongitude as string);
@@ -523,7 +490,6 @@ export default function NoteEditorScreen() {
         console.log('Using shared location type:', params.selectedPrimaryType);
       }
       
-      // Load shared images and display them
       if (params.sharedImages) {
         try {
           const imageUrls = JSON.parse(params.sharedImages as string) as string[];
@@ -543,7 +509,6 @@ export default function NoteEditorScreen() {
     }
   }, [isSharedRecall, params.sharedText, params.sharedImages, params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType]);
 
-  // OPTIMIZED: Load note data with cache-first strategy
   useEffect(() => {
     const loadNoteFromCacheOrDatabase = async () => {
       if (!isEditing || !params.id || !user || fromShare) {
@@ -555,13 +520,11 @@ export default function NoteEditorScreen() {
         console.log('[NoteEditor] ===== OPTIMIZED LOADING =====');
         console.log('[NoteEditor] Loading note:', noteId);
 
-        // STEP 1: Try to load from cache first (instant)
         const cachedNote = getCachedNote(noteId);
         
         if (cachedNote) {
           console.log('[NoteEditor] ✅ Using CACHED data for instant load');
           
-          // Set data from cache immediately
           setText(cachedNote.text || '');
           setLocationName(cachedNote.location || '');
           setLocationPrimaryType(cachedNote.location_primary_type || '');
@@ -573,7 +536,6 @@ export default function NoteEditorScreen() {
             });
           }
 
-          // Set people from cache
           if (cachedNote.people && cachedNote.people.length > 0) {
             console.log('[NoteEditor] Loaded people from cache:', cachedNote.people);
             setPeople(cachedNote.people);
@@ -583,7 +545,6 @@ export default function NoteEditorScreen() {
             setInitialPeople([]);
           }
 
-          // Set images from cache
           if (cachedNote.images && cachedNote.images.length > 0) {
             const cachedImages: ImageData[] = cachedNote.images.map((url, index) => ({
               id: cachedNote.imageIds?.[index],
@@ -594,11 +555,8 @@ export default function NoteEditorScreen() {
             console.log(`[NoteEditor] Loaded ${cachedImages.length} images from cache`);
           }
 
-          // STEP 2: Optionally refresh in background for latest data
-          // This ensures we have the most up-to-date data without blocking the UI
           console.log('[NoteEditor] Refreshing data in background...');
           
-          // Don't show loading indicator for background refresh
           const { data: recallData, error: recallError } = await supabase
             .from('recalls')
             .select('*')
@@ -607,7 +565,6 @@ export default function NoteEditorScreen() {
             .single();
 
           if (!recallError && recallData) {
-            // Only update if data has changed
             if (recallData.updated_at !== cachedNote.updated_at) {
               console.log('[NoteEditor] Data changed, updating from database');
               
@@ -622,7 +579,6 @@ export default function NoteEditorScreen() {
                 });
               }
 
-              // Refresh people
               const { data: recallPeopleData } = await supabase
                 .from('recall_people')
                 .select('person_id, persons(id, person_name, photo_url)')
@@ -640,7 +596,6 @@ export default function NoteEditorScreen() {
                 setInitialPeople(loadedPeople);
               }
 
-              // Refresh images
               const { data: imagesData } = await supabase
                 .from('recall_images')
                 .select('id')
@@ -650,7 +605,6 @@ export default function NoteEditorScreen() {
               if (imagesData && imagesData.length > 0) {
                 const loadedImages: ImageData[] = [];
                 
-                // Load first 2 images immediately
                 const imagesToLoadImmediately = imagesData.slice(0, 2);
                 
                 for (const img of imagesToLoadImmediately) {
@@ -668,11 +622,10 @@ export default function NoteEditorScreen() {
                   }
                 }
                 
-                // Add placeholders for remaining images
                 for (let i = 2; i < imagesData.length; i++) {
                   loadedImages.push({
                     id: imagesData[i].id,
-                    uri: '', // Will be lazy loaded
+                    uri: '',
                     contentType: 'image/jpeg',
                   });
                 }
@@ -687,7 +640,6 @@ export default function NoteEditorScreen() {
           return;
         }
 
-        // STEP 3: No cache available, load from database (fallback)
         console.log('[NoteEditor] ⚠️ No cache available, loading from database');
         setLoadingNote(true);
 
@@ -707,7 +659,6 @@ export default function NoteEditorScreen() {
 
         console.log('[NoteEditor] Note loaded from database:', recallData);
 
-        // Set text and location data
         setText(recallData.text || '');
         setLocationName(recallData.location || '');
         setLocationPrimaryType(recallData.location_primary_type || '');
@@ -719,7 +670,6 @@ export default function NoteEditorScreen() {
           });
         }
 
-        // Load people for this recall
         console.log('[NoteEditor] Loading people for recall:', noteId);
         const { data: recallPeopleData, error: recallPeopleError } = await supabase
           .from('recall_people')
@@ -746,7 +696,6 @@ export default function NoteEditorScreen() {
           setInitialPeople([]);
         }
 
-        // Load images for this note
         const { data: imagesData, error: imagesError } = await supabase
           .from('recall_images')
           .select('id')
@@ -760,7 +709,6 @@ export default function NoteEditorScreen() {
           
           const loadedImages: ImageData[] = [];
           
-          // Load first 2 images immediately
           const imagesToLoadImmediately = imagesData.slice(0, 2);
           
           for (const img of imagesToLoadImmediately) {
@@ -781,11 +729,10 @@ export default function NoteEditorScreen() {
             }
           }
           
-          // Add placeholders for remaining images
           for (let i = 2; i < imagesData.length; i++) {
             loadedImages.push({
               id: imagesData[i].id,
-              uri: '', // Will be lazy loaded
+              uri: '',
               contentType: 'image/jpeg',
             });
           }
@@ -805,7 +752,6 @@ export default function NoteEditorScreen() {
     loadNoteFromCacheOrDatabase();
   }, [params.id, isEditing, user, router, fromShare, getCachedNote]);
 
-  // Request location permission only for new notes (not editing, not shared recalls, not from share)
   useEffect(() => {
     if (!isEditing && !isSharedRecall && !openLocation && !fromShare) {
       console.log('Requesting location for new note');
@@ -819,9 +765,7 @@ export default function NoteEditorScreen() {
     }
   }, [isEditing, isSharedRecall, openLocation, fromShare]);
 
-  // Handle location updates from search (but not for shared recalls)
   useEffect(() => {
-    // Skip location updates for shared recalls
     if (isSharedRecall) {
       console.log('Skipping location update for shared recall');
       return;
@@ -904,7 +848,6 @@ export default function NoteEditorScreen() {
   const removeImage = async (index: number) => {
     const image = images[index];
     
-    // Show confirmation dialog
     Alert.alert(
       'Delete Image',
       'Are you sure you want to delete this image?',
@@ -937,17 +880,14 @@ export default function NoteEditorScreen() {
     const image = images[index];
     console.log('Opening native editor for image at index:', index);
     
-    // Make sure we have the full image URI loaded
     let imageUri = image.uri;
     
-    // If the image hasn't been loaded yet (lazy loading), load it now
     if (!imageUri && image.id) {
       console.log('Loading image before editing:', image.id);
       try {
         const dataUrl = await getImageDataUrl(image.id);
         if (dataUrl) {
           imageUri = dataUrl;
-          // Update the images array with the loaded URI
           const updatedImages = [...images];
           updatedImages[index] = { ...image, uri: dataUrl };
           setImages(updatedImages);
@@ -962,7 +902,6 @@ export default function NoteEditorScreen() {
       }
     }
     
-    // Note: Native image editing functionality has been removed
     Alert.alert('Info', 'Image editing is not available');
   };
 
@@ -998,7 +937,6 @@ export default function NoteEditorScreen() {
       return;
     }
 
-    // Navigate directly to location search screen
     console.log('Navigating to location search screen');
     router.push('/location-search');
   };
@@ -1074,8 +1012,6 @@ export default function NoteEditorScreen() {
         console.log('[NoteEditor] New recall created with ID:', recallId);
       }
 
-      // Save people associations - ONLY FOR NEW NOTES
-      // For existing notes, people are saved directly from the word cloud screen
       if (!isEditing && people.length > 0) {
         try {
           console.log('[NoteEditor] ===== SAVING PEOPLE ASSOCIATIONS FOR NEW NOTE =====');
@@ -1084,7 +1020,6 @@ export default function NoteEditorScreen() {
           console.log('[NoteEditor] People to save:', people);
           console.log('[NoteEditor] People count:', people.length);
           
-          // Prepare insert data
           const insertData = people.map(person => ({
             recall_id: recallId,
             person_id: person.id,
@@ -1115,18 +1050,14 @@ export default function NoteEditorScreen() {
         console.log('[NoteEditor] No people to save');
       }
 
-      // FIXED: Navigate back immediately after saving the recall
       console.log('[NoteEditor] ===== NAVIGATING BACK IMMEDIATELY =====');
       
-      // Trigger haptic feedback
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       
-      // Navigate back to landing page
       router.back();
       
-      // Refresh the notes list immediately (optimistic update)
       setTimeout(() => {
         if (isEditing && params.id) {
           refreshSingleNote(params.id as string);
@@ -1135,13 +1066,11 @@ export default function NoteEditorScreen() {
         }
       }, 100);
 
-      // ASYNC: Upload images in the background (don't wait)
       const imagesToUpload = images.filter(img => !img.id && (img.localUri || img.uri));
       
       if (imagesToUpload.length > 0) {
         console.log(`[NoteEditor] [ASYNC] Starting background upload of ${imagesToUpload.length} images...`);
         
-        // Fire and forget - upload images in background
         (async () => {
           let uploadedCount = 0;
           let failedCount = 0;
@@ -1159,7 +1088,6 @@ export default function NoteEditorScreen() {
                 uploadedImageIds.push(imageId);
                 console.log('[NoteEditor] [ASYNC] Image uploaded successfully to database');
                 
-                // Trigger OCR processing for this image
                 console.log('[NoteEditor] [ASYNC] Triggering OCR processing for image:', imageId);
                 triggerOCRProcessing(imageId).then(result => {
                   if (result.success) {
@@ -1171,7 +1099,6 @@ export default function NoteEditorScreen() {
                   console.error('[NoteEditor] [ASYNC] Error triggering OCR processing:', error);
                 });
                 
-                // Refresh the single note to show the newly uploaded image
                 await refreshSingleNote(recallId);
               } else {
                 failedCount++;
@@ -1185,12 +1112,10 @@ export default function NoteEditorScreen() {
 
           console.log(`[NoteEditor] [ASYNC] Upload complete: ${uploadedCount} images uploaded, ${failedCount} failed`);
           
-          // Final refresh after all images are uploaded
           await refreshSingleNote(recallId);
         })();
       }
 
-      // ASYNC: Process URLs in background (don't wait)
       console.log('[NoteEditor] [ASYNC] Processing URLs in note text for recall:', recallId);
       processRecallUrls(user.id, recallId, noteData.text).then(result => {
         if (result.success) {
@@ -1202,7 +1127,6 @@ export default function NoteEditorScreen() {
         console.error('[NoteEditor] [ASYNC] Error processing URLs:', error);
       });
 
-      // ASYNC: Trigger category matching in background (don't wait)
       setTimeout(() => {
         triggerCategoryMatching(recallId).then(result => {
           if (result.success) {
@@ -1215,7 +1139,6 @@ export default function NoteEditorScreen() {
         });
       }, 500);
 
-      // ASYNC: Trigger recall embedding in background (don't wait)
       setTimeout(() => {
         triggerRecallEmbedding(
           recallId,
@@ -1264,16 +1187,13 @@ export default function NoteEditorScreen() {
     textInputRef.current?.focus();
   };
 
-  // Handler for closing full screen image - prevents route refresh
   const handleCloseFullScreenImage = useCallback(() => {
     console.log('Closing full screen image modal - no route refresh');
     setShowFullScreenImage(false);
   }, []);
 
-  // Determine which images to display (lazy loaded or all)
   const displayImages = images.length > 1 ? lazyLoadedImages : images;
 
-  // Log people state changes for debugging
   useEffect(() => {
     console.log('[NoteEditor] People state changed. Current count:', people.length);
     if (people.length > 0) {
@@ -1324,7 +1244,12 @@ export default function NoteEditorScreen() {
               style={styles.headerButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="chevron.left" size={24} color={colors.text} />
+              <IconSymbol 
+                ios_icon_name="chevron.left" 
+                android_material_icon_name="arrow-back" 
+                size={24} 
+                color={colors.text} 
+              />
             </Pressable>
           ),
           headerRight: () => (
@@ -1342,7 +1267,12 @@ export default function NoteEditorScreen() {
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <View style={styles.checkmarkContainer}>
-                    <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
+                    <IconSymbol 
+                      ios_icon_name="checkmark" 
+                      android_material_icon_name="check" 
+                      size={20} 
+                      color="#FFFFFF" 
+                    />
                   </View>
                 )}
               </Pressable>
@@ -1351,7 +1281,6 @@ export default function NoteEditorScreen() {
         }}
       />
 
-      {/* Backdrop for FABs - tap anywhere to close */}
       {showFABs && (
         <Pressable 
           style={styles.fabBackdrop} 
@@ -1366,7 +1295,6 @@ export default function NoteEditorScreen() {
         keyboardShouldPersistTaps="handled"
         scrollEnabled={true}
       >
-        {/* Larger touch area wrapper for text input */}
         <Pressable 
           onPress={handleRichTextPress}
           style={[styles.textInputContainer, { height: textInputHeight }]}
@@ -1421,7 +1349,6 @@ export default function NoteEditorScreen() {
         <View style={styles.spacer} />
       </ScrollView>
 
-      {/* Always show people avatars row with horizontal scrolling */}
       <PeopleAvatarsRow 
         people={people} 
         avatarSize={44} 
@@ -1479,7 +1406,12 @@ export default function NoteEditorScreen() {
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <View style={styles.actionButtonCircle}>
-                      <IconSymbol name="xmark" size={14} color="#FFFFFF" />
+                      <IconSymbol 
+                        ios_icon_name="xmark" 
+                        android_material_icon_name="close" 
+                        size={14} 
+                        color="#FFFFFF" 
+                      />
                     </View>
                   </Pressable>
                 </View>
@@ -1489,8 +1421,6 @@ export default function NoteEditorScreen() {
         </View>
       )}
 
-      {/* Floating Action Buttons - Right side, vertically aligned with plus icon */}
-      {/* Position dynamically: above keyboard when visible, otherwise at bottom */}
       {showFABs && (
         <Animated.View
           entering={FadeIn.duration(200)}
@@ -1506,7 +1436,12 @@ export default function NoteEditorScreen() {
             onPress={handleChooseFromLibrary}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+            <IconSymbol 
+              ios_icon_name="photo.fill" 
+              android_material_icon_name="photo" 
+              size={28} 
+              color={colors.primary} 
+            />
           </Pressable>
 
           <Pressable
@@ -1514,7 +1449,12 @@ export default function NoteEditorScreen() {
             onPress={handleTakePhoto}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+            <IconSymbol 
+              ios_icon_name="camera.fill" 
+              android_material_icon_name="camera" 
+              size={28} 
+              color={colors.primary} 
+            />
           </Pressable>
         </Animated.View>
       )}
@@ -1528,37 +1468,8 @@ export default function NoteEditorScreen() {
           right: 0,
         }
       ]}>
-        {/* Keyboard icons - Left aligned (swapped from right) */}
+        {/* Plus icon - Left aligned (swapped from right) */}
         <View style={styles.toolbarLeft}>
-          <Pressable
-            onPress={toggleKeyboard}
-            style={styles.toolbarButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <IconSymbol 
-              name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-              size={26} 
-              color={colors.primary} 
-            />
-          </Pressable>
-        </View>
-
-        {/* Location Pill - Centered with equal padding */}
-        <View style={styles.toolbarCenter}>
-          <Pressable
-            style={styles.locationPill}
-            onPress={handleLocationSearch}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
-            <Text style={styles.locationPillText} numberOfLines={1}>
-              {locationName || 'Add Location'}
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* Plus icon - Right aligned (swapped from left) */}
-        <View style={styles.toolbarRight}>
           <Pressable
             onPress={handlePlusPress}
             disabled={loading}
@@ -1568,13 +1479,51 @@ export default function NoteEditorScreen() {
             {loading ? (
               <ActivityIndicator size="small" color={colors.primary} />
             ) : (
-              <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+              <IconSymbol 
+                ios_icon_name="plus.circle.fill" 
+                android_material_icon_name="add-circle" 
+                size={28} 
+                color={colors.text} 
+              />
             )}
+          </Pressable>
+        </View>
+
+        <View style={styles.toolbarCenter}>
+          <Pressable
+            style={styles.locationPill}
+            onPress={handleLocationSearch}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <IconSymbol 
+              ios_icon_name="mappin.circle.fill" 
+              android_material_icon_name="location-on" 
+              size={16} 
+              color={colors.primary} 
+            />
+            <Text style={styles.locationPillText} numberOfLines={1}>
+              {locationName || 'Add Location'}
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Keyboard icons - Right aligned (swapped from left) */}
+        <View style={styles.toolbarRight}>
+          <Pressable
+            onPress={toggleKeyboard}
+            style={styles.toolbarButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <IconSymbol 
+              ios_icon_name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+              android_material_icon_name={keyboardVisible ? "keyboard-hide" : "keyboard"} 
+              size={26} 
+              color={colors.primary} 
+            />
           </Pressable>
         </View>
       </View>
 
-      {/* Saving Modal */}
       {saving && (
         <View style={styles.savingModalContainer}>
           <View style={styles.savingModalContent}>

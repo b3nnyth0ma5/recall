@@ -94,7 +94,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const [loadedImageIndices, setLoadedImageIndices] = useState<Set<number>>(new Set());
   const [initialImageCount, setInitialImageCount] = useState(0);
 
-  // FIXED: Add state for location search modal
   const [showLocationSearch, setShowLocationSearch] = useState(false);
 
   const isEditing = !!noteId;
@@ -698,12 +697,10 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     });
   };
 
-  // FIXED: Open location search modal instead of navigating
   const handleLocationPress = () => {
     setShowLocationSearch(true);
   };
 
-  // FIXED: Callback for when location is selected
   const handleLocationSelected = (selectedLocation: {
     latitude: number;
     longitude: number;
@@ -1045,7 +1042,12 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                     style={styles.headerButton}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <IconSymbol name="xmark" size={24} color={colors.text} />
+                    <IconSymbol 
+                      ios_icon_name="xmark" 
+                      android_material_icon_name="close" 
+                      size={24} 
+                      color={colors.text} 
+                    />
                   </Pressable>
                   
                   <Text style={styles.headerTitle}>
@@ -1065,7 +1067,12 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                       <ActivityIndicator size="small" color="#FFFFFF" />
                     ) : (
                       <View style={styles.checkmarkContainer}>
-                        <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
+                        <IconSymbol 
+                          ios_icon_name="checkmark" 
+                          android_material_icon_name="check" 
+                          size={20} 
+                          color="#FFFFFF" 
+                        />
                       </View>
                     )}
                   </Pressable>
@@ -1188,7 +1195,12 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                               >
                                 <View style={styles.actionButtonCircle}>
-                                  <IconSymbol name="xmark" size={12} color="#FFFFFF" />
+                                  <IconSymbol 
+                                    ios_icon_name="xmark" 
+                                    android_material_icon_name="close" 
+                                    size={12} 
+                                    color="#FFFFFF" 
+                                  />
                                 </View>
                               </Pressable>
                             </View>
@@ -1214,7 +1226,12 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                       onPress={handleChooseFromLibrary}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+                      <IconSymbol 
+                        ios_icon_name="photo.fill" 
+                        android_material_icon_name="photo" 
+                        size={28} 
+                        color={colors.primary} 
+                      />
                     </Pressable>
 
                     <Pressable
@@ -1222,7 +1239,12 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                       onPress={handleTakePhoto}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+                      <IconSymbol 
+                        ios_icon_name="camera.fill" 
+                        android_material_icon_name="camera" 
+                        size={28} 
+                        color={colors.primary} 
+                      />
                     </Pressable>
                   </Animated.View>
                 )}
@@ -1236,34 +1258,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                     right: 0,
                   }
                 ]}>
+                  {/* Plus icon - Left aligned (swapped from right) */}
                   <View style={styles.toolbarLeft}>
-                    <Pressable
-                      onPress={toggleKeyboard}
-                      style={styles.toolbarButton}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <IconSymbol 
-                        name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-                        size={26} 
-                        color={colors.primary} 
-                      />
-                    </Pressable>
-                  </View>
-
-                  <View style={styles.toolbarCenter}>
-                    <Pressable
-                      style={styles.locationPill}
-                      onPress={handleLocationSearch}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <IconSymbol name="mappin.circle.fill" size={16} color={colors.primary} />
-                      <Text style={styles.locationPillText} numberOfLines={1}>
-                        {locationName || 'Add Location'}
-                      </Text>
-                    </Pressable>
-                  </View>
-
-                  <View style={styles.toolbarRight}>
                     <Pressable
                       onPress={handlePlusPress}
                       disabled={loading}
@@ -1273,8 +1269,47 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                       {loading ? (
                         <ActivityIndicator size="small" color={colors.primary} />
                       ) : (
-                        <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+                        <IconSymbol 
+                          ios_icon_name="plus.circle.fill" 
+                          android_material_icon_name="add-circle" 
+                          size={28} 
+                          color={colors.text} 
+                        />
                       )}
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.toolbarCenter}>
+                    <Pressable
+                      style={styles.locationPill}
+                      onPress={handleLocationSearch}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <IconSymbol 
+                        ios_icon_name="mappin.circle.fill" 
+                        android_material_icon_name="location-on" 
+                        size={16} 
+                        color={colors.primary} 
+                      />
+                      <Text style={styles.locationPillText} numberOfLines={1}>
+                        {locationName || 'Add Location'}
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  {/* Keyboard icons - Right aligned (swapped from left) */}
+                  <View style={styles.toolbarRight}>
+                    <Pressable
+                      onPress={toggleKeyboard}
+                      style={styles.toolbarButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <IconSymbol 
+                        ios_icon_name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+                        android_material_icon_name={keyboardVisible ? "keyboard-hide" : "keyboard"} 
+                        size={26} 
+                        color={colors.primary} 
+                      />
                     </Pressable>
                   </View>
                 </View>
@@ -1303,7 +1338,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
         </Animated.View>
       </Modal>
 
-      {/* FIXED: Location search modal */}
       <LocationSearchScreen
         visible={showLocationSearch}
         onClose={() => setShowLocationSearch(false)}
