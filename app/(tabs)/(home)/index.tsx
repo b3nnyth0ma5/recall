@@ -175,12 +175,11 @@ export default function HomeScreen() {
     }
   };
 
-  const handleNoteUpdate = async (noteId: string) => {
+  const handleNotePress = (noteId: string) => {
     try {
-      console.log('[handleNoteUpdate] Refreshing note:', noteId);
-      await refreshSingleNote(noteId);
+      router.push(`/note-editor?id=${noteId}`);
     } catch (error) {
-      console.error('Error refreshing note:', error);
+      console.error('Error navigating to recall editor:', error);
     }
   };
 
@@ -549,8 +548,8 @@ export default function HomeScreen() {
                 <NoteCard
                   key={`${note.id}-${index}`}
                   note={note}
+                  onPress={() => handleNotePress(note.id)}
                   onDelete={() => handleDeleteNote(note.id)}
-                  onUpdate={() => handleNoteUpdate(note.id)}
                   loading={false}
                   expectedImageCount={getExpectedImageCount(note.id)}
                 />

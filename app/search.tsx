@@ -146,10 +146,6 @@ export default function SearchScreen() {
 
   const handleSearch = useCallback(() => {
     if (searchQuery.trim()) {
-      // FIXED: Dismiss keyboard when search is initiated
-      console.log('[SearchScreen] Dismissing keyboard on search');
-      Keyboard.dismiss();
-      
       // Haptic feedback when search is clicked
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -182,10 +178,6 @@ export default function SearchScreen() {
     setIsAnswerExpanded(false);
     setIsSearching(true);
     setIsProgressExpanded(true);
-    
-    // FIXED: Dismiss keyboard when search from history is initiated
-    console.log('[SearchScreen] Dismissing keyboard on history search');
-    Keyboard.dismiss();
     
     searchNotes(searchText, true).finally(() => {
       console.log('[SearchScreen] History search completed');

@@ -48,7 +48,7 @@ interface CombinedSearchAddProps {
 interface ImageState {
   uri: string;
   isPlaceholder: boolean;
-  originalUri?: string;
+  originalUri?: string; // Store original URI for placeholder replacement
 }
 
 export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
@@ -69,10 +69,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const translateY = useSharedValue(0);
   const lastLocationFetchRef = useRef<number>(0);
   const locationRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // FIXED: Track if we've already processed these params to prevent infinite loops
+  const processedParamsRef = useRef<string>('');
 
+  // Animation values for AI icon
   const aiIconRotation = useSharedValue(0);
   const aiIconScale = useSharedValue(1);
 
+  // Get current location on mount
   useEffect(() => {
     getCurrentLocation();
   }, []);
@@ -84,6 +89,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     }
   }, []);
 
+  // Handle app state changes for location refresh
   useEffect(() => {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     
@@ -92,11 +98,14 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     };
   }, [handleAppStateChange]);
 
+  // Set up periodic location refresh (every 5 minutes of inactivity)
   useEffect(() => {
+    // Clear any existing interval
     if (locationRefreshIntervalRef.current) {
       clearInterval(locationRefreshIntervalRef.current);
     }
 
+    // Set up new interval to check if location needs refresh
     locationRefreshIntervalRef.current = setInterval(() => {
       const timeSinceLastFetch = Date.now() - lastLocationFetchRef.current;
       const fiveMinutes = 5 * 60 * 1000;
@@ -105,7 +114,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         console.log('[CombinedSearchAdd] Auto-refreshing location after 5 minutes of inactivity');
         getCurrentLocation();
       }
-    }, 60000);
+    }, 60000); // Check every minute
 
     return () => {
       if (locationRefreshIntervalRef.current) {
@@ -114,12 +123,14 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     };
   }, []);
 
+  // Handle keyboard show/hide - REDUCED GAP BY 50%
   useEffect(() => {
     const keyboardWillShowListener = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
         setKeyboardHeight(e.endCoordinates.height);
         setIsKeyboardVisible(true);
+        // Reduced from -(e.endCoordinates.height + 10) to -(e.endCoordinates.height / 2 + 5)
         translateY.value = withTiming(-(e.endCoordinates.height - 10), { duration: 250 });
       }
     );
@@ -145,6 +156,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     };
   });
 
+  // AI Icon animation styles
   const aiIconAnimatedStyle = useAnimatedStyle(() => {
     return {
       transform: [
@@ -154,13 +166,16 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     };
   }, [aiIconRotation, aiIconScale]);
 
+  // Start AI icon animation when detecting intent
   useEffect(() => {
     if (isDetectingIntent) {
+      // Continuous rotation
       aiIconRotation.value = withRepeat(
         withTiming(360, { duration: 2000, easing: Easing.linear }),
         -1,
         false
       );
+      // Pulsing scale
       aiIconScale.value = withRepeat(
         withSequence(
           withTiming(1.2, { duration: 600, easing: Easing.inOut(Easing.ease) }),
@@ -170,53 +185,11 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         false
       );
     } else {
+      // Reset animations
       aiIconRotation.value = withTiming(0, { duration: 300 });
       aiIconScale.value = withTiming(1, { duration: 300 });
     }
   }, [isDetectingIntent, aiIconRotation, aiIconScale]);
-
-  // FIXED: Listen for location updates from location-search screen
-  useEffect(() => {
-    if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
-      const latitude = parseFloat(params.selectedLatitude as string);
-      const longitude = parseFloat(params.selectedLongitude as string);
-      // FIXED: Use selectedLocationName which already contains "DisplayName, Suburb" format
-      const formattedName = params.selectedLocationName as string;
-      const primaryType = params.selectedPrimaryType as string || '';
-
-      console.log('[CombinedSearchAdd] ===== LOCATION UPDATED FROM SEARCH =====');
-      console.log('[CombinedSearchAdd] Latitude:', latitude);
-      console.log('[CombinedSearchAdd] Longitude:', longitude);
-      console.log('[CombinedSearchAdd] Location Name (formatted with suburb):', formattedName);
-      console.log('[CombinedSearchAdd] Primary Type:', primaryType);
-      console.log('[CombinedSearchAdd] Display Name:', params.selectedDisplayName);
-      console.log('[CombinedSearchAdd] Full Address:', params.selectedFullAddress);
-      
-      // Update location state with the formatted name (which includes suburb)
-      const newLocation = { 
-        latitude, 
-        longitude, 
-        name: formattedName, // This already contains "DisplayName, Suburb"
-        primaryType: primaryType || undefined,
-      };
-      
-      setLocation(newLocation);
-      console.log('[CombinedSearchAdd] Location state updated with formatted name:', newLocation);
-
-      // Clear the params after processing to prevent re-triggering
-      setTimeout(() => {
-        router.setParams({
-          selectedLatitude: undefined,
-          selectedLongitude: undefined,
-          selectedLocationName: undefined,
-          selectedDisplayName: undefined,
-          selectedFullAddress: undefined,
-          selectedPrimaryType: undefined,
-        });
-        console.log('[CombinedSearchAdd] Params cleared');
-      }, 100);
-    }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router]);
 
   const getCurrentLocation = async () => {
     try {
@@ -237,32 +210,82 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
       console.log('[CombinedSearchAdd] GPS coordinates:', { latitude, longitude });
 
+      // Use Google Places API for accurate reverse geocoding
       const { reverseGeocodeGoogle } = await import('@/utils/googlePlaces');
       const locationName = await reverseGeocodeGoogle(latitude, longitude);
 
-      console.log('[CombinedSearchAdd] Resolved location name (with suburb):', locationName);
+      console.log('[CombinedSearchAdd] Resolved location name:', locationName);
 
       const locationData = {
         latitude,
         longitude,
-        name: locationName, // This already contains "Street, Suburb" format
-        primaryType: undefined,
+        name: locationName,
+        primaryType: undefined, // Will be set when user selects a specific location
       };
 
       setCurrentLocation(locationData);
-      // Only set location if user hasn't manually selected a location
-      if (!location) {
-        setLocation(locationData);
-      }
+      setLocation(locationData); // Set as default location
       lastLocationFetchRef.current = Date.now();
       
-      console.log('[CombinedSearchAdd] Current location obtained with formatted name:', locationData);
+      console.log('[CombinedSearchAdd] Current location obtained:', locationData);
     } catch (error) {
       console.error('[CombinedSearchAdd] Error getting current location:', error);
     } finally {
       setIsRefreshingLocation(false);
     }
   };
+
+  // FIXED: Listen for location selection from location-search screen with proper deduplication
+  useEffect(() => {
+    if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
+      // Create a unique key for these params
+      const paramsKey = `${params.selectedLatitude}-${params.selectedLongitude}-${params.selectedLocationName}`;
+      
+      // Check if we've already processed these exact params
+      if (processedParamsRef.current === paramsKey) {
+        console.log('[CombinedSearchAdd] Already processed these params, skipping');
+        return;
+      }
+      
+      // Mark these params as processed
+      processedParamsRef.current = paramsKey;
+      
+      const selectedLocation = {
+        latitude: parseFloat(params.selectedLatitude as string),
+        longitude: parseFloat(params.selectedLongitude as string),
+        name: params.selectedLocationName as string,
+        primaryType: params.selectedPrimaryType ? (params.selectedPrimaryType as string) : undefined,
+      };
+      
+      console.log('[CombinedSearchAdd] Location selected from location-search:', selectedLocation);
+      setLocation(selectedLocation);
+      setShowDrawer(false);
+      
+      // FIXED: Clear the params after processing - use setTimeout to break call stack
+      // This prevents the infinite loop by ensuring the param clearing happens
+      // in a separate event loop tick
+      setTimeout(() => {
+        try {
+          console.log('[CombinedSearchAdd] Clearing location params');
+          router.setParams({
+            selectedLatitude: undefined,
+            selectedLongitude: undefined,
+            selectedLocationName: undefined,
+            selectedDisplayName: undefined,
+            selectedFullAddress: undefined,
+            selectedPrimaryType: undefined,
+          });
+          
+          // Reset the processed params ref after a delay to allow for new selections
+          setTimeout(() => {
+            processedParamsRef.current = '';
+          }, 1000);
+        } catch (error) {
+          console.error('[CombinedSearchAdd] Error clearing params:', error);
+        }
+      }, 0);
+    }
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router]);
 
   const handlePlusPress = () => {
     if (Platform.OS !== 'web') {
@@ -274,6 +297,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const handleSearchPress = async () => {
     const searchQuery = text.trim();
     
+    // Dismiss keyboard first before navigation
     console.log('[CombinedSearchAdd] Dismissing keyboard');
     Keyboard.dismiss();
     
@@ -281,11 +305,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
+    // FIXED: Navigate to search screen WITHOUT showing zero state by default
+    // If there's no search query, navigate to search screen to show history (not zero state)
     if (!searchQuery) {
       console.log('[CombinedSearchAdd] Empty search query - navigating to search screen to show history');
       
+      // Use setTimeout to break the call stack and prevent recursion
       setTimeout(() => {
         try {
+          // Navigate without any query parameter - search screen will show history, not zero state
           router.push('/search');
         } catch (error) {
           console.error('[CombinedSearchAdd] Error navigating to search:', error);
@@ -296,11 +324,14 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
     console.log('[CombinedSearchAdd] Search icon pressed with query:', searchQuery);
 
+    // Navigate to search screen with the query text
+    // The search screen will handle executing the search
     const encodedQuery = encodeURIComponent(searchQuery);
     const searchRoute = `/search?q=${encodedQuery}&autoSearch=true`;
     
     console.log('[CombinedSearchAdd] Navigating to search screen:', searchRoute);
     
+    // Use setTimeout to break the call stack and prevent recursion
     setTimeout(() => {
       try {
         router.push(searchRoute);
@@ -309,8 +340,10 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       }
     }, 0);
 
+    // Clear the text input after navigation
     setText('');
 
+    // Save search history asynchronously (don't wait for it)
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -344,31 +377,39 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       if (!result.canceled && result.assets) {
         console.log('[CombinedSearchAdd] Selected images:', result.assets.length);
         
+        // Create placeholder images immediately
         const placeholderImages: ImageState[] = result.assets.map(asset => ({
-          uri: asset.uri,
+          uri: asset.uri, // Use original URI as placeholder initially
           isPlaceholder: true,
           originalUri: asset.uri,
         }));
         
+        // Add placeholders to state immediately - user returns to component
         setImages(prev => [...prev, ...placeholderImages]);
         setShowDrawer(false);
         
+        // Start optimizing images in the background
         console.log('[CombinedSearchAdd] Starting image optimization for uploaded photos...');
         
+        // Process each image individually to check aspect ratio and optimize
         for (let i = 0; i < result.assets.length; i++) {
           const asset = result.assets[i];
           const originalUri = asset.uri;
           
           console.log(`[CombinedSearchAdd] Processing uploaded image ${i + 1}/${result.assets.length}`);
           
+          // Import image optimization utility
           const { compressImageForUpload } = await import('@/utils/imageOptimization');
           
+          // Compress and optimize the image (this function checks aspect ratio internally)
           const optimizedUri = await compressImageForUpload(originalUri);
           
           console.log(`[CombinedSearchAdd] Image ${i + 1}/${result.assets.length} optimized`);
           
+          // Replace placeholder with optimized image
           setImages(prev => {
             const newImages = [...prev];
+            // Find the placeholder with matching original URI
             const placeholderIndex = newImages.findIndex(
               img => img.isPlaceholder && img.originalUri === originalUri
             );
@@ -408,20 +449,24 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       if (!result.canceled && result.assets && result.assets[0]) {
         console.log('[CombinedSearchAdd] Camera photo taken');
         
+        // Create placeholder image immediately
         const placeholderImage: ImageState = {
           uri: result.assets[0].uri,
           isPlaceholder: true,
           originalUri: result.assets[0].uri,
         };
         
+        // Add placeholder to state immediately - user returns to component
         setImages(prev => [...prev, placeholderImage]);
         setShowDrawer(false);
         
+        // Optimize image in the background
         console.log('[CombinedSearchAdd] Compressing camera photo...');
         const { compressImageForUpload } = await import('@/utils/imageOptimization');
         const compressedUri = await compressImageForUpload(result.assets[0].uri);
         console.log('[CombinedSearchAdd] Camera photo compressed successfully');
         
+        // Replace placeholder with optimized image
         setImages(prev => {
           const newImages = [...prev];
           const placeholderIndex = newImages.findIndex(
@@ -446,9 +491,15 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
   const handleLocationPress = () => {
     setShowDrawer(false);
-    console.log('[CombinedSearchAdd] Navigating to location search');
-    // Navigate to location search route
-    router.push('/location-search');
+    
+    // Use setTimeout to break the call stack and prevent recursion
+    setTimeout(() => {
+      try {
+        router.push('/location-search');
+      } catch (error) {
+        console.error('[CombinedSearchAdd] Error navigating to location search:', error);
+      }
+    }, 0);
   };
 
   const handleIntentChoice = (choice: 'create' | 'search') => {
@@ -465,6 +516,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       return;
     }
 
+    // IMMEDIATELY dismiss keyboard and blur input when user presses submit
     console.log('[CombinedSearchAdd] Dismissing keyboard immediately on recall creation');
     Keyboard.dismiss();
     if (textInputRef.current) {
@@ -474,13 +526,10 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     try {
       setIsCreating(true);
       
-      // FIXED: Use the location state (which includes manually selected location or current location)
+      // Use manually selected location if available, otherwise use current location
       const locationToSave = location || currentLocation;
       
-      console.log('[CombinedSearchAdd] ===== CREATING RECALL WITH LOCATION =====');
-      console.log('[CombinedSearchAdd] Location to save:', locationToSave);
-      console.log('[CombinedSearchAdd] Location name (should include suburb):', locationToSave?.name);
-      
+      // Extract URIs from image states
       const imageUris = images.map(img => img.uri);
       
       await onCreateRecall(
@@ -494,14 +543,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         }
       );
 
-      // Reset form after successful creation
+      // Reset form
       setText('');
       setImages([]);
-      // Reset location to current location (not null)
+      // Reset location to current location after creating recall
       setLocation(currentLocation);
       setSavingStage('');
-      
-      console.log('[CombinedSearchAdd] Recall created successfully');
     } catch (error) {
       console.error('Error creating recall:', error);
       Alert.alert('Error', 'Failed to create recall');
@@ -517,7 +564,75 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       return;
     }
 
-    await handleCreateRecallDirect();
+    // If images are attached, skip intent detection and create recall directly
+    if (images.length > 0) {
+      console.log('[CombinedSearchAdd] Images attached - skipping intent detection');
+      await handleCreateRecallDirect();
+      return;
+    }
+
+    // Run intent detector
+    try {
+      setIsDetectingIntent(true);
+      console.log('[CombinedSearchAdd] Running intent detector...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error('No active session');
+        Alert.alert('Error', 'Please log in to continue');
+        return;
+      }
+
+      const { data: intentData, error: intentError } = await supabase.functions.invoke('intent-detector', {
+        body: { text: text.trim() },
+      });
+
+      if (intentError) {
+        console.error('Error detecting intent:', intentError);
+        // Fallback to create recall on error
+        await handleCreateRecallDirect();
+        return;
+      }
+
+      console.log('[CombinedSearchAdd] Intent detected:', intentData);
+
+      const { intent, confidence } = intentData;
+
+      if (intent === 'create') {
+        console.log('[CombinedSearchAdd] Intent: CREATE recall');
+        await handleCreateRecallDirect();
+      } else if (intent === 'search') {
+        console.log('[CombinedSearchAdd] Intent: SEARCH');
+        await handleSearchPress();
+      } else {
+        // Unknown intent - present choice to user
+        console.log('[CombinedSearchAdd] Intent: UNKNOWN - presenting choice');
+        Alert.alert(
+          'What would you like to do?',
+          'Would you like to create a recall or search for existing recalls?',
+          [
+            {
+              text: 'Create Recall',
+              onPress: () => handleIntentChoice('create'),
+            },
+            {
+              text: 'Search',
+              onPress: () => handleIntentChoice('search'),
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error in intent detection:', error);
+      // Fallback to create recall on error
+      await handleCreateRecallDirect();
+    } finally {
+      setIsDetectingIntent(false);
+    }
   };
 
   const handleRemoveImage = (index: number) => {
@@ -528,13 +643,18 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     Keyboard.dismiss();
   };
 
+  // Check if all images are optimized (no placeholders remaining)
   const allImagesOptimized = images.length === 0 || images.every(img => !img.isPlaceholder);
   
-  const isUpArrowDisabled = (!text.trim() && images.length === 0) || !allImagesOptimized;
+  // Disable sparkle icon if:
+  // 1. No content (text or images)
+  // 2. Any images are still placeholders (not yet optimized)
+  const isSparkleDisabled = (!text.trim() && images.length === 0) || !allImagesOptimized;
 
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
+        {/* Floating Action Icons - Image and Camera above the component, aligned with plus button on the right */}
         {showDrawer && (
           <Animated.View
             entering={FadeIn.duration(200)}
@@ -558,9 +678,11 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
           </Animated.View>
         )}
 
+        {/* Main Input Container - Single border only */}
         <View style={styles.containerWrapper}>
           <View style={styles.container}>
             <View style={styles.inputContainer}>
+              {/* Images Display - Horizontal Scrollable */}
               {images.length > 0 && (
                 <ScrollView 
                   horizontal 
@@ -596,6 +718,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 </ScrollView>
               )}
 
+              {/* Text Input - Now above the button row, multiline enabled with newline support */}
               <TextInput
                 ref={textInputRef}
                 style={styles.textInput}
@@ -610,17 +733,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 enablesReturnKeyAutomatically={false}
               />
 
+              {/* Button Row - Icons swapped: Plus first, then Sparkles */}
               <View style={styles.inputRow}>
-                {/* Plus icon - fixed position on the left */}
-                <Pressable
-                  style={styles.plusButton}
-                  onPress={handlePlusPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
-                </Pressable>
-
-                {/* Location Pill - flexible, expands/collapses up to 70% */}
+                {/* Location Pill - Dynamic width to fit text */}
                 <Pressable
                   style={styles.locationPillExtended}
                   onPress={handleLocationPress}
@@ -635,37 +750,68 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                     </Text>
                   )}
                 </Pressable>
+								
+                {/* Spacer to push icons to the right */}
+                <View style={styles.iconSpacer} />
 
-                {/* Right side icons container - fixed position */}
-                <View style={styles.rightIconsContainer}>
-                  {/* Search icon - bottom right */}
-                  <Pressable
-                    style={styles.searchButtonContainer}
-                    onPress={handleSearchPress}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <View style={styles.searchButtonBorder}>
-                      <IconSymbol name="magnifyingglass" size={16} color={colors.primary} />
-                    </View>
-                  </Pressable>
+                {/* Plus Button - No Border - NOW FIRST */}
+                <Pressable
+                  style={styles.plusButton}
+                  onPress={handlePlusPress}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+                </Pressable>
 
-                  {/* Up arrow icon - top right, vertically aligned with search */}
-                  <Pressable
-                    style={[styles.submitButtonContainer, isUpArrowDisabled && styles.submitButtonDisabled]}
-                    onPress={handleCreateRecall}
-                    disabled={isUpArrowDisabled || isCreating || isDetectingIntent}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <View style={styles.submitButtonBorder}>
-                      <IconSymbol name="arrow.up" size={16} color={colors.primary} />
-                    </View>
-                  </Pressable>
-                </View>
+                {/* Submit Button with Circular Border - Shows AI animation when detecting intent, disabled when images are being optimized - NOW SECOND */}
+                <Pressable
+                  style={[styles.submitButtonContainer, isSparkleDisabled && styles.submitButtonDisabled]}
+                  onPress={handleCreateRecall}
+                  disabled={isSparkleDisabled || isCreating || isDetectingIntent}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <View style={styles.submitButtonBorder}>
+                    {isDetectingIntent ? (
+                      Platform.OS === 'ios' ? (
+                        <Animated.View style={aiIconAnimatedStyle}>
+                          <SymbolView
+                            name="sparkles"
+                            size={28}
+                            tintColor={colors.primary}
+                            type="hierarchical"
+                            animationSpec={{
+                              effect: {
+                                type: 'pulse',
+                              },
+                              repeating: true,
+                            }}
+                          />
+                        </Animated.View>
+                      ) : (
+                        <Animated.View style={aiIconAnimatedStyle}>
+                          <IconSymbol name="auto.awesome" size={28} color={colors.primary} />
+                        </Animated.View>
+                      )
+                    ) : (
+                      Platform.OS === 'ios' ? (
+                        <SymbolView
+                          name="sparkles"
+                          size={28}
+                          tintColor={colors.primary}
+                          type="hierarchical"
+                        />
+                      ) : (
+                        <IconSymbol name="auto.awesome" size={28} color={colors.primary} />
+                      )
+                    )}
+                  </View>
+                </Pressable>
               </View>
             </View>
           </View>
         </View>
 
+        {/* Backdrop for drawer */}
         {showDrawer && (
           <Pressable 
             style={styles.drawerBackdrop} 
@@ -673,6 +819,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
           />
         )}
 
+        {/* Saving Stage Indicator */}
         {isCreating && savingStage && (
           <View style={styles.savingIndicator}>
             <ActivityIndicator size="small" color={colors.primary} />
@@ -695,8 +842,8 @@ const styles = StyleSheet.create({
   },
   floatingActionsContainer: {
     position: 'absolute',
-    bottom: 109.25,
-    left: 16,
+    bottom: 109.25, // Increased by 15% from 95 (95 * 1.15 = 109.25)
+    right: 16, // Aligned with plus button on the right
     flexDirection: 'column',
     gap: 12,
     zIndex: 1002,
@@ -731,9 +878,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingTop: 10,
     paddingHorizontal: 12,
-    paddingBottom: 12,
+    paddingBottom: 12, // Fixed padding to ensure consistent spacing
     gap: 4,
-    minHeight: 103.5,
+    minHeight: 103.5, // Increased by 15% from 90 (90 * 1.15 = 103.5)
   },
   imagesScroll: {
     maxHeight: 150,
@@ -778,8 +925,8 @@ const styles = StyleSheet.create({
   textInput: {
     fontSize: 16,
     color: colors.text,
-    minHeight: 43.7,
-    maxHeight: 172.5,
+    minHeight: 43.7, // Increased by 15% from 38 (38 * 1.15 = 43.7)
+    maxHeight: 172.5, // Increased by 15% from 150 (150 * 1.15 = 172.5)
     paddingVertical: 8,
     paddingHorizontal: 4,
     zIndex: 1,
@@ -787,18 +934,9 @@ const styles = StyleSheet.create({
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
     zIndex: 1,
-    paddingTop: 4,
-    flexWrap: 'nowrap',
-  },
-  plusButton: {
-    padding: 0,
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
+    paddingTop: 4, // Consistent top padding
   },
   locationPillExtended: {
     flexDirection: 'row',
@@ -807,50 +945,39 @@ const styles = StyleSheet.create({
     backgroundColor: `${colors.primary}20`,
     paddingVertical: 6,
     paddingRight: 8,
-    paddingLeft: 4,
+    paddingLeft: 8,
     borderRadius: 16,
-    maxWidth: '65%',
+    alignSelf: 'flex-start', // Dynamic width based on content
+    maxWidth: '70%',
     borderWidth: 1,
     borderColor: colors.primary,
-    flexShrink: 1,
-    flex: 1,
   },
   locationPillText: {
     fontSize: 13,
     color: colors.primary,
+    maxWidth: '90%',
     fontWeight: '600',
-    flexShrink: 1,
+  },
+  iconSpacer: {
+    flex: 1, // Pushes icons to the right
   },
   locationSpinner: {
     marginLeft: 4,
   },
-  rightIconsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    flexShrink: 0,
-  },
-  searchButtonContainer: {
-    padding: 4,
-    flexShrink: 0,
-  },
-  searchButtonBorder: {
-    width: 28,
-    height: 28,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
+  plusButton: {
+    padding: 0,
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
   submitButtonContainer: {
-    padding: 8,
-    flexShrink: 0,
+    padding: 0,
   },
   submitButtonBorder: {
-    width: 28,
-    height: 28,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1.5,
     borderColor: colors.primary,
     alignItems: 'center',

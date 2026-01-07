@@ -187,7 +187,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
             </View>
           </View>
           <Text style={styles.categoryName} numberOfLines={1}>
-            Smart Category
+            New Category
           </Text>
         </Pressable>
 

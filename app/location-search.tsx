@@ -13,11 +13,12 @@ import {
   Alert,
   Keyboard,
 } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
+import { supabase } from '@/utils/supabase';
 import { searchPlaces, searchNearbyPlaces, PlaceResult, extractShortLocationName, isGooglePlacesConfigured } from '@/utils/googlePlaces';
 
 export default function LocationSearchScreen() {
@@ -83,6 +84,7 @@ export default function LocationSearchScreen() {
         setUserLocation(location);
         console.log('User location obtained for proximity sorting');
         
+        // Automatically load nearby places when location is obtained
         loadNearbyPlaces(location);
       }
     } catch (error) {
@@ -94,6 +96,7 @@ export default function LocationSearchScreen() {
     getUserLocation();
     checkApiConfiguration();
 
+    // Listen to keyboard events
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
       setKeyboardVisible(true);
     });
@@ -109,6 +112,7 @@ export default function LocationSearchScreen() {
 
   const performSearch = useCallback(async (searchText: string) => {
     if (!searchText.trim()) {
+      // If search is cleared, reload nearby places
       if (userLocation) {
         loadNearbyPlaces(userLocation);
       } else {
@@ -143,12 +147,11 @@ export default function LocationSearchScreen() {
   }, [userLocation, apiConfigured, loadNearbyPlaces]);
 
   useEffect(() => {
-    if (params.initialQuery) {
-      const initialQuery = params.initialQuery as string;
-      setSearchQuery(initialQuery);
-      performSearch(initialQuery);
+    if (params.query && typeof params.query === 'string') {
+      setSearchQuery(params.query);
+      performSearch(params.query);
     }
-  }, [params.initialQuery, performSearch]);
+  }, [params.query, performSearch]);
 
   useEffect(() => {
     if (searchQuery.trim().length > 2) {
@@ -158,6 +161,7 @@ export default function LocationSearchScreen() {
 
       return () => clearTimeout(timeoutId);
     } else if (searchQuery.trim().length === 0) {
+      // When search is cleared, reload nearby places
       if (userLocation) {
         loadNearbyPlaces(userLocation);
       } else {
@@ -168,6 +172,7 @@ export default function LocationSearchScreen() {
 
   const handleSelectLocation = async (location: PlaceResult) => {
     try {
+      // Format location as "DisplayName, Suburb" or "DisplayName, Locality"
       const formattedLocationName = extractShortLocationName(
         location.displayName,
         location.suburb,
@@ -185,18 +190,50 @@ export default function LocationSearchScreen() {
         locality: location.locality,
       });
 
-      // Pass location data back to the originating component via router.setParams()
-      router.setParams({
-        selectedLatitude: location.latitude.toString(),
-        selectedLongitude: location.longitude.toString(),
-        selectedLocationName: formattedLocationName,
-        selectedDisplayName: location.displayName,
-        selectedFullAddress: location.formattedAddress,
-        selectedPrimaryType: location.primaryTypeDisplayName || '',
-      });
-      
-      // Navigate back after setting params
+      if (params.id) {
+        const noteId = params.id as string;
+        console.log('[LocationSearch] Updating location for note:', noteId);
+
+        // Update location-related fields including primary type
+        const { error } = await supabase
+          .from('recalls')
+          .update({
+            latitude: location.latitude,
+            longitude: location.longitude,
+            location: formattedLocationName,
+            location_primary_type: location.primaryTypeDisplayName || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', noteId);
+
+        if (error) {
+          console.error('[LocationSearch] Error updating location in database:', error);
+          Alert.alert('Error', 'Failed to update location');
+        } else {
+          console.log('[LocationSearch] Location updated successfully in database with formatted name:', formattedLocationName);
+          console.log('[LocationSearch] Primary type:', location.primaryTypeDisplayName || 'Not available');
+        }
+      }
+
+      // FIXED: Navigate back first, then set params in a separate event loop tick
       router.back();
+      
+      // FIXED: Use setTimeout to break the call stack and prevent recursion
+      setTimeout(() => {
+        try {
+          console.log('[LocationSearch] Setting location params');
+          router.setParams({
+            selectedLatitude: location.latitude.toString(),
+            selectedLongitude: location.longitude.toString(),
+            selectedLocationName: formattedLocationName,
+            selectedDisplayName: location.displayName,
+            selectedFullAddress: location.formattedAddress,
+            selectedPrimaryType: location.primaryTypeDisplayName || '',
+          });
+        } catch (error) {
+          console.error('[LocationSearch] Error setting params:', error);
+        }
+      }, 100);
     } catch (error) {
       console.error('[LocationSearch] Error processing location:', error);
       Alert.alert('Error', 'Failed to process location');
@@ -215,15 +252,11 @@ export default function LocationSearchScreen() {
     }
   };
 
-  const handleClose = () => {
-    router.back();
-  };
-
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <Stack.Screen
         options={{
@@ -233,16 +266,13 @@ export default function LocationSearchScreen() {
             backgroundColor: colors.background,
           },
           headerTintColor: colors.text,
-          headerTitleStyle: {
-            color: colors.primary,
-          },
           headerLeft: () => (
             <Pressable 
-              onPress={handleClose} 
+              onPress={() => router.back()} 
               style={styles.headerButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="xmark" size={24} color={colors.text} />
+              <IconSymbol name="chevron.left" size={24} color={colors.text} />
             </Pressable>
           ),
         }}
@@ -417,12 +447,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  headerButton: {
-    padding: 8,
-    marginHorizontal: 8,
-  },
   content: {
     flex: 1,
+  },
+  headerButton: {
+    padding: 8 * 1.15,
+    marginHorizontal: 8,
   },
   searchSection: {
     padding: 16,

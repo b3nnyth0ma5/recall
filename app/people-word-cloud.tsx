@@ -8,7 +8,6 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Platform,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -17,6 +16,7 @@ import { PersonAvatar } from '@/components/PersonAvatar';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
+import { Platform } from 'react-native';
 
 interface Person {
   id: string;
@@ -37,6 +37,7 @@ export default function PeopleWordCloudScreen() {
 
   const recallId = params.recallId as string | undefined;
 
+  // Parse initial selected people from params
   useEffect(() => {
     if (params.initialSelectedPeople) {
       try {
@@ -57,6 +58,7 @@ export default function PeopleWordCloudScreen() {
     try {
       console.log('[PeopleWordCloud] Loading people for user:', user.id);
       
+      // Fetch all people for this user
       const { data: personsData, error: personsError } = await supabase
         .from('persons')
         .select('id, person_name, photo_url')
@@ -78,6 +80,7 @@ export default function PeopleWordCloudScreen() {
         return;
       }
 
+      // Get mention counts for all people
       const { data: recallPeopleData, error: recallPeopleError } = await supabase
         .from('recall_people')
         .select('person_id')
@@ -85,6 +88,7 @@ export default function PeopleWordCloudScreen() {
 
       if (recallPeopleError) {
         console.error('[PeopleWordCloud] Error loading recall_people:', recallPeopleError);
+        // Continue without mention counts
         setAllPeople(personsData.map(p => ({ ...p, mention_count: 0 })));
         setLoading(false);
         return;
@@ -92,11 +96,13 @@ export default function PeopleWordCloudScreen() {
 
       console.log('[PeopleWordCloud] Fetched recall_people data:', recallPeopleData);
 
+      // Count mentions per person
       const mentionCounts: { [personId: string]: number } = {};
       (recallPeopleData || []).forEach((rp: any) => {
         mentionCounts[rp.person_id] = (mentionCounts[rp.person_id] || 0) + 1;
       });
 
+      // Add mention counts to people and sort by mention count (descending)
       const peopleWithCounts = personsData.map(p => ({
         ...p,
         mention_count: mentionCounts[p.id] || 0,
@@ -158,6 +164,7 @@ export default function PeopleWordCloudScreen() {
     console.log('[PeopleWordCloud] Selected people count:', selectedPeople.length);
     console.log('[PeopleWordCloud] Selected people:', selectedPeople.map(p => p.person_name).join(', '));
     
+    // If no recall ID, just pass data back via params (for new notes)
     if (!recallId) {
       console.log('[PeopleWordCloud] No recall ID - passing data back via params');
       const cleanedPeople = selectedPeople.map(p => ({
@@ -166,15 +173,16 @@ export default function PeopleWordCloudScreen() {
         photo_url: p.photo_url,
       }));
       
-      router.back();
       router.setParams({
         selectedPeople: JSON.stringify(cleanedPeople),
         peopleUpdatedTimestamp: Date.now().toString(),
       });
       
+      router.back();
       return;
     }
 
+    // If we have a recall ID, update the database directly
     if (!user) {
       console.error('[PeopleWordCloud] ERROR: No user found, cannot save');
       Alert.alert('Error', 'User not authenticated');
@@ -187,6 +195,7 @@ export default function PeopleWordCloudScreen() {
       console.log('[PeopleWordCloud] User ID:', user.id);
       console.log('[PeopleWordCloud] Recall ID:', recallId);
       
+      // Step 1: Delete ALL existing associations for this recall
       console.log('[PeopleWordCloud] Step 1: Deleting existing people associations');
       const { error: deleteError, count: deleteCount } = await supabase
         .from('recall_people')
@@ -204,15 +213,18 @@ export default function PeopleWordCloudScreen() {
         console.log('[PeopleWordCloud] ✅ Successfully deleted existing associations (count:', deleteCount, ')');
       }
       
+      // Step 2: Insert new associations if there are any people selected
       if (selectedPeople.length > 0) {
         console.log('[PeopleWordCloud] Step 2: Inserting new people associations');
         
+        // Validate that all people have valid IDs
         const invalidPeople = selectedPeople.filter(p => !p.id || typeof p.id !== 'string');
         if (invalidPeople.length > 0) {
           console.error('[PeopleWordCloud] ❌ ERROR: Found people with invalid IDs:', invalidPeople);
           throw new Error('Some people have invalid IDs');
         }
         
+        // Prepare insert data
         const insertData = selectedPeople.map(person => ({
           recall_id: recallId,
           person_id: person.id,
@@ -221,6 +233,7 @@ export default function PeopleWordCloudScreen() {
         
         console.log('[PeopleWordCloud] Data to insert:', JSON.stringify(insertData, null, 2));
         
+        // Try inserting all at once first
         const { data: insertedData, error: peopleError } = await supabase
           .from('recall_people')
           .insert(insertData)
@@ -234,6 +247,7 @@ export default function PeopleWordCloudScreen() {
           console.error('[PeopleWordCloud] Error details:', JSON.stringify(peopleError, null, 2));
           console.error('[PeopleWordCloud] Failed insert data:', JSON.stringify(insertData, null, 2));
           
+          // Try inserting one by one to identify which record is failing
           console.log('[PeopleWordCloud] Attempting individual inserts to identify failing record...');
           let successCount = 0;
           let failCount = 0;
@@ -270,6 +284,7 @@ export default function PeopleWordCloudScreen() {
         console.log('[PeopleWordCloud] No people to save (empty selection)');
       }
       
+      // Step 3: Verify the save by querying back
       console.log('[PeopleWordCloud] Step 3: Verifying saved people associations');
       const { data: verifyData, error: verifyError } = await supabase
         .from('recall_people')
@@ -286,6 +301,7 @@ export default function PeopleWordCloudScreen() {
           console.log('[PeopleWordCloud] Full verification data:', JSON.stringify(verifyData, null, 2));
         }
         
+        // Check if the count matches
         if (verifyData && verifyData.length !== selectedPeople.length) {
           console.error('[PeopleWordCloud] ⚠️ WARNING: Mismatch in people count!');
           console.error('[PeopleWordCloud] Expected:', selectedPeople.length, 'Got:', verifyData.length);
@@ -298,24 +314,28 @@ export default function PeopleWordCloudScreen() {
         }
       }
       
+      // Haptic feedback on success
       if (Platform.OS !== 'web') {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       
       console.log('[PeopleWordCloud] ===== SAVE COMPLETE =====');
       
+      // Pass updated data back via params to trigger UI refresh
       const cleanedPeople = selectedPeople.map(p => ({
         id: p.id,
         person_name: p.person_name,
         photo_url: p.photo_url,
       }));
       
-      router.back();
       router.setParams({
         selectedPeople: JSON.stringify(cleanedPeople),
         peopleUpdatedTimestamp: Date.now().toString(),
         databaseUpdated: 'true',
       });
+      
+      // Navigate back
+      router.back();
     } catch (error: any) {
       console.error('[PeopleWordCloud] 🔥 CRITICAL ERROR saving people:', error);
       console.error('[PeopleWordCloud] Error stack:', error.stack);
@@ -333,6 +353,7 @@ export default function PeopleWordCloudScreen() {
     router.back();
   };
 
+  // Truncate name to 18 characters
   const truncateName = (name: string, maxLength: number = 18): string => {
     if (name.length <= maxLength) {
       return name;
@@ -359,7 +380,7 @@ export default function PeopleWordCloudScreen() {
               style={styles.headerButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="xmark" size={24} color={colors.text} />
+              <IconSymbol name="chevron.left" size={24} color={colors.text} />
             </Pressable>
           ),
           headerRight: () => (
@@ -416,10 +437,10 @@ export default function PeopleWordCloudScreen() {
                 <Text style={styles.emptyTipText}>Mention a name in a Recall</Text>
               </View>
 
-              <View style={styles.emptyTipItem}>
+							<View style={styles.emptyTipItem}>
                 <Text style={styles.emptyTipText}>OR</Text>
               </View>
-              
+							
               <View style={styles.emptyTipItem}>
                 <View style={styles.emptyTipNumber}>
                   <Text style={styles.emptyTipNumberText}>2</Text>
@@ -481,6 +502,7 @@ export default function PeopleWordCloudScreen() {
         </ScrollView>
       )}
 
+      {/* Saving Modal */}
       {saving && (
         <View style={styles.savingModalContainer}>
           <View style={styles.savingModalContent}>
@@ -510,7 +532,7 @@ const styles = StyleSheet.create({
     minWidth: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 8,
+    marginRight: 8,
   },
   saveButtonDisabled: {
     opacity: 0.4,

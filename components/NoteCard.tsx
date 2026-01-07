@@ -22,16 +22,14 @@ import Animated, {
   FadeOut,
   SlideOutLeft,
 } from 'react-native-reanimated';
-import { useRouter } from 'expo-router';
 
 interface NoteCardProps {
   note: Note;
-  onPress?: () => void;
+  onPress: () => void;
   onImagePress?: () => void;
   onDelete?: () => void;
   loading?: boolean;
   expectedImageCount?: number;
-  onUpdate?: () => void;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -62,8 +60,7 @@ const countNewlines = (text: string): number => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount, onUpdate }: NoteCardProps) {
-  const router = useRouter();
+export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount }: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -275,13 +272,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   const handleTextPress = () => {
-    // Navigate to note editor route
-    router.push(`/note-editor?id=${note.id}`);
-  };
-
-  const handleCardPress = () => {
-    // Navigate to note editor route
-    router.push(`/note-editor?id=${note.id}`);
+    // Open note editor when text is clicked
+    onPress();
   };
 
   const handleToggleExpand = (e: any) => {
@@ -504,7 +496,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         rightThreshold={40}
         containerStyle={styles.swipeableContainer}
       >
-        <Pressable onPress={handleCardPress} style={styles.cardContent}>
+        <Pressable onPress={onPress} style={styles.cardContent}>
           {/* People Avatars - For text-only notes, show at top of card content */}
           {!hasImages && hasPeople && (
             <View style={styles.peopleAvatarsContainerNoImages}>

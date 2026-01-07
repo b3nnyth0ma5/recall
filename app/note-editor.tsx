@@ -819,11 +819,11 @@ export default function NoteEditorScreen() {
     }
   }, [isEditing, isSharedRecall, openLocation, fromShare]);
 
-  // FIXED: Handle location updates from search (but not for shared recalls)
+  // Handle location updates from search (but not for shared recalls)
   useEffect(() => {
     // Skip location updates for shared recalls
     if (isSharedRecall) {
-      console.log('[NoteEditor] Skipping location update for shared recall');
+      console.log('Skipping location update for shared recall');
       return;
     }
 
@@ -833,30 +833,20 @@ export default function NoteEditorScreen() {
       const formattedName = params.selectedLocationName as string;
       const primaryType = params.selectedPrimaryType as string || '';
 
-      console.log('[NoteEditor] ===== LOCATION UPDATED FROM SEARCH =====');
-      console.log('[NoteEditor] Latitude:', latitude);
-      console.log('[NoteEditor] Longitude:', longitude);
-      console.log('[NoteEditor] Location Name:', formattedName);
-      console.log('[NoteEditor] Primary Type:', primaryType);
+      console.log('Location updated from search:', { latitude, longitude, formattedName, primaryType });
       
       setLocation({ latitude, longitude });
       setLocationName(formattedName);
       setLocationPrimaryType(primaryType);
 
-      console.log('[NoteEditor] Location state updated');
-
-      // Clear params after processing to prevent re-triggering
-      setTimeout(() => {
-        router.setParams({
-          selectedLatitude: undefined,
-          selectedLongitude: undefined,
-          selectedLocationName: undefined,
-          selectedDisplayName: undefined,
-          selectedFullAddress: undefined,
-          selectedPrimaryType: undefined,
-        });
-        console.log('[NoteEditor] Params cleared');
-      }, 100);
+      router.setParams({
+        selectedLatitude: undefined,
+        selectedLongitude: undefined,
+        selectedLocationName: undefined,
+        selectedDisplayName: undefined,
+        selectedFullAddress: undefined,
+        selectedPrimaryType: undefined,
+      });
     }
   }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router, isSharedRecall]);
 
@@ -1038,7 +1028,6 @@ export default function NoteEditorScreen() {
       setSaving(true);
       console.log('[NoteEditor] ===== STARTING SAVE PROCESS =====');
 
-      // FIXED: Ensure location data is properly included
       const noteData = {
         text: text.trim(),
         latitude: location?.latitude,
@@ -1048,13 +1037,6 @@ export default function NoteEditorScreen() {
       };
 
       console.log('[NoteEditor] Note data to save:', noteData);
-      console.log('[NoteEditor] Location details:', {
-        hasLocation: !!location,
-        latitude: location?.latitude,
-        longitude: location?.longitude,
-        locationName,
-        locationPrimaryType,
-      });
       console.log('[NoteEditor] Current people state:', people);
       console.log('[NoteEditor] People count:', people.length);
 
@@ -1546,19 +1528,18 @@ export default function NoteEditorScreen() {
           right: 0,
         }
       ]}>
-        {/* Plus icon - Left aligned (swapped positions) */}
+        {/* Keyboard icons - Left aligned (swapped from right) */}
         <View style={styles.toolbarLeft}>
           <Pressable
-            onPress={handlePlusPress}
-            disabled={loading}
+            onPress={toggleKeyboard}
             style={styles.toolbarButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            {loading ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
-            )}
+            <IconSymbol 
+              name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+              size={26} 
+              color={colors.primary} 
+            />
           </Pressable>
         </View>
 
@@ -1576,18 +1557,19 @@ export default function NoteEditorScreen() {
           </Pressable>
         </View>
 
-        {/* Keyboard icons - Right aligned (swapped positions) */}
+        {/* Plus icon - Right aligned (swapped from left) */}
         <View style={styles.toolbarRight}>
           <Pressable
-            onPress={toggleKeyboard}
+            onPress={handlePlusPress}
+            disabled={loading}
             style={styles.toolbarButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <IconSymbol 
-              name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-              size={26} 
-              color={colors.primary} 
-            />
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+            )}
           </Pressable>
         </View>
       </View>
