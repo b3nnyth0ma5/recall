@@ -34,7 +34,6 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { supabase } from '@/utils/supabase';
-import { SymbolView } from 'expo-symbols';
 
 interface CombinedSearchAddProps {
   onCreateRecall: (data: {
@@ -563,8 +562,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <IconSymbol 
-                    ios_icon_name="plus.circle.fill" 
-                    android_material_icon_name="add-circle" 
+                    name="plus.circle.fill" 
                     size={36} 
                     color={colors.text} 
                   />
@@ -577,8 +575,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <IconSymbol 
-                    ios_icon_name="mappin.circle.fill" 
-                    android_material_icon_name="location-on" 
+                    name="mappin.circle.fill" 
                     size={16} 
                     color={colors.primary} 
                   />
@@ -601,8 +598,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 >
                   <View style={styles.searchButtonBorder}>
                     <IconSymbol 
-                      ios_icon_name="magnifyingglass" 
-                      android_material_icon_name="search" 
+                      name="magnifyingglass" 
                       size={24} 
                       color={colors.primary} 
                     />
@@ -618,8 +614,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 >
                   <View style={styles.upArrowButtonBorder}>
                     <IconSymbol 
-                      ios_icon_name="arrow.up" 
-                      android_material_icon_name="arrow-upward" 
+                      name="arrow.up" 
                       size={24} 
                       color={colors.primary} 
                     />

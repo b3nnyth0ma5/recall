@@ -1245,8 +1245,7 @@ export default function NoteEditorScreen() {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <IconSymbol 
-                ios_icon_name="chevron.left" 
-                android_material_icon_name="arrow-back" 
+                name="chevron.left" 
                 size={24} 
                 color={colors.text} 
               />
@@ -1268,8 +1267,7 @@ export default function NoteEditorScreen() {
                 ) : (
                   <View style={styles.checkmarkContainer}>
                     <IconSymbol 
-                      ios_icon_name="checkmark" 
-                      android_material_icon_name="check" 
+                      name="checkmark" 
                       size={20} 
                       color="#FFFFFF" 
                     />
@@ -1407,8 +1405,7 @@ export default function NoteEditorScreen() {
                   >
                     <View style={styles.actionButtonCircle}>
                       <IconSymbol 
-                        ios_icon_name="xmark" 
-                        android_material_icon_name="close" 
+                        name="xmark" 
                         size={14} 
                         color="#FFFFFF" 
                       />
@@ -1437,8 +1434,7 @@ export default function NoteEditorScreen() {
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <IconSymbol 
-              ios_icon_name="photo.fill" 
-              android_material_icon_name="photo" 
+              name="photo.fill" 
               size={28} 
               color={colors.primary} 
             />
@@ -1450,8 +1446,7 @@ export default function NoteEditorScreen() {
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <IconSymbol 
-              ios_icon_name="camera.fill" 
-              android_material_icon_name="camera" 
+              name="camera.fill" 
               size={28} 
               color={colors.primary} 
             />
@@ -1480,8 +1475,7 @@ export default function NoteEditorScreen() {
               <ActivityIndicator size="small" color={colors.primary} />
             ) : (
               <IconSymbol 
-                ios_icon_name="plus.circle.fill" 
-                android_material_icon_name="add-circle" 
+                name="plus.circle.fill" 
                 size={28} 
                 color={colors.text} 
               />
@@ -1496,8 +1490,7 @@ export default function NoteEditorScreen() {
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <IconSymbol 
-              ios_icon_name="mappin.circle.fill" 
-              android_material_icon_name="location-on" 
+              name="mappin.circle.fill" 
               size={16} 
               color={colors.primary} 
             />
@@ -1515,8 +1508,7 @@ export default function NoteEditorScreen() {
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <IconSymbol 
-              ios_icon_name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-              android_material_icon_name={keyboardVisible ? "keyboard-hide" : "keyboard"} 
+              name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
               size={26} 
               color={colors.primary} 
             />
