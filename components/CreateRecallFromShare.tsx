@@ -22,18 +22,24 @@ interface CreateRecallFromShareProps {
   visible: boolean;
   sharedText?: string;
   sharedImages?: string[];
-  onSave: (text: string, images: string[]) => Promise<void>;
+  sharedUrls?: string[];
+  onSave: (text: string, images: string[], location?: { latitude: number; longitude: number; name: string; primaryType?: string }) => Promise<void>;
   onClose: () => void;
+  onAddLocation?: () => void;
+  location?: { latitude: number; longitude: number; name: string; primaryType?: string } | null;
 }
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export function CreateRecallFromShare({
   visible,
   sharedText = '',
   sharedImages = [],
+  sharedUrls = [],
   onSave,
   onClose,
+  onAddLocation,
+  location,
 }: CreateRecallFromShareProps) {
   const [text, setText] = useState(sharedText);
   const [images, setImages] = useState<string[]>(sharedImages);
@@ -41,8 +47,14 @@ export function CreateRecallFromShare({
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   useEffect(() => {
-    setText(sharedText);
-  }, [sharedText]);
+    // Combine shared text and URLs
+    let combinedText = sharedText;
+    if (sharedUrls && sharedUrls.length > 0) {
+      const urlsText = sharedUrls.join('\n');
+      combinedText = combinedText ? `${combinedText}\n\n${urlsText}` : urlsText;
+    }
+    setText(combinedText);
+  }, [sharedText, sharedUrls]);
 
   useEffect(() => {
     setImages(sharedImages);
@@ -55,7 +67,7 @@ export function CreateRecallFromShare({
 
     setIsSaving(true);
     try {
-      await onSave(text, images);
+      await onSave(text, images, location || undefined);
     } catch (error) {
       console.error('Error saving recall:', error);
     } finally {
@@ -130,7 +142,7 @@ export function CreateRecallFromShare({
                   pagingEnabled
                   onScroll={(event) => {
                     const offsetX = event.nativeEvent.contentOffset.x;
-                    const index = Math.round(offsetX / (Dimensions.get('window').width - 48));
+                    const index = Math.round(offsetX / (SCREEN_WIDTH - 48));
                     setCurrentImageIndex(index);
                   }}
                   scrollEventThrottle={16}
@@ -187,8 +199,35 @@ export function CreateRecallFromShare({
                 multiline
                 textAlignVertical="top"
                 autoFocus={!sharedText}
+                editable={!isSaving}
               />
             </View>
+
+            {/* Location */}
+            {onAddLocation && (
+              <View style={styles.locationSection}>
+                <Pressable
+                  style={styles.locationButton}
+                  onPress={onAddLocation}
+                  disabled={isSaving}
+                >
+                  <IconSymbol
+                    ios_icon_name="location.fill"
+                    android_material_icon_name="location-on"
+                    size={20}
+                    color={location ? colors.primary : colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.locationButtonText,
+                      location && styles.locationButtonTextActive,
+                    ]}
+                  >
+                    {location ? location.name : 'Add Location'}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
 
             {/* Info */}
             <View style={styles.infoSection}>
@@ -309,7 +348,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   imageContainer: {
-    width: Dimensions.get('window').width - 48,
+    width: SCREEN_WIDTH - 48,
     height: 280,
     marginRight: 12,
     borderRadius: 16,
@@ -368,6 +407,27 @@ const styles = StyleSheet.create({
     maxHeight: 200,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  locationSection: {
+    marginBottom: 16,
+  },
+  locationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 16,
+    backgroundColor: colors.cardDark,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  locationButtonText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  locationButtonTextActive: {
+    color: colors.primary,
+    fontWeight: '500',
   },
   infoSection: {
     flexDirection: 'row',

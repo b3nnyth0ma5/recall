@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Recall",
@@ -112,17 +113,6 @@
           "data": [
             {
               "mimeType": "video/*"
-            }
-          ]
-        },
-        {
-          "action": "android.intent.action.SEND",
-          "category": [
-            "android.intent.category.DEFAULT"
-          ],
-          "data": [
-            {
-              "mimeType": "application/pdf"
             }
           ]
         }

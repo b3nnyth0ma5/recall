@@ -563,7 +563,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 >
                   <IconSymbol 
                     name="plus.circle.fill" 
-                    size={36} 
+                    size={28} 
                     color={colors.text} 
                   />
                 </Pressable>
@@ -599,7 +599,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   <View style={styles.searchButtonBorder}>
                     <IconSymbol 
                       name="magnifyingglass" 
-                      size={24} 
+                      size={18} 
                       color={colors.primary} 
                     />
                   </View>
@@ -615,7 +615,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   <View style={styles.upArrowButtonBorder}>
                     <IconSymbol 
                       name="arrow.up" 
-                      size={24} 
+                      size={18} 
                       color={colors.primary} 
                     />
                   </View>
@@ -655,7 +655,7 @@ const styles = StyleSheet.create({
   floatingActionsContainer: {
     position: 'absolute',
     bottom: 109.25,
-    right: 16,
+    left: 16,
     flexDirection: 'column',
     gap: 12,
     zIndex: 1002,
@@ -752,8 +752,8 @@ const styles = StyleSheet.create({
   },
   plusButton: {
     padding: 0,
-    width: 36,
-    height: 36,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -767,7 +767,7 @@ const styles = StyleSheet.create({
     paddingLeft: 8,
     borderRadius: 16,
     alignSelf: 'flex-start',
-    maxWidth: '50%',
+    maxWidth: '60%',
     borderWidth: 1,
     borderColor: colors.primary,
   },
@@ -787,8 +787,8 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   searchButtonBorder: {
-    width: 36,
-    height: 36,
+    width: 28,
+    height: 28,
     borderRadius: 18,
     borderWidth: 1.5,
     borderColor: colors.primary,
@@ -799,8 +799,8 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   upArrowButtonBorder: {
-    width: 36,
-    height: 36,
+    width: 28,
+    height: 28,
     borderRadius: 18,
     borderWidth: 1.5,
     borderColor: colors.primary,

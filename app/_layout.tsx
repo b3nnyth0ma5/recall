@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet, View, Platform } from 'react-native';
 import { supabase } from '@/utils/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { hasPendingShareData } from '@/utils/nativeShareReceiver';
 
 const PeopleGraphOverlay = memo(() => {
   const { showGraph, people, anchorPosition, closeGraph } = usePeopleGraph();
@@ -69,6 +70,27 @@ function RootLayoutNav() {
   // Use refs to track navigation state and prevent infinite loops
   const hasInitializedRef = useRef(false);
   const lastRouteRef = useRef<string>('');
+
+  // Check for pending share data on app launch
+  useEffect(() => {
+    const checkForShareData = async () => {
+      try {
+        console.log('[App Layout] Checking for pending share data...');
+        const hasPending = await hasPendingShareData();
+        
+        if (hasPending && user) {
+          console.log('[App Layout] Found pending share data, navigating to create-recall-from-share');
+          router.replace('/create-recall-from-share');
+        }
+      } catch (error) {
+        console.error('[App Layout] Error checking for share data:', error);
+      }
+    };
+
+    if (!loading && user) {
+      checkForShareData();
+    }
+  }, [loading, user, router]);
 
   // Check if user needs onboarding
   useEffect(() => {
@@ -136,6 +158,7 @@ function RootLayoutNav() {
     const inModalScreens = currentSegment === 'modal' || currentSegment === 'formsheet' || currentSegment === 'transparent-modal';
     const inPasswordResetScreens = currentSegment === 'reset-password' || currentSegment === 'update-password';
     const inEmailConfirmedScreen = currentSegment === 'email-confirmed';
+    const inShareScreen = currentSegment === 'create-recall-from-share';
     const inOtherScreens = currentSegment === 'search' || currentSegment === 'location-search' || currentSegment === 'map-view' || currentSegment === 'shared-recall' || currentSegment === 'person-recalls' || currentSegment === 'people-word-cloud';
 
     console.log('[Routing] Current state:', { 
@@ -147,6 +170,7 @@ function RootLayoutNav() {
       inModalScreens,
       inPasswordResetScreens,
       inEmailConfirmedScreen,
+      inShareScreen,
       inOtherScreens,
       needsOnboarding,
       currentSegment,
@@ -155,8 +179,8 @@ function RootLayoutNav() {
     });
 
     // Don't redirect if user is on special screens (they can navigate freely)
-    // This is critical for password reset flow to work properly
-    if (inNoteEditor || inModalScreens || inPasswordResetScreens || inEmailConfirmedScreen || inOtherScreens) {
+    // This is critical for password reset flow and share intent to work properly
+    if (inNoteEditor || inModalScreens || inPasswordResetScreens || inEmailConfirmedScreen || inShareScreen || inOtherScreens) {
       console.log('[Routing] User on special screen, not redirecting');
       return;
     }
@@ -238,6 +262,7 @@ function RootLayoutNav() {
         <Stack.Screen name="shared-recall" options={{ headerShown: false }} />
         <Stack.Screen name="person-recalls" options={{ headerShown: false }} />
         <Stack.Screen name="people-word-cloud" options={{ headerShown: false }} />
+        <Stack.Screen name="create-recall-from-share" options={{ headerShown: false }} />
         <Stack.Screen
           name="modal"
           options={{
