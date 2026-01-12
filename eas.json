@@ -1,3 +1,4 @@
+
 {
   "cli": {
     "version": ">= 5.0.0"
@@ -8,7 +9,8 @@
       "distribution": "internal",
       "ios": {
         "simulator": true,
-        "buildConfiguration": "Debug"
+        "buildConfiguration": "Debug",
+        "prebuildCommand": "npx expo prebuild -p ios --clean"
       },
       "android": {
         "buildType": "apk"
@@ -18,7 +20,8 @@
       "distribution": "internal",
       "ios": {
         "simulator": false,
-        "buildConfiguration": "Release"
+        "buildConfiguration": "Release",
+        "prebuildCommand": "npx expo prebuild -p ios --clean"
       },
       "android": {
         "buildType": "apk"
@@ -27,7 +30,8 @@
     "production": {
       "ios": {
         "simulator": false,
-        "buildConfiguration": "Release"
+        "buildConfiguration": "Release",
+        "prebuildCommand": "npx expo prebuild -p ios --clean"
       },
       "android": {
         "buildType": "app-bundle"
