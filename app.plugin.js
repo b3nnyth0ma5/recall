@@ -1,19 +1,56 @@
 
-const { createRunOncePlugin } = require('@expo/config-plugins');
+const { withInfoPlist, createRunOncePlugin } = require('@expo/config-plugins');
 
 /**
  * Expo Config Plugin for Recall App
  * 
- * This plugin can be used to add custom native configurations if needed in the future.
+ * This plugin configures the Share Extension's Info.plist with proper NSExtension settings
  */
 
-const withRecallConfig = (config) => {
-  console.log('[Config Plugin] Recall app configuration loaded');
+const withShareExtensionConfig = (config) => {
+  console.log('[Config Plugin] Configuring Share Extension Info.plist');
   
-  // No custom configurations at this time
-  // This plugin is kept as a placeholder for future native configurations
+  // Configure the Share Extension's Info.plist
+  config = withInfoPlist(config, (config) => {
+    const infoPlist = config.modResults;
+    
+    // Only apply to Share Extension target
+    if (config.modRequest?.platformProjectRoot?.includes('ShareExtension')) {
+      console.log('[Config Plugin] Applying Share Extension NSExtension configuration');
+      
+      // Configure NSExtension dictionary
+      infoPlist.NSExtension = {
+        NSExtensionAttributes: {
+          NSExtensionActivationRule: {
+            // Support text content
+            NSExtensionActivationSupportsText: true,
+            // Support URLs
+            NSExtensionActivationSupportsWebURLWithMaxCount: 10,
+            NSExtensionActivationSupportsWebPageWithMaxCount: 10,
+            // Support images
+            NSExtensionActivationSupportsImageWithMaxCount: 10,
+            // Support videos
+            NSExtensionActivationSupportsMovieWithMaxCount: 10,
+            // Support files
+            NSExtensionActivationSupportsFileWithMaxCount: 10,
+            // Require at least one item
+            NSExtensionActivationSupportsAttachmentsWithMinCount: 1,
+            NSExtensionActivationSupportsAttachmentsWithMaxCount: 10
+          }
+        },
+        // Set the extension point identifier for share services
+        NSExtensionPointIdentifier: 'com.apple.share-services',
+        // Set the principal class (handled by @bacons/apple-targets)
+        NSExtensionPrincipalClass: 'ShareViewController'
+      };
+      
+      console.log('[Config Plugin] NSExtension configuration applied successfully');
+    }
+    
+    return config;
+  });
   
   return config;
 };
 
-module.exports = createRunOncePlugin(withRecallConfig, 'withRecallConfig', '1.0.0');
+module.exports = createRunOncePlugin(withShareExtensionConfig, 'withShareExtensionConfig', '1.0.0');
