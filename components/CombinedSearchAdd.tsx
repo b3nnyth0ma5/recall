@@ -20,6 +20,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import Animated, { 
@@ -39,6 +40,7 @@ interface CombinedSearchAddProps {
   onCreateRecall: (data: {
     text: string;
     images: string[];
+    documents?: { uri: string; name: string; size: number }[];
     location?: { latitude: number; longitude: number; name: string; primaryType?: string };
   }, onProgress?: (stage: string) => void) => Promise<void>;
   userId: string;
@@ -50,11 +52,18 @@ interface ImageState {
   originalUri?: string;
 }
 
+interface DocumentState {
+  uri: string;
+  name: string;
+  size: number;
+}
+
 export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageState[]>([]);
+  const [documents, setDocuments] = useState<DocumentState[]>([]);
   const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string; primaryType?: string } | null>(null);
   const [showDrawer, setShowDrawer] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -409,6 +418,41 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     }
   };
 
+  const handleDocumentPick = async () => {
+    try {
+      console.log('[CombinedSearchAdd] Opening document picker...');
+      
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) {
+        console.log('[CombinedSearchAdd] Document picker canceled');
+        return;
+      }
+
+      if (result.assets && result.assets.length > 0) {
+        console.log('[CombinedSearchAdd] Selected documents:', result.assets.length);
+        
+        const newDocuments: DocumentState[] = result.assets.map(asset => ({
+          uri: asset.uri,
+          name: asset.name,
+          size: asset.size || 0,
+        }));
+        
+        setDocuments(prev => [...prev, ...newDocuments]);
+        setShowDrawer(false);
+        
+        console.log('[CombinedSearchAdd] Documents added successfully');
+      }
+    } catch (error) {
+      console.error('[CombinedSearchAdd] Error picking documents:', error);
+      Alert.alert('Error', 'Failed to pick documents');
+    }
+  };
+
   const handleLocationPress = () => {
     setShowDrawer(false);
     
@@ -422,8 +466,8 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   };
 
   const handleCreateRecall = async () => {
-    if (!text.trim() && images.length === 0) {
-      Alert.alert('Empty Recall', 'Please add some text or images');
+    if (!text.trim() && images.length === 0 && documents.length === 0) {
+      Alert.alert('Empty Recall', 'Please add some text, images, or documents');
       return;
     }
 
@@ -440,10 +484,18 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
       
       const imageUris = images.map(img => img.uri);
       
+      // Convert documents to the format expected by the parent component
+      const documentsData = documents.map(doc => ({
+        uri: doc.uri,
+        name: doc.name,
+        size: doc.size,
+      }));
+      
       await onCreateRecall(
         {
           text: text.trim(),
           images: imageUris,
+          documents: documentsData.length > 0 ? documentsData : undefined,
           location: locationToSave || undefined,
         },
         (stage: string) => {
@@ -453,6 +505,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
       setText('');
       setImages([]);
+      setDocuments([]);
       setLocation(currentLocation);
       setSavingStage('');
     } catch (error) {
@@ -468,13 +521,17 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     setImages(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleRemoveDocument = (index: number) => {
+    setDocuments(prev => prev.filter((_, i) => i !== index));
+  };
+
   const dismissKeyboard = () => {
     Keyboard.dismiss();
   };
 
   const allImagesOptimized = images.length === 0 || images.every(img => !img.isPlaceholder);
   
-  const isUpArrowDisabled = (!text.trim() && images.length === 0) || !allImagesOptimized;
+  const isUpArrowDisabled = (!text.trim() && images.length === 0 && documents.length === 0) || !allImagesOptimized;
 
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
@@ -489,7 +546,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
               onPress={handleImagePick}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+              <IconSymbol 
+                ios_icon_name="photo.fill" 
+                android_material_icon_name="photo" 
+                size={28} 
+                color={colors.primary} 
+              />
             </Pressable>
 
             <Pressable
@@ -497,7 +559,25 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
               onPress={handleCameraPress}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+              <IconSymbol 
+                ios_icon_name="camera.fill" 
+                android_material_icon_name="camera" 
+                size={28} 
+                color={colors.primary} 
+              />
+            </Pressable>
+
+            <Pressable
+              style={styles.floatingActionButton}
+              onPress={handleDocumentPick}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol 
+                ios_icon_name="doc.fill" 
+                android_material_icon_name="description" 
+                size={28} 
+                color={colors.primary} 
+              />
             </Pressable>
           </Animated.View>
         )}
@@ -533,7 +613,47 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                         onPress={() => handleRemoveImage(index)}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
+                        <IconSymbol 
+                          ios_icon_name="xmark.circle.fill" 
+                          android_material_icon_name="cancel" 
+                          size={20} 
+                          color="#FFFFFF" 
+                        />
+                      </Pressable>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+
+              {documents.length > 0 && (
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  style={styles.documentsScroll}
+                  contentContainerStyle={styles.documentsScrollContent}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {documents.map((doc, index) => (
+                    <View key={index} style={styles.documentChip}>
+                      <IconSymbol 
+                        ios_icon_name="doc.fill" 
+                        android_material_icon_name="description" 
+                        size={16} 
+                        color={colors.primary} 
+                      />
+                      <Text style={styles.documentName} numberOfLines={1}>
+                        {doc.name}
+                      </Text>
+                      <Pressable
+                        onPress={() => handleRemoveDocument(index)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <IconSymbol 
+                          ios_icon_name="xmark.circle.fill" 
+                          android_material_icon_name="cancel" 
+                          size={16} 
+                          color={colors.textSecondary} 
+                        />
                       </Pressable>
                     </View>
                   ))}
@@ -840,5 +960,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text,
     fontWeight: '600',
+  },
+  documentsScroll: {
+    maxHeight: 50,
+    marginBottom: 4,
+  },
+  documentsScrollContent: {
+    paddingRight: 8,
+    gap: 8,
+  },
+  documentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: `${colors.primary}20`,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    maxWidth: 200,
+  },
+  documentName: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '600',
+    flex: 1,
   },
 });

@@ -12,7 +12,7 @@ import * as Haptics from 'expo-haptics';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
 import { supabase } from '@/utils/supabase';
-import { uploadImageToDatabase } from '@/utils/supabase';
+import { uploadImageToDatabase, uploadDocumentToDatabase } from '@/utils/supabase';
 import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 import { ZeroState } from '@/components/ZeroState';
 
@@ -215,6 +215,7 @@ export default function HomeScreen() {
     data: {
       text: string;
       images: string[];
+      documents?: { uri: string; name: string; size: number }[];
       location?: { latitude: number; longitude: number; name: string; primaryType?: string };
     },
     onProgress?: (stage: string) => void
@@ -415,7 +416,40 @@ export default function HomeScreen() {
         })();
       }
 
-      console.log('[handleCreateRecallFromCombined] Step 3: Refreshing recalls list...');
+      // Upload documents if any
+      if (data.documents && data.documents.length > 0) {
+        console.log(`[handleCreateRecallFromCombined] Step 3: Uploading ${data.documents.length} documents...`);
+        
+        (async () => {
+          for (let i = 0; i < data.documents.length; i++) {
+            const doc = data.documents[i];
+            const fileSizeMB = parseFloat((doc.size / (1024 * 1024)).toFixed(2));
+            
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Uploading document ${i + 1}/${data.documents.length}: ${doc.name} (${fileSizeMB} MB)`);
+            
+            try {
+              const documentId = await uploadDocumentToDatabase(
+                doc.uri,
+                recallData.id,
+                doc.name,
+                fileSizeMB
+              );
+              
+              if (documentId) {
+                console.log(`[handleCreateRecallFromCombined] [ASYNC] Document ${i + 1} uploaded successfully with ID:`, documentId);
+              } else {
+                console.error(`[handleCreateRecallFromCombined] [ASYNC] Document ${i + 1} upload failed`);
+              }
+            } catch (uploadError) {
+              console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception uploading document ${i + 1}:`, uploadError);
+            }
+          }
+          
+          console.log(`[handleCreateRecallFromCombined] [ASYNC] All documents uploaded`);
+        })();
+      }
+
+      console.log('[handleCreateRecallFromCombined] Step 4: Refreshing recalls list...');
       await refreshNotes();
 
       console.log('[handleCreateRecallFromCombined] Recall creation complete!');
@@ -423,7 +457,7 @@ export default function HomeScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       
-      console.log('[handleCreateRecallFromCombined] Background processing (OCR, people finder, category matching) will run asynchronously');
+      console.log('[handleCreateRecallFromCombined] Background processing (OCR, people finder, category matching, document embedding) will run asynchronously');
       
     } catch (error) {
       console.error('[handleCreateRecallFromCombined] Exception in recall creation:', error);

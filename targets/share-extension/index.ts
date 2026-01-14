@@ -13,7 +13,7 @@
  * - Files (PDFs, documents)
  */
 
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
 // App Group identifier - must match the one in app.json
