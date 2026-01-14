@@ -40,7 +40,7 @@ interface CombinedSearchAddProps {
   onCreateRecall: (data: {
     text: string;
     images: string[];
-    documents?: { uri: string; name: string; size: number }[];
+    documents?: { uri: string; name: string; size: number; mimeType?: string }[];
     location?: { latitude: number; longitude: number; name: string; primaryType?: string };
   }, onProgress?: (stage: string) => void) => Promise<void>;
   userId: string;
@@ -56,6 +56,7 @@ interface DocumentState {
   uri: string;
   name: string;
   size: number;
+  mimeType?: string;
 }
 
 export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
@@ -440,6 +441,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
           uri: asset.uri,
           name: asset.name,
           size: asset.size || 0,
+          mimeType: asset.mimeType,
         }));
         
         setDocuments(prev => [...prev, ...newDocuments]);
@@ -489,6 +491,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         uri: doc.uri,
         name: doc.name,
         size: doc.size,
+        mimeType: doc.mimeType,
       }));
       
       await onCreateRecall(
