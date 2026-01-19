@@ -22,7 +22,6 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as DocumentPicker from 'expo-document-picker';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -38,7 +37,7 @@ import { Note, Person } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
 import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
-import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding, uploadDocumentToDatabase, deleteDocumentRecord } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
 import { processRecallUrls } from '@/utils/urlProcessor';
 import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,15 +49,6 @@ interface ImageData {
   uri: string;
   localUri?: string;
   contentType: string;
-}
-
-interface DocumentData {
-  id?: string;
-  uri: string;
-  name: string;
-  size: number;
-  mimeType?: string;
-  previewUri?: string;
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -83,7 +73,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
 
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageData[]>([]);
-  const [documents, setDocuments] = useState<DocumentData[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingNote, setLoadingNote] = useState(false);
@@ -609,47 +598,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     }, 300);
   };
 
-  const handleDocumentPick = async () => {
-    setShowFABs(false);
-    
-    try {
-      console.log('[NoteEditorSlideUp] Opening document picker...');
-      
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        multiple: true,
-        copyToCacheDirectory: true,
-      });
-
-      if (result.canceled) {
-        console.log('[NoteEditorSlideUp] Document picker canceled');
-        return;
-      }
-
-      if (result.assets && result.assets.length > 0) {
-        console.log('[NoteEditorSlideUp] Selected documents:', result.assets.length);
-        
-        const newDocuments: DocumentData[] = result.assets.map(asset => ({
-          uri: asset.uri,
-          name: asset.name,
-          size: asset.size || 0,
-          mimeType: asset.mimeType,
-        }));
-        
-        setDocuments(prev => [...prev, ...newDocuments]);
-        
-        if (Platform.OS !== 'web') {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
-        
-        console.log('[NoteEditorSlideUp] Documents added successfully');
-      }
-    } catch (error) {
-      console.error('[NoteEditorSlideUp] Error picking documents:', error);
-      Alert.alert('Error', 'Failed to pick documents');
-    }
-  };
-
   const handleBackdropPress = () => {
     if (showFABs) {
       setShowFABs(false);
@@ -969,48 +917,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
         setTimeout(() => {
           refreshSingleNote(recallId);
         }, 100);
-      }
-
-      const documentsToUpload = documents.filter(doc => !doc.id);
-      
-      if (documentsToUpload.length > 0) {
-        console.log(`[NoteEditorSlideUp] [ASYNC] Starting background upload of ${documentsToUpload.length} documents...`);
-        
-        (async () => {
-          let uploadedCount = 0;
-          let failedCount = 0;
-
-          for (const document of documentsToUpload) {
-            console.log('[NoteEditorSlideUp] [ASYNC] Uploading document to database:', document.name);
-            
-            try {
-              const fileSizeMB = parseFloat((document.size / (1024 * 1024)).toFixed(2));
-              const documentId = await uploadDocumentToDatabase(
-                document.uri,
-                recallId,
-                document.name,
-                fileSizeMB
-              );
-              
-              if (documentId) {
-                uploadedCount++;
-                console.log('[NoteEditorSlideUp] [ASYNC] Document uploaded successfully to database');
-                
-                await refreshSingleNote(recallId);
-              } else {
-                failedCount++;
-                console.error('[NoteEditorSlideUp] [ASYNC] Failed to upload document to database');
-              }
-            } catch (error) {
-              failedCount++;
-              console.error('[NoteEditorSlideUp] [ASYNC] Exception uploading document:', error);
-            }
-          }
-
-          console.log(`[NoteEditorSlideUp] [ASYNC] Document upload complete: ${uploadedCount} documents uploaded, ${failedCount} failed`);
-          
-          await refreshSingleNote(recallId);
-        })();
       }
 
       console.log('[NoteEditorSlideUp] [ASYNC] Processing URLs in note text for recall:', recallId);
@@ -1336,19 +1242,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                       <IconSymbol 
                         ios_icon_name="camera.fill" 
                         android_material_icon_name="camera" 
-                        size={28} 
-                        color={colors.primary} 
-                      />
-                    </Pressable>
-
-                    <Pressable
-                      style={styles.floatingActionButton}
-                      onPress={handleDocumentPick}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <IconSymbol 
-                        ios_icon_name="doc.fill" 
-                        android_material_icon_name="description" 
                         size={28} 
                         color={colors.primary} 
                       />

@@ -4,321 +4,481 @@ import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Refre
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
-import { useAuth } from '@/contexts/AuthContext';
-import { useNotes } from '@/hooks/useNotes';
 import { NoteCard } from '@/components/NoteCard';
+import { useNotes } from '@/hooks/useNotes';
 import { IconSymbol } from '@/components/IconSymbol';
-import { ZeroState } from '@/components/ZeroState';
-import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
-import { CategoryCarousel } from '@/components/CategoryCarousel';
-import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
-import { supabase } from '@/utils/supabase';
-import { uploadImageToDatabase, uploadDocumentToDatabase } from '@/utils/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
+import { CategoryCarousel } from '@/components/CategoryCarousel';
+import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
+import { supabase } from '@/utils/supabase';
+import { uploadImageToDatabase } from '@/utils/supabase';
+import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
+import { ZeroState } from '@/components/ZeroState';
 
 export default function HomeScreen() {
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote } = useNotes();
   const router = useRouter();
-  const { user } = useAuth();
-  const { notes, loading, refreshNotes, deleteNote } = useNotes();
   const [refreshing, setRefreshing] = useState(false);
-  const [isAddingRecall, setIsAddingRecall] = useState(false);
-  const [expectedImageCounts, setExpectedImageCounts] = useState<{ [key: string]: number }>({});
-  const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
-
-  useFocusEffect(
-    useCallback(() => {
-      console.log('[HomeScreen] Screen focused - refreshing notes');
-      refreshNotes();
-    }, [refreshNotes])
-  );
+  const scrollPositionRef = useRef(0);
+  const previousNotesCountRef = useRef(notes.length);
+  const isFirstFocusRef = useRef(true);
+  const { user } = useAuth();
+  const [isSaving, setIsSaving] = useState(false);
+  const [savingStage, setSavingStage] = useState<string>('');
+  const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
+  const [combinedAddSearchEnabled, setCombinedAddSearchEnabled] = useState(true);
+  const [loadingPreferences, setLoadingPreferences] = useState(true);
+  const [hasCheckedForRecalls, setHasCheckedForRecalls] = useState(false);
+  const [hasRecalls, setHasRecalls] = useState(false);
+  const insets = useSafeAreaInsets();
+  const pendingImageUploadsRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
-    if (user) {
-      console.log('[HomeScreen] User authenticated, loading notes');
-      refreshNotes();
-    }
+    const checkForRecalls = async () => {
+      if (!user) {
+        setHasCheckedForRecalls(true);
+        setHasRecalls(false);
+        return;
+      }
+
+      try {
+        const { error, count } = await supabase
+          .from('recalls')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .limit(1);
+
+        if (error) {
+          console.error('Error checking for recalls:', error);
+          setHasRecalls(false);
+        } else {
+          setHasRecalls((count || 0) > 0);
+        }
+      } catch (error) {
+        console.error('Exception checking for recalls:', error);
+        setHasRecalls(false);
+      } finally {
+        setHasCheckedForRecalls(true);
+      }
+    };
+
+    checkForRecalls();
   }, [user]);
 
   useEffect(() => {
-    if (notes.length > 0) {
-      console.log(`[HomeScreen] Loaded ${notes.length} notes`);
-    }
+    const loadUserPreferences = async () => {
+      if (!user) {
+        setLoadingPreferences(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('user_preferences')
+          .select('combined_add_search_enabled')
+          .eq('user_id', user.id)
+          .single();
+
+        if (error && error.code !== 'PGRST116') {
+          console.error('Error loading user preferences:', error);
+        } else if (data) {
+          setCombinedAddSearchEnabled(data.combined_add_search_enabled !== false);
+        }
+      } catch (error) {
+        console.error('Exception loading user preferences:', error);
+      } finally {
+        setLoadingPreferences(false);
+      }
+    };
+
+    loadUserPreferences();
+  }, [user]);
+
+  useEffect(() => {
+    previousNotesCountRef.current = notes.length;
   }, [notes.length]);
 
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[useFocusEffect] Home screen focused');
+      
+      if (isFirstFocusRef.current) {
+        isFirstFocusRef.current = false;
+        return;
+      }
+      
+      const currentCount = notes.length;
+      const previousCount = previousNotesCountRef.current;
+      
+      if (currentCount > previousCount) {
+        console.log('[useFocusEffect] New recall detected, auto-refreshing...');
+        refreshNotes();
+      }
+      
+      const savedScrollPosition = scrollPositionRef.current;
+      if (savedScrollPosition > 0 && scrollViewRef.current) {
+        setTimeout(() => {
+          scrollViewRef.current?.scrollTo({ y: savedScrollPosition, animated: false });
+        }, 100);
+      }
+      
+      return () => {
+        console.log('[useFocusEffect] Home screen unfocused');
+      };
+    }, [notes.length, refreshNotes])
+  );
+
   const handleRefresh = async () => {
-    console.log('[HomeScreen] User triggered refresh');
     setRefreshing(true);
-    await refreshNotes();
-    setRefreshing(false);
+    console.log('[handleRefresh] Refreshing landing page data from Supabase...');
+    
+    try {
+      console.log('[handleRefresh] Refreshing all recalls...');
+      await refreshNotes();
+      
+      setCategoryRefreshTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('[handleRefresh] Error refreshing data:', error);
+    } finally {
+      setRefreshing(false);
+      console.log('[handleRefresh] Refresh complete');
+    }
   };
 
-  const handleRecallIconPress = () => {
-    console.log('[HomeScreen] Recall icon pressed - navigating to note editor');
-    router.push('/note-editor');
+  const handleRecallIconPress = async () => {
+    console.log('[handleRecallIconPress] Recall icon pressed - reloading');
+    
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: true });
+    }
+    
+    await handleRefresh();
   };
 
   const handleAddRecall = () => {
-    console.log('[HomeScreen] Add recall button pressed');
-    router.push('/note-editor');
+    console.log('[handleAddRecall] Add recall button pressed');
+    
+    if (Platform.OS !== 'web') {
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
+    }
+    
+    try {
+      router.push('/note-editor');
+    } catch (error) {
+      console.error('Error navigating to recall editor:', error);
+    }
   };
 
   const handleNotePress = (noteId: string) => {
-    console.log('[HomeScreen] Note pressed:', noteId);
-    router.push(`/note-editor?id=${noteId}`);
+    try {
+      router.push(`/note-editor?id=${noteId}`);
+    } catch (error) {
+      console.error('Error navigating to recall editor:', error);
+    }
   };
 
   const handleProfile = () => {
-    console.log('[HomeScreen] Profile button pressed');
-    router.push('/profile');
+    try {
+      router.push('/(tabs)/profile');
+    } catch (error) {
+      console.error('Error navigating to profile:', error);
+    }
   };
+
+  const handleScroll = useCallback((event: any) => {
+    try {
+      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+      
+      scrollPositionRef.current = contentOffset.y;
+
+      Keyboard.dismiss();
+
+      const paddingToBottom = 20;
+      const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+
+      if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
+        console.log('[handleScroll] Loading more recalls...');
+        loadMoreNotes();
+      }
+    } catch (error) {
+      console.error('Error handling scroll:', error);
+    }
+  }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
 
   const handleCreateRecallFromCombined = async (
     data: {
       text: string;
       images: string[];
-      documents?: { uri: string; name: string; size: number; mimeType?: string }[];
       location?: { latitude: number; longitude: number; name: string; primaryType?: string };
     },
     onProgress?: (stage: string) => void
   ) => {
     if (!user) {
-      console.error('[HomeScreen] No user found, cannot create recall');
-      Alert.alert('Error', 'User not authenticated');
+      Alert.alert('Error', 'You must be logged in to create a recall');
       return;
     }
 
+    console.log('[handleCreateRecallFromCombined] Starting recall creation');
+    console.log('[handleCreateRecallFromCombined] Text length:', data.text.length);
+    console.log('[handleCreateRecallFromCombined] Number of images:', data.images.length);
+    console.log('[handleCreateRecallFromCombined] Has location:', !!data.location);
+    console.log('[handleCreateRecallFromCombined] Location primary type:', data.location?.primaryType || 'Not provided');
+
     try {
-      setIsAddingRecall(true);
-      console.log('[HomeScreen] Creating recall from combined search/add');
-      console.log('[HomeScreen] Text:', data.text);
-      console.log('[HomeScreen] Images:', data.images.length);
-      console.log('[HomeScreen] Documents:', data.documents?.length || 0);
-      console.log('[HomeScreen] Location:', data.location?.name);
-
-      if (onProgress) {
-        onProgress('Creating recall...');
-      }
-
-      // Create the recall record first
+      setIsSaving(true);
+      
+      // Stage 1: Creating Recall
+      if (onProgress) onProgress('Creating Recall...');
+      setSavingStage('Creating Recall...');
+      
+      console.log('[handleCreateRecallFromCombined] Step 1: Creating recall record...');
+      const recallStartTime = Date.now();
+      
       const { data: recallData, error: recallError } = await supabase
         .from('recalls')
         .insert({
-          user_id: user.id,
           text: data.text,
+          user_id: user.id,
           latitude: data.location?.latitude,
           longitude: data.location?.longitude,
           location: data.location?.name,
-          location_primary_type: data.location?.primaryType,
+          location_primary_type: data.location?.primaryType || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         })
-        .select('id')
+        .select()
         .single();
 
-      if (recallError || !recallData) {
-        console.error('[HomeScreen] Error creating recall:', recallError);
-        throw new Error('Failed to create recall');
+      const recallDuration = Date.now() - recallStartTime;
+      console.log(`[handleCreateRecallFromCombined] Recall created in ${recallDuration}ms`);
+
+      if (recallError) {
+        console.error('[handleCreateRecallFromCombined] Error creating recall:', recallError);
+        Alert.alert('Error', 'Failed to create recall');
+        return;
       }
 
-      const recallId = recallData.id;
-      console.log('[HomeScreen] Recall created with ID:', recallId);
+      console.log('[handleCreateRecallFromCombined] Recall created with ID:', recallData.id);
 
-      // Set expected image count for this recall
+      const totalImageCount = data.images.length;
+      if (totalImageCount > 0) {
+        pendingImageUploadsRef.current.set(recallData.id, totalImageCount);
+        console.log(`[handleCreateRecallFromCombined] Tracking ${totalImageCount} pending image uploads for recall ${recallData.id}`);
+      }
+
       if (data.images.length > 0) {
-        setExpectedImageCounts(prev => ({
-          ...prev,
-          [recallId]: data.images.length,
-        }));
+        // Stage 2: Detecting People (shown before image upload for better UX)
+        if (onProgress) onProgress('Detecting People...');
+        setSavingStage('Detecting People...');
+        console.log('[handleCreateRecallFromCombined] Stage: Detecting people...');
+        
+        // Stage 3: Matching Categories (shown before image upload for better UX)
+        if (onProgress) onProgress('Matching Categories...');
+        setSavingStage('Matching Categories...');
+        console.log('[handleCreateRecallFromCombined] Stage: Matching categories...');
+        
+        // NOTE: Removed "Uploading Images" stage from progress indicator for better UX
+        // Images are still uploaded in the background
+        
+        console.log('[handleCreateRecallFromCombined] Step 2: Uploading images...');
+        const imageStartTime = Date.now();
+        
+        console.log(`[handleCreateRecallFromCombined] Uploading first image synchronously (1/${data.images.length})...`);
+        try {
+          const firstImageId = await uploadImageToDatabase(data.images[0], recallData.id, 'image/jpeg');
+          
+          if (firstImageId) {
+            console.log(`[handleCreateRecallFromCombined] First image uploaded successfully with ID:`, firstImageId);
+          } else {
+            console.error(`[handleCreateRecallFromCombined] First image upload failed - no ID returned`);
+          }
+        } catch (uploadError) {
+          console.error(`[handleCreateRecallFromCombined] Exception uploading first image:`, uploadError);
+        }
+        
+        const firstImageDuration = Date.now() - imageStartTime;
+        console.log(`[handleCreateRecallFromCombined] First image uploaded in ${firstImageDuration}ms`);
+        
+        if (data.images.length > 1) {
+          console.log(`[handleCreateRecallFromCombined] Uploading remaining ${data.images.length - 1} images asynchronously...`);
+          
+          (async () => {
+            for (let i = 1; i < data.images.length; i++) {
+              const uri = data.images[i];
+              console.log(`[handleCreateRecallFromCombined] [ASYNC] Uploading image ${i + 1}/${data.images.length}...`);
+              
+              try {
+                const imageId = await uploadImageToDatabase(uri, recallData.id, 'image/jpeg');
+                
+                if (imageId) {
+                  console.log(`[handleCreateRecallFromCombined] [ASYNC] Image ${i + 1} uploaded successfully with ID:`, imageId);
+                  
+                  console.log(`[handleCreateRecallFromCombined] [ASYNC] Refreshing note ${recallData.id} after image ${i + 1} upload`);
+                  await refreshSingleNote(recallData.id);
+                } else {
+                  console.error(`[handleCreateRecallFromCombined] [ASYNC] Image ${i + 1} upload failed - no ID returned`);
+                }
+                
+                if (i < data.images.length - 1) {
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                }
+              } catch (uploadError) {
+                console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception uploading image ${i + 1}:`, uploadError);
+              }
+            }
+            
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] All remaining images uploaded`);
+            
+            // Stage 5: Analysing Images (async)
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Analysing images...`);
+            
+            pendingImageUploadsRef.current.delete(recallData.id);
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Cleared pending uploads tracking for recall ${recallData.id}`);
+            
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Final refresh of note ${recallData.id}`);
+            await refreshSingleNote(recallData.id);
+            
+            // Run category matching in background
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id}...`);
+            try {
+              const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
+                body: { recallId: recallData.id },
+              });
+              
+              if (categoryMatchError) {
+                console.error(`[handleCreateRecallFromCombined] [ASYNC] Error in category matching:`, categoryMatchError);
+              } else {
+                console.log(`[handleCreateRecallFromCombined] [ASYNC] Category matching completed successfully`);
+              }
+            } catch (categoryMatchException) {
+              console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception in category matching:`, categoryMatchException);
+            }
+          })();
+        } else {
+          pendingImageUploadsRef.current.delete(recallData.id);
+          
+          // Run async processing for single image
+          (async () => {
+            // Stage 5: Analysing Images
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Analysing image...`);
+            
+            // Run category matching in background
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id}...`);
+            try {
+              const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
+                body: { recallId: recallData.id },
+              });
+              
+              if (categoryMatchError) {
+                console.error(`[handleCreateRecallFromCombined] [ASYNC] Error in category matching:`, categoryMatchError);
+              } else {
+                console.log(`[handleCreateRecallFromCombined] [ASYNC] Category matching completed successfully`);
+              }
+            } catch (categoryMatchException) {
+              console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception in category matching:`, categoryMatchException);
+            }
+          })();
+        }
+      } else {
+        // No images - show people detection and category matching stages
+        // Stage 2: Detecting People (text-only)
+        if (onProgress) onProgress('Detecting People...');
+        setSavingStage('Detecting People...');
+        console.log(`[handleCreateRecallFromCombined] Stage: Detecting people (text-only)...`);
+        
+        // Stage 3: Matching Categories
+        if (onProgress) onProgress('Matching Categories...');
+        setSavingStage('Matching Categories...');
+        
+        // Run category matching immediately in background
+        (async () => {
+          console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id} (no images)...`);
+          try {
+            const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
+              body: { recallId: recallData.id },
+            });
+            
+            if (categoryMatchError) {
+              console.error(`[handleCreateRecallFromCombined] [ASYNC] Error in category matching:`, categoryMatchError);
+            } else {
+              console.log(`[handleCreateRecallFromCombined] [ASYNC] Category matching completed successfully`);
+            }
+          } catch (categoryMatchException) {
+            console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception in category matching:`, categoryMatchException);
+          }
+        })();
       }
 
-      // Refresh notes immediately to show the new recall
+      console.log('[handleCreateRecallFromCombined] Step 3: Refreshing recalls list...');
       await refreshNotes();
 
-      // Scroll to top to show the new recall
-      if (scrollViewRef.current) {
-        scrollViewRef.current.scrollTo({ y: 0, animated: true });
-      }
-
-      // Upload images asynchronously in the background
-      if (data.images.length > 0) {
-        console.log(`[HomeScreen] [ASYNC] Starting background upload of ${data.images.length} images...`);
-        
-        (async () => {
-          let uploadedCount = 0;
-          
-          for (const imageUri of data.images) {
-            try {
-              if (onProgress) {
-                onProgress(`Uploading image ${uploadedCount + 1}/${data.images.length}...`);
-              }
-              
-              const imageId = await uploadImageToDatabase(imageUri, recallId, 'image/jpeg');
-              
-              if (imageId) {
-                uploadedCount++;
-                console.log(`[HomeScreen] [ASYNC] Image ${uploadedCount}/${data.images.length} uploaded successfully`);
-              } else {
-                console.error(`[HomeScreen] [ASYNC] Failed to upload image ${uploadedCount + 1}`);
-              }
-            } catch (error) {
-              console.error(`[HomeScreen] [ASYNC] Exception uploading image:`, error);
-            }
-          }
-          
-          console.log(`[HomeScreen] [ASYNC] Image upload complete: ${uploadedCount}/${data.images.length} successful`);
-          
-          // Clear expected image count after upload completes
-          setExpectedImageCounts(prev => {
-            const newCounts = { ...prev };
-            delete newCounts[recallId];
-            return newCounts;
-          });
-          
-          // Refresh notes to show uploaded images
-          await refreshNotes();
-        })();
-      }
-
-      // Upload documents asynchronously in the background
-      if (data.documents && data.documents.length > 0) {
-        console.log(`[HomeScreen] [ASYNC] Starting background upload of ${data.documents.length} documents...`);
-        
-        (async () => {
-          let uploadedCount = 0;
-          
-          for (const doc of data.documents) {
-            try {
-              if (onProgress) {
-                onProgress(`Uploading document ${uploadedCount + 1}/${data.documents.length}...`);
-              }
-              
-              const fileSizeMB = parseFloat((doc.size / (1024 * 1024)).toFixed(2));
-              
-              // TODO: Backend Integration - POST /api/documents/upload
-              // Accepts: multipart form data with 'document' field, recallId, documentName, fileSizeMB, mimeType
-              // Returns: { documentId: string, documentCdnUrl: string, previewCdnUrl: string }
-              // The backend will:
-              // 1. Upload document file to Cloudflare R2
-              // 2. Generate preview image from first page
-              // 3. Upload preview to Cloudflare CDN
-              // 4. Store metadata in recall_documents table
-              // 5. Trigger embedding generation asynchronously
-              
-              const documentId = await uploadDocumentToDatabase(doc.uri, recallId, doc.name, fileSizeMB);
-              
-              if (documentId) {
-                uploadedCount++;
-                console.log(`[HomeScreen] [ASYNC] Document ${uploadedCount}/${data.documents.length} uploaded successfully`);
-              } else {
-                console.error(`[HomeScreen] [ASYNC] Failed to upload document ${uploadedCount + 1}`);
-              }
-            } catch (error) {
-              console.error(`[HomeScreen] [ASYNC] Exception uploading document:`, error);
-            }
-          }
-          
-          console.log(`[HomeScreen] [ASYNC] Document upload complete: ${uploadedCount}/${data.documents.length} successful`);
-          
-          // Refresh notes to show uploaded documents
-          await refreshNotes();
-        })();
-      }
-
+      console.log('[handleCreateRecallFromCombined] Recall creation complete!');
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
-
-      console.log('[HomeScreen] Recall created successfully');
+      
+      console.log('[handleCreateRecallFromCombined] Background processing (OCR, people finder, category matching) will run asynchronously');
+      
     } catch (error) {
-      console.error('[HomeScreen] Error creating recall:', error);
+      console.error('[handleCreateRecallFromCombined] Exception in recall creation:', error);
       Alert.alert('Error', 'Failed to create recall');
     } finally {
-      setIsAddingRecall(false);
+      setIsSaving(false);
+      setSavingStage('');
     }
   };
 
   const handleDeleteNote = async (noteId: string) => {
-    console.log('[HomeScreen] Deleting note:', noteId);
-    
+    console.log('[handleDeleteNote] Deleting note:', noteId);
     try {
       await deleteNote(noteId);
-      console.log('[HomeScreen] Note deleted successfully');
-      
-      if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
+      console.log('[handleDeleteNote] Note deleted successfully');
     } catch (error) {
-      console.error('[HomeScreen] Error deleting note:', error);
-      Alert.alert('Error', 'Failed to delete note');
+      console.error('[handleDeleteNote] Error deleting note:', error);
+      Alert.alert('Error', 'Failed to delete recall. Please try again.');
     }
   };
 
   const renderEmptyState = () => {
-    if (loading) {
-      return null;
-    }
-
     return (
       <ZeroState
-        icon="note.text"
+        icon="doc.text"
         title="No Recalls Yet"
-        description="Start capturing your memories, ideas, and moments"
-        actionText="Create Your First Recall"
-        onAction={handleAddRecall}
+        message="Start capturing your thoughts, memories, and moments"
+        animatedIcon={true}
       />
     );
   };
 
   const renderSkeletons = () => {
     return (
-      <>
-        <NoteCardSkeleton />
-        <NoteCardSkeleton />
-        <NoteCardSkeleton />
-      </>
+      <View style={styles.allNotesSection}>
+        {[...Array(3)].map((_, index) => (
+          <NoteCardSkeleton key={`skeleton-${index}`} />
+        ))}
+      </View>
     );
   };
 
+  const shouldShowSkeletons = loading && (!hasCheckedForRecalls || notes.length === 0);
+  const shouldShowZeroState = hasCheckedForRecalls && !hasRecalls && notes.length === 0 && !loading;
+  const shouldShowContent = hasCheckedForRecalls && (hasRecalls || notes.length > 0);
+
   const getExpectedImageCount = (noteId: string): number | undefined => {
-    return expectedImageCounts[noteId];
+    return pendingImageUploadsRef.current.get(noteId);
   };
 
   return (
     <View style={styles.container}>
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerTitle: '',
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerLeft: () => (
-            <Pressable 
-              onPress={handleRecallIconPress}
-              style={styles.headerButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <IconSymbol 
-                ios_icon_name="note.text" 
-                android_material_icon_name="description" 
-                size={28} 
-                color={colors.primary} 
-              />
-            </Pressable>
-          ),
-          headerRight: () => (
-            <Pressable 
-              onPress={handleProfile}
-              style={styles.headerButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <IconSymbol 
-                ios_icon_name="person.circle.fill" 
-                android_material_icon_name="account-circle" 
-                size={28} 
-                color={colors.text} 
-              />
-            </Pressable>
-          ),
+          headerShown: false,
         }}
       />
 
@@ -327,8 +487,10 @@ export default function HomeScreen() {
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + 140 }
+          combinedAddSearchEnabled && styles.scrollContentWithCombined,
         ]}
+        onScroll={handleScroll}
+        scrollEventThrottle={400}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -337,33 +499,110 @@ export default function HomeScreen() {
             colors={[colors.primary]}
           />
         }
-        keyboardShouldPersistTaps="handled"
       >
-        <CategoryCarousel />
-
-        {loading && notes.length === 0 ? (
-          renderSkeletons()
-        ) : notes.length === 0 ? (
-          renderEmptyState()
-        ) : (
-          notes.map((note) => (
-            <NoteCard
-              key={note.id}
-              note={note}
-              onPress={() => handleNotePress(note.id)}
-              onDelete={() => handleDeleteNote(note.id)}
-              expectedImageCount={getExpectedImageCount(note.id)}
+        <View style={[styles.customHeader, { paddingTop: insets.top }]}>
+          <Pressable 
+            onPress={handleRecallIconPress} 
+            style={styles.headerIconButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Image
+              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+              style={styles.headerIcon}
+              resizeMode="contain"
             />
-          ))
+          </Pressable>
+          
+          <Text style={styles.headerTitle}>Recall</Text>
+          
+          <Pressable 
+            onPress={handleProfile} 
+            style={styles.headerIconButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <IconSymbol 
+              name="person.circle.fill" 
+              size={32} 
+              color={colors.text} 
+            />
+          </Pressable>
+        </View>
+
+        {user && (
+          <View style={styles.categoryCarouselContainer}>
+            <CategoryCarousel
+              userId={user.id}
+              refreshTrigger={categoryRefreshTrigger}
+            />
+          </View>
         )}
+
+        {shouldShowSkeletons ? (
+          renderSkeletons()
+        ) : shouldShowZeroState ? (
+          renderEmptyState()
+        ) : shouldShowContent ? (
+          <View style={styles.notesContainer}>
+            <View style={styles.allNotesSection}>
+              {notes.map((note, index) => (
+                <NoteCard
+                  key={`${note.id}-${index}`}
+                  note={note}
+                  onPress={() => handleNotePress(note.id)}
+                  onDelete={() => handleDeleteNote(note.id)}
+                  loading={false}
+                  expectedImageCount={getExpectedImageCount(note.id)}
+                />
+              ))}
+            </View>
+
+            {isLoadingMore && (
+              <View style={styles.loadingMoreContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.loadingMoreText}>Loading more...</Text>
+              </View>
+            )}
+            {!hasMore && notes.length > 0 && (
+              <View style={styles.endContainer}>
+                <Text style={styles.endText}>You&apos;ve reached the end</Text>
+              </View>
+            )}
+          </View>
+        ) : null}
       </ScrollView>
 
-      {user && (
-        <CombinedSearchAdd 
+      {combinedAddSearchEnabled && user && !loadingPreferences && (
+        <CombinedSearchAdd
           onCreateRecall={handleCreateRecallFromCombined}
           userId={user.id}
         />
       )}
+
+      <Modal
+        visible={isDeletingNote}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.deletionModalContainer}>
+          <View style={styles.deletionModalContent}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.deletionModalText}>Deleting recall...</Text>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={isSaving}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.deletionModalContainer}>
+          <View style={styles.deletionModalContent}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.deletionModalText}>{savingStage || 'Saving recall...'}</Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -373,14 +612,110 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  headerButton: {
+  customHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  headerIconButton: {
     padding: 8,
-    marginHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerIcon: {
+    width: 36,
+    height: 36,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    paddingBottom: 100,
+  },
+  scrollContentWithCombined: {
+    paddingBottom: 200,
+  },
+  categoryCarouselContainer: {
+    paddingTop: 3.89,
+    paddingBottom: 3.89,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  },
+  notesContainer: {
+    width: '100%',
+  },
+  allNotesSection: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  loadingMoreContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 20,
+    gap: 12,
+  },
+  loadingMoreText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  endContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  endText: {
+    fontSize: 14,
+    color: colors.textTertiary,
+    fontStyle: 'italic',
+  },
+  deletionModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deletionModalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    gap: 16,
+    minWidth: 200,
+  },
+  deletionModalText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
   },
 });
