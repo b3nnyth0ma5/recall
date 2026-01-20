@@ -57,6 +57,14 @@ export default function SearchScreen() {
   // Check if user should see search time
   const shouldShowSearchTime = user?.email === 'benny_thomas21@yahoo.co.in';
 
+  // Filter notes to only show recalls that were used for answer
+  const filteredNotes = useMemo(() => {
+    console.log('[SearchScreen] Filtering notes - Total notes:', notes.length);
+    const filtered = notes.filter(note => note.used_for_answer === true);
+    console.log('[SearchScreen] Filtered notes (used_for_answer=true):', filtered.length);
+    return filtered;
+  }, [notes]);
+
   const loadSearchHistory = useCallback(async () => {
     setIsLoadingHistory(true);
     const history = await getSearchHistory();
@@ -484,7 +492,7 @@ export default function SearchScreen() {
             ) : (
               <React.Fragment>
                 {/* Show empty state when search is complete and no results */}
-                {notes.length === 0 && !searchAnswer && searchStage === 'complete' ? (
+                {filteredNotes.length === 0 && !searchAnswer && searchStage === 'complete' ? (
                   <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
                     <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
                     <Text style={styles.emptyTitle}>No Results Found</Text>
@@ -529,25 +537,23 @@ export default function SearchScreen() {
                       </Animated.View>
                     )}
 
-                    {/* Results Section */}
-                    {notes.length > 0 && (
+                    {/* Results Section - Only show recalls that were used for answer */}
+                    {filteredNotes.length > 0 && (
                       <React.Fragment>
                         <Text style={styles.resultsText}>
-                          {notes.length} {notes.length === 1 ? 'result' : 'results'} found
+                          {filteredNotes.length} {filteredNotes.length === 1 ? 'result' : 'results'} used for answer
                           {locationInfo && ` near ${locationInfo.resolvedPlace}`}
                           {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
                         </Text>
-                        {notes.map((note) => (
+                        {filteredNotes.map((note) => (
                           <View key={note.id} style={styles.noteWrapper}>
                             {/* Badge row with "used for answer" badge */}
-                            {note.used_for_answer && (
-                              <View style={styles.badgeRow}>
-                                <View style={styles.answerSourceBadge}>
-                                  <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
-                                  <Text style={styles.answerSourceText}>Used for answer</Text>
-                                </View>
+                            <View style={styles.badgeRow}>
+                              <View style={styles.answerSourceBadge}>
+                                <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                                <Text style={styles.answerSourceText}>Used for answer</Text>
                               </View>
-                            )}
+                            </View>
                             <View style={styles.noteCardContainer}>
                               <NoteCard
                                 note={note}

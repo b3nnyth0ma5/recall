@@ -797,6 +797,25 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
         if (images.length !== initialImageCount) {
           imagesChanged = true;
         }
+
+        // Trigger embedding regeneration for updated recall
+        console.log('[NoteEditorSlideUp] Triggering embedding regeneration for updated recall:', recallId);
+        setTimeout(() => {
+          triggerRecallEmbedding(
+            recallId,
+            noteData.text,
+            noteData.location,
+            noteData.location_primary_type || undefined
+          ).then(result => {
+            if (result.success) {
+              console.log('[NoteEditorSlideUp] [ASYNC] Embedding regeneration triggered successfully after recall update');
+            } else {
+              console.error('[NoteEditorSlideUp] [ASYNC] Failed to trigger embedding regeneration:', result.error);
+            }
+          }).catch(error => {
+            console.error('[NoteEditorSlideUp] [ASYNC] Error triggering embedding regeneration:', error);
+          });
+        }, 500);
       } else {
         console.log('[NoteEditorSlideUp] Creating new recall');
         recallId = await addNote(noteData);

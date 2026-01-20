@@ -1006,6 +1006,25 @@ export default function NoteEditorScreen() {
             }
           }
         }
+
+        // Trigger embedding regeneration for updated recall
+        console.log('[NoteEditor] Triggering embedding regeneration for updated recall:', recallId);
+        setTimeout(() => {
+          triggerRecallEmbedding(
+            recallId,
+            noteData.text,
+            noteData.location,
+            noteData.location_primary_type || undefined
+          ).then(result => {
+            if (result.success) {
+              console.log('[NoteEditor] [ASYNC] Embedding regeneration triggered successfully after recall update');
+            } else {
+              console.error('[NoteEditor] [ASYNC] Failed to trigger embedding regeneration:', result.error);
+            }
+          }).catch(error => {
+            console.error('[NoteEditor] [ASYNC] Error triggering embedding regeneration:', error);
+          });
+        }, 500);
       } else {
         console.log('[NoteEditor] Creating new recall');
         recallId = await addNote(noteData);
