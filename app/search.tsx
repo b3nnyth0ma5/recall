@@ -59,10 +59,29 @@ export default function SearchScreen() {
   const shouldShowSearchTime = user?.email === 'benny_thomas21@yahoo.co.in';
 
   // Filter notes to only show recalls that were used for answer
+  // If no notes have used_for_answer flag, show all notes (backward compatibility)
   const filteredNotes = useMemo(() => {
     console.log('[SearchScreen] Filtering notes - Total notes:', notes.length);
+    
+    // Check if any notes have the used_for_answer flag
+    const hasUsedForAnswerFlag = notes.some(note => note.used_for_answer !== undefined);
+    
+    if (!hasUsedForAnswerFlag) {
+      // Backward compatibility: if no notes have the flag, show all notes
+      console.log('[SearchScreen] No used_for_answer flags found, showing all notes');
+      return notes;
+    }
+    
+    // Filter to only show notes that were used for answer
     const filtered = notes.filter(note => note.used_for_answer === true);
     console.log('[SearchScreen] Filtered notes (used_for_answer=true):', filtered.length);
+    
+    // If no notes were used for answer but we have notes, show all (fallback)
+    if (filtered.length === 0 && notes.length > 0) {
+      console.log('[SearchScreen] No notes marked as used_for_answer, showing all notes as fallback');
+      return notes;
+    }
+    
     return filtered;
   }, [notes]);
 
@@ -195,6 +214,13 @@ export default function SearchScreen() {
   }, [searchNotes]);
 
   const handleNotePress = useCallback((noteId: string, imageIndex?: number) => {
+    console.log('[SearchScreen] handleNotePress called with:', { noteId, imageIndex });
+    
+    // Trigger haptic feedback
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
     setTimeout(() => {
       try {
         // If imageIndex is provided, pass it as a query parameter
@@ -226,20 +252,27 @@ export default function SearchScreen() {
   // Build recall references from the notes that were used for answer
   const recallReferences = useMemo(() => {
     if (!filteredNotes || filteredNotes.length === 0) {
+      console.log('[SearchScreen] No filtered notes for recall references');
       return [];
     }
     
     // Map each recall to a reference with potential image index
-    return filteredNotes.map((note) => {
+    const references = filteredNotes.map((note, index) => {
       // Check if the note has images
       const hasImages = note.images && note.images.length > 0;
       
-      return {
+      const ref = {
         recallId: note.id,
         // If it's an image-based recall, default to first image
         imageIndex: hasImages ? 0 : undefined,
       };
+      
+      console.log(`[SearchScreen] Recall reference ${index + 1}:`, ref);
+      return ref;
     });
+    
+    console.log('[SearchScreen] Total recall references:', references.length);
+    return references;
   }, [filteredNotes]);
 
   const handleClear = useCallback(() => {
@@ -325,15 +358,30 @@ export default function SearchScreen() {
       <Text style={styles.searchTipsTitle}>Try searching for:</Text>
       <View style={styles.searchTipsList}>
         <View style={styles.searchTipItem}>
-          <IconSymbol name="location.fill" size={16} color={colors.primary} />
+          <IconSymbol 
+            ios_icon_name="location.fill" 
+            android_material_icon_name="location-on" 
+            size={16} 
+            color={colors.primary} 
+          />
           <Text style={styles.searchTipText}>Places you&apos;ve been</Text>
         </View>
         <View style={styles.searchTipItem}>
-          <IconSymbol name="person.fill" size={16} color={colors.primary} />
+          <IconSymbol 
+            ios_icon_name="person.fill" 
+            android_material_icon_name="person" 
+            size={16} 
+            color={colors.primary} 
+          />
           <Text style={styles.searchTipText}>People you&apos;ve mentioned</Text>
         </View>
         <View style={styles.searchTipItem}>
-          <IconSymbol name="photo.fill" size={16} color={colors.primary} />
+          <IconSymbol 
+            ios_icon_name="photo.fill" 
+            android_material_icon_name="photo" 
+            size={16} 
+            color={colors.primary} 
+          />
           <Text style={styles.searchTipText}>Things in your photos</Text>
         </View>
       </View>
@@ -344,31 +392,66 @@ export default function SearchScreen() {
   const featureList = useMemo(() => (
     <View style={styles.featureList}>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          ios_icon_name="checkmark.circle.fill" 
+          android_material_icon_name="check-circle" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>What&apos;s coming up next month?</Text>
       </View>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          ios_icon_name="checkmark.circle.fill" 
+          android_material_icon_name="check-circle" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>Restaurants in Collingwood that are on my wishlist </Text>
       </View>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          ios_icon_name="checkmark.circle.fill" 
+          android_material_icon_name="check-circle" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>Any Recalls that mention Elly</Text>
       </View>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          ios_icon_name="checkmark.circle.fill" 
+          android_material_icon_name="check-circle" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>What wines did I have at Bistro Marigold?</Text>
       </View>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          ios_icon_name="checkmark.circle.fill" 
+          android_material_icon_name="check-circle" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>What vaccinations has Kiki had and when is it due?</Text>
       </View>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          ios_icon_name="checkmark.circle.fill" 
+          android_material_icon_name="check-circle" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>My cocktail recipes that use lime, ginger and agave</Text>
       </View>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          ios_icon_name="checkmark.circle.fill" 
+          android_material_icon_name="check-circle" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>Steak night specials on Thursdays</Text>
       </View>
     </View>
@@ -390,7 +473,12 @@ export default function SearchScreen() {
               style={styles.headerButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="chevron.left" size={24} color={colors.text} />
+              <IconSymbol 
+                ios_icon_name="chevron.left" 
+                android_material_icon_name="arrow-back" 
+                size={24} 
+                color={colors.text} 
+              />
             </Pressable>
           ),
           headerRight: () => (
@@ -400,7 +488,8 @@ export default function SearchScreen() {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <IconSymbol 
-                name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+                ios_icon_name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+                android_material_icon_name={keyboardVisible ? "keyboard-hide" : "keyboard"} 
                 size={24} 
                 color={colors.text} 
               />
@@ -411,7 +500,12 @@ export default function SearchScreen() {
 
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
-          <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
+          <IconSymbol 
+            ios_icon_name="magnifyingglass" 
+            android_material_icon_name="search" 
+            size={20} 
+            color={colors.textSecondary} 
+          />
           <TextInput
             ref={searchInputRef}
             style={styles.searchInput}
@@ -433,7 +527,12 @@ export default function SearchScreen() {
               style={styles.clearButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
+              <IconSymbol 
+                ios_icon_name="xmark.circle.fill" 
+                android_material_icon_name="cancel" 
+                size={20} 
+                color={colors.textSecondary} 
+              />
             </Pressable>
           )}
           <Pressable 
@@ -450,7 +549,8 @@ export default function SearchScreen() {
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <IconSymbol 
-                  name="sparkles" 
+                  ios_icon_name="sparkles" 
+                  android_material_icon_name="auto-awesome" 
                   size={18} 
                   color="#FFFFFF" 
                 />
@@ -474,16 +574,31 @@ export default function SearchScreen() {
                 onPress={() => handleHistoryItemPress(item.search_text)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <IconSymbol name="clock" size={18} color={colors.textSecondary} />
+                <IconSymbol 
+                  ios_icon_name="clock" 
+                  android_material_icon_name="history" 
+                  size={18} 
+                  color={colors.textSecondary} 
+                />
                 <Text style={styles.historyText}>{item.search_text}</Text>
-                <IconSymbol name="arrow.up.left" size={16} color={colors.textTertiary} />
+                <IconSymbol 
+                  ios_icon_name="arrow.up.left" 
+                  android_material_icon_name="north-west" 
+                  size={16} 
+                  color={colors.textTertiary} 
+                />
               </Pressable>
             ))}
           </Animated.View>
         ) : showHistory && searchHistory.length === 0 && !isLoadingHistory ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyHistoryContainer}>
             <View style={styles.emptyHistoryIconContainer}>
-              <IconSymbol name="clock" size={48} color={colors.textTertiary} />
+              <IconSymbol 
+                ios_icon_name="clock" 
+                android_material_icon_name="history" 
+                size={48} 
+                color={colors.textTertiary} 
+              />
             </View>
             <Text style={styles.emptyHistoryTitle}>No Search History</Text>
             <Text style={styles.emptyHistoryMessage}>
@@ -494,7 +609,8 @@ export default function SearchScreen() {
         ) : !hasSearched ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
             <IconSymbol 
-              name="photo.on.rectangle" 
+              ios_icon_name="photo.on.rectangle" 
+              android_material_icon_name="photo-library" 
               size={80} 
               color={colors.textTertiary} 
             />
@@ -533,7 +649,12 @@ export default function SearchScreen() {
                 {/* Show empty state when search is complete and no results */}
                 {filteredNotes.length === 0 && !searchAnswer && searchStage === 'complete' ? (
                   <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-                    <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
+                    <IconSymbol 
+                      ios_icon_name="doc.text.magnifyingglass" 
+                      android_material_icon_name="search-off" 
+                      size={80} 
+                      color={colors.textTertiary} 
+                    />
                     <Text style={styles.emptyTitle}>No Results Found</Text>
                     <Text style={styles.emptyText}>
                       {locationInfo 
@@ -551,11 +672,21 @@ export default function SearchScreen() {
                       <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
                         <View style={styles.answerHeader}>
                           <View style={styles.answerHeaderLeft}>
-                            <IconSymbol name="lightbulb.fill" size={20} color={colors.primary} />
+                            <IconSymbol 
+                              ios_icon_name="lightbulb.fill" 
+                              android_material_icon_name="lightbulb" 
+                              size={20} 
+                              color={colors.primary} 
+                            />
                             <Text style={styles.answerTitle}>Answer</Text>
                           </View>
                           <View style={styles.confidenceBadge}>
-                            <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                            <IconSymbol 
+                              ios_icon_name="checkmark.seal.fill" 
+                              android_material_icon_name="verified" 
+                              size={14} 
+                              color={colors.primary} 
+                            />
                             <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
                           </View>
                         </View>
@@ -588,24 +719,43 @@ export default function SearchScreen() {
                           {locationInfo && ` near ${locationInfo.resolvedPlace}`}
                           {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
                         </Text>
-                        {filteredNotes.map((note) => (
-                          <View key={note.id} style={styles.noteWrapper}>
-                            {/* Badge row with "used for answer" badge */}
-                            <View style={styles.badgeRow}>
-                              <View style={styles.answerSourceBadge}>
-                                <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
-                                <Text style={styles.answerSourceText}>Used for answer</Text>
+                        {filteredNotes.map((note) => {
+                          // Find the corresponding recall reference for this note
+                          const recallRef = recallReferences.find(ref => ref.recallId === note.id);
+                          const imageIndex = recallRef?.imageIndex;
+                          
+                          console.log('[SearchScreen] Rendering note:', note.id, 'with imageIndex:', imageIndex);
+                          
+                          return (
+                            <View key={note.id} style={styles.noteWrapper}>
+                              {/* Badge row with "used for answer" badge */}
+                              <View style={styles.badgeRow}>
+                                <View style={styles.answerSourceBadge}>
+                                  <IconSymbol 
+                                    ios_icon_name="checkmark.seal.fill" 
+                                    android_material_icon_name="verified" 
+                                    size={14} 
+                                    color={colors.primary} 
+                                  />
+                                  <Text style={styles.answerSourceText}>Used for answer</Text>
+                                </View>
+                              </View>
+                              <View style={styles.noteCardContainer}>
+                                <NoteCard
+                                  note={note}
+                                  onPress={(scrollToImage) => {
+                                    // Use the imageIndex from recall reference if available, otherwise use scrollToImage
+                                    const finalImageIndex = scrollToImage !== undefined ? scrollToImage : imageIndex;
+                                    console.log('[SearchScreen] NoteCard pressed, navigating with imageIndex:', finalImageIndex);
+                                    handleNotePress(note.id, finalImageIndex);
+                                  }}
+                                  scrollToImageIndex={imageIndex}
+                                  loading={false}
+                                />
                               </View>
                             </View>
-                            <View style={styles.noteCardContainer}>
-                              <NoteCard
-                                note={note}
-                                onPress={() => handleNotePress(note.id)}
-                                loading={false}
-                              />
-                            </View>
-                          </View>
-                        ))}
+                          );
+                        })}
                       </React.Fragment>
                     )}
                   </React.Fragment>

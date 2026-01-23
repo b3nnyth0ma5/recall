@@ -136,7 +136,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     if (autoLoad && imageId) {
       loadOCRResults();
     }
-  }, [imageId, autoLoad, loadOCRResults]);
+  }, [imageId, autoLoad]); // Removed loadOCRResults from dependencies to prevent infinite loop
 
   // If no results and not processing, show process button
   if (!ocrText && !explanation && !isProcessing && !isLoading) {

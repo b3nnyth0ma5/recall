@@ -20,26 +20,64 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
   recallReferences = [],
   onRecallPress 
 }) => {
-  // Parse the content to identify SOURCE_X references and replace with hyperlinks
+  // Parse the content to identify various reference patterns and replace with hyperlinks
   const processedContent = useMemo(() => {
     if (!recallReferences || recallReferences.length === 0) {
+      console.log('[MarkdownAnswer] No recall references provided, returning original content');
       return content;
     }
 
+    console.log('[MarkdownAnswer] ===== PROCESSING CONTENT =====');
+    console.log('[MarkdownAnswer] Recall references count:', recallReferences.length);
+    console.log('[MarkdownAnswer] Recall references:', JSON.stringify(recallReferences, null, 2));
+    console.log('[MarkdownAnswer] Original content:', content);
+    
     let processed = content;
     
-    // Replace SOURCE_X patterns with markdown links
+    // Replace multiple reference patterns:
+    // 1. SOURCE_X (e.g., SOURCE_1, SOURCE_2)
+    // 2. [X] (e.g., [1], [2])
+    // 3. [Source X] (e.g., [Source 1], [Source 2])
     recallReferences.forEach((ref, index) => {
-      const sourcePattern = new RegExp(`SOURCE_${index + 1}`, 'g');
-      // Create a markdown link with recall:// protocol for internal handling
-      processed = processed.replace(sourcePattern, `[Source ${index + 1}](recall://${ref.recallId}${ref.imageIndex !== undefined ? `?image=${ref.imageIndex}` : ''})`);
+      const sourceNum = index + 1;
+      console.log(`[MarkdownAnswer] Processing reference ${sourceNum}:`, ref);
+      
+      // Pattern 1: SOURCE_X
+      const sourcePattern1 = new RegExp(`SOURCE_${sourceNum}`, 'g');
+      const matches1 = content.match(sourcePattern1);
+      if (matches1) {
+        console.log(`[MarkdownAnswer] Found ${matches1.length} matches for SOURCE_${sourceNum}`);
+      }
+      processed = processed.replace(sourcePattern1, `[Source ${sourceNum}](recall://${ref.recallId}${ref.imageIndex !== undefined ? `?image=${ref.imageIndex}` : ''})`);
+      
+      // Pattern 2: [X] - but only if not already a markdown link
+      // Use negative lookbehind to avoid matching already processed links
+      const sourcePattern2 = new RegExp(`(?<!\\[Source \\d+\\])\\[${sourceNum}\\](?!\\()`, 'g');
+      const matches2 = content.match(new RegExp(`\\[${sourceNum}\\]`, 'g'));
+      if (matches2) {
+        console.log(`[MarkdownAnswer] Found ${matches2.length} matches for [${sourceNum}]`);
+      }
+      processed = processed.replace(sourcePattern2, `[Source ${sourceNum}](recall://${ref.recallId}${ref.imageIndex !== undefined ? `?image=${ref.imageIndex}` : ''})`);
+      
+      // Pattern 3: [Source X] - but only if not already a markdown link
+      const sourcePattern3 = new RegExp(`\\[Source ${sourceNum}\\](?!\\()`, 'g');
+      const matches3 = content.match(new RegExp(`\\[Source ${sourceNum}\\]`, 'g'));
+      if (matches3) {
+        console.log(`[MarkdownAnswer] Found ${matches3.length} matches for [Source ${sourceNum}]`);
+      }
+      processed = processed.replace(sourcePattern3, `[Source ${sourceNum}](recall://${ref.recallId}${ref.imageIndex !== undefined ? `?image=${ref.imageIndex}` : ''})`);
     });
     
+    console.log('[MarkdownAnswer] ===== PROCESSED CONTENT =====');
+    console.log('[MarkdownAnswer] Processed content:', processed);
+    console.log('[MarkdownAnswer] Changes made:', content !== processed);
     return processed;
   }, [content, recallReferences]);
 
   // Custom link handler for recall:// protocol
   const handleLinkPress = (url: string) => {
+    console.log('[MarkdownAnswer] Link pressed:', url);
+    
     if (url.startsWith('recall://')) {
       const urlParts = url.replace('recall://', '').split('?');
       const recallId = urlParts[0];
@@ -55,7 +93,8 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
       return false; // Prevent default link handling
     }
     
-    return true; // Allow default handling for other links
+    // Allow default handling for other links (external URLs)
+    return true;
   };
 
   return (

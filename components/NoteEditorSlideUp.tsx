@@ -117,7 +117,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     } else {
       setLoadedImageIndices(new Set());
     }
-  }, [images.length, images]);
+  }, [images.length]); // Removed images from dependencies to prevent infinite loop
 
   const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
@@ -1019,7 +1019,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     if (people.length > 0) {
       console.log('[NoteEditorSlideUp] Current people:', people.map(p => p.person_name).join(', '));
     }
-  }, [people]);
+  }, [people.length]); // Changed to people.length to prevent infinite loop
 
   if (!visible) {
     return null;

@@ -25,11 +25,12 @@ import Animated, {
 
 interface NoteCardProps {
   note: Note;
-  onPress: () => void;
+  onPress: (imageIndex?: number) => void;
   onImagePress?: () => void;
   onDelete?: () => void;
   loading?: boolean;
   expectedImageCount?: number;
+  scrollToImageIndex?: number;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -60,7 +61,7 @@ const countNewlines = (text: string): number => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount, scrollToImageIndex }: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -86,6 +87,17 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const opacity = useSharedValue(1);
   const scale = useSharedValue(1);
   const height = useSharedValue(1);
+
+  // Animated style for deletion - MUST be called before any conditional returns
+  const animatedCardStyle = useAnimatedStyle(() => {
+    return {
+      opacity: opacity.value,
+      transform: [{ scale: scale.value }],
+      height: height.value === 0 ? 0 : undefined,
+      marginBottom: height.value === 0 ? 0 : 16,
+      overflow: 'hidden',
+    };
+  });
 
   // Initialize with first TWO images for better performance
   useEffect(() => {
@@ -127,16 +139,25 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     }
   }, [note.id, note.images, note.imageIds, loading, expectedImageCount]);
 
-  // Animated style for deletion - MUST be called before any conditional returns
-  const animatedCardStyle = useAnimatedStyle(() => {
-    return {
-      opacity: opacity.value,
-      transform: [{ scale: scale.value }],
-      height: height.value === 0 ? 0 : undefined,
-      marginBottom: height.value === 0 ? 0 : 16,
-      overflow: 'hidden',
-    };
-  });
+  // Scroll to specific image if scrollToImageIndex is provided - MUST be before conditional returns
+  useEffect(() => {
+    if (scrollToImageIndex !== undefined && note.images && note.images.length > 0 && scrollToImageIndex < note.images.length && imageScrollRef.current) {
+      console.log('[NoteCard] Scrolling to image index:', scrollToImageIndex);
+      
+      // Wait for images to render before scrolling
+      setTimeout(() => {
+        const scrollX = scrollToImageIndex * (IMAGE_WIDTH + IMAGE_SPACING);
+        imageScrollRef.current?.scrollTo({
+          x: scrollX,
+          y: 0,
+          animated: true,
+        });
+        
+        // Update current image index
+        setCurrentImageIndex(scrollToImageIndex);
+      }, 300);
+    }
+  }, [scrollToImageIndex, note.images, note.images?.length]);
 
   // Show skeleton if loading
   if (loading) {
@@ -274,6 +295,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const handleTextPress = () => {
     // Open note editor when text is clicked
     onPress();
+  };
+  
+  const handleCardPress = () => {
+    // Open note editor with optional image scroll
+    onPress(scrollToImageIndex);
   };
 
   const handleToggleExpand = (e: any) => {
@@ -496,7 +522,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         rightThreshold={40}
         containerStyle={styles.swipeableContainer}
       >
-        <Pressable onPress={onPress} style={styles.cardContent}>
+        <Pressable onPress={handleCardPress} style={styles.cardContent}>
           {/* People Avatars - For text-only notes, show at top of card content */}
           {!hasImages && hasPeople && (
             <View style={styles.peopleAvatarsContainerNoImages}>
@@ -584,7 +610,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     prevProps.note.imageIds?.length === nextProps.note.imageIds?.length &&
     prevProps.note.people?.length === nextProps.note.people?.length &&
     prevProps.loading === nextProps.loading &&
-    prevProps.expectedImageCount === nextProps.expectedImageCount
+    prevProps.expectedImageCount === nextProps.expectedImageCount &&
+    prevProps.scrollToImageIndex === nextProps.scrollToImageIndex
   );
 });
 
