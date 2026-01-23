@@ -203,19 +203,30 @@ export default function SearchScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
 
   const handleRecallLinkPress = useCallback((recallId: string, imageIndex?: number) => {
+    console.log('[SearchScreen] Recall link pressed:', recallId, 'imageIndex:', imageIndex);
+    
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     
     const recallElement = recallRefs.current[recallId];
     if (recallElement && scrollViewRef.current) {
+      console.log('[SearchScreen] Found recall element, measuring position...');
+      
       setTimeout(() => {
         recallElement.measureLayout(
           scrollViewRef.current as any,
           (x, y, width, height) => {
+            console.log('[SearchScreen] Recall position:', { x, y, width, height });
+            
             if (scrollViewRef.current) {
+              // Scroll to ensure the TOP of the recall is visible
+              // Subtract more offset to ensure the entire recall header is visible
+              const scrollY = Math.max(0, y - 80);
+              console.log('[SearchScreen] Scrolling to y:', scrollY);
+              
               scrollViewRef.current.scrollTo({
-                y: Math.max(0, y - 120),
+                y: scrollY,
                 animated: true,
               });
             }
@@ -223,9 +234,15 @@ export default function SearchScreen() {
           () => {
             console.log('[SearchScreen] measureLayout failed, trying measure fallback');
             recallElement.measure((fx, fy, width, height, px, py) => {
+              console.log('[SearchScreen] Recall absolute position:', { fx, fy, width, height, px, py });
+              
               if (scrollViewRef.current) {
+                // Scroll to ensure the TOP of the recall is visible
+                const scrollY = Math.max(0, py - 80);
+                console.log('[SearchScreen] Scrolling to y (fallback):', scrollY);
+                
                 scrollViewRef.current.scrollTo({
-                  y: Math.max(0, py - 120),
+                  y: scrollY,
                   animated: true,
                 });
               }
@@ -233,6 +250,8 @@ export default function SearchScreen() {
           }
         );
       }, 100);
+    } else {
+      console.log('[SearchScreen] Recall element not found in refs');
     }
   }, []);
 
@@ -332,8 +351,7 @@ export default function SearchScreen() {
       <View style={styles.searchTipsList}>
         <View style={styles.searchTipItem}>
           <IconSymbol 
-            ios_icon_name="location.fill" 
-            android_material_icon_name="location-on" 
+            name="location.fill" 
             size={16} 
             color={colors.primary} 
           />
@@ -341,8 +359,7 @@ export default function SearchScreen() {
         </View>
         <View style={styles.searchTipItem}>
           <IconSymbol 
-            ios_icon_name="person.fill" 
-            android_material_icon_name="person" 
+            name="person.fill" 
             size={16} 
             color={colors.primary} 
           />
@@ -350,8 +367,7 @@ export default function SearchScreen() {
         </View>
         <View style={styles.searchTipItem}>
           <IconSymbol 
-            ios_icon_name="photo.fill" 
-            android_material_icon_name="photo" 
+            name="photo.fill" 
             size={16} 
             color={colors.primary} 
           />
@@ -365,8 +381,7 @@ export default function SearchScreen() {
     <View style={styles.featureList}>
       <View style={styles.featureItem}>
         <IconSymbol 
-          ios_icon_name="checkmark.circle.fill" 
-          android_material_icon_name="check-circle" 
+          name="checkmark.circle.fill" 
           size={20} 
           color={colors.primary} 
         />
@@ -374,8 +389,7 @@ export default function SearchScreen() {
       </View>
       <View style={styles.featureItem}>
         <IconSymbol 
-          ios_icon_name="checkmark.circle.fill" 
-          android_material_icon_name="check-circle" 
+          name="checkmark.circle.fill" 
           size={20} 
           color={colors.primary} 
         />
@@ -383,8 +397,7 @@ export default function SearchScreen() {
       </View>
       <View style={styles.featureItem}>
         <IconSymbol 
-          ios_icon_name="checkmark.circle.fill" 
-          android_material_icon_name="check-circle" 
+          name="checkmark.circle.fill" 
           size={20} 
           color={colors.primary} 
         />
@@ -392,8 +405,7 @@ export default function SearchScreen() {
       </View>
       <View style={styles.featureItem}>
         <IconSymbol 
-          ios_icon_name="checkmark.circle.fill" 
-          android_material_icon_name="check-circle" 
+          name="checkmark.circle.fill" 
           size={20} 
           color={colors.primary} 
         />
@@ -401,8 +413,7 @@ export default function SearchScreen() {
       </View>
       <View style={styles.featureItem}>
         <IconSymbol 
-          ios_icon_name="checkmark.circle.fill" 
-          android_material_icon_name="check-circle" 
+          name="checkmark.circle.fill" 
           size={20} 
           color={colors.primary} 
         />
@@ -410,8 +421,7 @@ export default function SearchScreen() {
       </View>
       <View style={styles.featureItem}>
         <IconSymbol 
-          ios_icon_name="checkmark.circle.fill" 
-          android_material_icon_name="check-circle" 
+          name="checkmark.circle.fill" 
           size={20} 
           color={colors.primary} 
         />
@@ -419,8 +429,7 @@ export default function SearchScreen() {
       </View>
       <View style={styles.featureItem}>
         <IconSymbol 
-          ios_icon_name="checkmark.circle.fill" 
-          android_material_icon_name="check-circle" 
+          name="checkmark.circle.fill" 
           size={20} 
           color={colors.primary} 
         />
@@ -446,8 +455,7 @@ export default function SearchScreen() {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <IconSymbol 
-                ios_icon_name="chevron.left" 
-                android_material_icon_name="arrow-back" 
+                name="chevron.left" 
                 size={24} 
                 color={colors.text} 
               />
@@ -460,8 +468,7 @@ export default function SearchScreen() {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <IconSymbol 
-                ios_icon_name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-                android_material_icon_name={keyboardVisible ? "keyboard-hide" : "keyboard"} 
+                name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
                 size={24} 
                 color={colors.text} 
               />
@@ -473,8 +480,7 @@ export default function SearchScreen() {
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
           <IconSymbol 
-            ios_icon_name="magnifyingglass" 
-            android_material_icon_name="search" 
+            name="magnifyingglass" 
             size={20} 
             color={colors.textSecondary} 
           />
@@ -500,8 +506,7 @@ export default function SearchScreen() {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <IconSymbol 
-                ios_icon_name="xmark.circle.fill" 
-                android_material_icon_name="cancel" 
+                name="xmark.circle.fill" 
                 size={20} 
                 color={colors.textSecondary} 
               />
@@ -521,8 +526,7 @@ export default function SearchScreen() {
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <IconSymbol 
-                  ios_icon_name="sparkles" 
-                  android_material_icon_name="auto-awesome" 
+                  name="sparkles" 
                   size={18} 
                   color="#FFFFFF" 
                 />
@@ -546,15 +550,13 @@ export default function SearchScreen() {
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <IconSymbol 
-                  ios_icon_name="clock" 
-                  android_material_icon_name="history" 
+                  name="clock" 
                   size={18} 
                   color={colors.textSecondary} 
                 />
                 <Text style={styles.historyText}>{item.search_text}</Text>
                 <IconSymbol 
-                  ios_icon_name="arrow.up.left" 
-                  android_material_icon_name="north-west" 
+                  name="arrow.up.left" 
                   size={16} 
                   color={colors.textTertiary} 
                 />
@@ -565,8 +567,7 @@ export default function SearchScreen() {
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyHistoryContainer}>
             <View style={styles.emptyHistoryIconContainer}>
               <IconSymbol 
-                ios_icon_name="clock" 
-                android_material_icon_name="history" 
+                name="clock" 
                 size={48} 
                 color={colors.textTertiary} 
               />
@@ -580,8 +581,7 @@ export default function SearchScreen() {
         ) : !hasSearched ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
             <IconSymbol 
-              ios_icon_name="photo.on.rectangle" 
-              android_material_icon_name="photo-library" 
+              name="photo.on.rectangle" 
               size={80} 
               color={colors.textTertiary} 
             />
@@ -616,8 +616,7 @@ export default function SearchScreen() {
                 {filteredNotes.length === 0 && !searchAnswer && searchStage === 'complete' ? (
                   <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
                     <IconSymbol 
-                      ios_icon_name="doc.text.magnifyingglass" 
-                      android_material_icon_name="search-off" 
+                      name="doc.text.magnifyingglass" 
                       size={80} 
                       color={colors.textTertiary} 
                     />
@@ -638,8 +637,7 @@ export default function SearchScreen() {
                         <View style={styles.answerHeader}>
                           <View style={styles.answerHeaderLeft}>
                             <IconSymbol 
-                              ios_icon_name="lightbulb.fill" 
-                              android_material_icon_name="lightbulb" 
+                              name="lightbulb.fill" 
                               size={20} 
                               color={colors.primary} 
                             />
@@ -647,8 +645,7 @@ export default function SearchScreen() {
                           </View>
                           <View style={styles.confidenceBadge}>
                             <IconSymbol 
-                              ios_icon_name="checkmark.seal.fill" 
-                              android_material_icon_name="verified" 
+                              name="checkmark.seal.fill" 
                               size={14} 
                               color={colors.primary} 
                             />
@@ -698,8 +695,7 @@ export default function SearchScreen() {
                               <View style={styles.badgeRow}>
                                 <View style={styles.answerSourceBadge}>
                                   <IconSymbol 
-                                    ios_icon_name="checkmark.seal.fill" 
-                                    android_material_icon_name="verified" 
+                                    name="checkmark.seal.fill" 
                                     size={14} 
                                     color={colors.primary} 
                                   />

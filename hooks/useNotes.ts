@@ -608,8 +608,7 @@ export function useNotes() {
       console.log('Step 1: Running location, people, and keyword searches in PARALLEL...');
       const parallelSearchStart = Date.now();
       
-      // TEMPORARILY COMMENTED OUT - Location and People searches disabled
-      // Create promises for all three searches with individual timing
+      // TEMPORARILY COMMENTED OUT - Location search disabled
       // const locationPromise = (async () => {
       //   const start = Date.now();
       //   try {
@@ -629,21 +628,23 @@ export function useNotes() {
       //   }
       // })();
       
-      // const peoplePromise = (async () => {
-      //   const start = Date.now();
-      //   try {
-      //     const result = await supabase.functions.invoke('search-recalls-with-people', {
-      //       body: { query: query.trim() },
-      //     });
-      //     const searchTime = Date.now() - start;
-      //     console.log(`[TIMING] People search completed in ${searchTime}ms`);
-      //     return { ...result, searchTime };
-      //   } catch (error) {
-      //     console.error('People search error:', error);
-      //     const searchTime = Date.now() - start;
-      //     return { data: null, error, searchTime };
-      //   }
-      // })();
+      // PEOPLE SEARCH - NOW ENABLED
+      const peoplePromise = (async () => {
+        const start = Date.now();
+        try {
+          console.log('[useNotes] Calling search-recalls-with-people edge function...');
+          const result = await supabase.functions.invoke('search-recalls-with-people', {
+            body: { query: query.trim() },
+          });
+          const searchTime = Date.now() - start;
+          console.log(`[TIMING] People search completed in ${searchTime}ms`);
+          return { ...result, searchTime };
+        } catch (error) {
+          console.error('People search error:', error);
+          const searchTime = Date.now() - start;
+          return { data: null, error, searchTime };
+        }
+      })();
       
       const keywordPromise = (async () => {
         const start = Date.now();
@@ -665,17 +666,14 @@ export function useNotes() {
       })();
 
       // Wait for all searches to complete in parallel
-      // TEMPORARILY COMMENTED OUT - Only keyword search is running
-      // const [locationResult, peopleResult, keywordResult] = await Promise.all([
-      //   locationPromise,
-      //   peoplePromise,
-      //   keywordPromise,
-      // ]);
+      // Location search is temporarily disabled
+      const [peopleResult, keywordResult] = await Promise.all([
+        peoplePromise,
+        keywordPromise,
+      ]);
       
-      // Temporary: Only run keyword search
-      const keywordResult = await keywordPromise;
+      // Temporary: Set location result to empty
       const locationResult = { data: null, error: null, searchTime: 0 };
-      const peopleResult = { data: null, error: null, searchTime: 0 };
 
       const parallelSearchTime = Date.now() - parallelSearchStart;
       console.log(`All parallel searches completed in ${parallelSearchTime}ms`);

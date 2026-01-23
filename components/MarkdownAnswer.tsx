@@ -1,8 +1,11 @@
 
 import React, { useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Text, Pressable } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { colors } from '@/styles/commonStyles';
+import { IconSymbol } from './IconSymbol';
+import * as Haptics from 'expo-haptics';
+import { Platform } from 'react-native';
 
 interface RecallReference {
   recallId: string;
@@ -20,72 +23,88 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
   recallReferences = [],
   onRecallPress 
 }) => {
-  // Parse the content to identify source references and hyperlink the relevant text
+  // Parse the content to identify source references and add hyperlink icons
   const processedContent = useMemo(() => {
     if (!recallReferences || recallReferences.length === 0) {
-      return content;
+      return { text: content, links: [] };
     }
     
     let processed = content;
+    const links: Array<{ sourceNum: number; recallId: string; imageIndex?: number }> = [];
     
     // Process each source reference
     recallReferences.forEach((ref, index) => {
       const sourceNum = index + 1;
       const sourceMarker = `SOURCE_${sourceNum}`;
       
-      // Find all occurrences of this source marker
-      const regex = new RegExp(`([^.!?]*?)\\s*${sourceMarker}([.!?]?)`, 'g');
+      // Find all occurrences of this source marker and replace with a placeholder
+      const regex = new RegExp(`\\s*${sourceMarker}`, 'g');
       
-      processed = processed.replace(regex, (match, textBefore, punctuation) => {
-        // Extract the sentence or phrase that contains the source reference
-        // Look for the start of the sentence (after previous punctuation or start of string)
-        const sentences = textBefore.split(/[.!?]\s+/);
-        const relevantText = sentences[sentences.length - 1].trim();
-        
-        // If we have relevant text, hyperlink it
-        if (relevantText) {
-          const linkUrl = `recall://${ref.recallId}${ref.imageIndex !== undefined ? `?image=${ref.imageIndex}` : ''}`;
-          return `[${relevantText}](${linkUrl})${punctuation}`;
-        }
-        
-        // Fallback: just hyperlink "Source X"
-        const linkUrl = `recall://${ref.recallId}${ref.imageIndex !== undefined ? `?image=${ref.imageIndex}` : ''}`;
-        return `[Source ${sourceNum}](${linkUrl})${punctuation}`;
+      processed = processed.replace(regex, () => {
+        links.push({ sourceNum, recallId: ref.recallId, imageIndex: ref.imageIndex });
+        return ` [LINK_${sourceNum}]`;
       });
     });
     
-    // Clean up any remaining SOURCE_X markers that weren't caught
-    processed = processed.replace(/SOURCE_\d+/g, '');
-    
-    return processed;
+    return { text: processed, links };
   }, [content, recallReferences]);
 
-  // Custom link handler for recall:// protocol
-  const handleLinkPress = (url: string) => {
-    if (url.startsWith('recall://')) {
-      const urlParts = url.replace('recall://', '').split('?');
-      const recallId = urlParts[0];
-      const imageParam = urlParts[1]?.split('=')[1];
-      const imageIndex = imageParam ? parseInt(imageParam, 10) : undefined;
+  // Split the content into segments with link placeholders
+  const renderContent = useMemo(() => {
+    const { text, links } = processedContent;
+    
+    // Split by link placeholders
+    const parts = text.split(/(\[LINK_\d+\])/g);
+    
+    return parts.map((part, index) => {
+      // Check if this is a link placeholder
+      const linkMatch = part.match(/\[LINK_(\d+)\]/);
       
-      if (onRecallPress) {
-        onRecallPress(recallId, imageIndex);
+      if (linkMatch) {
+        const sourceNum = parseInt(linkMatch[1], 10);
+        const link = links.find(l => l.sourceNum === sourceNum);
+        
+        if (link && onRecallPress) {
+          return (
+            <Pressable
+              key={`link-${index}`}
+              onPress={() => {
+                console.log('[MarkdownAnswer] Link icon pressed for recall:', link.recallId);
+                if (Platform.OS !== 'web') {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+                onRecallPress(link.recallId, link.imageIndex);
+              }}
+              style={styles.linkIcon}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol 
+                name="link" 
+                size={14} 
+                color={colors.primary} 
+              />
+            </Pressable>
+          );
+        }
       }
       
-      return false;
-    }
-    
-    return true;
-  };
+      // Regular text - render with markdown
+      return (
+        <Markdown
+          key={`text-${index}`}
+          style={markdownStyles}
+        >
+          {part}
+        </Markdown>
+      );
+    });
+  }, [processedContent, onRecallPress]);
 
   return (
     <View style={styles.container}>
-      <Markdown
-        style={markdownStyles}
-        onLinkPress={handleLinkPress}
-      >
-        {processedContent}
-      </Markdown>
+      <View style={styles.contentWrapper}>
+        {renderContent}
+      </View>
     </View>
   );
 };
@@ -93,6 +112,17 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
 const styles = StyleSheet.create({
   container: {
     width: '100%',
+  },
+  contentWrapper: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  linkIcon: {
+    marginLeft: 4,
+    marginRight: 2,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
 });
 

@@ -43,8 +43,8 @@ interface StepConfig {
   timingKey?: 'locationSearchMs' | 'peopleSearchMs' | 'keywordSearchMs' | 'aiAnswerMs' | 'totalMs';
 }
 
-// TEMPORARILY DISABLED: Location and People search steps
-// These can be re-enabled later by uncommenting the steps below
+// UPDATED: People search is now enabled
+// Location search is temporarily disabled (can be re-enabled later)
 const STEPS: StepConfig[] = [
   // {
   //   id: 'resolving',
@@ -54,14 +54,14 @@ const STEPS: StepConfig[] = [
   //   stages: ['resolving', 'people', 'keywords', 'searching', 'complete'],
   //   timingKey: 'locationSearchMs',
   // },
-  // {
-  //   id: 'people',
-  //   icon: 'person.2.fill',
-  //   title: 'Analysing for people',
-  //   description: 'Matching people in your recalls',
-  //   stages: ['people', 'keywords', 'searching', 'complete'],
-  //   timingKey: 'peopleSearchMs',
-  // },
+  {
+    id: 'people',
+    icon: 'person.2.fill',
+    title: 'Analysing for people',
+    description: 'Matching people in your recalls',
+    stages: ['people', 'keywords', 'searching', 'complete'],
+    timingKey: 'peopleSearchMs',
+  },
   {
     id: 'keywords',
     icon: 'text.word.spacing',
