@@ -55,24 +55,17 @@ export default function SearchScreen() {
   const searchInputRef = useRef<TextInput>(null);
   const hasAutoSearchedRef = useRef(false);
 
-  // Check if user should see search time
   const shouldShowSearchTime = user?.email === 'benny_thomas21@yahoo.co.in';
 
-  // Filter notes to only show recalls that were used for answer
-  // If no notes have used_for_answer flag, show all notes (backward compatibility)
   const filteredNotes = useMemo(() => {
-    // Check if any notes have the used_for_answer flag
     const hasUsedForAnswerFlag = notes.some(note => note.used_for_answer !== undefined);
     
     if (!hasUsedForAnswerFlag) {
-      // Backward compatibility: if no notes have the flag, show all notes
       return notes;
     }
     
-    // Filter to only show notes that were used for answer
     const filtered = notes.filter(note => note.used_for_answer === true);
     
-    // If no notes were used for answer but we have notes, show all (fallback)
     if (filtered.length === 0 && notes.length > 0) {
       return notes;
     }
@@ -103,7 +96,6 @@ export default function SearchScreen() {
     };
   }, [loadSearchHistory]);
 
-  // Handle auto-search from CombinedSearchAdd with proper deduplication
   useEffect(() => {
     const queryParam = params.q;
     const autoSearchParam = params.autoSearch;
@@ -111,7 +103,6 @@ export default function SearchScreen() {
     if (queryParam && typeof queryParam === 'string' && autoSearchParam === 'true' && !hasAutoSearchedRef.current) {
       const decodedQuery = decodeURIComponent(queryParam);
       
-      // Set the search query in the input
       setSearchQuery(decodedQuery);
       setShowHistory(false);
       setHasSearched(true);
@@ -119,15 +110,12 @@ export default function SearchScreen() {
       setIsSearching(true);
       setIsProgressExpanded(true);
       
-      // Mark that we've auto-searched to prevent duplicate searches
       hasAutoSearchedRef.current = true;
       
-      // Trigger the search programmatically
       searchNotes(decodedQuery, true).finally(() => {
         setIsSearching(false);
       });
       
-      // Clear the autoSearch parameter to prevent re-triggering
       setTimeout(() => {
         try {
           router.setParams({ autoSearch: undefined });
@@ -138,24 +126,20 @@ export default function SearchScreen() {
     }
   }, [params.q, params.autoSearch, searchNotes, router]);
 
-  // Reset the auto-search flag when query changes
   useEffect(() => {
     if (!params.q) {
       hasAutoSearchedRef.current = false;
     }
   }, [params.q]);
 
-  // Show history when not searching and history is loaded
   useEffect(() => {
     if (!hasSearched && searchHistory.length > 0 && !isLoadingHistory) {
       setShowHistory(true);
     }
   }, [hasSearched, searchHistory, isLoadingHistory]);
 
-  // Collapse progress indicator when search completes
   useEffect(() => {
     if (searchStage === 'complete' && isSearching === false && hasSearched) {
-      // Collapse progress indicator after a short delay
       setTimeout(() => {
         setIsProgressExpanded(false);
       }, 500);
@@ -164,7 +148,6 @@ export default function SearchScreen() {
 
   const handleSearch = useCallback(() => {
     if (searchQuery.trim()) {
-      // Haptic feedback when search is clicked
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
@@ -178,7 +161,6 @@ export default function SearchScreen() {
       searchNotes(searchQuery, true).finally(() => {
         setIsSearching(false);
         
-        // Reload search history after search completes
         setTimeout(() => {
           loadSearchHistory();
         }, 500);
@@ -200,14 +182,12 @@ export default function SearchScreen() {
   }, [searchNotes]);
 
   const handleNotePress = useCallback((noteId: string, imageIndex?: number) => {
-    // Trigger haptic feedback
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     
     setTimeout(() => {
       try {
-        // If imageIndex is provided, pass it as a query parameter
         const url = imageIndex !== undefined 
           ? `/note-editor?id=${noteId}&scrollToImage=${imageIndex}`
           : `/note-editor?id=${noteId}`;
@@ -219,49 +199,53 @@ export default function SearchScreen() {
     }, 0);
   }, [router]);
 
-  // Refs for scrolling to recalls
   const recallRefs = useRef<{ [key: string]: View | null }>({});
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Handler for recall links in the answer - scroll to the recall on the page
   const handleRecallLinkPress = useCallback((recallId: string, imageIndex?: number) => {
-    // Trigger haptic feedback
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     
-    // Find the recall element and scroll to it
     const recallElement = recallRefs.current[recallId];
     if (recallElement && scrollViewRef.current) {
-      // Use a small delay to ensure the layout is ready
       setTimeout(() => {
-        recallElement.measure((fx, fy, width, height, px, py) => {
-          if (scrollViewRef.current) {
-            // Scroll to the recall with offset
-            scrollViewRef.current.scrollTo({
-              y: Math.max(0, py - 100), // Offset to show some space above the recall
-              animated: true,
+        recallElement.measureLayout(
+          scrollViewRef.current as any,
+          (x, y, width, height) => {
+            if (scrollViewRef.current) {
+              scrollViewRef.current.scrollTo({
+                y: Math.max(0, y - 120),
+                animated: true,
+              });
+            }
+          },
+          () => {
+            console.log('[SearchScreen] measureLayout failed, trying measure fallback');
+            recallElement.measure((fx, fy, width, height, px, py) => {
+              if (scrollViewRef.current) {
+                scrollViewRef.current.scrollTo({
+                  y: Math.max(0, py - 120),
+                  animated: true,
+                });
+              }
             });
           }
-        });
+        );
       }, 100);
     }
   }, []);
 
-  // Build recall references from the notes that were used for answer
   const recallReferences = useMemo(() => {
     if (!filteredNotes || filteredNotes.length === 0) {
       return [];
     }
     
-    // Map each recall to a reference with potential image index
     const references = filteredNotes.map((note) => {
-      // Check if the note has images
       const hasImages = note.images && note.images.length > 0;
       
       return {
         recallId: note.id,
-        // If it's an image-based recall, default to first image
         imageIndex: hasImages ? 0 : undefined,
       };
     });
@@ -280,7 +264,6 @@ export default function SearchScreen() {
   }, [searchNotes]);
 
   const handleBack = useCallback(() => {
-    // Clear search results
     setSearchQuery('');
     setShowHistory(true);
     setHasSearched(false);
@@ -328,7 +311,6 @@ export default function SearchScreen() {
     return lines.length > 3;
   }, []);
 
-  // Render skeleton loaders for recent search history
   const renderHistorySkeletons = useMemo(() => {
     return (
       <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
@@ -344,7 +326,6 @@ export default function SearchScreen() {
     );
   }, []);
 
-  // Memoize search tips to prevent re-renders
   const searchTips = useMemo(() => (
     <View style={styles.searchTipsContainer}>
       <Text style={styles.searchTipsTitle}>Try searching for:</Text>
@@ -380,7 +361,6 @@ export default function SearchScreen() {
     </View>
   ), []);
 
-  // Memoize feature list to prevent re-renders
   const featureList = useMemo(() => (
     <View style={styles.featureList}>
       <View style={styles.featureItem}>
@@ -553,7 +533,6 @@ export default function SearchScreen() {
       </View>
 
       <ScrollView ref={scrollViewRef} style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Show history with skeleton when loading, or actual history when loaded */}
         {showHistory && isLoadingHistory ? (
           renderHistorySkeletons
         ) : showHistory && searchHistory.length > 0 ? (
@@ -615,9 +594,7 @@ export default function SearchScreen() {
             {featureList}
           </Animated.View>
         ) : (
-          // Show results when search has been initiated
           <View style={styles.notesContainer}>
-            {/* Search Progress Indicator with timings */}
             {hasSearched && (
               <SearchProgressIndicator 
                 stage={searchStage} 
@@ -632,13 +609,10 @@ export default function SearchScreen() {
               />
             )}
 
-            {/* Only show results when search is complete (not in progress) */}
             {isSearching ? (
-              // Show nothing while search is in progress
               <View style={styles.searchingPlaceholder} />
             ) : (
               <React.Fragment>
-                {/* Show empty state when search is complete and no results */}
                 {filteredNotes.length === 0 && !searchAnswer && searchStage === 'complete' ? (
                   <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
                     <IconSymbol 
@@ -659,7 +633,6 @@ export default function SearchScreen() {
                   </Animated.View>
                 ) : (
                   <React.Fragment>
-                    {/* Answer Section */}
                     {searchAnswer && searchConfidence !== undefined && (
                       <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
                         <View style={styles.answerHeader}>
@@ -703,7 +676,6 @@ export default function SearchScreen() {
                       </Animated.View>
                     )}
 
-                    {/* Results Section - Only show recalls that were used for answer */}
                     {filteredNotes.length > 0 && (
                       <React.Fragment>
                         <Text style={styles.resultsText}>
@@ -712,7 +684,6 @@ export default function SearchScreen() {
                           {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
                         </Text>
                         {filteredNotes.map((note) => {
-                          // Find the corresponding recall reference for this note
                           const recallRef = recallReferences.find(ref => ref.recallId === note.id);
                           const imageIndex = recallRef?.imageIndex;
                           
@@ -724,7 +695,6 @@ export default function SearchScreen() {
                                 recallRefs.current[note.id] = ref;
                               }}
                             >
-                              {/* Badge row with "used for answer" badge */}
                               <View style={styles.badgeRow}>
                                 <View style={styles.answerSourceBadge}>
                                   <IconSymbol 
@@ -740,7 +710,6 @@ export default function SearchScreen() {
                                 <NoteCard
                                   note={note}
                                   onPress={(scrollToImage) => {
-                                    // Use the imageIndex from recall reference if available, otherwise use scrollToImage
                                     const finalImageIndex = scrollToImage !== undefined ? scrollToImage : imageIndex;
                                     handleNotePress(note.id, finalImageIndex);
                                   }}

@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { colors } from '@/styles/commonStyles';
 
@@ -20,7 +20,7 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
   recallReferences = [],
   onRecallPress 
 }) => {
-  // Parse the content to identify various reference patterns and replace with hyperlinks
+  // Parse the content to identify source references and hyperlink the relevant text
   const processedContent = useMemo(() => {
     if (!recallReferences || recallReferences.length === 0) {
       return content;
@@ -28,26 +28,34 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
     
     let processed = content;
     
-    // Replace multiple reference patterns:
-    // 1. SOURCE_X (e.g., SOURCE_1, SOURCE_2)
-    // 2. [X] (e.g., [1], [2])
-    // 3. [Source X] (e.g., [Source 1], [Source 2])
+    // Process each source reference
     recallReferences.forEach((ref, index) => {
       const sourceNum = index + 1;
+      const sourceMarker = `SOURCE_${sourceNum}`;
       
-      // Pattern 1: SOURCE_X
-      const sourcePattern1 = new RegExp(`SOURCE_${sourceNum}`, 'g');
-      processed = processed.replace(sourcePattern1, `[Source ${sourceNum}](recall://${ref.recallId}${ref.imageIndex !== undefined ? `?image=${ref.imageIndex}` : ''})`);
+      // Find all occurrences of this source marker
+      const regex = new RegExp(`([^.!?]*?)\\s*${sourceMarker}([.!?]?)`, 'g');
       
-      // Pattern 2: [X] - but only if not already a markdown link
-      // Use negative lookbehind to avoid matching already processed links
-      const sourcePattern2 = new RegExp(`(?<!\\[Source \\d+\\])\\[${sourceNum}\\](?!\\()`, 'g');
-      processed = processed.replace(sourcePattern2, `[Source ${sourceNum}](recall://${ref.recallId}${ref.imageIndex !== undefined ? `?image=${ref.imageIndex}` : ''})`);
-      
-      // Pattern 3: [Source X] - but only if not already a markdown link
-      const sourcePattern3 = new RegExp(`\\[Source ${sourceNum}\\](?!\\()`, 'g');
-      processed = processed.replace(sourcePattern3, `[Source ${sourceNum}](recall://${ref.recallId}${ref.imageIndex !== undefined ? `?image=${ref.imageIndex}` : ''})`);
+      processed = processed.replace(regex, (match, textBefore, punctuation) => {
+        // Extract the sentence or phrase that contains the source reference
+        // Look for the start of the sentence (after previous punctuation or start of string)
+        const sentences = textBefore.split(/[.!?]\s+/);
+        const relevantText = sentences[sentences.length - 1].trim();
+        
+        // If we have relevant text, hyperlink it
+        if (relevantText) {
+          const linkUrl = `recall://${ref.recallId}${ref.imageIndex !== undefined ? `?image=${ref.imageIndex}` : ''}`;
+          return `[${relevantText}](${linkUrl})${punctuation}`;
+        }
+        
+        // Fallback: just hyperlink "Source X"
+        const linkUrl = `recall://${ref.recallId}${ref.imageIndex !== undefined ? `?image=${ref.imageIndex}` : ''}`;
+        return `[Source ${sourceNum}](${linkUrl})${punctuation}`;
+      });
     });
+    
+    // Clean up any remaining SOURCE_X markers that weren't caught
+    processed = processed.replace(/SOURCE_\d+/g, '');
     
     return processed;
   }, [content, recallReferences]);
@@ -64,10 +72,9 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
         onRecallPress(recallId, imageIndex);
       }
       
-      return false; // Prevent default link handling
+      return false;
     }
     
-    // Allow default handling for other links (external URLs)
     return true;
   };
 
