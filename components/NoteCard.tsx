@@ -110,7 +110,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       setLazyLoadedImages(imagesToLoad);
       // Initialize currentImageIndex to 0 to show counter immediately
       setCurrentImageIndex(0);
-      console.log(`[NoteCard] Initialized with first ${imagesToLoad.length} image(s) for note ${note.id}, total count: ${note.images.length}`);
       
       // Check if we're still uploading images
       if (expectedImageCount && note.images.length < expectedImageCount) {
@@ -121,7 +120,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     } else if (!loading && note.imageIds && note.imageIds.length > 0) {
       // If we have imageIds but no images yet (placeholder records), set the count
       setTotalImageCount(note.imageIds.length);
-      console.log(`[NoteCard] Set total image count to ${note.imageIds.length} from imageIds for note ${note.id}`);
       
       // Check if we're still uploading images
       if (expectedImageCount && note.imageIds.length < expectedImageCount) {
@@ -133,7 +131,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       // Use expectedImageCount if provided (for newly created notes with pending uploads)
       setTotalImageCount(expectedImageCount);
       setIsUploadingImages(true);
-      console.log(`[NoteCard] Set total image count to ${expectedImageCount} from expectedImageCount for note ${note.id}`);
     } else {
       setIsUploadingImages(false);
     }
@@ -142,8 +139,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   // Scroll to specific image if scrollToImageIndex is provided - MUST be before conditional returns
   useEffect(() => {
     if (scrollToImageIndex !== undefined && note.images && note.images.length > 0 && scrollToImageIndex < note.images.length && imageScrollRef.current) {
-      console.log('[NoteCard] Scrolling to image index:', scrollToImageIndex);
-      
       // Wait for images to render before scrolling
       setTimeout(() => {
         const scrollX = scrollToImageIndex * (IMAGE_WIDTH + IMAGE_SPACING);
@@ -157,7 +152,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         setCurrentImageIndex(scrollToImageIndex);
       }, 300);
     }
-  }, [scrollToImageIndex, note.images, note.images?.length]);
+  }, [scrollToImageIndex, note.images?.length]);
 
   // Show skeleton if loading
   if (loading) {
@@ -189,7 +184,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
             newImages[index] = imageUrl;
             return newImages;
           });
-          console.log(`[NoteCard] Successfully lazy loaded image at index ${index}`);
         }
       }
     } catch (error) {
@@ -357,8 +351,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   const handleDelete = async () => {
-    console.log('[NoteCard] Delete action triggered - starting deletion animation');
-    
     // Close the swipeable immediately
     swipeableRef.current?.close();
     
@@ -366,7 +358,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     if (Platform.OS !== 'web') {
       try {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        console.log('[NoteCard] Success haptic feedback triggered');
       } catch (error) {
         console.error('[NoteCard] Error triggering haptic feedback:', error);
       }

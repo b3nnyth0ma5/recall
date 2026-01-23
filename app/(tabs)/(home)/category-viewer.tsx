@@ -274,7 +274,7 @@ export default function CategoryViewerScreen() {
         console.error('[CategoryViewer] Error in matching polling:', error);
       }
     }, 1500);
-  }, [id]);
+  }, [id, loadCategoryAndRecalls]);
 
   // Optimized category and recalls loading with pagination and cache usage
   const loadCategoryAndRecalls = useCallback(async (pageNum: number = 1, append: boolean = false) => {
