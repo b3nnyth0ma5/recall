@@ -96,6 +96,7 @@ export default function NoteEditorScreen() {
   const fromShare = params.fromShare === 'true';
   const openCamera = params.openCamera === 'true';
   const openLocation = params.openLocation === 'true';
+  const scrollToImageIndex = params.scrollToImage ? parseInt(params.scrollToImage as string, 10) : undefined;
   
   const peopleChanged = useCallback(() => {
     if (initialPeople.length !== people.length) {
@@ -1219,6 +1220,29 @@ export default function NoteEditorScreen() {
       console.log('[NoteEditor] Current people:', people.map(p => p.person_name).join(', '));
     }
   }, [people]);
+
+  // Scroll to specific image if scrollToImageIndex is provided
+  useEffect(() => {
+    if (scrollToImageIndex !== undefined && images.length > scrollToImageIndex && imageScrollRef.current) {
+      console.log('[NoteEditor] Scrolling to image index:', scrollToImageIndex);
+      
+      // Wait for images to load before scrolling
+      setTimeout(() => {
+        const scrollX = scrollToImageIndex * (IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING);
+        imageScrollRef.current?.scrollTo({
+          x: scrollX,
+          y: 0,
+          animated: true,
+        });
+        
+        // Update current image index
+        setCurrentImageIndex(scrollToImageIndex);
+        
+        // Clear the parameter after scrolling
+        router.setParams({ scrollToImage: undefined });
+      }, 500);
+    }
+  }, [scrollToImageIndex, images.length, router]);
 
   if (loadingNote) {
     return (

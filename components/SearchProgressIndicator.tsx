@@ -43,23 +43,25 @@ interface StepConfig {
   timingKey?: 'locationSearchMs' | 'peopleSearchMs' | 'keywordSearchMs' | 'aiAnswerMs' | 'totalMs';
 }
 
+// TEMPORARILY DISABLED: Location and People search steps
+// These can be re-enabled later by uncommenting the steps below
 const STEPS: StepConfig[] = [
-  {
-    id: 'resolving',
-    icon: 'map.fill',
-    title: 'Analysing for location(s)',
-    description: 'Looking up location details',
-    stages: ['resolving', 'people', 'keywords', 'searching', 'complete'],
-    timingKey: 'locationSearchMs',
-  },
-  {
-    id: 'people',
-    icon: 'person.2.fill',
-    title: 'Analysing for people',
-    description: 'Matching people in your recalls',
-    stages: ['people', 'keywords', 'searching', 'complete'],
-    timingKey: 'peopleSearchMs',
-  },
+  // {
+  //   id: 'resolving',
+  //   icon: 'map.fill',
+  //   title: 'Analysing for location(s)',
+  //   description: 'Looking up location details',
+  //   stages: ['resolving', 'people', 'keywords', 'searching', 'complete'],
+  //   timingKey: 'locationSearchMs',
+  // },
+  // {
+  //   id: 'people',
+  //   icon: 'person.2.fill',
+  //   title: 'Analysing for people',
+  //   description: 'Matching people in your recalls',
+  //   stages: ['people', 'keywords', 'searching', 'complete'],
+  //   timingKey: 'peopleSearchMs',
+  // },
   {
     id: 'keywords',
     icon: 'text.word.spacing',

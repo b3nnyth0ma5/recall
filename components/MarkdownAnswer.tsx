@@ -1,20 +1,70 @@
 
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { StyleSheet, View, Text, Pressable } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { colors } from '@/styles/commonStyles';
 
-interface MarkdownAnswerProps {
-  content: string;
+interface RecallReference {
+  recallId: string;
+  imageIndex?: number;
 }
 
-export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({ content }) => {
+interface MarkdownAnswerProps {
+  content: string;
+  recallReferences?: RecallReference[];
+  onRecallPress?: (recallId: string, imageIndex?: number) => void;
+}
+
+export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({ 
+  content, 
+  recallReferences = [],
+  onRecallPress 
+}) => {
+  // Parse the content to identify SOURCE_X references and replace with hyperlinks
+  const processedContent = useMemo(() => {
+    if (!recallReferences || recallReferences.length === 0) {
+      return content;
+    }
+
+    let processed = content;
+    
+    // Replace SOURCE_X patterns with markdown links
+    recallReferences.forEach((ref, index) => {
+      const sourcePattern = new RegExp(`SOURCE_${index + 1}`, 'g');
+      // Create a markdown link with recall:// protocol for internal handling
+      processed = processed.replace(sourcePattern, `[Source ${index + 1}](recall://${ref.recallId}${ref.imageIndex !== undefined ? `?image=${ref.imageIndex}` : ''})`);
+    });
+    
+    return processed;
+  }, [content, recallReferences]);
+
+  // Custom link handler for recall:// protocol
+  const handleLinkPress = (url: string) => {
+    if (url.startsWith('recall://')) {
+      const urlParts = url.replace('recall://', '').split('?');
+      const recallId = urlParts[0];
+      const imageParam = urlParts[1]?.split('=')[1];
+      const imageIndex = imageParam ? parseInt(imageParam, 10) : undefined;
+      
+      console.log('[MarkdownAnswer] Recall link pressed:', { recallId, imageIndex });
+      
+      if (onRecallPress) {
+        onRecallPress(recallId, imageIndex);
+      }
+      
+      return false; // Prevent default link handling
+    }
+    
+    return true; // Allow default handling for other links
+  };
+
   return (
     <View style={styles.container}>
       <Markdown
         style={markdownStyles}
+        onLinkPress={handleLinkPress}
       >
-        {content}
+        {processedContent}
       </Markdown>
     </View>
   );

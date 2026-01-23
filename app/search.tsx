@@ -21,6 +21,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
+import { MarkdownAnswer } from '@/components/MarkdownAnswer';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -193,15 +194,53 @@ export default function SearchScreen() {
     });
   }, [searchNotes]);
 
-  const handleNotePress = useCallback((noteId: string) => {
+  const handleNotePress = useCallback((noteId: string, imageIndex?: number) => {
     setTimeout(() => {
       try {
-        router.push(`/note-editor?id=${noteId}`);
+        // If imageIndex is provided, pass it as a query parameter
+        const url = imageIndex !== undefined 
+          ? `/note-editor?id=${noteId}&scrollToImage=${imageIndex}`
+          : `/note-editor?id=${noteId}`;
+        
+        console.log('[SearchScreen] Navigating to note with params:', { noteId, imageIndex, url });
+        router.push(url);
       } catch (error) {
         console.error('[SearchScreen] Error navigating to note editor:', error);
       }
     }, 0);
   }, [router]);
+
+  // Handler for recall links in the answer
+  const handleRecallLinkPress = useCallback((recallId: string, imageIndex?: number) => {
+    console.log('[SearchScreen] Recall link pressed:', { recallId, imageIndex });
+    
+    // Trigger haptic feedback
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
+    // Navigate to the recall with optional image index
+    handleNotePress(recallId, imageIndex);
+  }, [handleNotePress]);
+
+  // Build recall references from the notes that were used for answer
+  const recallReferences = useMemo(() => {
+    if (!filteredNotes || filteredNotes.length === 0) {
+      return [];
+    }
+    
+    // Map each recall to a reference with potential image index
+    return filteredNotes.map((note) => {
+      // Check if the note has images
+      const hasImages = note.images && note.images.length > 0;
+      
+      return {
+        recallId: note.id,
+        // If it's an image-based recall, default to first image
+        imageIndex: hasImages ? 0 : undefined,
+      };
+    });
+  }, [filteredNotes]);
 
   const handleClear = useCallback(() => {
     setSearchQuery('');
@@ -520,9 +559,13 @@ export default function SearchScreen() {
                             <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
                           </View>
                         </View>
-                        <Text style={styles.answerText}>
-                          {isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
-                        </Text>
+                        <View style={styles.answerContent}>
+                          <MarkdownAnswer 
+                            content={isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
+                            recallReferences={recallReferences}
+                            onRecallPress={handleRecallLinkPress}
+                          />
+                        </View>
                         {shouldShowAnswerToggle(searchAnswer) && (
                           <Pressable 
                             onPress={() => setIsAnswerExpanded(!isAnswerExpanded)}
@@ -816,6 +859,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     color: colors.text,
+  },
+  answerContent: {
+    width: '100%',
   },
   answerToggleContainer: {
     alignSelf: 'flex-end',
