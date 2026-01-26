@@ -171,7 +171,7 @@ export function ImageGallery({
                     onPress={() => handleImagePress(imageIndex)}
                     style={styles.imagePressable}
                   >
-                    {/* Skeleton placeholder - shown until image loads */}
+                    {/* Skeleton placeholder - shown until image loads - FIXED: removed zIndex */}
                     {!isLoaded && (
                       <View style={styles.skeletonContainer}>
                         <SkeletonLoader
@@ -183,15 +183,18 @@ export function ImageGallery({
                       </View>
                     )}
                     
-                    {/* Actual image - loads iteratively */}
-                    {imageUrl && (
-                      <Image
-                        source={{ uri: imageUrl }}
-                        style={styles.image}
-                        resizeMode="cover"
-                        onLoad={() => handleImageLoad(imageIndex)}
-                      />
-                    )}
+                    {/* Actual image - loads iteratively - FIXED: always render to trigger onLoad */}
+                    <Image
+                      source={{ uri: imageUrl }}
+                      style={[styles.image, !isLoaded && styles.imageHidden]}
+                      resizeMode="cover"
+                      onLoad={() => handleImageLoad(imageIndex)}
+                      onError={(error) => {
+                        console.error('[ImageGallery] Image load error:', imageIndex, error.nativeEvent.error);
+                        // Mark as loaded even on error to hide skeleton
+                        handleImageLoad(imageIndex);
+                      }}
+                    />
                     
                     {/* Image counter badge */}
                     <View style={styles.imageCounterBadge}>
@@ -331,6 +334,12 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  imageHidden: {
+    opacity: 0,
   },
   skeletonContainer: {
     position: 'absolute',
@@ -338,7 +347,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: 1,
   },
   imageCounterBadge: {
     position: 'absolute',

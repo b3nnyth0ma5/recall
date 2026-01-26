@@ -301,10 +301,10 @@ export function FullScreenImage({
     setImageLoadStates(prev => ({ ...prev, [index]: true }));
   };
 
-  // Pinch gesture for zoom - FIXED with proper focal point handling
+  // FIXED: Pinch gesture for zoom with proper focal point handling
   const pinchGesture = Gesture.Pinch()
     .onStart((event) => {
-      console.log('[FullScreenImage] Pinch started');
+      console.log('[FullScreenImage] Pinch started, scale:', event.scale);
       focalX.value = event.focalX;
       focalY.value = event.focalY;
     })
@@ -315,9 +315,11 @@ export function FullScreenImage({
       if (newScale >= 1 && newScale <= 5) {
         scale.value = newScale;
       }
+      
+      console.log('[FullScreenImage] Pinch update, scale:', scale.value);
     })
     .onEnd(() => {
-      console.log('[FullScreenImage] Pinch ended, scale:', scale.value);
+      console.log('[FullScreenImage] Pinch ended, final scale:', scale.value);
       
       // Limit zoom between 1x and 5x
       if (scale.value < 1) {
@@ -335,61 +337,70 @@ export function FullScreenImage({
       }
     });
 
-  // Pan gesture for moving zoomed image
+  // FIXED: Pan gesture for moving zoomed image - always enabled, but only moves when zoomed
   const panGestureZoom = Gesture.Pan()
-    .enabled(scale.value > 1)
     .onStart(() => {
-      console.log('[FullScreenImage] Pan zoom started');
+      console.log('[FullScreenImage] Pan zoom started, current scale:', scale.value);
     })
     .onUpdate((event) => {
-      translateX.value = savedTranslateX.value + event.translationX;
-      translateYZoom.value = savedTranslateY.value + event.translationY;
+      // Only allow panning when zoomed in
+      if (scale.value > 1) {
+        translateX.value = savedTranslateX.value + event.translationX;
+        translateYZoom.value = savedTranslateY.value + event.translationY;
+      }
     })
     .onEnd(() => {
       console.log('[FullScreenImage] Pan zoom ended');
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateYZoom.value;
+      if (scale.value > 1) {
+        savedTranslateX.value = translateX.value;
+        savedTranslateY.value = translateYZoom.value;
+      }
     });
 
   // Pan gesture for swipe-to-dismiss (only when not zoomed)
   const panGestureDismiss = Gesture.Pan()
-    .enabled(scale.value <= 1)
     .onStart(() => {
       contextY.value = translateY.value;
     })
     .onUpdate((event) => {
-      // Only allow downward swipes
-      if (event.translationY > 0) {
-        translateY.value = contextY.value + event.translationY;
-      } else {
-        // Allow slight upward movement for natural feel
-        translateY.value = contextY.value + event.translationY * 0.3;
+      // Only allow dismiss gesture when not zoomed
+      if (scale.value <= 1) {
+        // Only allow downward swipes
+        if (event.translationY > 0) {
+          translateY.value = contextY.value + event.translationY;
+        } else {
+          // Allow slight upward movement for natural feel
+          translateY.value = contextY.value + event.translationY * 0.3;
+        }
       }
     })
     .onEnd((event) => {
-      const shouldDismiss = translateY.value > DISMISS_THRESHOLD;
-      
-      if (shouldDismiss) {
-        // Animate out smoothly
-        translateY.value = withTiming(
-          SCREEN_HEIGHT,
-          { duration: 200 },
-          (finished) => {
-            if (finished) {
-              // Reset immediately before closing to prevent flicker
-              translateY.value = 0;
-              contextY.value = 0;
-              runOnJS(handleClose)();
+      // Only dismiss if not zoomed
+      if (scale.value <= 1) {
+        const shouldDismiss = translateY.value > DISMISS_THRESHOLD;
+        
+        if (shouldDismiss) {
+          // Animate out smoothly
+          translateY.value = withTiming(
+            SCREEN_HEIGHT,
+            { duration: 200 },
+            (finished) => {
+              if (finished) {
+                // Reset immediately before closing to prevent flicker
+                translateY.value = 0;
+                contextY.value = 0;
+                runOnJS(handleClose)();
+              }
             }
-          }
-        );
-      } else {
-        // Spring back to original position
-        translateY.value = withSpring(0, {
-          damping: 25,
-          stiffness: 400,
-          mass: 0.8,
-        });
+          );
+        } else {
+          // Spring back to original position
+          translateY.value = withSpring(0, {
+            damping: 25,
+            stiffness: 400,
+            mass: 0.8,
+          });
+        }
       }
     });
 
@@ -416,14 +427,11 @@ export function FullScreenImage({
       }
     });
 
-  // Compose gestures - FIXED: Proper gesture composition
-  const composedGesture = Gesture.Race(
-    doubleTapGesture,
-    Gesture.Simultaneous(
-      pinchGesture,
-      panGestureZoom
-    )
-  );
+  // FIXED: Proper gesture composition - Simultaneous pinch and pan for zoom
+  const zoomGesture = Gesture.Simultaneous(pinchGesture, panGestureZoom);
+  
+  // Race between double tap and zoom gesture
+  const composedGesture = Gesture.Race(doubleTapGesture, zoomGesture);
 
   // Animated style for the image with zoom
   const animatedImageStyle = useAnimatedStyle(() => {
