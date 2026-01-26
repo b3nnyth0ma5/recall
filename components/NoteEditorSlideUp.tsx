@@ -36,7 +36,7 @@ import { useNotes } from '@/hooks/useNotes';
 import { Note, Person } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
-import { ImageGallery } from '@/components/ImageGallery';
+// ImageGallery is now a route, not a component
 import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
 import { processRecallUrls } from '@/utils/urlProcessor';

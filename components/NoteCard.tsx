@@ -5,7 +5,6 @@ import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
 import { FullScreenImage } from './FullScreenImage';
-import { ImageGallery } from './ImageGallery';
 import { TimeAgo } from './TimeAgo';
 import { shareRecall } from '@/utils/shareRecall';
 import { getImageDataUrl } from '@/utils/supabase';
@@ -14,6 +13,7 @@ import * as Haptics from 'expo-haptics';
 import { NoteCardSkeleton } from './NoteCardSkeleton';
 import { SkeletonLoader } from './SkeletonLoader';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
+import { useRouter } from 'expo-router';
 import Animated, { 
   useAnimatedStyle, 
   useSharedValue, 
@@ -63,11 +63,10 @@ const countNewlines = (text: string): number => {
 
 // Memoized component for better performance
 export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount, scrollToImageIndex }: NoteCardProps) {
+  const router = useRouter();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
-  const [showImageGallery, setShowImageGallery] = useState(false);
-  const [imageGalleryIndex, setImageGalleryIndex] = useState(0);
   const [imageLoadingStates, setImageLoadingStates] = useState<{ [key: number]: boolean }>({});
   const [imageErrorStates, setImageErrorStates] = useState<{ [key: number]: boolean }>({});
   const [imageLoadedStates, setImageLoadedStates] = useState<{ [key: number]: boolean }>({});
@@ -282,30 +281,21 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   const handleImagePress = (index: number) => {
-    console.log('Image pressed at index:', index);
-    setImageGalleryIndex(index);
-    setShowImageGallery(true);
+    console.log('[NoteCard] Image pressed at index:', index);
+    
+    // Navigate to image gallery route
+    router.push({
+      pathname: '/image-gallery',
+      params: {
+        images: JSON.stringify(note.images || []),
+        imageIds: JSON.stringify(note.imageIds || []),
+        initialIndex: index.toString(),
+      },
+    });
+    
     if (onImagePress) {
       onImagePress();
     }
-  };
-
-  const handleGalleryImagePress = (index: number) => {
-    console.log('Gallery image pressed at index:', index);
-    // Don't close the gallery - just open FullScreenImage on top
-    setFullScreenImageIndex(index);
-    setShowFullScreenImage(true);
-  };
-
-  const handleCloseImageGallery = () => {
-    console.log('Closing image gallery');
-    setShowImageGallery(false);
-  };
-
-  const handleCloseFullScreenImage = () => {
-    console.log('Closing full screen image - returning to gallery');
-    setShowFullScreenImage(false);
-    // Gallery remains open
   };
 
   const handleTextPress = () => {
@@ -601,28 +591,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         </Pressable>
       </Swipeable>
 
-      {/* Image Gallery Component - Masonry layout */}
-      {note.images && note.images.length > 0 && (
-        <ImageGallery
-          visible={showImageGallery}
-          images={note.images}
-          imageIds={note.imageIds}
-          initialIndex={imageGalleryIndex}
-          onClose={handleCloseImageGallery}
-          onImagePress={handleGalleryImagePress}
-        />
-      )}
 
-      {/* Full Screen Image Component - Opens on top of gallery */}
-      {note.images && note.images.length > 0 && (
-        <FullScreenImage
-          visible={showFullScreenImage}
-          images={note.images}
-          imageIds={note.imageIds}
-          initialIndex={fullScreenImageIndex}
-          onClose={handleCloseFullScreenImage}
-        />
-      )}
     </Animated.View>
   );
 }, (prevProps, nextProps) => {
