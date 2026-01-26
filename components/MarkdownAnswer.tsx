@@ -30,7 +30,7 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
     }
     
     let processed = content;
-    const links: Array<{ sourceNum: number; recallId: string; imageIndex?: number }> = [];
+    const links: { sourceNum: number; recallId: string; imageIndex?: number }[] = [];
     
     // Process each source reference
     recallReferences.forEach((ref, index) => {

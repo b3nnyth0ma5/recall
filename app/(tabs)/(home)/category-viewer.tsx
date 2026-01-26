@@ -443,7 +443,7 @@ export default function CategoryViewerScreen() {
         matchingCheckIntervalRef.current = null;
       }
     };
-  }, [id]); // Removed loadCategoryAndRecalls from dependencies to prevent infinite loop
+  }, [id, loadCategoryAndRecalls]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

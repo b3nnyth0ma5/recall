@@ -136,7 +136,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     } else {
       setIsUploadingImages(false);
     }
-  }, [note.id, note.images, note.imageIds, loading, expectedImageCount]);
+  }, [note.id, note.images, note.imageIds, loading, expectedImageCount, note.images?.length]);
 
   // Scroll to specific image if scrollToImageIndex is provided - MUST be before conditional returns
   useEffect(() => {

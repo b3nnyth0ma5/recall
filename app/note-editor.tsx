@@ -36,7 +36,6 @@ import { useNotes } from '@/hooks/useNotes';
 import { Note, Person } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
-// ImageGallery is now a route, not a component
 import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
 import { processRecallUrls } from '@/utils/urlProcessor';
@@ -1585,23 +1584,13 @@ export default function NoteEditorScreen() {
       )}
 
       {hasImages && (
-        <>
-          <ImageGallery
-            visible={showImageGallery}
-            images={images.map(img => img.uri)}
-            imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
-            initialIndex={imageGalleryIndex}
-            onClose={handleCloseImageGallery}
-            onImagePress={handleGalleryImagePress}
-          />
-          <FullScreenImage
-            visible={showFullScreenImage}
-            images={images.map(img => img.uri)}
-            imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
-            initialIndex={fullScreenImageIndex}
-            onClose={handleCloseFullScreenImage}
-          />
-        </>
+        <FullScreenImage
+          visible={showFullScreenImage}
+          images={images.map(img => img.uri)}
+          imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
+          initialIndex={fullScreenImageIndex}
+          onClose={handleCloseFullScreenImage}
+        />
       )}
     </View>
   );

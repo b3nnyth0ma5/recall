@@ -154,7 +154,7 @@ export function FullScreenImage({
         });
       }, 100);
     }
-  }, [visible, initialIndex, images, imageIds]);
+  }, [visible, initialIndex, images, imageIds, translateY, contextY, scale, savedScale, translateX, translateYZoom, savedTranslateX, savedTranslateY]);
 
   // Reset zoom when changing images
   useEffect(() => {
@@ -165,7 +165,7 @@ export function FullScreenImage({
     translateYZoom.value = withSpring(0);
     savedTranslateX.value = 0;
     savedTranslateY.value = 0;
-  }, [currentImageIndex]);
+  }, [currentImageIndex, scale, savedScale, translateX, translateYZoom, savedTranslateX, savedTranslateY]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;

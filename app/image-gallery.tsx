@@ -115,12 +115,12 @@ export default function ImageGalleryScreen() {
 
   // Calculate variable grid layout based on image count
   const calculateVariableGrid = useCallback(() => {
-    const items: Array<{
+    const items: {
       index: number;
       width: number;
       height: number;
       aspectRatio: number;
-    }> = [];
+    }[] = [];
 
     // Define layout patterns (inspired by the attached images)
     // Pattern repeats every 6 images for consistency
@@ -168,8 +168,8 @@ export default function ImageGalleryScreen() {
 
   // Group items into rows based on width patterns
   const rows = useMemo(() => {
-    const result: Array<Array<typeof gridItems[0]>> = [];
-    let currentRow: Array<typeof gridItems[0]> = [];
+    const result: (typeof gridItems[0])[][] = [];
+    let currentRow: (typeof gridItems[0])[] = [];
     let currentRowWidth = 0;
     const maxRowWidth = SCREEN_WIDTH - (GALLERY_PADDING * 2);
 
