@@ -15,6 +15,7 @@ import {
 import { IconSymbol } from './IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { SkeletonLoader } from './SkeletonLoader';
+import { getOptimizedCloudflareUrl } from '@/utils/cloudflareCDN';
 import * as Haptics from 'expo-haptics';
 
 interface ImageGalleryProps {
@@ -26,13 +27,8 @@ interface ImageGalleryProps {
   onImagePress: (index: number) => void;
 }
 
-interface ImageDimensions {
-  width: number;
-  height: number;
-  aspectRatio: number;
-}
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const screenDimensions = Dimensions.get('window');
+const SCREEN_WIDTH = screenDimensions.width;
 const GALLERY_PADDING = 16;
 const IMAGE_SPACING = 8;
 const COLUMN_WIDTH = (SCREEN_WIDTH - GALLERY_PADDING * 2 - IMAGE_SPACING) / 2;
@@ -40,13 +36,14 @@ const COLUMN_WIDTH = (SCREEN_WIDTH - GALLERY_PADDING * 2 - IMAGE_SPACING) / 2;
 /**
  * ImageGallery Component
  * 
- * Displays images in an optimized masonry-style grid layout similar to property listing galleries.
+ * Displays images in a 2-column, multi-row 'Z layout' format (left-to-right, top-to-bottom).
  * Features:
- * - Intelligent layout based on image dimensions and aspect ratios
- * - Vertical scrolling to view all images
+ * - 2-column grid layout with proper Z-order
+ * - Optimized Cloudflare CDN images with lower aspect ratio for speed
+ * - Iterative image loading with skeleton placeholders
  * - Scrolls to the initially selected image position
  * - Tapping an image opens FullScreenImage with left/right scroll
- * - Optimized for performance with lazy loading
+ * - Opens on top of other modals with proper z-index
  */
 export function ImageGallery({
   visible,
@@ -56,59 +53,42 @@ export function ImageGallery({
   onClose,
   onImagePress,
 }: ImageGalleryProps) {
-  const [imageDimensions, setImageDimensions] = useState<{ [key: number]: ImageDimensions }>({});
   const [loadedImages, setLoadedImages] = useState<Set<number>>(new Set());
-  const [isLoadingDimensions, setIsLoadingDimensions] = useState(true);
+  const [optimizedUrls, setOptimizedUrls] = useState<string[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
   const imageRefs = useRef<{ [key: number]: View | null }>({});
 
-  // Load image dimensions when modal opens
+  // Generate optimized Cloudflare URLs when modal opens
   useEffect(() => {
     if (visible && images.length > 0) {
-      console.log('[ImageGallery] Loading dimensions for', images.length, 'images');
-      setIsLoadingDimensions(true);
+      console.log('[ImageGallery] Generating optimized URLs for', images.length, 'images');
       
-      const loadDimensions = async () => {
-        const dimensions: { [key: number]: ImageDimensions } = {};
+      // Generate optimized URLs with lower aspect ratio for faster loading
+      const optimized = images.map(imageUrl => {
+        if (!imageUrl) {
+          return '';
+        }
         
-        // Load dimensions for all images
-        const promises = images.map((imageUrl, index) => {
-          return new Promise<void>((resolve) => {
-            if (!imageUrl) {
-              resolve();
-              return;
-            }
-            
-            Image.getSize(
-              imageUrl,
-              (width, height) => {
-                const aspectRatio = width / height;
-                dimensions[index] = { width, height, aspectRatio };
-                console.log(`[ImageGallery] Image ${index} dimensions:`, { width, height, aspectRatio });
-                resolve();
-              },
-              (error) => {
-                console.error(`[ImageGallery] Error loading dimensions for image ${index}:`, error);
-                // Default to square aspect ratio on error
-                dimensions[index] = { width: 1, height: 1, aspectRatio: 1 };
-                resolve();
-              }
-            );
-          });
+        // Use Cloudflare image optimization with lower dimensions for gallery view
+        return getOptimizedCloudflareUrl(imageUrl, {
+          width: Math.round(COLUMN_WIDTH * 2), // 2x for retina displays
+          quality: 80,
+          fit: 'cover',
+          format: 'webp',
         });
-        
-        await Promise.all(promises);
-        setImageDimensions(dimensions);
-        setIsLoadingDimensions(false);
-        console.log('[ImageGallery] All dimensions loaded');
-        
-        // Scroll to initial image after layout
-        setTimeout(() => {
-          scrollToImage(initialIndex);
-        }, 300);
-      };
+      });
       
-      loadDimensions();
+      setOptimizedUrls(optimized);
+      console.log('[ImageGallery] Optimized URLs generated');
+      
+      // Scroll to initial image after a short delay
+      setTimeout(() => {
+        scrollToImage(initialIndex);
+      }, 300);
+    } else {
+      // Reset state when modal closes
+      setLoadedImages(new Set());
+      setOptimizedUrls([]);
     }
   }, [visible, images, initialIndex]);
 
@@ -147,18 +127,25 @@ export function ImageGallery({
   };
 
   const handleImageLoad = (index: number) => {
+    console.log('[ImageGallery] Image loaded:', index);
     setLoadedImages(prev => new Set(prev).add(index));
   };
 
-  // Render all images in a simple vertical layout
+  // Render images in 2-column Z layout
   const renderGalleryContent = () => {
-    if (isLoadingDimensions) {
+    if (optimizedUrls.length === 0) {
       return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading gallery...</Text>
         </View>
       );
+    }
+
+    // Create rows of 2 images each (Z layout: left-to-right, top-to-bottom)
+    const rows: number[][] = [];
+    for (let i = 0; i < optimizedUrls.length; i += 2) {
+      rows.push([i, i + 1].filter(idx => idx < optimizedUrls.length));
     }
 
     return (
@@ -168,75 +155,61 @@ export function ImageGallery({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={true}
       >
-        {images.map((imageUrl, index) => {
-          const dims = imageDimensions[index];
-          const isLoaded = loadedImages.has(index);
-          
-          // Calculate height based on aspect ratio
-          let imageHeight = COLUMN_WIDTH;
-          if (dims) {
-            const { aspectRatio } = dims;
-            
-            // Wide images span full width
-            if (aspectRatio > 1.5) {
-              const fullWidth = SCREEN_WIDTH - GALLERY_PADDING * 2;
-              imageHeight = fullWidth / aspectRatio;
-            } else {
-              // All other images use column width
-              imageHeight = COLUMN_WIDTH / aspectRatio;
-            }
-          }
-          
-          // Determine if image should be full width
-          const isFullWidth = dims && dims.aspectRatio > 1.5;
-          const imageWidth = isFullWidth ? SCREEN_WIDTH - GALLERY_PADDING * 2 : COLUMN_WIDTH;
-          
-          return (
-            <View
-              key={`image-${index}`}
-              ref={(ref) => { imageRefs.current[index] = ref; }}
-              style={[
-                styles.imageContainer,
-                { 
-                  width: imageWidth,
-                  height: imageHeight,
-                  marginBottom: IMAGE_SPACING,
-                },
-              ]}
-            >
-              <Pressable
-                onPress={() => handleImagePress(index)}
-                style={styles.imagePressable}
-              >
-                {!isLoaded && (
-                  <View style={styles.skeletonContainer}>
-                    <SkeletonLoader
-                      width={imageWidth}
-                      height={imageHeight}
-                      borderRadius={12}
-                      variant="wave"
-                    />
-                  </View>
-                )}
-                {imageUrl && (
-                  <Image
-                    source={{ uri: imageUrl }}
-                    style={styles.image}
-                    resizeMode="cover"
-                    onLoad={() => handleImageLoad(index)}
-                  />
-                )}
-                
-                {/* Image counter badge */}
-                <View style={styles.imageCounterBadge}>
-                  <Text style={styles.imageCounterText}>
-                    {index + 1}
-                  </Text>
+        {rows.map((rowIndices, rowIndex) => (
+          <View key={`row-${rowIndex}`} style={styles.row}>
+            {rowIndices.map((imageIndex) => {
+              const imageUrl = optimizedUrls[imageIndex];
+              const isLoaded = loadedImages.has(imageIndex);
+              
+              return (
+                <View
+                  key={`image-${imageIndex}`}
+                  ref={(ref) => { imageRefs.current[imageIndex] = ref; }}
+                  style={styles.imageContainer}
+                >
+                  <Pressable
+                    onPress={() => handleImagePress(imageIndex)}
+                    style={styles.imagePressable}
+                  >
+                    {/* Skeleton placeholder - shown until image loads */}
+                    {!isLoaded && (
+                      <View style={styles.skeletonContainer}>
+                        <SkeletonLoader
+                          width={COLUMN_WIDTH}
+                          height={COLUMN_WIDTH}
+                          borderRadius={12}
+                          variant="wave"
+                        />
+                      </View>
+                    )}
+                    
+                    {/* Actual image - loads iteratively */}
+                    {imageUrl && (
+                      <Image
+                        source={{ uri: imageUrl }}
+                        style={styles.image}
+                        resizeMode="cover"
+                        onLoad={() => handleImageLoad(imageIndex)}
+                      />
+                    )}
+                    
+                    {/* Image counter badge */}
+                    <View style={styles.imageCounterBadge}>
+                      <Text style={styles.imageCounterText}>
+                        {imageIndex + 1}
+                      </Text>
+                    </View>
+                  </Pressable>
                 </View>
-              </Pressable>
-            </View>
-          );
-        })}
+              );
+            })}
+            
+            {/* Add empty spacer if odd number of images in last row */}
+            {rowIndices.length === 1 && (
+              <View style={styles.imageContainer} />
+            )}
+          </View>
+        ))}
         
         {/* Bottom spacing */}
         <View style={styles.bottomSpacer} />
@@ -251,6 +224,7 @@ export function ImageGallery({
       animationType="slide"
       onRequestClose={handleClose}
       statusBarTranslucent
+      presentationStyle="fullScreen"
     >
       <View style={styles.container}>
         {/* Header */}
@@ -260,10 +234,18 @@ export function ImageGallery({
             style={styles.closeButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <IconSymbol name="xmark" size={24} color={colors.text} />
+            <IconSymbol 
+              ios_icon_name="xmark" 
+              android_material_icon_name="close" 
+              size={24} 
+              color={colors.text} 
+            />
           </Pressable>
           <Text style={styles.headerTitle}>
-            {images.length} {images.length === 1 ? 'Image' : 'Images'}
+            {images.length}
+          </Text>
+          <Text style={styles.headerSubtitle}>
+            {images.length === 1 ? 'Image' : 'Images'}
           </Text>
           <View style={styles.headerSpacer} />
         </View>
@@ -300,9 +282,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 24,
+    fontWeight: '700',
     color: colors.text,
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    fontWeight: '400',
+    color: colors.textSecondary,
+    marginLeft: 4,
   },
   headerSpacer: {
     width: 44,
@@ -323,7 +311,14 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: GALLERY_PADDING,
   },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: IMAGE_SPACING,
+  },
   imageContainer: {
+    width: COLUMN_WIDTH,
+    height: COLUMN_WIDTH,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: colors.cardDark,

@@ -16,10 +16,10 @@ export async function uploadImageToCloudflare(
   contentType: string = 'image/jpeg'
 ): Promise<string | null> {
   try {
-    console.log('=== Uploading image to Cloudflare CDN ===');
-    console.log('File name:', fileName);
-    console.log('Content type:', contentType);
-    console.log('Base64 data length:', base64Data.length);
+    console.log('[CloudflareCDN] Uploading image to Cloudflare CDN');
+    console.log('[CloudflareCDN] File name:', fileName);
+    console.log('[CloudflareCDN] Content type:', contentType);
+    console.log('[CloudflareCDN] Base64 data length:', base64Data.length);
 
     const { data, error } = await supabase.functions.invoke('cloudflare-upload', {
       body: {
@@ -30,21 +30,21 @@ export async function uploadImageToCloudflare(
     });
 
     if (error) {
-      console.error('Error uploading to Cloudflare:', error);
+      console.error('[CloudflareCDN] Error uploading to Cloudflare:', error);
       return null;
     }
 
     if (!data || !data.cdnUrl) {
-      console.error('No CDN URL returned from Cloudflare upload');
+      console.error('[CloudflareCDN] No CDN URL returned from Cloudflare upload');
       return null;
     }
 
-    console.log('=== Upload successful ===');
-    console.log('CDN URL:', data.cdnUrl);
+    console.log('[CloudflareCDN] Upload successful');
+    console.log('[CloudflareCDN] CDN URL:', data.cdnUrl);
     
     return data.cdnUrl;
   } catch (error) {
-    console.error('Exception in uploadImageToCloudflare:', error);
+    console.error('[CloudflareCDN] Exception in uploadImageToCloudflare:', error);
     return null;
   }
 }
@@ -57,8 +57,8 @@ export async function uploadImageToCloudflare(
  */
 export async function deleteImageFromCloudflare(cdnUrl: string): Promise<boolean> {
   try {
-    console.log('=== Deleting image from Cloudflare CDN ===');
-    console.log('CDN URL:', cdnUrl);
+    console.log('[CloudflareCDN] Deleting image from Cloudflare CDN');
+    console.log('[CloudflareCDN] CDN URL:', cdnUrl);
 
     // Extract the image ID from the CDN URL
     const urlParts = cdnUrl.split('/');
@@ -71,14 +71,14 @@ export async function deleteImageFromCloudflare(cdnUrl: string): Promise<boolean
     });
 
     if (error) {
-      console.error('Error deleting from Cloudflare:', error);
+      console.error('[CloudflareCDN] Error deleting from Cloudflare:', error);
       return false;
     }
 
-    console.log('=== Delete successful ===');
+    console.log('[CloudflareCDN] Delete successful');
     return true;
   } catch (error) {
-    console.error('Exception in deleteImageFromCloudflare:', error);
+    console.error('[CloudflareCDN] Exception in deleteImageFromCloudflare:', error);
     return false;
   }
 }
@@ -101,48 +101,61 @@ export function getOptimizedCloudflareUrl(
     fit?: 'scale-down' | 'contain' | 'cover' | 'crop' | 'pad';
   }
 ): string {
-  if (!options) {
+  if (!options || !cdnUrl) {
     return cdnUrl;
   }
 
   try {
     // Cloudflare Images uses a specific URL format for transformations
     // Format: https://imagedelivery.net/<account-hash>/<image-id>/<variant-name>
-    // For custom transformations, we can use the flexible variant
+    // For custom transformations, we can use the flexible variant with parameters
     
     const url = new URL(cdnUrl);
-    const pathParts = url.pathname.split('/');
+    const pathParts = url.pathname.split('/').filter(part => part.length > 0);
     
-    // Build transformation string
-    const transformations: string[] = [];
+    // Build transformation parameters
+    const params: string[] = [];
     
     if (options.width) {
-      transformations.push(`w=${options.width}`);
+      params.push(`width=${options.width}`);
     }
     if (options.height) {
-      transformations.push(`h=${options.height}`);
+      params.push(`height=${options.height}`);
     }
     if (options.quality) {
-      transformations.push(`q=${options.quality}`);
+      params.push(`quality=${options.quality}`);
     }
     if (options.format) {
-      transformations.push(`f=${options.format}`);
+      params.push(`format=${options.format}`);
     }
     if (options.fit) {
-      transformations.push(`fit=${options.fit}`);
+      params.push(`fit=${options.fit}`);
     }
 
-    // If we have transformations, append them to the URL
-    if (transformations.length > 0) {
-      // For Cloudflare Images, we can use the flexible variant
-      // Replace the last part of the path with our transformation string
-      pathParts[pathParts.length - 1] = transformations.join(',');
-      url.pathname = pathParts.join('/');
+    // If we have transformations, create a custom variant URL
+    if (params.length > 0) {
+      // Cloudflare Images flexible variant format
+      // Replace the last segment (variant) with our custom parameters
+      const transformString = params.join(',');
+      
+      // Check if URL already has a variant (last segment)
+      if (pathParts.length >= 3) {
+        // Replace last segment with transformation string
+        pathParts[pathParts.length - 1] = transformString;
+      } else {
+        // Append transformation string
+        pathParts.push(transformString);
+      }
+      
+      url.pathname = '/' + pathParts.join('/');
+      
+      console.log('[CloudflareCDN] Generated optimized URL:', url.toString());
+      return url.toString();
     }
 
-    return url.toString();
+    return cdnUrl;
   } catch (error) {
-    console.error('Error generating optimized URL:', error);
+    console.error('[CloudflareCDN] Error generating optimized URL:', error);
     return cdnUrl;
   }
 }
@@ -162,6 +175,12 @@ export function getCloudflareImagePresets(cdnUrl: string) {
     card: getOptimizedCloudflareUrl(cdnUrl, { 
       width: 400, 
       height: 400, 
+      quality: 80,
+      fit: 'cover',
+      format: 'webp'
+    }),
+    gallery: getOptimizedCloudflareUrl(cdnUrl, { 
+      width: 600, 
       quality: 80,
       fit: 'cover',
       format: 'webp'
@@ -188,13 +207,13 @@ export async function isCloudflareCDNConfigured(): Promise<boolean> {
     });
 
     if (error) {
-      console.error('Error checking Cloudflare configuration:', error);
+      console.error('[CloudflareCDN] Error checking Cloudflare configuration:', error);
       return false;
     }
 
     return data?.configured === true;
   } catch (error) {
-    console.error('Exception checking Cloudflare configuration:', error);
+    console.error('[CloudflareCDN] Exception checking Cloudflare configuration:', error);
     return false;
   }
 }
