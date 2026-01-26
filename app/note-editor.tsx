@@ -36,6 +36,7 @@ import { useNotes } from '@/hooks/useNotes';
 import { Note, Person } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
+import { ImageGallery } from '@/components/ImageGallery';
 import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
 import { processRecallUrls } from '@/utils/urlProcessor';
@@ -79,6 +80,8 @@ export default function NoteEditorScreen() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
+  const [showImageGallery, setShowImageGallery] = useState(false);
+  const [imageGalleryIndex, setImageGalleryIndex] = useState(0);
   const [showFABs, setShowFABs] = useState(false);
   const [cameraLaunched, setCameraLaunched] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
@@ -1198,8 +1201,21 @@ export default function NoteEditorScreen() {
   };
 
   const handleImagePress = (index: number) => {
+    console.log('Image pressed at index:', index);
+    setImageGalleryIndex(index);
+    setShowImageGallery(true);
+  };
+
+  const handleGalleryImagePress = (index: number) => {
+    console.log('Gallery image pressed at index:', index);
+    setShowImageGallery(false);
     setFullScreenImageIndex(index);
     setShowFullScreenImage(true);
+  };
+
+  const handleCloseImageGallery = () => {
+    console.log('Closing image gallery');
+    setShowImageGallery(false);
   };
 
   const handleRichTextPress = () => {
@@ -1569,13 +1585,23 @@ export default function NoteEditorScreen() {
       )}
 
       {hasImages && (
-        <FullScreenImage
-          visible={showFullScreenImage}
-          images={images.map(img => img.uri)}
-          imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
-          initialIndex={fullScreenImageIndex}
-          onClose={handleCloseFullScreenImage}
-        />
+        <>
+          <ImageGallery
+            visible={showImageGallery}
+            images={images.map(img => img.uri)}
+            imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
+            initialIndex={imageGalleryIndex}
+            onClose={handleCloseImageGallery}
+            onImagePress={handleGalleryImagePress}
+          />
+          <FullScreenImage
+            visible={showFullScreenImage}
+            images={images.map(img => img.uri)}
+            imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
+            initialIndex={fullScreenImageIndex}
+            onClose={handleCloseFullScreenImage}
+          />
+        </>
       )}
     </View>
   );

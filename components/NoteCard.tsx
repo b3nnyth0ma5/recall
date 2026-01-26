@@ -5,6 +5,7 @@ import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
 import { FullScreenImage } from './FullScreenImage';
+import { ImageGallery } from './ImageGallery';
 import { TimeAgo } from './TimeAgo';
 import { shareRecall } from '@/utils/shareRecall';
 import { getImageDataUrl } from '@/utils/supabase';
@@ -65,6 +66,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
+  const [showImageGallery, setShowImageGallery] = useState(false);
+  const [imageGalleryIndex, setImageGalleryIndex] = useState(0);
   const [imageLoadingStates, setImageLoadingStates] = useState<{ [key: number]: boolean }>({});
   const [imageErrorStates, setImageErrorStates] = useState<{ [key: number]: boolean }>({});
   const [imageLoadedStates, setImageLoadedStates] = useState<{ [key: number]: boolean }>({});
@@ -279,11 +282,24 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   const handleImagePress = (index: number) => {
-    setFullScreenImageIndex(index);
-    setShowFullScreenImage(true);
+    console.log('Image pressed at index:', index);
+    setImageGalleryIndex(index);
+    setShowImageGallery(true);
     if (onImagePress) {
       onImagePress();
     }
+  };
+
+  const handleGalleryImagePress = (index: number) => {
+    console.log('Gallery image pressed at index:', index);
+    setShowImageGallery(false);
+    setFullScreenImageIndex(index);
+    setShowFullScreenImage(true);
+  };
+
+  const handleCloseImageGallery = () => {
+    console.log('Closing image gallery');
+    setShowImageGallery(false);
   };
 
   const handleTextPress = () => {
@@ -578,6 +594,18 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           </View>
         </Pressable>
       </Swipeable>
+
+      {/* Image Gallery Component - Masonry layout */}
+      {note.images && note.images.length > 0 && (
+        <ImageGallery
+          visible={showImageGallery}
+          images={note.images}
+          imageIds={note.imageIds}
+          initialIndex={imageGalleryIndex}
+          onClose={handleCloseImageGallery}
+          onImagePress={handleGalleryImagePress}
+        />
+      )}
 
       {/* Full Screen Image Component - Pass original images array, not lazy loaded */}
       {note.images && note.images.length > 0 && (
