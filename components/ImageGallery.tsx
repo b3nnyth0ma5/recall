@@ -150,57 +150,7 @@ export function ImageGallery({
     setLoadedImages(prev => new Set(prev).add(index));
   };
 
-  // Calculate optimal layout based on aspect ratios
-  const calculateLayout = () => {
-    const layout: Array<{ index: number; column: number; span: number; height: number }> = [];
-    let leftColumnHeight = 0;
-    let rightColumnHeight = 0;
-
-    images.forEach((_, index) => {
-      const dims = imageDimensions[index];
-      if (!dims) return;
-
-      const { aspectRatio } = dims;
-      
-      // Determine if image should span full width or single column
-      let span = 1; // 1 = single column, 2 = full width
-      let height = COLUMN_WIDTH; // Default square
-
-      // Wide images (aspect ratio > 1.5) span full width
-      if (aspectRatio > 1.5) {
-        span = 2;
-        height = (SCREEN_WIDTH - GALLERY_PADDING * 2) / aspectRatio;
-      }
-      // Portrait images (aspect ratio < 0.7) are taller
-      else if (aspectRatio < 0.7) {
-        height = COLUMN_WIDTH / aspectRatio;
-      }
-      // Square-ish images (0.7 <= aspect ratio <= 1.5)
-      else {
-        height = COLUMN_WIDTH / aspectRatio;
-      }
-
-      // Assign to column with less height
-      let column = 0;
-      if (span === 1) {
-        column = leftColumnHeight <= rightColumnHeight ? 0 : 1;
-        if (column === 0) {
-          leftColumnHeight += height + IMAGE_SPACING;
-        } else {
-          rightColumnHeight += height + IMAGE_SPACING;
-        }
-      } else {
-        // Full width images reset both columns
-        leftColumnHeight = Math.max(leftColumnHeight, rightColumnHeight) + height + IMAGE_SPACING;
-        rightColumnHeight = leftColumnHeight;
-      }
-
-      layout.push({ index, column, span, height });
-    });
-
-    return layout;
-  };
-
+  // Render all images in a simple vertical layout
   const renderGalleryContent = () => {
     if (isLoadingDimensions) {
       return (
@@ -211,34 +161,6 @@ export function ImageGallery({
       );
     }
 
-    const layout = calculateLayout();
-    
-    // Group images by row for rendering
-    const rows: Array<Array<typeof layout[0]>> = [];
-    let currentRow: Array<typeof layout[0]> = [];
-    
-    layout.forEach((item) => {
-      if (item.span === 2) {
-        // Full width image - flush current row and add as single item
-        if (currentRow.length > 0) {
-          rows.push([...currentRow]);
-          currentRow = [];
-        }
-        rows.push([item]);
-      } else {
-        currentRow.push(item);
-        if (currentRow.length === 2) {
-          rows.push([...currentRow]);
-          currentRow = [];
-        }
-      }
-    });
-    
-    // Add remaining items
-    if (currentRow.length > 0) {
-      rows.push(currentRow);
-    }
-
     return (
       <ScrollView
         ref={scrollViewRef}
@@ -246,57 +168,75 @@ export function ImageGallery({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={true}
       >
-        {rows.map((row, rowIndex) => (
-          <View key={`row-${rowIndex}`} style={styles.row}>
-            {row.map((item) => {
-              const imageUrl = images[item.index];
-              const isLoaded = loadedImages.has(item.index);
-              
-              return (
-                <View
-                  key={`image-${item.index}`}
-                  ref={(ref) => { imageRefs.current[item.index] = ref; }}
-                  style={[
-                    styles.imageContainer,
-                    item.span === 2 ? styles.imageContainerFullWidth : styles.imageContainerHalfWidth,
-                    { height: item.height },
-                  ]}
-                >
-                  <Pressable
-                    onPress={() => handleImagePress(item.index)}
-                    style={styles.imagePressable}
-                  >
-                    {!isLoaded && (
-                      <View style={styles.skeletonContainer}>
-                        <SkeletonLoader
-                          width={item.span === 2 ? SCREEN_WIDTH - GALLERY_PADDING * 2 : COLUMN_WIDTH}
-                          height={item.height}
-                          borderRadius={12}
-                          variant="wave"
-                        />
-                      </View>
-                    )}
-                    {imageUrl && (
-                      <Image
-                        source={{ uri: imageUrl }}
-                        style={styles.image}
-                        resizeMode="cover"
-                        onLoad={() => handleImageLoad(item.index)}
-                      />
-                    )}
-                    
-                    {/* Image counter badge */}
-                    <View style={styles.imageCounterBadge}>
-                      <Text style={styles.imageCounterText}>
-                        {item.index + 1}
-                      </Text>
-                    </View>
-                  </Pressable>
+        {images.map((imageUrl, index) => {
+          const dims = imageDimensions[index];
+          const isLoaded = loadedImages.has(index);
+          
+          // Calculate height based on aspect ratio
+          let imageHeight = COLUMN_WIDTH;
+          if (dims) {
+            const { aspectRatio } = dims;
+            
+            // Wide images span full width
+            if (aspectRatio > 1.5) {
+              const fullWidth = SCREEN_WIDTH - GALLERY_PADDING * 2;
+              imageHeight = fullWidth / aspectRatio;
+            } else {
+              // All other images use column width
+              imageHeight = COLUMN_WIDTH / aspectRatio;
+            }
+          }
+          
+          // Determine if image should be full width
+          const isFullWidth = dims && dims.aspectRatio > 1.5;
+          const imageWidth = isFullWidth ? SCREEN_WIDTH - GALLERY_PADDING * 2 : COLUMN_WIDTH;
+          
+          return (
+            <View
+              key={`image-${index}`}
+              ref={(ref) => { imageRefs.current[index] = ref; }}
+              style={[
+                styles.imageContainer,
+                { 
+                  width: imageWidth,
+                  height: imageHeight,
+                  marginBottom: IMAGE_SPACING,
+                },
+              ]}
+            >
+              <Pressable
+                onPress={() => handleImagePress(index)}
+                style={styles.imagePressable}
+              >
+                {!isLoaded && (
+                  <View style={styles.skeletonContainer}>
+                    <SkeletonLoader
+                      width={imageWidth}
+                      height={imageHeight}
+                      borderRadius={12}
+                      variant="wave"
+                    />
+                  </View>
+                )}
+                {imageUrl && (
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.image}
+                    resizeMode="cover"
+                    onLoad={() => handleImageLoad(index)}
+                  />
+                )}
+                
+                {/* Image counter badge */}
+                <View style={styles.imageCounterBadge}>
+                  <Text style={styles.imageCounterText}>
+                    {index + 1}
+                  </Text>
                 </View>
-              );
-            })}
-          </View>
-        ))}
+              </Pressable>
+            </View>
+          );
+        })}
         
         {/* Bottom spacing */}
         <View style={styles.bottomSpacer} />
@@ -383,21 +323,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: GALLERY_PADDING,
   },
-  row: {
-    flexDirection: 'row',
-    gap: IMAGE_SPACING,
-    marginBottom: IMAGE_SPACING,
-  },
   imageContainer: {
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: colors.cardDark,
-  },
-  imageContainerFullWidth: {
-    width: SCREEN_WIDTH - GALLERY_PADDING * 2,
-  },
-  imageContainerHalfWidth: {
-    width: COLUMN_WIDTH,
   },
   imagePressable: {
     width: '100%',

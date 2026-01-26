@@ -292,7 +292,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   const handleGalleryImagePress = (index: number) => {
     console.log('Gallery image pressed at index:', index);
-    setShowImageGallery(false);
+    // Don't close the gallery - just open FullScreenImage on top
     setFullScreenImageIndex(index);
     setShowFullScreenImage(true);
   };
@@ -300,6 +300,12 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const handleCloseImageGallery = () => {
     console.log('Closing image gallery');
     setShowImageGallery(false);
+  };
+
+  const handleCloseFullScreenImage = () => {
+    console.log('Closing full screen image - returning to gallery');
+    setShowFullScreenImage(false);
+    // Gallery remains open
   };
 
   const handleTextPress = () => {
@@ -607,14 +613,14 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         />
       )}
 
-      {/* Full Screen Image Component - Pass original images array, not lazy loaded */}
+      {/* Full Screen Image Component - Opens on top of gallery */}
       {note.images && note.images.length > 0 && (
         <FullScreenImage
           visible={showFullScreenImage}
           images={note.images}
           imageIds={note.imageIds}
           initialIndex={fullScreenImageIndex}
-          onClose={() => setShowFullScreenImage(false)}
+          onClose={handleCloseFullScreenImage}
         />
       )}
     </Animated.View>
