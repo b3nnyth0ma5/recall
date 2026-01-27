@@ -443,7 +443,8 @@ export default function CategoryViewerScreen() {
         matchingCheckIntervalRef.current = null;
       }
     };
-  }, [id, loadCategoryAndRecalls]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

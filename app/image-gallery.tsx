@@ -63,28 +63,34 @@ export default function ImageGalleryScreen() {
   }, [params.initialIndex]);
   
   const [optimizedUrls, setOptimizedUrls] = useState<string[]>([]);
+  const [imageLoadErrors, setImageLoadErrors] = useState<{ [key: number]: boolean }>({});
 
   // Generate optimized URLs immediately
   useEffect(() => {
     if (images.length > 0) {
       console.log('[ImageGalleryScreen] Generating optimized URLs for', images.length, 'images');
+      console.log('[ImageGalleryScreen] Sample image URL:', images[0]);
       
       // Generate optimized URLs for all images
       const optimized = images.map((imageUrl: string) => {
         if (!imageUrl) {
+          console.log('[ImageGalleryScreen] Empty image URL found');
           return '';
         }
         
-        return getOptimizedCloudflareUrl(imageUrl, {
+        const optimizedUrl = getOptimizedCloudflareUrl(imageUrl, {
           width: Math.round(SCREEN_WIDTH * 0.8),
           quality: 85,
           fit: 'cover',
           format: 'webp',
         });
+        
+        console.log('[ImageGalleryScreen] Optimized URL:', optimizedUrl);
+        return optimizedUrl;
       });
       
       setOptimizedUrls(optimized);
-      console.log('[ImageGalleryScreen] Setup complete');
+      console.log('[ImageGalleryScreen] Setup complete with', optimized.length, 'URLs');
     }
   }, [images]);
 
@@ -124,7 +130,10 @@ export default function ImageGalleryScreen() {
 
     // Define layout patterns (inspired by the attached images)
     // Pattern repeats every 6 images for consistency
-    const patterns = [
+    const patterns: {
+      width: number;
+      aspectRatio: number;
+    }[] = [
       // Row 1: Large + Small
       { width: 0.66, aspectRatio: 1.2 },  // Large left
       { width: 0.34, aspectRatio: 1.2 },  // Small right
@@ -168,8 +177,9 @@ export default function ImageGalleryScreen() {
 
   // Group items into rows based on width patterns
   const rows = useMemo(() => {
-    const result: (typeof gridItems[0])[][] = [];
-    let currentRow: (typeof gridItems[0])[] = [];
+    type GridItem = typeof gridItems[0];
+    const result: GridItem[][] = [];
+    let currentRow: GridItem[] = [];
     let currentRowWidth = 0;
     const maxRowWidth = SCREEN_WIDTH - (GALLERY_PADDING * 2);
 
@@ -216,8 +226,7 @@ export default function ImageGalleryScreen() {
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <IconSymbol 
-                ios_icon_name="chevron.left" 
-                android_material_icon_name="arrow-back" 
+                name="chevron.left" 
                 size={24} 
                 color={colors.text} 
               />
@@ -236,6 +245,7 @@ export default function ImageGalleryScreen() {
           <View key={`row-${rowIndex}`} style={styles.row}>
             {row.map((item) => {
               const imageUrl = optimizedUrls[item.index];
+              const hasError = imageLoadErrors[item.index];
               
               return (
                 <Pressable
@@ -249,11 +259,28 @@ export default function ImageGalleryScreen() {
                     },
                   ]}
                 >
-                  <Image
-                    source={{ uri: imageUrl }}
-                    style={styles.image}
-                    resizeMode="cover"
-                  />
+                  {imageUrl && !hasError ? (
+                    <Image
+                      source={{ uri: imageUrl }}
+                      style={styles.image}
+                      resizeMode="cover"
+                      onError={(error) => {
+                        console.error('[ImageGalleryScreen] Image load error for index', item.index, ':', error.nativeEvent.error);
+                        setImageLoadErrors(prev => ({ ...prev, [item.index]: true }));
+                      }}
+                      onLoad={() => {
+                        console.log('[ImageGalleryScreen] Image loaded successfully for index', item.index);
+                      }}
+                    />
+                  ) : (
+                    <View style={styles.errorPlaceholder}>
+                      <IconSymbol 
+                        name="photo" 
+                        size={32} 
+                        color={colors.textTertiary} 
+                      />
+                    </View>
+                  )}
                 </Pressable>
               );
             })}
@@ -298,6 +325,13 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  errorPlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.cardDark,
   },
   bottomSpacer: {
     height: 40,

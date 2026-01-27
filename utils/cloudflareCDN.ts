@@ -102,57 +102,71 @@ export function getOptimizedCloudflareUrl(
   }
 ): string {
   if (!options || !cdnUrl) {
+    console.log('[CloudflareCDN] No options or URL provided, returning original:', cdnUrl);
     return cdnUrl;
   }
 
   try {
+    console.log('[CloudflareCDN] Original URL:', cdnUrl);
+    console.log('[CloudflareCDN] Options:', options);
+    
     // Cloudflare Images uses a specific URL format for transformations
     // Format: https://imagedelivery.net/<account-hash>/<image-id>/<variant-name>
-    // For custom transformations, we can use the flexible variant with parameters
+    // For custom transformations, we use the flexible variant with parameters
+    
+    // Check if this is a Cloudflare Images URL
+    if (!cdnUrl.includes('imagedelivery.net')) {
+      console.log('[CloudflareCDN] Not a Cloudflare Images URL, returning original');
+      return cdnUrl;
+    }
     
     const url = new URL(cdnUrl);
     const pathParts = url.pathname.split('/').filter(part => part.length > 0);
     
-    // Build transformation parameters
-    const params: string[] = [];
+    console.log('[CloudflareCDN] Path parts:', pathParts);
+    
+    // Cloudflare Images URL structure: /<account-hash>/<image-id>/<variant>
+    // We need at least 2 parts (account-hash and image-id)
+    if (pathParts.length < 2) {
+      console.log('[CloudflareCDN] Invalid Cloudflare Images URL structure, returning original');
+      return cdnUrl;
+    }
+    
+    // Build transformation variant name
+    // Format: w=<width>,h=<height>,q=<quality>,f=<format>,fit=<fit>
+    const variantParts: string[] = [];
     
     if (options.width) {
-      params.push(`width=${options.width}`);
+      variantParts.push(`w=${options.width}`);
     }
     if (options.height) {
-      params.push(`height=${options.height}`);
+      variantParts.push(`h=${options.height}`);
     }
     if (options.quality) {
-      params.push(`quality=${options.quality}`);
+      variantParts.push(`q=${options.quality}`);
     }
     if (options.format) {
-      params.push(`format=${options.format}`);
+      variantParts.push(`f=${options.format}`);
     }
     if (options.fit) {
-      params.push(`fit=${options.fit}`);
+      variantParts.push(`fit=${options.fit}`);
     }
 
     // If we have transformations, create a custom variant URL
-    if (params.length > 0) {
-      // Cloudflare Images flexible variant format
-      // Replace the last segment (variant) with our custom parameters
-      const transformString = params.join(',');
+    if (variantParts.length > 0) {
+      const variantName = variantParts.join(',');
       
-      // Check if URL already has a variant (last segment)
-      if (pathParts.length >= 3) {
-        // Replace last segment with transformation string
-        pathParts[pathParts.length - 1] = transformString;
-      } else {
-        // Append transformation string
-        pathParts.push(transformString);
-      }
+      // Build new URL: /<account-hash>/<image-id>/<variant>
+      const accountHash = pathParts[0];
+      const imageId = pathParts[1];
       
-      url.pathname = '/' + pathParts.join('/');
+      const optimizedUrl = `${url.protocol}//${url.host}/${accountHash}/${imageId}/${variantName}`;
       
-      console.log('[CloudflareCDN] Generated optimized URL:', url.toString());
-      return url.toString();
+      console.log('[CloudflareCDN] Generated optimized URL:', optimizedUrl);
+      return optimizedUrl;
     }
 
+    console.log('[CloudflareCDN] No transformations applied, returning original');
     return cdnUrl;
   } catch (error) {
     console.error('[CloudflareCDN] Error generating optimized URL:', error);

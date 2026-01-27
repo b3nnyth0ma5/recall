@@ -154,7 +154,8 @@ export function FullScreenImage({
         });
       }, 100);
     }
-  }, [visible, initialIndex, images, imageIds, translateY, contextY, scale, savedScale, translateX, translateYZoom, savedTranslateX, savedTranslateY]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, initialIndex, images, imageIds]);
 
   // Reset zoom when changing images
   useEffect(() => {
@@ -165,7 +166,8 @@ export function FullScreenImage({
     translateYZoom.value = withSpring(0);
     savedTranslateX.value = 0;
     savedTranslateY.value = 0;
-  }, [currentImageIndex, scale, savedScale, translateX, translateYZoom, savedTranslateX, savedTranslateY]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentImageIndex]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
@@ -512,8 +514,7 @@ export function FullScreenImage({
               >
                 <View style={styles.closeButtonCircle}>
                   <IconSymbol 
-                    ios_icon_name="xmark" 
-                    android_material_icon_name="close" 
+                    name="xmark" 
                     size={24} 
                     color="#FFFFFF" 
                   />
@@ -589,8 +590,7 @@ export function FullScreenImage({
                     />
                   ) : (
                     <IconSymbol 
-                      ios_icon_name="paperplane.fill" 
-                      android_material_icon_name="send" 
+                      name="send" 
                       size={24} 
                       color="#FFFFFF" 
                     />
@@ -665,8 +665,7 @@ export function FullScreenImage({
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <IconSymbol 
-                    ios_icon_name="xmark" 
-                    android_material_icon_name="close" 
+                    name="close" 
                     size={24} 
                     color={colors.text} 
                   />

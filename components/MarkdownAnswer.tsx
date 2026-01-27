@@ -3,7 +3,6 @@ import React, { useMemo } from 'react';
 import { StyleSheet, View, Text, Pressable } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { colors } from '@/styles/commonStyles';
-import { IconSymbol } from './IconSymbol';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 
@@ -23,10 +22,10 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
   recallReferences = [],
   onRecallPress 
 }) => {
-  // Parse the content to identify source references and add hyperlink icons
+  // Parse the content to identify source references and convert them to hyperlinks
   const processedContent = useMemo(() => {
     if (!recallReferences || recallReferences.length === 0) {
-      return { text: content, links: [] };
+      return { text: content, links: [] as { sourceNum: number; recallId: string; imageIndex?: number }[] };
     }
     
     let processed = content;
@@ -65,24 +64,22 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
         const link = links.find(l => l.sourceNum === sourceNum);
         
         if (link && onRecallPress) {
+          const sourceText = `SOURCE_${sourceNum}`;
+          
           return (
             <Pressable
               key={`link-${index}`}
               onPress={() => {
-                console.log('[MarkdownAnswer] Link icon pressed for recall:', link.recallId);
+                console.log('[MarkdownAnswer] Source link pressed for recall:', link.recallId);
                 if (Platform.OS !== 'web') {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 }
                 onRecallPress(link.recallId, link.imageIndex);
               }}
-              style={styles.linkIcon}
+              style={styles.linkButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol 
-                name="link" 
-                size={14} 
-                color={colors.primary} 
-              />
+              <Text style={styles.linkText}>{sourceText}</Text>
             </Pressable>
           );
         }
@@ -118,11 +115,17 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
   },
-  linkIcon: {
+  linkButton: {
     marginLeft: 4,
     marginRight: 2,
     paddingHorizontal: 4,
     paddingVertical: 2,
+  },
+  linkText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });
 
