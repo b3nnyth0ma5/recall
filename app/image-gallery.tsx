@@ -85,28 +85,42 @@ export default function ImageGalleryScreen() {
   useEffect(() => {
     if (images.length > 0) {
       console.log('[ImageGalleryScreen] Generating optimized URLs for', images.length, 'images');
-      console.log('[ImageGalleryScreen] Sample image URL:', images[0]);
+      console.log('[ImageGalleryScreen] First 3 image URLs:', images.slice(0, 3));
       
       // Generate optimized URLs for all images
-      const optimized = images.map((imageUrl: string) => {
+      const optimized = images.map((imageUrl: string, index: number) => {
         if (!imageUrl || imageUrl.trim().length === 0) {
-          console.log('[ImageGalleryScreen] Skipping empty image URL');
+          console.log('[ImageGalleryScreen] Skipping empty image URL at index', index);
           return '';
         }
         
-        const optimizedUrl = getOptimizedCloudflareUrl(imageUrl, {
-          width: Math.round(SCREEN_WIDTH * 0.8),
-          quality: 85,
-          fit: 'cover',
-          format: 'webp',
-        });
-        
-        console.log('[ImageGalleryScreen] Optimized URL:', optimizedUrl);
-        return optimizedUrl;
+        // Try to optimize, but fallback to original if optimization fails
+        try {
+          const optimizedUrl = getOptimizedCloudflareUrl(imageUrl, {
+            width: Math.round(SCREEN_WIDTH * 0.8),
+            quality: 85,
+            fit: 'cover',
+            format: 'webp',
+          });
+          
+          // If optimization returns the same URL or empty, use original
+          const finalUrl = optimizedUrl && optimizedUrl.trim().length > 0 ? optimizedUrl : imageUrl;
+          
+          if (index < 3) {
+            console.log(`[ImageGalleryScreen] Image ${index} - Original:`, imageUrl.substring(0, 80));
+            console.log(`[ImageGalleryScreen] Image ${index} - Optimized:`, finalUrl.substring(0, 80));
+          }
+          
+          return finalUrl;
+        } catch (error) {
+          console.error(`[ImageGalleryScreen] Error optimizing image ${index}:`, error);
+          return imageUrl; // Fallback to original
+        }
       });
       
       setOptimizedUrls(optimized);
       console.log('[ImageGalleryScreen] Setup complete with', optimized.length, 'URLs');
+      console.log('[ImageGalleryScreen] Non-empty URLs:', optimized.filter(url => url && url.trim().length > 0).length);
     }
   }, [images]);
 
@@ -246,7 +260,8 @@ export default function ImageGalleryScreen() {
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <IconSymbol 
-                name="chevron.left" 
+                ios_icon_name="chevron.left"
+                android_material_icon_name="arrow-back"
                 size={24} 
                 color={colors.text} 
               />
@@ -265,7 +280,11 @@ export default function ImageGalleryScreen() {
           <View key={`row-${rowIndex}`} style={styles.row}>
             {row.map((item) => {
               const imageUrl = optimizedUrls[item.index];
+              const originalUrl = images[item.index];
               const hasError = imageLoadErrors[item.index];
+              
+              // Use original URL as fallback if optimized URL is empty
+              const displayUrl = imageUrl && imageUrl.trim().length > 0 ? imageUrl : originalUrl;
               
               return (
                 <Pressable
@@ -279,13 +298,15 @@ export default function ImageGalleryScreen() {
                     },
                   ]}
                 >
-                  {imageUrl && !hasError ? (
+                  {displayUrl && !hasError ? (
                     <Image
-                      source={{ uri: imageUrl }}
+                      source={{ uri: displayUrl }}
                       style={styles.image}
                       resizeMode="cover"
                       onError={(error) => {
-                        console.error('[ImageGalleryScreen] Image load error for index', item.index, ':', error.nativeEvent.error);
+                        console.error('[ImageGalleryScreen] Image load error for index', item.index);
+                        console.error('[ImageGalleryScreen] Failed URL:', displayUrl);
+                        console.error('[ImageGalleryScreen] Error:', error.nativeEvent.error);
                         setImageLoadErrors(prev => ({ ...prev, [item.index]: true }));
                       }}
                       onLoad={() => {
@@ -295,7 +316,8 @@ export default function ImageGalleryScreen() {
                   ) : (
                     <View style={styles.errorPlaceholder}>
                       <IconSymbol 
-                        name="photo" 
+                        ios_icon_name="photo"
+                        android_material_icon_name="image"
                         size={32} 
                         color={colors.textTertiary} 
                       />

@@ -53,12 +53,12 @@ const DISMISS_THRESHOLD = 100;
  * Standalone full-screen image viewer component with integrated OCR functionality and pinch-to-zoom
  * 
  * Features:
- * - Full-screen image carousel with smooth scrolling
+ * - Full-screen image carousel with smooth horizontal scrolling (FIXED)
  * - Pinch-to-zoom with pan gestures (FIXED)
  * - OCR button always visible and clickable on top of images
  * - Share image using native share functionality (platform-agnostic icon)
  * - Swipe down to dismiss with improved gesture handling
- * - Swipe left/right to navigate between images
+ * - Swipe left/right to navigate between images (FIXED)
  * - Image counter and pagination dots
  * - OCR modal for viewing image analysis
  * - Opens on top of ImageGallery with proper z-index
@@ -341,73 +341,66 @@ export function FullScreenImage({
       }
     });
 
-  // FIXED: Pan gesture for moving zoomed image - always enabled, but only moves when zoomed
+  // FIXED: Pan gesture for moving zoomed image - only active when zoomed
   const panGestureZoom = Gesture.Pan()
+    .enabled(scale.value > 1)
     .onStart(() => {
       console.log('[FullScreenImage] Pan zoom started, current scale:', scale.value);
     })
     .onUpdate((event) => {
-      // Only allow panning when zoomed in
-      if (scale.value > 1) {
-        translateX.value = savedTranslateX.value + event.translationX;
-        translateYZoom.value = savedTranslateY.value + event.translationY;
-      }
+      translateX.value = savedTranslateX.value + event.translationX;
+      translateYZoom.value = savedTranslateY.value + event.translationY;
     })
     .onEnd(() => {
       console.log('[FullScreenImage] Pan zoom ended');
-      if (scale.value > 1) {
-        savedTranslateX.value = translateX.value;
-        savedTranslateY.value = translateYZoom.value;
-      }
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateYZoom.value;
     });
 
-  // Pan gesture for swipe-to-dismiss (only when not zoomed)
+  // Pan gesture for swipe-to-dismiss (only when not zoomed and vertical swipe)
   const panGestureDismiss = Gesture.Pan()
+    .enabled(scale.value <= 1)
+    .activeOffsetY([-10, 10]) // Only activate on vertical movement
+    .failOffsetX([-20, 20]) // Fail if horizontal movement is too large
     .onStart(() => {
       contextY.value = translateY.value;
       console.log('[FullScreenImage] Dismiss gesture started');
     })
     .onUpdate((event) => {
-      // Only allow dismiss gesture when not zoomed
-      if (scale.value <= 1) {
-        // Only allow downward swipes
-        if (event.translationY > 0) {
-          translateY.value = contextY.value + event.translationY;
-        } else {
-          // Allow slight upward movement for natural feel
-          translateY.value = contextY.value + event.translationY * 0.3;
-        }
+      // Only allow downward swipes
+      if (event.translationY > 0) {
+        translateY.value = contextY.value + event.translationY;
+      } else {
+        // Allow slight upward movement for natural feel
+        translateY.value = contextY.value + event.translationY * 0.3;
       }
     })
     .onEnd((event) => {
-      // Only dismiss if not zoomed
-      if (scale.value <= 1) {
-        const shouldDismiss = translateY.value > DISMISS_THRESHOLD;
-        
-        console.log('[FullScreenImage] Dismiss gesture ended, shouldDismiss:', shouldDismiss);
-        
-        if (shouldDismiss) {
-          // Animate out smoothly
-          translateY.value = withTiming(
-            SCREEN_HEIGHT,
-            { duration: 200 },
-            (finished) => {
-              if (finished) {
-                // Reset immediately before closing to prevent flicker
-                translateY.value = 0;
-                contextY.value = 0;
-                runOnJS(handleClose)();
-              }
+      const shouldDismiss = translateY.value > DISMISS_THRESHOLD;
+      
+      console.log('[FullScreenImage] Dismiss gesture ended, shouldDismiss:', shouldDismiss);
+      
+      if (shouldDismiss) {
+        // Animate out smoothly
+        translateY.value = withTiming(
+          SCREEN_HEIGHT,
+          { duration: 200 },
+          (finished) => {
+            if (finished) {
+              // Reset immediately before closing to prevent flicker
+              translateY.value = 0;
+              contextY.value = 0;
+              runOnJS(handleClose)();
             }
-          );
-        } else {
-          // Spring back to original position
-          translateY.value = withSpring(0, {
-            damping: 25,
-            stiffness: 400,
-            mass: 0.8,
-          });
-        }
+          }
+        );
+      } else {
+        // Spring back to original position
+        translateY.value = withSpring(0, {
+          damping: 25,
+          stiffness: 400,
+          mass: 0.8,
+        });
       }
     });
 
@@ -434,11 +427,17 @@ export function FullScreenImage({
       }
     });
 
-  // FIXED: Proper gesture composition - Simultaneous pinch and pan for zoom
+  // FIXED: Proper gesture composition
+  // Combine all gestures: double tap, pinch-to-zoom, pan when zoomed, and swipe down to dismiss
   const zoomGesture = Gesture.Simultaneous(pinchGesture, panGestureZoom);
   
-  // Race between double tap and zoom gesture
-  const composedGesture = Gesture.Race(doubleTapGesture, zoomGesture);
+  // Create a gesture that handles both zoom and dismiss
+  // Priority: double tap > zoom gestures > dismiss gesture
+  const composedGesture = Gesture.Exclusive(
+    doubleTapGesture,
+    zoomGesture,
+    panGestureDismiss
+  );
 
   // Animated style for the image with zoom
   const animatedImageStyle = useAnimatedStyle(() => {
@@ -509,148 +508,155 @@ export function FullScreenImage({
           {/* Animated background */}
           <Animated.View style={[styles.background, animatedBackgroundStyle]} />
           
-          <GestureDetector gesture={panGestureDismiss}>
-            <Animated.View style={[styles.container, animatedContainerStyle]}>
-              {/* Close Button - Top Right */}
-              <Pressable
-                style={styles.closeButton}
-                onPress={handleClose}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <View style={styles.closeButtonCircle}>
+          <Animated.View style={[styles.container, animatedContainerStyle]}>
+            {/* Close Button - Top Right */}
+            <Pressable
+              style={styles.closeButton}
+              onPress={handleClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <View style={styles.closeButtonCircle}>
+                <IconSymbol 
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24} 
+                  color="#FFFFFF" 
+                />
+              </View>
+            </Pressable>
+
+            {/* Image Carousel with Zoom - FIXED: Horizontal scrolling enabled */}
+            <ScrollView
+              ref={scrollViewRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              snapToInterval={SCREEN_WIDTH}
+              decelerationRate="fast"
+              style={styles.scrollView}
+              scrollEnabled={true}
+              contentContainerStyle={styles.scrollViewContent}
+              directionalLockEnabled={true}
+            >
+              {displayImages.map((imageUrl, index) => (
+                <View key={`fullscreen-${index}`} style={styles.imageWrapper}>
+                  <GestureDetector gesture={composedGesture}>
+                    <Animated.View style={[styles.imageContainer, animatedImageStyle]}>
+                      {imageUrl && imageUrl.trim().length > 0 ? (
+                        <React.Fragment>
+                          {!imageLoadStates[index] && (
+                            <View style={styles.skeletonContainer}>
+                              <SkeletonLoader
+                                width={SCREEN_WIDTH}
+                                height={SCREEN_HEIGHT}
+                                borderRadius={0}
+                                variant="wave"
+                              />
+                            </View>
+                          )}
+                          <Image
+                            source={{ uri: imageUrl }}
+                            style={styles.image}
+                            resizeMode="contain"
+                            onLoad={() => handleImageLoad(index)}
+                            onError={(error) => {
+                              console.error('[FullScreenImage] Image load error for index', index);
+                              console.error('[FullScreenImage] Failed URL:', imageUrl);
+                              console.error('[FullScreenImage] Error:', error.nativeEvent.error);
+                            }}
+                          />
+                        </React.Fragment>
+                      ) : (
+                        <View style={styles.skeletonContainer}>
+                          <SkeletonLoader
+                            width={SCREEN_WIDTH}
+                            height={SCREEN_HEIGHT}
+                            borderRadius={0}
+                            variant="wave"
+                          />
+                          <Text style={styles.errorText}>Image not available</Text>
+                        </View>
+                      )}
+                    </Animated.View>
+                  </GestureDetector>
+                </View>
+              ))}
+            </ScrollView>
+
+            {/* Share Image Button - Bottom Left - Platform-agnostic icon */}
+            <Pressable
+              style={styles.shareButton}
+              onPress={handleShareImage}
+              disabled={isSharing}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+            >
+              <View style={styles.shareButtonContent}>
+                {isSharing ? (
+                  <SkeletonLoader
+                    width={24}
+                    height={24}
+                    borderRadius={12}
+                    variant="pulse"
+                  />
+                ) : (
                   <IconSymbol 
-                    name="xmark" 
+                    ios_icon_name="square.and.arrow.up"
+                    android_material_icon_name="share"
                     size={24} 
                     color="#FFFFFF" 
                   />
-                </View>
-              </Pressable>
-
-              {/* Image Carousel with Zoom - FIXED: Highest z-index for touch */}
-              <ScrollView
-                ref={scrollViewRef}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                onScroll={handleScroll}
-                scrollEventThrottle={16}
-                snapToInterval={SCREEN_WIDTH}
-                decelerationRate="fast"
-                style={styles.scrollView}
-                scrollEnabled={scale.value <= 1}
-                contentContainerStyle={styles.scrollViewContent}
-              >
-                {displayImages.map((imageUrl, index) => (
-                  <View key={`fullscreen-${index}`} style={styles.imageWrapper}>
-                    <GestureDetector gesture={composedGesture}>
-                      <Animated.View style={[styles.imageContainer, animatedImageStyle]}>
-                        {imageUrl ? (
-                          <React.Fragment>
-                            {!imageLoadStates[index] && (
-                              <View style={styles.skeletonContainer}>
-                                <SkeletonLoader
-                                  width={SCREEN_WIDTH}
-                                  height={SCREEN_HEIGHT}
-                                  borderRadius={0}
-                                  variant="wave"
-                                />
-                              </View>
-                            )}
-                            <Image
-                              source={{ uri: imageUrl }}
-                              style={styles.image}
-                              resizeMode="contain"
-                              onLoad={() => handleImageLoad(index)}
-                            />
-                          </React.Fragment>
-                        ) : (
-                          <View style={styles.skeletonContainer}>
-                            <SkeletonLoader
-                              width={SCREEN_WIDTH}
-                              height={SCREEN_HEIGHT}
-                              borderRadius={0}
-                              variant="wave"
-                            />
-                          </View>
-                        )}
-                      </Animated.View>
-                    </GestureDetector>
-                  </View>
-                ))}
-              </ScrollView>
-
-              {/* Share Image Button - Bottom Left - Platform-agnostic icon */}
-              <Pressable
-                style={styles.shareButton}
-                onPress={handleShareImage}
-                disabled={isSharing}
-                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-              >
-                <View style={styles.shareButtonContent}>
-                  {isSharing ? (
-                    <SkeletonLoader
-                      width={24}
-                      height={24}
-                      borderRadius={12}
-                      variant="pulse"
-                    />
-                  ) : (
-                    <IconSymbol 
-                      name="square.and.arrow.up" 
-                      size={24} 
-                      color="#FFFFFF" 
-                    />
-                  )}
-                </View>
-              </Pressable>
-
-              {/* OCR Button - Bottom Right */}
-              <Pressable
-                style={styles.ocrButton}
-                onPress={handleOCRButtonPress}
-                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-              >
-                <Image
-                  source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-                  style={styles.ocrButtonIcon}
-                  resizeMode="contain"
-                />
-              </Pressable>
-
-              {/* Pagination Dots - Bottom Center */}
-              {displayImages.length > 1 && (
-                <View style={styles.paginationContainer}>
-                  {displayImages.map((_, index) => (
-                    <View
-                      key={`dot-${index}`}
-                      style={[
-                        styles.paginationDot,
-                        currentImageIndex === index && styles.paginationDotActive,
-                      ]}
-                    />
-                  ))}
-                </View>
-              )}
-
-              {/* Counter Badge - Top Left */}
-              {displayImages.length > 1 && (
-                <View style={styles.counterBadge}>
-                  <Text style={styles.counterText}>
-                    {currentImageIndex + 1}
-                  </Text>
-                  <Text style={styles.counterSeparator}>/</Text>
-                  <Text style={styles.counterText}>
-                    {displayImages.length}
-                  </Text>
-                </View>
-              )}
-
-              {/* Swipe Down Hint - Top Center */}
-              <View style={styles.swipeHintContainer}>
-                <View style={styles.swipeHintBar} />
+                )}
               </View>
-            </Animated.View>
-          </GestureDetector>
+            </Pressable>
+
+            {/* OCR Button - Bottom Right */}
+            <Pressable
+              style={styles.ocrButton}
+              onPress={handleOCRButtonPress}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+            >
+              <Image
+                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+                style={styles.ocrButtonIcon}
+                resizeMode="contain"
+              />
+            </Pressable>
+
+            {/* Pagination Dots - Bottom Center */}
+            {displayImages.length > 1 && (
+              <View style={styles.paginationContainer}>
+                {displayImages.map((_, index) => (
+                  <View
+                    key={`dot-${index}`}
+                    style={[
+                      styles.paginationDot,
+                      currentImageIndex === index && styles.paginationDotActive,
+                    ]}
+                  />
+                ))}
+              </View>
+            )}
+
+            {/* Counter Badge - Top Left */}
+            {displayImages.length > 1 && (
+              <View style={styles.counterBadge}>
+                <Text style={styles.counterText}>
+                  {currentImageIndex + 1}
+                </Text>
+                <Text style={styles.counterSeparator}>/</Text>
+                <Text style={styles.counterText}>
+                  {displayImages.length}
+                </Text>
+              </View>
+            )}
+
+            {/* Swipe Down Hint - Top Center */}
+            <View style={styles.swipeHintContainer}>
+              <View style={styles.swipeHintBar} />
+            </View>
+          </Animated.View>
         </View>
 
         {/* OCR Modal */}
@@ -671,7 +677,8 @@ export function FullScreenImage({
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <IconSymbol 
-                    name="xmark" 
+                    ios_icon_name="xmark"
+                    android_material_icon_name="close"
                     size={24} 
                     color={colors.text} 
                   />
@@ -767,6 +774,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     pointerEvents: 'none',
+  },
+  errorText: {
+    position: 'absolute',
+    color: colors.textSecondary,
+    fontSize: 16,
+    marginTop: 20,
   },
   shareButton: {
     position: 'absolute',
