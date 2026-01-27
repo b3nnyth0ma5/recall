@@ -29,6 +29,7 @@ const IMAGE_SPACING = 4;
  * - Clicking an image opens FullScreenImage on a different route
  * - Back button returns to previous screen
  * - Optimized Cloudflare CDN images
+ * - Filters out empty/undefined images
  * 
  * Layout Pattern:
  * - Dynamic grid with varying image sizes
@@ -39,10 +40,15 @@ export default function ImageGalleryScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   
-  // Parse images from params (passed as JSON string)
+  // Parse images from params (passed as JSON string) and filter out empty ones
   const images = useMemo(() => {
     try {
-      return params.images ? JSON.parse(params.images as string) : [];
+      const parsedImages = params.images ? JSON.parse(params.images as string) : [];
+      // Filter out empty, null, or undefined images
+      const filteredImages = parsedImages.filter((img: string) => img && img.trim().length > 0);
+      console.log('[ImageGalleryScreen] Parsed images:', parsedImages.length);
+      console.log('[ImageGalleryScreen] Filtered images:', filteredImages.length);
+      return filteredImages;
     } catch (error) {
       console.error('[ImageGalleryScreen] Error parsing images:', error);
       return [];
@@ -51,12 +57,22 @@ export default function ImageGalleryScreen() {
   
   const imageIds = useMemo(() => {
     try {
-      return params.imageIds ? JSON.parse(params.imageIds as string) : undefined;
+      if (!params.imageIds) {
+        return undefined;
+      }
+      const parsedIds = JSON.parse(params.imageIds as string);
+      // Filter to match the filtered images array length
+      const filteredIds = parsedIds.filter((_: string, index: number) => {
+        const originalImages = params.images ? JSON.parse(params.images as string) : [];
+        return originalImages[index] && originalImages[index].trim().length > 0;
+      });
+      console.log('[ImageGalleryScreen] Filtered imageIds:', filteredIds.length);
+      return filteredIds;
     } catch (error) {
       console.error('[ImageGalleryScreen] Error parsing imageIds:', error);
       return undefined;
     }
-  }, [params.imageIds]);
+  }, [params.imageIds, params.images]);
   
   const initialIndex = useMemo(() => {
     return params.initialIndex ? parseInt(params.initialIndex as string) : 0;
@@ -73,8 +89,8 @@ export default function ImageGalleryScreen() {
       
       // Generate optimized URLs for all images
       const optimized = images.map((imageUrl: string) => {
-        if (!imageUrl) {
-          console.log('[ImageGalleryScreen] Empty image URL found');
+        if (!imageUrl || imageUrl.trim().length === 0) {
+          console.log('[ImageGalleryScreen] Skipping empty image URL');
           return '';
         }
         

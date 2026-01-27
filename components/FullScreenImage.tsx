@@ -56,8 +56,9 @@ const DISMISS_THRESHOLD = 100;
  * - Full-screen image carousel with smooth scrolling
  * - Pinch-to-zoom with pan gestures (FIXED)
  * - OCR button always visible and clickable on top of images
- * - Share image using native share functionality
+ * - Share image using native share functionality (platform-agnostic icon)
  * - Swipe down to dismiss with improved gesture handling
+ * - Swipe left/right to navigate between images
  * - Image counter and pagination dots
  * - OCR modal for viewing image analysis
  * - Opens on top of ImageGallery with proper z-index
@@ -91,14 +92,14 @@ export function FullScreenImage({
   const translateYZoom = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
-  const focalX = useSharedValue(0);
-  const focalY = useSharedValue(0);
 
   // Load all images when modal opens
   useEffect(() => {
     if (visible) {
+      console.log('[FullScreenImage] Modal opened, initializing...');
       setCurrentImageIndex(initialIndex);
       setIsClosing(false);
+      
       // Reset animation values immediately
       translateY.value = 0;
       contextY.value = 0;
@@ -112,13 +113,15 @@ export function FullScreenImage({
       // Load all images from imageIds if available
       const loadAllImages = async () => {
         if (imageIds && imageIds.length > 0) {
-          console.log('[FullScreenImage] Loading all images from imageIds');
+          console.log('[FullScreenImage] Loading all images from imageIds, count:', imageIds.length);
           setIsLoadingImages(true);
           
           try {
             const imagePromises = imageIds.map(async (imageId, index) => {
               try {
+                console.log(`[FullScreenImage] Loading image ${index + 1}/${imageIds.length}, ID:`, imageId);
                 const imageUrl = await getImageDataUrl(imageId);
+                console.log(`[FullScreenImage] Image ${index + 1} loaded:`, imageUrl ? 'success' : 'failed');
                 return imageUrl || images[index] || '';
               } catch (error) {
                 console.error(`[FullScreenImage] Error loading image ${index}:`, error);
@@ -128,7 +131,7 @@ export function FullScreenImage({
             
             const allImages = await Promise.all(imagePromises);
             setLoadedImages(allImages);
-            console.log('[FullScreenImage] Successfully loaded all images');
+            console.log('[FullScreenImage] Successfully loaded all images, count:', allImages.length);
           } catch (error) {
             console.error('[FullScreenImage] Error loading images:', error);
             // Fallback to original images array
@@ -138,7 +141,7 @@ export function FullScreenImage({
           }
         } else {
           // No imageIds, use images array directly
-          console.log('[FullScreenImage] Using images array directly');
+          console.log('[FullScreenImage] Using images array directly, count:', images.length);
           setLoadedImages(images);
         }
       };
@@ -147,6 +150,7 @@ export function FullScreenImage({
       
       // Scroll to initial index after a short delay to ensure layout is ready
       setTimeout(() => {
+        console.log('[FullScreenImage] Scrolling to initial index:', initialIndex);
         scrollViewRef.current?.scrollTo({
           x: initialIndex * SCREEN_WIDTH,
           y: 0,
@@ -154,8 +158,7 @@ export function FullScreenImage({
         });
       }, 100);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, initialIndex, images, imageIds]);
+  }, [visible, initialIndex, images, imageIds, translateY, contextY, scale, savedScale, translateX, translateYZoom, savedTranslateX, savedTranslateY]);
 
   // Reset zoom when changing images
   useEffect(() => {
@@ -166,13 +169,13 @@ export function FullScreenImage({
     translateYZoom.value = withSpring(0);
     savedTranslateX.value = 0;
     savedTranslateY.value = 0;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentImageIndex]);
+  }, [currentImageIndex, scale, savedScale, translateX, translateYZoom, savedTranslateX, savedTranslateY]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / SCREEN_WIDTH);
     if (index !== currentImageIndex && index >= 0 && index < loadedImages.length) {
+      console.log('[FullScreenImage] Scrolled to image index:', index);
       setCurrentImageIndex(index);
     }
   };
@@ -300,6 +303,7 @@ export function FullScreenImage({
   };
 
   const handleImageLoad = (index: number) => {
+    console.log('[FullScreenImage] Image loaded at index:', index);
     setImageLoadStates(prev => ({ ...prev, [index]: true }));
   };
 
@@ -307,8 +311,6 @@ export function FullScreenImage({
   const pinchGesture = Gesture.Pinch()
     .onStart((event) => {
       console.log('[FullScreenImage] Pinch started, scale:', event.scale);
-      focalX.value = event.focalX;
-      focalY.value = event.focalY;
     })
     .onUpdate((event) => {
       const newScale = savedScale.value * event.scale;
@@ -363,6 +365,7 @@ export function FullScreenImage({
   const panGestureDismiss = Gesture.Pan()
     .onStart(() => {
       contextY.value = translateY.value;
+      console.log('[FullScreenImage] Dismiss gesture started');
     })
     .onUpdate((event) => {
       // Only allow dismiss gesture when not zoomed
@@ -380,6 +383,8 @@ export function FullScreenImage({
       // Only dismiss if not zoomed
       if (scale.value <= 1) {
         const shouldDismiss = translateY.value > DISMISS_THRESHOLD;
+        
+        console.log('[FullScreenImage] Dismiss gesture ended, shouldDismiss:', shouldDismiss);
         
         if (shouldDismiss) {
           // Animate out smoothly
@@ -539,7 +544,7 @@ export function FullScreenImage({
                     <GestureDetector gesture={composedGesture}>
                       <Animated.View style={[styles.imageContainer, animatedImageStyle]}>
                         {imageUrl ? (
-                          <>
+                          <React.Fragment>
                             {!imageLoadStates[index] && (
                               <View style={styles.skeletonContainer}>
                                 <SkeletonLoader
@@ -556,7 +561,7 @@ export function FullScreenImage({
                               resizeMode="contain"
                               onLoad={() => handleImageLoad(index)}
                             />
-                          </>
+                          </React.Fragment>
                         ) : (
                           <View style={styles.skeletonContainer}>
                             <SkeletonLoader
@@ -573,7 +578,7 @@ export function FullScreenImage({
                 ))}
               </ScrollView>
 
-              {/* Share Image Button - Bottom Left */}
+              {/* Share Image Button - Bottom Left - Platform-agnostic icon */}
               <Pressable
                 style={styles.shareButton}
                 onPress={handleShareImage}
@@ -590,7 +595,7 @@ export function FullScreenImage({
                     />
                   ) : (
                     <IconSymbol 
-                      name="send" 
+                      name="square.and.arrow.up" 
                       size={24} 
                       color="#FFFFFF" 
                     />
@@ -665,7 +670,7 @@ export function FullScreenImage({
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <IconSymbol 
-                    name="close" 
+                    name="xmark" 
                     size={24} 
                     color={colors.text} 
                   />
