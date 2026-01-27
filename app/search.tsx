@@ -21,6 +21,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
+import { MarkdownAnswer } from '@/components/MarkdownAnswer';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -54,14 +55,21 @@ export default function SearchScreen() {
   const searchInputRef = useRef<TextInput>(null);
   const hasAutoSearchedRef = useRef(false);
 
-  // Check if user should see search time
   const shouldShowSearchTime = user?.email === 'benny_thomas21@yahoo.co.in';
 
-  // Filter notes to only show recalls that were used for answer
   const filteredNotes = useMemo(() => {
-    console.log('[SearchScreen] Filtering notes - Total notes:', notes.length);
+    const hasUsedForAnswerFlag = notes.some(note => note.used_for_answer !== undefined);
+    
+    if (!hasUsedForAnswerFlag) {
+      return notes;
+    }
+    
     const filtered = notes.filter(note => note.used_for_answer === true);
-    console.log('[SearchScreen] Filtered notes (used_for_answer=true):', filtered.length);
+    
+    if (filtered.length === 0 && notes.length > 0) {
+      return notes;
+    }
+    
     return filtered;
   }, [notes]);
 
@@ -88,7 +96,6 @@ export default function SearchScreen() {
     };
   }, [loadSearchHistory]);
 
-  // Handle auto-search from CombinedSearchAdd with proper deduplication
   useEffect(() => {
     const queryParam = params.q;
     const autoSearchParam = params.autoSearch;
@@ -96,9 +103,6 @@ export default function SearchScreen() {
     if (queryParam && typeof queryParam === 'string' && autoSearchParam === 'true' && !hasAutoSearchedRef.current) {
       const decodedQuery = decodeURIComponent(queryParam);
       
-      console.log('[SearchScreen] Auto-search triggered with query:', decodedQuery);
-      
-      // Set the search query in the input
       setSearchQuery(decodedQuery);
       setShowHistory(false);
       setHasSearched(true);
@@ -106,20 +110,14 @@ export default function SearchScreen() {
       setIsSearching(true);
       setIsProgressExpanded(true);
       
-      // Mark that we've auto-searched to prevent duplicate searches
       hasAutoSearchedRef.current = true;
       
-      // Trigger the search programmatically
-      console.log('[SearchScreen] Executing search...');
       searchNotes(decodedQuery, true).finally(() => {
-        console.log('[SearchScreen] Search completed');
         setIsSearching(false);
       });
       
-      // Clear the autoSearch parameter to prevent re-triggering
       setTimeout(() => {
         try {
-          console.log('[SearchScreen] Clearing autoSearch param');
           router.setParams({ autoSearch: undefined });
         } catch (error) {
           console.error('[SearchScreen] Error clearing autoSearch param:', error);
@@ -128,24 +126,20 @@ export default function SearchScreen() {
     }
   }, [params.q, params.autoSearch, searchNotes, router]);
 
-  // Reset the auto-search flag when query changes
   useEffect(() => {
     if (!params.q) {
       hasAutoSearchedRef.current = false;
     }
   }, [params.q]);
 
-  // Show history when not searching and history is loaded
   useEffect(() => {
     if (!hasSearched && searchHistory.length > 0 && !isLoadingHistory) {
       setShowHistory(true);
     }
   }, [hasSearched, searchHistory, isLoadingHistory]);
 
-  // Collapse progress indicator when search completes
   useEffect(() => {
     if (searchStage === 'complete' && isSearching === false && hasSearched) {
-      // Collapse progress indicator after a short delay
       setTimeout(() => {
         setIsProgressExpanded(false);
       }, 500);
@@ -154,12 +148,10 @@ export default function SearchScreen() {
 
   const handleSearch = useCallback(() => {
     if (searchQuery.trim()) {
-      // Haptic feedback when search is clicked
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
       
-      console.log('[SearchScreen] Manual search triggered with query:', searchQuery);
       setShowHistory(false);
       setHasSearched(true);
       setIsAnswerExpanded(false);
@@ -167,10 +159,8 @@ export default function SearchScreen() {
       setIsProgressExpanded(true);
       
       searchNotes(searchQuery, true).finally(() => {
-        console.log('[SearchScreen] Manual search completed');
         setIsSearching(false);
         
-        // Reload search history after search completes
         setTimeout(() => {
           loadSearchHistory();
         }, 500);
@@ -179,7 +169,6 @@ export default function SearchScreen() {
   }, [searchQuery, searchNotes, loadSearchHistory]);
 
   const handleHistoryItemPress = useCallback((searchText: string) => {
-    console.log('[SearchScreen] Executing search from history:', searchText);
     setSearchQuery(searchText);
     setShowHistory(false);
     setHasSearched(true);
@@ -188,20 +177,100 @@ export default function SearchScreen() {
     setIsProgressExpanded(true);
     
     searchNotes(searchText, true).finally(() => {
-      console.log('[SearchScreen] History search completed');
       setIsSearching(false);
     });
   }, [searchNotes]);
 
-  const handleNotePress = useCallback((noteId: string) => {
+  const handleNotePress = useCallback((noteId: string, imageIndex?: number) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
     setTimeout(() => {
       try {
-        router.push(`/note-editor?id=${noteId}`);
+        const url = imageIndex !== undefined 
+          ? `/note-editor?id=${noteId}&scrollToImage=${imageIndex}`
+          : `/note-editor?id=${noteId}`;
+        
+        router.push(url);
       } catch (error) {
         console.error('[SearchScreen] Error navigating to note editor:', error);
       }
     }, 0);
   }, [router]);
+
+  const recallRefs = useRef<{ [key: string]: View | null }>({});
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  const handleRecallLinkPress = useCallback((recallId: string, imageIndex?: number) => {
+    console.log('[SearchScreen] Recall link pressed:', recallId, 'imageIndex:', imageIndex);
+    
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
+    const recallElement = recallRefs.current[recallId];
+    if (recallElement && scrollViewRef.current) {
+      console.log('[SearchScreen] Found recall element, measuring position...');
+      
+      setTimeout(() => {
+        recallElement.measureLayout(
+          scrollViewRef.current as any,
+          (x, y, width, height) => {
+            console.log('[SearchScreen] Recall position:', { x, y, width, height });
+            
+            if (scrollViewRef.current) {
+              // Scroll to ensure the TOP of the recall is visible
+              // Subtract more offset to ensure the entire recall header is visible
+              const scrollY = Math.max(0, y - 80);
+              console.log('[SearchScreen] Scrolling to y:', scrollY);
+              
+              scrollViewRef.current.scrollTo({
+                y: scrollY,
+                animated: true,
+              });
+            }
+          },
+          () => {
+            console.log('[SearchScreen] measureLayout failed, trying measure fallback');
+            recallElement.measure((fx, fy, width, height, px, py) => {
+              console.log('[SearchScreen] Recall absolute position:', { fx, fy, width, height, px, py });
+              
+              if (scrollViewRef.current) {
+                // Scroll to ensure the TOP of the recall is visible
+                const scrollY = Math.max(0, py - 80);
+                console.log('[SearchScreen] Scrolling to y (fallback):', scrollY);
+                
+                scrollViewRef.current.scrollTo({
+                  y: scrollY,
+                  animated: true,
+                });
+              }
+            });
+          }
+        );
+      }, 100);
+    } else {
+      console.log('[SearchScreen] Recall element not found in refs');
+    }
+  }, []);
+
+  const recallReferences = useMemo(() => {
+    if (!filteredNotes || filteredNotes.length === 0) {
+      return [];
+    }
+    
+    const references = filteredNotes.map((note) => {
+      const hasImages = note.images && note.images.length > 0;
+      
+      return {
+        recallId: note.id,
+        imageIndex: hasImages ? 0 : undefined,
+      };
+    });
+    
+    return references;
+  }, [filteredNotes]);
 
   const handleClear = useCallback(() => {
     setSearchQuery('');
@@ -214,9 +283,6 @@ export default function SearchScreen() {
   }, [searchNotes]);
 
   const handleBack = useCallback(() => {
-    console.log('[SearchScreen] Back button pressed - clearing search results');
-    
-    // Clear search results
     setSearchQuery('');
     setShowHistory(true);
     setHasSearched(false);
@@ -264,7 +330,6 @@ export default function SearchScreen() {
     return lines.length > 3;
   }, []);
 
-  // Render skeleton loaders for recent search history
   const renderHistorySkeletons = useMemo(() => {
     return (
       <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
@@ -280,56 +345,94 @@ export default function SearchScreen() {
     );
   }, []);
 
-  // Memoize search tips to prevent re-renders
   const searchTips = useMemo(() => (
     <View style={styles.searchTipsContainer}>
       <Text style={styles.searchTipsTitle}>Try searching for:</Text>
       <View style={styles.searchTipsList}>
         <View style={styles.searchTipItem}>
-          <IconSymbol name="location.fill" size={16} color={colors.primary} />
+          <IconSymbol 
+            name="location.fill" 
+            size={16} 
+            color={colors.primary} 
+          />
           <Text style={styles.searchTipText}>Places you&apos;ve been</Text>
         </View>
         <View style={styles.searchTipItem}>
-          <IconSymbol name="person.fill" size={16} color={colors.primary} />
+          <IconSymbol 
+            name="person.fill" 
+            size={16} 
+            color={colors.primary} 
+          />
           <Text style={styles.searchTipText}>People you&apos;ve mentioned</Text>
         </View>
         <View style={styles.searchTipItem}>
-          <IconSymbol name="photo.fill" size={16} color={colors.primary} />
+          <IconSymbol 
+            name="photo.fill" 
+            size={16} 
+            color={colors.primary} 
+          />
           <Text style={styles.searchTipText}>Things in your photos</Text>
         </View>
       </View>
     </View>
   ), []);
 
-  // Memoize feature list to prevent re-renders
   const featureList = useMemo(() => (
     <View style={styles.featureList}>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          name="checkmark.circle.fill" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>What&apos;s coming up next month?</Text>
       </View>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          name="checkmark.circle.fill" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>Restaurants in Collingwood that are on my wishlist </Text>
       </View>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          name="checkmark.circle.fill" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>Any Recalls that mention Elly</Text>
       </View>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          name="checkmark.circle.fill" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>What wines did I have at Bistro Marigold?</Text>
       </View>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          name="checkmark.circle.fill" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>What vaccinations has Kiki had and when is it due?</Text>
       </View>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          name="checkmark.circle.fill" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>My cocktail recipes that use lime, ginger and agave</Text>
       </View>
       <View style={styles.featureItem}>
-        <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+        <IconSymbol 
+          name="checkmark.circle.fill" 
+          size={20} 
+          color={colors.primary} 
+        />
         <Text style={styles.featureText}>Steak night specials on Thursdays</Text>
       </View>
     </View>
@@ -351,7 +454,11 @@ export default function SearchScreen() {
               style={styles.headerButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="chevron.left" size={24} color={colors.text} />
+              <IconSymbol 
+                name="chevron.left" 
+                size={24} 
+                color={colors.text} 
+              />
             </Pressable>
           ),
           headerRight: () => (
@@ -372,7 +479,11 @@ export default function SearchScreen() {
 
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
-          <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
+          <IconSymbol 
+            name="magnifyingglass" 
+            size={20} 
+            color={colors.textSecondary} 
+          />
           <TextInput
             ref={searchInputRef}
             style={styles.searchInput}
@@ -394,7 +505,11 @@ export default function SearchScreen() {
               style={styles.clearButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
+              <IconSymbol 
+                name="xmark.circle.fill" 
+                size={20} 
+                color={colors.textSecondary} 
+              />
             </Pressable>
           )}
           <Pressable 
@@ -421,8 +536,7 @@ export default function SearchScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Show history with skeleton when loading, or actual history when loaded */}
+      <ScrollView ref={scrollViewRef} style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {showHistory && isLoadingHistory ? (
           renderHistorySkeletons
         ) : showHistory && searchHistory.length > 0 ? (
@@ -435,16 +549,28 @@ export default function SearchScreen() {
                 onPress={() => handleHistoryItemPress(item.search_text)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <IconSymbol name="clock" size={18} color={colors.textSecondary} />
+                <IconSymbol 
+                  name="clock" 
+                  size={18} 
+                  color={colors.textSecondary} 
+                />
                 <Text style={styles.historyText}>{item.search_text}</Text>
-                <IconSymbol name="arrow.up.left" size={16} color={colors.textTertiary} />
+                <IconSymbol 
+                  name="arrow.up.left" 
+                  size={16} 
+                  color={colors.textTertiary} 
+                />
               </Pressable>
             ))}
           </Animated.View>
         ) : showHistory && searchHistory.length === 0 && !isLoadingHistory ? (
           <Animated.View entering={FadeIn.duration(600)} style={styles.emptyHistoryContainer}>
             <View style={styles.emptyHistoryIconContainer}>
-              <IconSymbol name="clock" size={48} color={colors.textTertiary} />
+              <IconSymbol 
+                name="clock" 
+                size={48} 
+                color={colors.textTertiary} 
+              />
             </View>
             <Text style={styles.emptyHistoryTitle}>No Search History</Text>
             <Text style={styles.emptyHistoryMessage}>
@@ -468,9 +594,7 @@ export default function SearchScreen() {
             {featureList}
           </Animated.View>
         ) : (
-          // Show results when search has been initiated
           <View style={styles.notesContainer}>
-            {/* Search Progress Indicator with timings */}
             {hasSearched && (
               <SearchProgressIndicator 
                 stage={searchStage} 
@@ -485,16 +609,17 @@ export default function SearchScreen() {
               />
             )}
 
-            {/* Only show results when search is complete (not in progress) */}
             {isSearching ? (
-              // Show nothing while search is in progress
               <View style={styles.searchingPlaceholder} />
             ) : (
               <React.Fragment>
-                {/* Show empty state when search is complete and no results */}
                 {filteredNotes.length === 0 && !searchAnswer && searchStage === 'complete' ? (
                   <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-                    <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
+                    <IconSymbol 
+                      name="doc.text.magnifyingglass" 
+                      size={80} 
+                      color={colors.textTertiary} 
+                    />
                     <Text style={styles.emptyTitle}>No Results Found</Text>
                     <Text style={styles.emptyText}>
                       {locationInfo 
@@ -507,22 +632,33 @@ export default function SearchScreen() {
                   </Animated.View>
                 ) : (
                   <React.Fragment>
-                    {/* Answer Section */}
                     {searchAnswer && searchConfidence !== undefined && (
                       <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
                         <View style={styles.answerHeader}>
                           <View style={styles.answerHeaderLeft}>
-                            <IconSymbol name="lightbulb.fill" size={20} color={colors.primary} />
+                            <IconSymbol 
+                              name="lightbulb.fill" 
+                              size={20} 
+                              color={colors.primary} 
+                            />
                             <Text style={styles.answerTitle}>Answer</Text>
                           </View>
                           <View style={styles.confidenceBadge}>
-                            <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                            <IconSymbol 
+                              name="checkmark.seal.fill" 
+                              size={14} 
+                              color={colors.primary} 
+                            />
                             <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
                           </View>
                         </View>
-                        <Text style={styles.answerText}>
-                          {isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
-                        </Text>
+                        <View style={styles.answerContent}>
+                          <MarkdownAnswer 
+                            content={isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
+                            recallReferences={recallReferences}
+                            onRecallPress={handleRecallLinkPress}
+                          />
+                        </View>
                         {shouldShowAnswerToggle(searchAnswer) && (
                           <Pressable 
                             onPress={() => setIsAnswerExpanded(!isAnswerExpanded)}
@@ -537,7 +673,6 @@ export default function SearchScreen() {
                       </Animated.View>
                     )}
 
-                    {/* Results Section - Only show recalls that were used for answer */}
                     {filteredNotes.length > 0 && (
                       <React.Fragment>
                         <Text style={styles.resultsText}>
@@ -545,24 +680,42 @@ export default function SearchScreen() {
                           {locationInfo && ` near ${locationInfo.resolvedPlace}`}
                           {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
                         </Text>
-                        {filteredNotes.map((note) => (
-                          <View key={note.id} style={styles.noteWrapper}>
-                            {/* Badge row with "used for answer" badge */}
-                            <View style={styles.badgeRow}>
-                              <View style={styles.answerSourceBadge}>
-                                <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
-                                <Text style={styles.answerSourceText}>Used for answer</Text>
+                        {filteredNotes.map((note) => {
+                          const recallRef = recallReferences.find(ref => ref.recallId === note.id);
+                          const imageIndex = recallRef?.imageIndex;
+                          
+                          return (
+                            <View 
+                              key={note.id} 
+                              style={styles.noteWrapper}
+                              ref={(ref) => {
+                                recallRefs.current[note.id] = ref;
+                              }}
+                            >
+                              <View style={styles.badgeRow}>
+                                <View style={styles.answerSourceBadge}>
+                                  <IconSymbol 
+                                    name="checkmark.seal.fill" 
+                                    size={14} 
+                                    color={colors.primary} 
+                                  />
+                                  <Text style={styles.answerSourceText}>Used for answer</Text>
+                                </View>
+                              </View>
+                              <View style={styles.noteCardContainer}>
+                                <NoteCard
+                                  note={note}
+                                  onPress={(scrollToImage) => {
+                                    const finalImageIndex = scrollToImage !== undefined ? scrollToImage : imageIndex;
+                                    handleNotePress(note.id, finalImageIndex);
+                                  }}
+                                  scrollToImageIndex={imageIndex}
+                                  loading={false}
+                                />
                               </View>
                             </View>
-                            <View style={styles.noteCardContainer}>
-                              <NoteCard
-                                note={note}
-                                onPress={() => handleNotePress(note.id)}
-                                loading={false}
-                              />
-                            </View>
-                          </View>
-                        ))}
+                          );
+                        })}
                       </React.Fragment>
                     )}
                   </React.Fragment>
@@ -816,6 +969,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     color: colors.text,
+  },
+  answerContent: {
+    width: '100%',
   },
   answerToggleContainer: {
     alignSelf: 'flex-end',

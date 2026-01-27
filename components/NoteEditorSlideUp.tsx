@@ -117,7 +117,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     } else {
       setLoadedImageIndices(new Set());
     }
-  }, [images.length]);
+  }, [images]);
 
   const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
@@ -442,7 +442,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     if (visible && noteId) {
       loadNoteFromCacheOrDatabase();
     }
-  }, [visible, noteId, user, getCachedNote, onClose]);
+  }, [visible, noteId, user, getCachedNote, onClose, isEditing]);
 
   const takePhoto = useCallback(async () => {
     try {

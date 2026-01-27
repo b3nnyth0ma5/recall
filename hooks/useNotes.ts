@@ -608,29 +608,31 @@ export function useNotes() {
       console.log('Step 1: Running location, people, and keyword searches in PARALLEL...');
       const parallelSearchStart = Date.now();
       
-      // Create promises for all three searches with individual timing
-      const locationPromise = (async () => {
-        const start = Date.now();
-        try {
-          const result = await supabase.functions.invoke('search-recalls-with-location', {
-            body: { 
-              query: query.trim(),
-              userLocation: userLocation,
-            },
-          });
-          const searchTime = Date.now() - start;
-          console.log(`[TIMING] Location search completed in ${searchTime}ms`);
-          return { ...result, searchTime };
-        } catch (error) {
-          console.error('Location search error:', error);
-          const searchTime = Date.now() - start;
-          return { data: null, error, searchTime };
-        }
-      })();
+      // TEMPORARILY COMMENTED OUT - Location search disabled
+      // const locationPromise = (async () => {
+      //   const start = Date.now();
+      //   try {
+      //     const result = await supabase.functions.invoke('search-recalls-with-location', {
+      //       body: { 
+      //         query: query.trim(),
+      //         userLocation: userLocation,
+      //       },
+      //     });
+      //     const searchTime = Date.now() - start;
+      //     console.log(`[TIMING] Location search completed in ${searchTime}ms`);
+      //     return { ...result, searchTime };
+      //   } catch (error) {
+      //     console.error('Location search error:', error);
+      //     const searchTime = Date.now() - start;
+      //     return { data: null, error, searchTime };
+      //   }
+      // })();
       
+      // PEOPLE SEARCH - NOW ENABLED
       const peoplePromise = (async () => {
         const start = Date.now();
         try {
+          console.log('[useNotes] Calling search-recalls-with-people edge function...');
           const result = await supabase.functions.invoke('search-recalls-with-people', {
             body: { query: query.trim() },
           });
@@ -664,11 +666,14 @@ export function useNotes() {
       })();
 
       // Wait for all searches to complete in parallel
-      const [locationResult, peopleResult, keywordResult] = await Promise.all([
-        locationPromise,
+      // Location search is temporarily disabled
+      const [peopleResult, keywordResult] = await Promise.all([
         peoplePromise,
         keywordPromise,
       ]);
+      
+      // Temporary: Set location result to empty
+      const locationResult = { data: null, error: null, searchTime: 0 };
 
       const parallelSearchTime = Date.now() - parallelSearchStart;
       console.log(`All parallel searches completed in ${parallelSearchTime}ms`);
