@@ -145,7 +145,7 @@ export default function ImageGalleryScreen() {
     }[] = [];
 
     // Define layout patterns (inspired by the attached images)
-    // Pattern repeats every 6 images for consistency
+    // Pattern repeats every 11 images for consistency
     const patterns: {
       width: number;
       aspectRatio: number;
@@ -172,7 +172,10 @@ export default function ImageGalleryScreen() {
       { width: 0.34, aspectRatio: 1.3 },  // Small right
     ];
 
-    optimizedUrls.forEach((_, index) => {
+    console.log('[ImageGalleryScreen] Calculating grid for', optimizedUrls.length, 'images');
+    
+    // FIXED: Process ALL images, not just the first batch
+    for (let index = 0; index < optimizedUrls.length; index++) {
       const pattern = patterns[index % patterns.length];
       const availableWidth = SCREEN_WIDTH - (GALLERY_PADDING * 2);
       const imageWidth = availableWidth * pattern.width - IMAGE_SPACING;
@@ -184,8 +187,9 @@ export default function ImageGalleryScreen() {
         height: imageHeight,
         aspectRatio: pattern.aspectRatio,
       });
-    });
+    }
 
+    console.log('[ImageGalleryScreen] Generated', items.length, 'grid items');
     return items;
   }, [optimizedUrls]);
 

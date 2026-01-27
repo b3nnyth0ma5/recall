@@ -526,7 +526,7 @@ export function FullScreenImage({
                 </View>
               </Pressable>
 
-              {/* Image Carousel with Zoom */}
+              {/* Image Carousel with Zoom - FIXED: Highest z-index for touch */}
               <ScrollView
                 ref={scrollViewRef}
                 horizontal
@@ -538,6 +538,7 @@ export function FullScreenImage({
                 decelerationRate="fast"
                 style={styles.scrollView}
                 scrollEnabled={scale.value <= 1}
+                contentContainerStyle={styles.scrollViewContent}
               >
                 {displayImages.map((imageUrl, index) => (
                   <View key={`fullscreen-${index}`} style={styles.imageWrapper}>
@@ -731,22 +732,31 @@ const styles = StyleSheet.create({
   scrollView: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
+    zIndex: 5000,
+  },
+  scrollViewContent: {
+    zIndex: 5000,
   },
   imageWrapper: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 5000,
   },
   imageContainer: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 9000,
+    pointerEvents: 'box-none',
   },
   image: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
+    zIndex: 9000,
+    pointerEvents: 'auto',
   },
   skeletonContainer: {
     position: 'absolute',
@@ -756,6 +766,7 @@ const styles = StyleSheet.create({
     height: SCREEN_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
+    pointerEvents: 'none',
   },
   shareButton: {
     position: 'absolute',
