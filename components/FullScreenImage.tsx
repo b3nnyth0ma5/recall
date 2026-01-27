@@ -23,7 +23,7 @@ import Animated, {
   interpolate,
   Extrapolation,
 } from 'react-native-reanimated';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { IconSymbol } from './IconSymbol';
 import ImageOCRDisplay from './ImageOCRDisplay';
 import { colors } from '@/styles/commonStyles';
@@ -42,26 +42,22 @@ interface FullScreenImageProps {
   onClose: () => void;
 }
 
-const screenDimensions = Dimensions.get('window');
-const SCREEN_WIDTH = screenDimensions.width;
-const SCREEN_HEIGHT = screenDimensions.height;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Threshold for dismissing the modal (swipe down distance)
 const DISMISS_THRESHOLD = 100;
 
 /**
- * Standalone full-screen image viewer component with integrated OCR functionality and pinch-to-zoom
+ * Standalone full-screen image viewer component with integrated OCR functionality
  * 
  * Features:
- * - Full-screen image carousel with smooth horizontal scrolling (FIXED)
- * - Pinch-to-zoom with pan gestures (FIXED)
+ * - Full-screen image carousel with smooth scrolling
  * - OCR button always visible and clickable on top of images
- * - Share image using native share functionality (platform-agnostic icon)
- * - Swipe down to dismiss with improved gesture handling
- * - Swipe left/right to navigate between images (FIXED)
+ * - Share image using native share functionality
+ * - Swipe down to dismiss with improved gesture handling (no refresh on close)
  * - Image counter and pagination dots
  * - OCR modal for viewing image analysis
- * - Opens on top of ImageGallery with proper z-index
+ * - Reusable across NoteCard and note-editor
  * - Loads all images from imageIds when opened
  * - Skeleton placeholders instead of loading spinner
  */
@@ -85,43 +81,25 @@ export function FullScreenImage({
   const translateY = useSharedValue(0);
   const contextY = useSharedValue(0);
 
-  // Animated values for pinch-to-zoom (per-image basis)
-  const scale = useSharedValue(1);
-  const savedScale = useSharedValue(1);
-  const translateX = useSharedValue(0);
-  const translateYZoom = useSharedValue(0);
-  const savedTranslateX = useSharedValue(0);
-  const savedTranslateY = useSharedValue(0);
-
   // Load all images when modal opens
   useEffect(() => {
     if (visible) {
-      console.log('[FullScreenImage] Modal opened, initializing...');
       setCurrentImageIndex(initialIndex);
       setIsClosing(false);
-      
       // Reset animation values immediately
       translateY.value = 0;
       contextY.value = 0;
-      scale.value = 1;
-      savedScale.value = 1;
-      translateX.value = 0;
-      translateYZoom.value = 0;
-      savedTranslateX.value = 0;
-      savedTranslateY.value = 0;
       
       // Load all images from imageIds if available
       const loadAllImages = async () => {
         if (imageIds && imageIds.length > 0) {
-          console.log('[FullScreenImage] Loading all images from imageIds, count:', imageIds.length);
+          console.log('[FullScreenImage] Loading all images from imageIds');
           setIsLoadingImages(true);
           
           try {
             const imagePromises = imageIds.map(async (imageId, index) => {
               try {
-                console.log(`[FullScreenImage] Loading image ${index + 1}/${imageIds.length}, ID:`, imageId);
                 const imageUrl = await getImageDataUrl(imageId);
-                console.log(`[FullScreenImage] Image ${index + 1} loaded:`, imageUrl ? 'success' : 'failed');
                 return imageUrl || images[index] || '';
               } catch (error) {
                 console.error(`[FullScreenImage] Error loading image ${index}:`, error);
@@ -131,7 +109,7 @@ export function FullScreenImage({
             
             const allImages = await Promise.all(imagePromises);
             setLoadedImages(allImages);
-            console.log('[FullScreenImage] Successfully loaded all images, count:', allImages.length);
+            console.log('[FullScreenImage] Successfully loaded all images');
           } catch (error) {
             console.error('[FullScreenImage] Error loading images:', error);
             // Fallback to original images array
@@ -141,7 +119,7 @@ export function FullScreenImage({
           }
         } else {
           // No imageIds, use images array directly
-          console.log('[FullScreenImage] Using images array directly, count:', images.length);
+          console.log('[FullScreenImage] Using images array directly');
           setLoadedImages(images);
         }
       };
@@ -150,7 +128,6 @@ export function FullScreenImage({
       
       // Scroll to initial index after a short delay to ensure layout is ready
       setTimeout(() => {
-        console.log('[FullScreenImage] Scrolling to initial index:', initialIndex);
         scrollViewRef.current?.scrollTo({
           x: initialIndex * SCREEN_WIDTH,
           y: 0,
@@ -158,30 +135,18 @@ export function FullScreenImage({
         });
       }, 100);
     }
-  }, [visible, initialIndex, images, imageIds, translateY, contextY, scale, savedScale, translateX, translateYZoom, savedTranslateX, savedTranslateY]);
-
-  // Reset zoom when changing images
-  useEffect(() => {
-    console.log('[FullScreenImage] Resetting zoom for image index:', currentImageIndex);
-    scale.value = withSpring(1);
-    savedScale.value = 1;
-    translateX.value = withSpring(0);
-    translateYZoom.value = withSpring(0);
-    savedTranslateX.value = 0;
-    savedTranslateY.value = 0;
-  }, [currentImageIndex, scale, savedScale, translateX, translateYZoom, savedTranslateX, savedTranslateY]);
+  }, [visible, initialIndex, images, imageIds, translateY, contextY]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / SCREEN_WIDTH);
     if (index !== currentImageIndex && index >= 0 && index < loadedImages.length) {
-      console.log('[FullScreenImage] Scrolled to image index:', index);
       setCurrentImageIndex(index);
     }
   };
 
   const handleOCRButtonPress = () => {
-    console.log('[FullScreenImage] OCR button pressed for image index:', currentImageIndex);
+    console.log('OCR button pressed for image index:', currentImageIndex);
     setShowOCRModal(true);
   };
 
@@ -209,13 +174,13 @@ export function FullScreenImage({
 
     try {
       setIsSharing(true);
-      console.log('[FullScreenImage] Checking if sharing is available...');
+      console.log('Checking if sharing is available...');
 
       // Check if sharing is available
       const isAvailable = await Sharing.isAvailableAsync();
       
       if (!isAvailable) {
-        console.log('[FullScreenImage] Sharing is not available on this device');
+        console.log('Sharing is not available on this device');
         Alert.alert(
           'Not Available',
           'Sharing is not available on this device.',
@@ -225,11 +190,11 @@ export function FullScreenImage({
         return;
       }
 
-      console.log('[FullScreenImage] Sharing is available');
+      console.log('Sharing is available');
       
       // Get current image URL
       const currentImageUrl = loadedImages[currentImageIndex];
-      console.log('[FullScreenImage] Sharing image:', currentImageUrl);
+      console.log('Sharing image:', currentImageUrl);
 
       // Trigger haptic feedback
       if (Platform.OS !== 'web') {
@@ -238,24 +203,24 @@ export function FullScreenImage({
 
       // Download the image to a temporary location
       const fileUri = FileSystem.cacheDirectory + `share_image_${Date.now()}.jpg`;
-      console.log('[FullScreenImage] Downloading image to:', fileUri);
+      console.log('Downloading image to:', fileUri);
       
       const downloadResult = await FileSystem.downloadAsync(currentImageUrl, fileUri);
-      console.log('[FullScreenImage] Download result:', downloadResult);
+      console.log('Download result:', downloadResult);
 
       if (downloadResult.status !== 200) {
         throw new Error('Failed to download image');
       }
 
       // Share the image
-      console.log('[FullScreenImage] Opening share dialog...');
+      console.log('Opening share dialog...');
       await Sharing.shareAsync(downloadResult.uri, {
         dialogTitle: 'Share Image',
         mimeType: 'image/jpeg',
         UTI: 'public.jpeg',
       });
 
-      console.log('[FullScreenImage] Share dialog completed');
+      console.log('Share dialog completed');
 
       // Success haptic feedback
       if (Platform.OS !== 'web') {
@@ -263,7 +228,7 @@ export function FullScreenImage({
       }
 
     } catch (error) {
-      console.error('[FullScreenImage] Error sharing image:', error);
+      console.error('Error sharing image:', error);
       
       // Error haptic feedback
       if (Platform.OS !== 'web') {
@@ -281,90 +246,28 @@ export function FullScreenImage({
   };
 
   const handleClose = () => {
-    if (isClosing) {
-      return;
-    }
+    if (isClosing) return;
     
-    console.log('[FullScreenImage] Closing full screen image');
+    console.log('Closing full screen image - preventing route refresh');
     setIsClosing(true);
     
     // Reset animation values immediately to prevent any lingering animations
     translateY.value = 0;
     contextY.value = 0;
-    scale.value = 1;
-    savedScale.value = 1;
-    translateX.value = 0;
-    translateYZoom.value = 0;
-    savedTranslateX.value = 0;
-    savedTranslateY.value = 0;
     
-    // Call onClose
+    // Call onClose which will update the parent's state
+    // This should NOT trigger navigation or route refresh
     onClose();
   };
 
   const handleImageLoad = (index: number) => {
-    console.log('[FullScreenImage] Image loaded at index:', index);
     setImageLoadStates(prev => ({ ...prev, [index]: true }));
   };
 
-  // FIXED: Pinch gesture for zoom with proper focal point handling
-  const pinchGesture = Gesture.Pinch()
-    .onStart((event) => {
-      console.log('[FullScreenImage] Pinch started, scale:', event.scale);
-    })
-    .onUpdate((event) => {
-      const newScale = savedScale.value * event.scale;
-      
-      // Limit zoom between 1x and 5x
-      if (newScale >= 1 && newScale <= 5) {
-        scale.value = newScale;
-      }
-      
-      console.log('[FullScreenImage] Pinch update, scale:', scale.value);
-    })
-    .onEnd(() => {
-      console.log('[FullScreenImage] Pinch ended, final scale:', scale.value);
-      
-      // Limit zoom between 1x and 5x
-      if (scale.value < 1) {
-        scale.value = withSpring(1);
-        savedScale.value = 1;
-        translateX.value = withSpring(0);
-        translateYZoom.value = withSpring(0);
-        savedTranslateX.value = 0;
-        savedTranslateY.value = 0;
-      } else if (scale.value > 5) {
-        scale.value = withSpring(5);
-        savedScale.value = 5;
-      } else {
-        savedScale.value = scale.value;
-      }
-    });
-
-  // FIXED: Pan gesture for moving zoomed image - only active when zoomed
-  const panGestureZoom = Gesture.Pan()
-    .enabled(scale.value > 1)
-    .onStart(() => {
-      console.log('[FullScreenImage] Pan zoom started, current scale:', scale.value);
-    })
-    .onUpdate((event) => {
-      translateX.value = savedTranslateX.value + event.translationX;
-      translateYZoom.value = savedTranslateY.value + event.translationY;
-    })
-    .onEnd(() => {
-      console.log('[FullScreenImage] Pan zoom ended');
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateYZoom.value;
-    });
-
-  // Pan gesture for swipe-to-dismiss (only when not zoomed and vertical swipe)
-  const panGestureDismiss = Gesture.Pan()
-    .enabled(scale.value <= 1)
-    .activeOffsetY([-10, 10]) // Only activate on vertical movement
-    .failOffsetX([-20, 20]) // Fail if horizontal movement is too large
+  // Improved Pan Gesture for swipe-to-dismiss with smoother animations
+  const panGesture = Gesture.Pan()
     .onStart(() => {
       contextY.value = translateY.value;
-      console.log('[FullScreenImage] Dismiss gesture started');
     })
     .onUpdate((event) => {
       // Only allow downward swipes
@@ -377,8 +280,6 @@ export function FullScreenImage({
     })
     .onEnd((event) => {
       const shouldDismiss = translateY.value > DISMISS_THRESHOLD;
-      
-      console.log('[FullScreenImage] Dismiss gesture ended, shouldDismiss:', shouldDismiss);
       
       if (shouldDismiss) {
         // Animate out smoothly
@@ -404,53 +305,7 @@ export function FullScreenImage({
       }
     });
 
-  // Double tap to zoom
-  const doubleTapGesture = Gesture.Tap()
-    .numberOfTaps(2)
-    .onEnd(() => {
-      console.log('[FullScreenImage] Double tap detected, current scale:', scale.value);
-      
-      if (scale.value > 1) {
-        // Zoom out
-        console.log('[FullScreenImage] Zooming out to 1x');
-        scale.value = withSpring(1);
-        savedScale.value = 1;
-        translateX.value = withSpring(0);
-        translateYZoom.value = withSpring(0);
-        savedTranslateX.value = 0;
-        savedTranslateY.value = 0;
-      } else {
-        // Zoom in to 2x
-        console.log('[FullScreenImage] Zooming in to 2x');
-        scale.value = withSpring(2);
-        savedScale.value = 2;
-      }
-    });
-
-  // FIXED: Proper gesture composition
-  // Combine all gestures: double tap, pinch-to-zoom, pan when zoomed, and swipe down to dismiss
-  const zoomGesture = Gesture.Simultaneous(pinchGesture, panGestureZoom);
-  
-  // Create a gesture that handles both zoom and dismiss
-  // Priority: double tap > zoom gestures > dismiss gesture
-  const composedGesture = Gesture.Exclusive(
-    doubleTapGesture,
-    zoomGesture,
-    panGestureDismiss
-  );
-
-  // Animated style for the image with zoom
-  const animatedImageStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        { translateX: translateX.value },
-        { translateY: translateYZoom.value },
-        { scale: scale.value },
-      ],
-    };
-  });
-
-  // Animated style for the container with dismiss gesture
+  // Animated style for the container with smooth interpolation
   const animatedContainerStyle = useAnimatedStyle(() => {
     // Smooth opacity fade
     const opacity = interpolate(
@@ -461,7 +316,7 @@ export function FullScreenImage({
     );
     
     // Smooth scale down
-    const containerScale = interpolate(
+    const scale = interpolate(
       translateY.value,
       [0, SCREEN_HEIGHT],
       [1, 0.85],
@@ -471,7 +326,7 @@ export function FullScreenImage({
     return {
       transform: [
         { translateY: translateY.value },
-        { scale: containerScale },
+        { scale: scale },
       ],
       opacity: opacity,
     };
@@ -501,13 +356,12 @@ export function FullScreenImage({
       animationType="fade"
       onRequestClose={handleClose}
       statusBarTranslucent
-      presentationStyle="overFullScreen"
     >
-      <GestureHandlerRootView style={styles.gestureRoot}>
-        <View style={styles.modalContainer}>
-          {/* Animated background */}
-          <Animated.View style={[styles.background, animatedBackgroundStyle]} />
-          
+      <View style={styles.modalContainer}>
+        {/* Animated background */}
+        <Animated.View style={[styles.background, animatedBackgroundStyle]} />
+        
+        <GestureDetector gesture={panGesture}>
           <Animated.View style={[styles.container, animatedContainerStyle]}>
             {/* Close Button - Top Right */}
             <Pressable
@@ -516,16 +370,11 @@ export function FullScreenImage({
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <View style={styles.closeButtonCircle}>
-                <IconSymbol 
-                  ios_icon_name="xmark"
-                  android_material_icon_name="close"
-                  size={24} 
-                  color="#FFFFFF" 
-                />
+                <IconSymbol name="xmark" size={24} color="#FFFFFF" />
               </View>
             </Pressable>
 
-            {/* Image Carousel with Zoom - FIXED: Horizontal scrolling enabled */}
+            {/* Image Carousel */}
             <ScrollView
               ref={scrollViewRef}
               horizontal
@@ -536,39 +385,12 @@ export function FullScreenImage({
               snapToInterval={SCREEN_WIDTH}
               decelerationRate="fast"
               style={styles.scrollView}
-              scrollEnabled={true}
-              contentContainerStyle={styles.scrollViewContent}
-              directionalLockEnabled={true}
             >
               {displayImages.map((imageUrl, index) => (
                 <View key={`fullscreen-${index}`} style={styles.imageWrapper}>
-                  <GestureDetector gesture={composedGesture}>
-                    <Animated.View style={[styles.imageContainer, animatedImageStyle]}>
-                      {imageUrl && imageUrl.trim().length > 0 ? (
-                        <React.Fragment>
-                          {!imageLoadStates[index] && (
-                            <View style={styles.skeletonContainer}>
-                              <SkeletonLoader
-                                width={SCREEN_WIDTH}
-                                height={SCREEN_HEIGHT}
-                                borderRadius={0}
-                                variant="wave"
-                              />
-                            </View>
-                          )}
-                          <Image
-                            source={{ uri: imageUrl }}
-                            style={styles.image}
-                            resizeMode="contain"
-                            onLoad={() => handleImageLoad(index)}
-                            onError={(error) => {
-                              console.error('[FullScreenImage] Image load error for index', index);
-                              console.error('[FullScreenImage] Failed URL:', imageUrl);
-                              console.error('[FullScreenImage] Error:', error.nativeEvent.error);
-                            }}
-                          />
-                        </React.Fragment>
-                      ) : (
+                  {imageUrl ? (
+                    <>
+                      {!imageLoadStates[index] && (
                         <View style={styles.skeletonContainer}>
                           <SkeletonLoader
                             width={SCREEN_WIDTH}
@@ -576,16 +398,30 @@ export function FullScreenImage({
                             borderRadius={0}
                             variant="wave"
                           />
-                          <Text style={styles.errorText}>Image not available</Text>
                         </View>
                       )}
-                    </Animated.View>
-                  </GestureDetector>
+                      <Image
+                        source={{ uri: imageUrl }}
+                        style={styles.image}
+                        resizeMode="contain"
+                        onLoad={() => handleImageLoad(index)}
+                      />
+                    </>
+                  ) : (
+                    <View style={styles.skeletonContainer}>
+                      <SkeletonLoader
+                        width={SCREEN_WIDTH}
+                        height={SCREEN_HEIGHT}
+                        borderRadius={0}
+                        variant="wave"
+                      />
+                    </View>
+                  )}
                 </View>
               ))}
             </ScrollView>
 
-            {/* Share Image Button - Bottom Left - Platform-agnostic icon */}
+            {/* Share Image Button - Bottom Left */}
             <Pressable
               style={styles.shareButton}
               onPress={handleShareImage}
@@ -602,8 +438,7 @@ export function FullScreenImage({
                   />
                 ) : (
                   <IconSymbol 
-                    ios_icon_name="square.and.arrow.up"
-                    android_material_icon_name="share"
+                    name="paperplane.fill" 
                     size={24} 
                     color="#FFFFFF" 
                   />
@@ -629,7 +464,7 @@ export function FullScreenImage({
               <View style={styles.paginationContainer}>
                 {displayImages.map((_, index) => (
                   <View
-                    key={`dot-${index}`}
+                    key={index}
                     style={[
                       styles.paginationDot,
                       currentImageIndex === index && styles.paginationDotActive,
@@ -643,11 +478,7 @@ export function FullScreenImage({
             {displayImages.length > 1 && (
               <View style={styles.counterBadge}>
                 <Text style={styles.counterText}>
-                  {currentImageIndex + 1}
-                </Text>
-                <Text style={styles.counterSeparator}>/</Text>
-                <Text style={styles.counterText}>
-                  {displayImages.length}
+                  {currentImageIndex + 1} / {displayImages.length}
                 </Text>
               </View>
             )}
@@ -657,59 +488,50 @@ export function FullScreenImage({
               <View style={styles.swipeHintBar} />
             </View>
           </Animated.View>
-        </View>
+        </GestureDetector>
+      </View>
 
-        {/* OCR Modal */}
-        <Modal
-          visible={showOCRModal}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={handleCloseOCRModal}
-          presentationStyle="overFullScreen"
-        >
-          <View style={styles.ocrModalContainer}>
-            <View style={styles.ocrModalContent}>
-              <View style={styles.ocrModalHeader}>
-                <Text style={styles.ocrModalTitle}>Image Analysis</Text>
-                <Pressable
-                  onPress={handleCloseOCRModal}
-                  style={styles.ocrModalCloseButton}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <IconSymbol 
-                    ios_icon_name="xmark"
-                    android_material_icon_name="close"
-                    size={24} 
-                    color={colors.text} 
-                  />
-                </Pressable>
-              </View>
-
-              {getCurrentImageId() ? (
-                <ImageOCRDisplay
-                  imageId={getCurrentImageId()!}
-                  autoLoad={true}
-                  compact={false}
-                />
-              ) : (
-                <View style={styles.ocrModalError}>
-                  <Text style={styles.ocrModalErrorText}>
-                    No image ID available for analysis
-                  </Text>
-                </View>
-              )}
+      {/* OCR Modal */}
+      <Modal
+        visible={showOCRModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={handleCloseOCRModal}
+      >
+        <View style={styles.ocrModalContainer}>
+          <View style={styles.ocrModalContent}>
+            <View style={styles.ocrModalHeader}>
+              <Text style={styles.ocrModalTitle}>Image Analysis</Text>
+              <Pressable
+                onPress={handleCloseOCRModal}
+                style={styles.ocrModalCloseButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <IconSymbol name="xmark" size={24} color={colors.text} />
+              </Pressable>
             </View>
+
+            {getCurrentImageId() ? (
+              <ImageOCRDisplay
+                imageId={getCurrentImageId()!}
+                autoLoad={true}
+                compact={false}
+              />
+            ) : (
+              <View style={styles.ocrModalError}>
+                <Text style={styles.ocrModalErrorText}>
+                  No image ID available for analysis
+                </Text>
+              </View>
+            )}
           </View>
-        </Modal>
-      </GestureHandlerRootView>
+        </View>
+      </Modal>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  gestureRoot: {
-    flex: 1,
-  },
   modalContainer: {
     flex: 1,
   },
@@ -726,7 +548,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 50,
     right: 20,
-    zIndex: 10000,
+    zIndex: 1000,
   },
   closeButtonCircle: {
     width: 44,
@@ -739,31 +561,16 @@ const styles = StyleSheet.create({
   scrollView: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
-    zIndex: 5000,
-  },
-  scrollViewContent: {
-    zIndex: 5000,
   },
   imageWrapper: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 5000,
-  },
-  imageContainer: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 9000,
-    pointerEvents: 'box-none',
   },
   image: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
-    zIndex: 9000,
-    pointerEvents: 'auto',
   },
   skeletonContainer: {
     position: 'absolute',
@@ -773,13 +580,6 @@ const styles = StyleSheet.create({
     height: SCREEN_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
-    pointerEvents: 'none',
-  },
-  errorText: {
-    position: 'absolute',
-    color: colors.textSecondary,
-    fontSize: 16,
-    marginTop: 20,
   },
   shareButton: {
     position: 'absolute',
@@ -795,7 +595,7 @@ const styles = StyleSheet.create({
     elevation: 12,
     borderWidth: 3,
     borderColor: colors.primary,
-    zIndex: 10000,
+    zIndex: 1000,
   },
   shareButtonContent: {
     width: 36,
@@ -817,7 +617,7 @@ const styles = StyleSheet.create({
     elevation: 12,
     borderWidth: 3,
     borderColor: colors.primary,
-    zIndex: 10000,
+    zIndex: 1000,
   },
   ocrButtonIcon: {
     width: 36,
@@ -832,7 +632,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
-    zIndex: 1000,
+    zIndex: 100,
   },
   paginationDot: {
     width: 10,
@@ -852,20 +652,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    zIndex: 1000,
+    zIndex: 100,
   },
   counterText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
-  },
-  counterSeparator: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 15,
-    fontWeight: '400',
-    marginHorizontal: 4,
   },
   swipeHintContainer: {
     position: 'absolute',
@@ -873,7 +665,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
-    zIndex: 500,
+    zIndex: 50,
   },
   swipeHintBar: {
     width: 40,

@@ -274,7 +274,7 @@ export default function CategoryViewerScreen() {
         console.error('[CategoryViewer] Error in matching polling:', error);
       }
     }, 1500);
-  }, [id, loadCategoryAndRecalls]);
+  }, [id]);
 
   // Optimized category and recalls loading with pagination and cache usage
   const loadCategoryAndRecalls = useCallback(async (pageNum: number = 1, append: boolean = false) => {
@@ -443,8 +443,7 @@ export default function CategoryViewerScreen() {
         matchingCheckIntervalRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, loadCategoryAndRecalls]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

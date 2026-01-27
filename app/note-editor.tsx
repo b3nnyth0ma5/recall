@@ -79,8 +79,6 @@ export default function NoteEditorScreen() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
-  const [showImageGallery, setShowImageGallery] = useState(false);
-  const [imageGalleryIndex, setImageGalleryIndex] = useState(0);
   const [showFABs, setShowFABs] = useState(false);
   const [cameraLaunched, setCameraLaunched] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
@@ -98,7 +96,6 @@ export default function NoteEditorScreen() {
   const fromShare = params.fromShare === 'true';
   const openCamera = params.openCamera === 'true';
   const openLocation = params.openLocation === 'true';
-  const scrollToImageIndex = params.scrollToImage ? parseInt(params.scrollToImage as string, 10) : undefined;
   
   const peopleChanged = useCallback(() => {
     if (initialPeople.length !== people.length) {
@@ -1200,21 +1197,8 @@ export default function NoteEditorScreen() {
   };
 
   const handleImagePress = (index: number) => {
-    console.log('Image pressed at index:', index);
-    setImageGalleryIndex(index);
-    setShowImageGallery(true);
-  };
-
-  const handleGalleryImagePress = (index: number) => {
-    console.log('Gallery image pressed at index:', index);
-    setShowImageGallery(false);
     setFullScreenImageIndex(index);
     setShowFullScreenImage(true);
-  };
-
-  const handleCloseImageGallery = () => {
-    console.log('Closing image gallery');
-    setShowImageGallery(false);
   };
 
   const handleRichTextPress = () => {
@@ -1235,29 +1219,6 @@ export default function NoteEditorScreen() {
       console.log('[NoteEditor] Current people:', people.map(p => p.person_name).join(', '));
     }
   }, [people]);
-
-  // Scroll to specific image if scrollToImageIndex is provided
-  useEffect(() => {
-    if (scrollToImageIndex !== undefined && images.length > scrollToImageIndex && imageScrollRef.current) {
-      console.log('[NoteEditor] Scrolling to image index:', scrollToImageIndex);
-      
-      // Wait for images to load before scrolling
-      setTimeout(() => {
-        const scrollX = scrollToImageIndex * (IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING);
-        imageScrollRef.current?.scrollTo({
-          x: scrollX,
-          y: 0,
-          animated: true,
-        });
-        
-        // Update current image index
-        setCurrentImageIndex(scrollToImageIndex);
-        
-        // Clear the parameter after scrolling
-        router.setParams({ scrollToImage: undefined });
-      }, 500);
-    }
-  }, [scrollToImageIndex, images.length, router]);
 
   if (loadingNote) {
     return (

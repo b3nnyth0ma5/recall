@@ -13,8 +13,8 @@
  * - Files (PDFs, documents)
  */
 
+import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system/legacy';
 
 // App Group identifier - must match the one in app.json
 const APP_GROUP_IDENTIFIER = 'group.com.anonymous.Natively';
@@ -92,7 +92,8 @@ async function saveSharedData(data: SharedData): Promise<void> {
     // Write shared data to file
     await FileSystem.writeAsStringAsync(
       SHARED_DATA_FILE,
-      JSON.stringify(data)
+      JSON.stringify(data),
+      { encoding: FileSystem.EncodingType.UTF8 }
     );
     
     console.log('[ShareExtension] Shared data saved to:', SHARED_DATA_FILE);

@@ -34,6 +34,34 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
   const [showExplanation, setShowExplanation] = useState(true);
   const [autoTriggered, setAutoTriggered] = useState(false);
 
+  const handleProcessImage = useCallback(async () => {
+    setIsLoading(true);
+    setError(undefined);
+    setIsProcessing(true);
+
+    try {
+      console.log('Manually triggering OCR processing for image:', imageId);
+      const result = await triggerOCRProcessing(imageId);
+
+      if (result.success) {
+        console.log('OCR processing triggered successfully');
+        // Wait a bit then reload results
+        setTimeout(() => {
+          loadOCRResults();
+        }, 2000);
+      } else {
+        setError(result.error || 'Failed to trigger OCR processing');
+        setIsProcessing(false);
+      }
+    } catch (err) {
+      console.error('Error triggering OCR processing:', err);
+      setError('An error occurred while processing the image');
+      setIsProcessing(false);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [imageId]);
+
   const loadOCRResults = useCallback(async () => {
     if (!imageId) {
       console.log('No imageId provided to ImageOCRDisplay');
@@ -74,37 +102,9 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  }, [imageId, autoTriggered]);
+  }, [imageId, autoTriggered, handleProcessImage]);
 
-  const handleProcessImage = useCallback(async () => {
-    setIsLoading(true);
-    setError(undefined);
-    setIsProcessing(true);
-
-    try {
-      console.log('Manually triggering OCR processing for image:', imageId);
-      const result = await triggerOCRProcessing(imageId);
-
-      if (result.success) {
-        console.log('OCR processing triggered successfully');
-        // Wait a bit then reload results
-        setTimeout(() => {
-          loadOCRResults();
-        }, 2000);
-      } else {
-        setError(result.error || 'Failed to trigger OCR processing');
-        setIsProcessing(false);
-      }
-    } catch (err) {
-      console.error('Error triggering OCR processing:', err);
-      setError('An error occurred while processing the image');
-      setIsProcessing(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [imageId, loadOCRResults]);
-
-  const handleRetry = useCallback(async () => {
+  const handleRetry = async () => {
     setIsLoading(true);
     setError(undefined);
     setIsProcessing(true);
@@ -130,7 +130,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  }, [imageId, loadOCRResults]);
+  };
 
   useEffect(() => {
     if (autoLoad && imageId) {

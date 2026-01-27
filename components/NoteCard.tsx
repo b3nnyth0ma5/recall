@@ -13,7 +13,6 @@ import * as Haptics from 'expo-haptics';
 import { NoteCardSkeleton } from './NoteCardSkeleton';
 import { SkeletonLoader } from './SkeletonLoader';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
-import { useRouter } from 'expo-router';
 import Animated, { 
   useAnimatedStyle, 
   useSharedValue, 
@@ -26,12 +25,11 @@ import Animated, {
 
 interface NoteCardProps {
   note: Note;
-  onPress: (imageIndex?: number) => void;
+  onPress: () => void;
   onImagePress?: () => void;
   onDelete?: () => void;
   loading?: boolean;
   expectedImageCount?: number;
-  scrollToImageIndex?: number;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -62,8 +60,7 @@ const countNewlines = (text: string): number => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount, scrollToImageIndex }: NoteCardProps) {
-  const router = useRouter();
+export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount }: NoteCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -90,17 +87,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const scale = useSharedValue(1);
   const height = useSharedValue(1);
 
-  // Animated style for deletion - MUST be called before any conditional returns
-  const animatedCardStyle = useAnimatedStyle(() => {
-    return {
-      opacity: opacity.value,
-      transform: [{ scale: scale.value }],
-      height: height.value === 0 ? 0 : undefined,
-      marginBottom: height.value === 0 ? 0 : 16,
-      overflow: 'hidden',
-    };
-  });
-
   // Initialize with first TWO images for better performance
   useEffect(() => {
     if (!loading && note.images && note.images.length > 0) {
@@ -112,6 +98,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       setLazyLoadedImages(imagesToLoad);
       // Initialize currentImageIndex to 0 to show counter immediately
       setCurrentImageIndex(0);
+      console.log(`[NoteCard] Initialized with first ${imagesToLoad.length} image(s) for note ${note.id}, total count: ${note.images.length}`);
       
       // Check if we're still uploading images
       if (expectedImageCount && note.images.length < expectedImageCount) {
@@ -122,6 +109,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     } else if (!loading && note.imageIds && note.imageIds.length > 0) {
       // If we have imageIds but no images yet (placeholder records), set the count
       setTotalImageCount(note.imageIds.length);
+      console.log(`[NoteCard] Set total image count to ${note.imageIds.length} from imageIds for note ${note.id}`);
       
       // Check if we're still uploading images
       if (expectedImageCount && note.imageIds.length < expectedImageCount) {
@@ -133,28 +121,22 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       // Use expectedImageCount if provided (for newly created notes with pending uploads)
       setTotalImageCount(expectedImageCount);
       setIsUploadingImages(true);
+      console.log(`[NoteCard] Set total image count to ${expectedImageCount} from expectedImageCount for note ${note.id}`);
     } else {
       setIsUploadingImages(false);
     }
-  }, [note.id, note.images, note.imageIds, loading, expectedImageCount, note.images?.length]);
+  }, [note.id, note.images, note.imageIds, loading, expectedImageCount]);
 
-  // Scroll to specific image if scrollToImageIndex is provided - MUST be before conditional returns
-  useEffect(() => {
-    if (scrollToImageIndex !== undefined && note.images && note.images.length > 0 && scrollToImageIndex < note.images.length && imageScrollRef.current) {
-      // Wait for images to render before scrolling
-      setTimeout(() => {
-        const scrollX = scrollToImageIndex * (IMAGE_WIDTH + IMAGE_SPACING);
-        imageScrollRef.current?.scrollTo({
-          x: scrollX,
-          y: 0,
-          animated: true,
-        });
-        
-        // Update current image index
-        setCurrentImageIndex(scrollToImageIndex);
-      }, 300);
-    }
-  }, [scrollToImageIndex, note.images?.length]);
+  // Animated style for deletion - MUST be called before any conditional returns
+  const animatedCardStyle = useAnimatedStyle(() => {
+    return {
+      opacity: opacity.value,
+      transform: [{ scale: scale.value }],
+      height: height.value === 0 ? 0 : undefined,
+      marginBottom: height.value === 0 ? 0 : 16,
+      overflow: 'hidden',
+    };
+  });
 
   // Show skeleton if loading
   if (loading) {
@@ -186,6 +168,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
             newImages[index] = imageUrl;
             return newImages;
           });
+          console.log(`[NoteCard] Successfully lazy loaded image at index ${index}`);
         }
       }
     } catch (error) {
@@ -281,18 +264,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   const handleImagePress = (index: number) => {
-    console.log('[NoteCard] Image pressed at index:', index);
-    
-    // Navigate to image gallery route
-    router.push({
-      pathname: '/image-gallery',
-      params: {
-        images: JSON.stringify(note.images || []),
-        imageIds: JSON.stringify(note.imageIds || []),
-        initialIndex: index.toString(),
-      },
-    });
-    
+    setFullScreenImageIndex(index);
+    setShowFullScreenImage(true);
     if (onImagePress) {
       onImagePress();
     }
@@ -301,11 +274,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const handleTextPress = () => {
     // Open note editor when text is clicked
     onPress();
-  };
-  
-  const handleCardPress = () => {
-    // Open note editor with optional image scroll
-    onPress(scrollToImageIndex);
   };
 
   const handleToggleExpand = (e: any) => {
@@ -363,6 +331,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   const handleDelete = async () => {
+    console.log('[NoteCard] Delete action triggered - starting deletion animation');
+    
     // Close the swipeable immediately
     swipeableRef.current?.close();
     
@@ -370,6 +340,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     if (Platform.OS !== 'web') {
       try {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        console.log('[NoteCard] Success haptic feedback triggered');
       } catch (error) {
         console.error('[NoteCard] Error triggering haptic feedback:', error);
       }
@@ -525,7 +496,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         rightThreshold={40}
         containerStyle={styles.swipeableContainer}
       >
-        <Pressable onPress={handleCardPress} style={styles.cardContent}>
+        <Pressable onPress={onPress} style={styles.cardContent}>
           {/* People Avatars - For text-only notes, show at top of card content */}
           {!hasImages && hasPeople && (
             <View style={styles.peopleAvatarsContainerNoImages}>
@@ -591,7 +562,16 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         </Pressable>
       </Swipeable>
 
-
+      {/* Full Screen Image Component - Pass original images array, not lazy loaded */}
+      {note.images && note.images.length > 0 && (
+        <FullScreenImage
+          visible={showFullScreenImage}
+          images={note.images}
+          imageIds={note.imageIds}
+          initialIndex={fullScreenImageIndex}
+          onClose={() => setShowFullScreenImage(false)}
+        />
+      )}
     </Animated.View>
   );
 }, (prevProps, nextProps) => {
@@ -604,8 +584,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     prevProps.note.imageIds?.length === nextProps.note.imageIds?.length &&
     prevProps.note.people?.length === nextProps.note.people?.length &&
     prevProps.loading === nextProps.loading &&
-    prevProps.expectedImageCount === nextProps.expectedImageCount &&
-    prevProps.scrollToImageIndex === nextProps.scrollToImageIndex
+    prevProps.expectedImageCount === nextProps.expectedImageCount
   );
 });
 

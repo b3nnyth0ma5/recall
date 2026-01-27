@@ -16,10 +16,10 @@ export async function uploadImageToCloudflare(
   contentType: string = 'image/jpeg'
 ): Promise<string | null> {
   try {
-    console.log('[CloudflareCDN] Uploading image to Cloudflare CDN');
-    console.log('[CloudflareCDN] File name:', fileName);
-    console.log('[CloudflareCDN] Content type:', contentType);
-    console.log('[CloudflareCDN] Base64 data length:', base64Data.length);
+    console.log('=== Uploading image to Cloudflare CDN ===');
+    console.log('File name:', fileName);
+    console.log('Content type:', contentType);
+    console.log('Base64 data length:', base64Data.length);
 
     const { data, error } = await supabase.functions.invoke('cloudflare-upload', {
       body: {
@@ -30,21 +30,21 @@ export async function uploadImageToCloudflare(
     });
 
     if (error) {
-      console.error('[CloudflareCDN] Error uploading to Cloudflare:', error);
+      console.error('Error uploading to Cloudflare:', error);
       return null;
     }
 
     if (!data || !data.cdnUrl) {
-      console.error('[CloudflareCDN] No CDN URL returned from Cloudflare upload');
+      console.error('No CDN URL returned from Cloudflare upload');
       return null;
     }
 
-    console.log('[CloudflareCDN] Upload successful');
-    console.log('[CloudflareCDN] CDN URL:', data.cdnUrl);
+    console.log('=== Upload successful ===');
+    console.log('CDN URL:', data.cdnUrl);
     
     return data.cdnUrl;
   } catch (error) {
-    console.error('[CloudflareCDN] Exception in uploadImageToCloudflare:', error);
+    console.error('Exception in uploadImageToCloudflare:', error);
     return null;
   }
 }
@@ -57,8 +57,8 @@ export async function uploadImageToCloudflare(
  */
 export async function deleteImageFromCloudflare(cdnUrl: string): Promise<boolean> {
   try {
-    console.log('[CloudflareCDN] Deleting image from Cloudflare CDN');
-    console.log('[CloudflareCDN] CDN URL:', cdnUrl);
+    console.log('=== Deleting image from Cloudflare CDN ===');
+    console.log('CDN URL:', cdnUrl);
 
     // Extract the image ID from the CDN URL
     const urlParts = cdnUrl.split('/');
@@ -71,14 +71,14 @@ export async function deleteImageFromCloudflare(cdnUrl: string): Promise<boolean
     });
 
     if (error) {
-      console.error('[CloudflareCDN] Error deleting from Cloudflare:', error);
+      console.error('Error deleting from Cloudflare:', error);
       return false;
     }
 
-    console.log('[CloudflareCDN] Delete successful');
+    console.log('=== Delete successful ===');
     return true;
   } catch (error) {
-    console.error('[CloudflareCDN] Exception in deleteImageFromCloudflare:', error);
+    console.error('Exception in deleteImageFromCloudflare:', error);
     return false;
   }
 }
@@ -101,75 +101,48 @@ export function getOptimizedCloudflareUrl(
     fit?: 'scale-down' | 'contain' | 'cover' | 'crop' | 'pad';
   }
 ): string {
-  if (!options || !cdnUrl) {
-    console.log('[CloudflareCDN] No options or URL provided, returning original:', cdnUrl);
+  if (!options) {
     return cdnUrl;
   }
 
   try {
-    console.log('[CloudflareCDN] Original URL:', cdnUrl);
-    console.log('[CloudflareCDN] Options:', options);
-    
     // Cloudflare Images uses a specific URL format for transformations
     // Format: https://imagedelivery.net/<account-hash>/<image-id>/<variant-name>
-    // For custom transformations, we use the flexible variant with parameters
-    
-    // Check if this is a Cloudflare Images URL
-    if (!cdnUrl.includes('imagedelivery.net')) {
-      console.log('[CloudflareCDN] Not a Cloudflare Images URL, returning original');
-      return cdnUrl;
-    }
+    // For custom transformations, we can use the flexible variant
     
     const url = new URL(cdnUrl);
-    const pathParts = url.pathname.split('/').filter(part => part.length > 0);
+    const pathParts = url.pathname.split('/');
     
-    console.log('[CloudflareCDN] Path parts:', pathParts);
-    
-    // Cloudflare Images URL structure: /<account-hash>/<image-id>/<variant>
-    // We need at least 2 parts (account-hash and image-id)
-    if (pathParts.length < 2) {
-      console.log('[CloudflareCDN] Invalid Cloudflare Images URL structure, returning original');
-      return cdnUrl;
-    }
-    
-    // Build transformation variant name
-    // Format: w=<width>,h=<height>,q=<quality>,f=<format>,fit=<fit>
-    const variantParts: string[] = [];
+    // Build transformation string
+    const transformations: string[] = [];
     
     if (options.width) {
-      variantParts.push(`w=${options.width}`);
+      transformations.push(`w=${options.width}`);
     }
     if (options.height) {
-      variantParts.push(`h=${options.height}`);
+      transformations.push(`h=${options.height}`);
     }
     if (options.quality) {
-      variantParts.push(`q=${options.quality}`);
+      transformations.push(`q=${options.quality}`);
     }
     if (options.format) {
-      variantParts.push(`f=${options.format}`);
+      transformations.push(`f=${options.format}`);
     }
     if (options.fit) {
-      variantParts.push(`fit=${options.fit}`);
+      transformations.push(`fit=${options.fit}`);
     }
 
-    // If we have transformations, create a custom variant URL
-    if (variantParts.length > 0) {
-      const variantName = variantParts.join(',');
-      
-      // Build new URL: /<account-hash>/<image-id>/<variant>
-      const accountHash = pathParts[0];
-      const imageId = pathParts[1];
-      
-      const optimizedUrl = `${url.protocol}//${url.host}/${accountHash}/${imageId}/${variantName}`;
-      
-      console.log('[CloudflareCDN] Generated optimized URL:', optimizedUrl);
-      return optimizedUrl;
+    // If we have transformations, append them to the URL
+    if (transformations.length > 0) {
+      // For Cloudflare Images, we can use the flexible variant
+      // Replace the last part of the path with our transformation string
+      pathParts[pathParts.length - 1] = transformations.join(',');
+      url.pathname = pathParts.join('/');
     }
 
-    console.log('[CloudflareCDN] No transformations applied, returning original');
-    return cdnUrl;
+    return url.toString();
   } catch (error) {
-    console.error('[CloudflareCDN] Error generating optimized URL:', error);
+    console.error('Error generating optimized URL:', error);
     return cdnUrl;
   }
 }
@@ -189,12 +162,6 @@ export function getCloudflareImagePresets(cdnUrl: string) {
     card: getOptimizedCloudflareUrl(cdnUrl, { 
       width: 400, 
       height: 400, 
-      quality: 80,
-      fit: 'cover',
-      format: 'webp'
-    }),
-    gallery: getOptimizedCloudflareUrl(cdnUrl, { 
-      width: 600, 
       quality: 80,
       fit: 'cover',
       format: 'webp'
@@ -221,13 +188,13 @@ export async function isCloudflareCDNConfigured(): Promise<boolean> {
     });
 
     if (error) {
-      console.error('[CloudflareCDN] Error checking Cloudflare configuration:', error);
+      console.error('Error checking Cloudflare configuration:', error);
       return false;
     }
 
     return data?.configured === true;
   } catch (error) {
-    console.error('[CloudflareCDN] Exception checking Cloudflare configuration:', error);
+    console.error('Exception checking Cloudflare configuration:', error);
     return false;
   }
 }

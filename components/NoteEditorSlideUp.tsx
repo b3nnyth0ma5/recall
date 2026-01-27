@@ -84,8 +84,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
-  const [showImageGallery, setShowImageGallery] = useState(false);
-  const [imageGalleryIndex, setImageGalleryIndex] = useState(0);
   const [showFABs, setShowFABs] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [initialPeople, setInitialPeople] = useState<Person[]>([]);
@@ -119,7 +117,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     } else {
       setLoadedImageIndices(new Set());
     }
-  }, [images]);
+  }, [images.length]);
 
   const handleImageScroll = async (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
@@ -444,7 +442,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     if (visible && noteId) {
       loadNoteFromCacheOrDatabase();
     }
-  }, [visible, noteId, user, getCachedNote, onClose, isEditing]);
+  }, [visible, noteId, user, getCachedNote, onClose]);
 
   const takePhoto = useCallback(async () => {
     try {
@@ -1002,21 +1000,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   };
 
   const handleImagePress = (index: number) => {
-    console.log('Image pressed at index:', index);
-    setImageGalleryIndex(index);
-    setShowImageGallery(true);
-  };
-
-  const handleGalleryImagePress = (index: number) => {
-    console.log('Gallery image pressed at index:', index);
-    setShowImageGallery(false);
     setFullScreenImageIndex(index);
     setShowFullScreenImage(true);
-  };
-
-  const handleCloseImageGallery = () => {
-    console.log('Closing image gallery');
-    setShowImageGallery(false);
   };
 
   const handleRichTextPress = () => {
