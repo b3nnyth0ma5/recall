@@ -44,6 +44,7 @@ export default function CategoryViewerScreen() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isMatching, setIsMatching] = useState(false);
   const matchingCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [totalRecallCount, setTotalRecallCount] = useState(0);
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
@@ -319,6 +320,23 @@ export default function CategoryViewerScreen() {
         }
       }
 
+      // Fetch total count of recalls in this category (only on first load)
+      if (pageNum === 1) {
+        const { count, error: countError } = await supabase
+          .from('recollections')
+          .select('recall_id', { count: 'exact', head: true })
+          .eq('category_id', id)
+          .eq('user_id', user.id);
+
+        if (countError) {
+          console.error('[CategoryViewer] Error fetching total recall count:', countError);
+          setTotalRecallCount(0);
+        } else {
+          setTotalRecallCount(count || 0);
+          console.log('[CategoryViewer] Total recall count:', count);
+        }
+      }
+
       // Fetch recall IDs that match this category using optimized composite index with pagination
       const from = (pageNum - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
@@ -405,8 +423,12 @@ export default function CategoryViewerScreen() {
         }
       }
 
-      // Sort by match_score
-      transformedNotes.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+      // Sort by created_at (most recent first) instead of match_score
+      transformedNotes.sort((a, b) => {
+        const dateA = new Date(a.created_at).getTime();
+        const dateB = new Date(b.created_at).getTime();
+        return dateB - dateA; // Descending order (most recent first)
+      });
 
       console.log(`[CategoryViewer] Loaded ${transformedNotes.length} recalls (${cachedNotes.length} from cache, ${uncachedRecallIds.length} from DB)`);
       
@@ -471,6 +493,18 @@ export default function CategoryViewerScreen() {
           matchingCheckIntervalRef.current = null;
         }
       }
+      
+      // Reload total count
+      const { count, error: countError } = await supabase
+        .from('recollections')
+        .select('recall_id', { count: 'exact', head: true })
+        .eq('category_id', id)
+        .eq('user_id', user.id);
+
+      if (!countError) {
+        setTotalRecallCount(count || 0);
+        console.log('[CategoryViewer] Total recall count refreshed:', count);
+      }
     }
     
     await loadCategoryAndRecalls(1, false);
@@ -513,6 +547,93 @@ export default function CategoryViewerScreen() {
       console.error('Error navigating to note editor:', error);
     }
   }, [router]);
+
+  const handleDeleteRecall = useCallback(async (recallId: string) => {
+    if (!user) {
+      console.error('[CategoryViewer] No user logged in');
+      return;
+    }
+
+    try {
+      console.log('[CategoryViewer] ===== DELETING RECALL =====');
+      console.log('[CategoryViewer] Recall ID:', recallId);
+      
+      // Optimistically remove from UI immediately
+      setNotes(prevNotes => prevNotes.filter(note => note.id !== recallId));
+      
+      // Update total count
+      setTotalRecallCount(prev => Math.max(0, prev - 1));
+      
+      console.log('[CategoryViewer] Recall removed from UI (optimistic update)');
+      
+      // Clear caches for this recall
+      peopleCache.remove(recallId);
+      noteCache.remove(recallId);
+      console.log('[CategoryViewer] Caches invalidated for recall:', recallId);
+      
+      // Perform actual deletion ASYNCHRONOUSLY
+      console.log('[CategoryViewer] Starting async deletion process...');
+      (async () => {
+        try {
+          console.log('[CategoryViewer] [ASYNC] Getting images for recall:', recallId);
+          
+          // Get all images for this recall
+          const { data: imagesData } = await supabase
+            .from('recall_images')
+            .select('id, cdn_url')
+            .eq('recall_id', recallId);
+
+          // Delete images from CDN and clear image cache
+          if (imagesData && imagesData.length > 0) {
+            console.log(`[CategoryViewer] [ASYNC] Deleting ${imagesData.length} images for recall ${recallId}`);
+            
+            for (const img of imagesData) {
+              // Clear image cache
+              imageCache.remove(img.id);
+              
+              // Delete from CDN if URL exists
+              if (img.cdn_url) {
+                console.log(`[CategoryViewer] [ASYNC] Deleting image from CDN:`, img.cdn_url);
+                const { deleteImageFromCloudflare } = await import('@/utils/cloudflareCDN');
+                await deleteImageFromCloudflare(img.cdn_url);
+              }
+            }
+            
+            console.log(`[CategoryViewer] [ASYNC] All ${imagesData.length} images deleted and caches cleared`);
+          }
+
+          // Delete the recall itself (cascading will handle recall_images, recall_people, recollections, etc.)
+          console.log('[CategoryViewer] [ASYNC] Deleting recall from database:', recallId);
+          const { error } = await supabase
+            .from('recalls')
+            .delete()
+            .eq('id', recallId)
+            .eq('user_id', user.id);
+
+          if (error) {
+            console.error('[CategoryViewer] [ASYNC] Error deleting recall:', error);
+            // Revert optimistic update on error
+            await loadCategoryAndRecalls(1, false);
+          } else {
+            console.log('[CategoryViewer] [ASYNC] Recall deleted successfully from database');
+            console.log('[CategoryViewer] [ASYNC] Cascading deletions (recall_images, recall_people, recollections, etc.) handled by database');
+          }
+          
+          console.log('[CategoryViewer] ===== DELETION COMPLETE =====');
+        } catch (asyncError) {
+          console.error('[CategoryViewer] [ASYNC] Exception during async deletion:', asyncError);
+          // Revert optimistic update on error
+          await loadCategoryAndRecalls(1, false);
+        }
+      })();
+      
+      console.log('[CategoryViewer] Deletion initiated asynchronously');
+    } catch (error) {
+      console.error('[CategoryViewer] Error initiating recall deletion:', error);
+      // Revert optimistic update on error
+      await loadCategoryAndRecalls(1, false);
+    }
+  }, [user, loadCategoryAndRecalls]);
 
   const handleEditPress = () => {
     if (!category) return;
@@ -1106,7 +1227,7 @@ export default function CategoryViewerScreen() {
                   </Pressable>
                 </View>
                 <Text style={styles.recallCount}>
-                  {notes.length} {notes.length === 1 ? 'Recall' : 'Recalls'}
+                  {totalRecallCount} {totalRecallCount === 1 ? 'Recall' : 'Recalls'}
                 </Text>
               </View>
             </View>
@@ -1122,6 +1243,7 @@ export default function CategoryViewerScreen() {
                   key={`${note.id}-${index}`}
                   note={note}
                   onPress={() => handleNotePress(note.id)}
+                  onDelete={() => handleDeleteRecall(note.id)}
                 />
               ))}
               

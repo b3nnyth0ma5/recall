@@ -163,7 +163,7 @@
       ],
       "./app.plugin.js"
     ],
-    "scheme": "natively",
+    "scheme": "Recall",
     "experiments": {
       "typedRoutes": true
     },
