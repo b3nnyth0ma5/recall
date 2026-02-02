@@ -21,12 +21,12 @@ interface MarkdownAnswerProps {
  * MarkdownAnswer Component
  * 
  * Renders markdown content with hyperlinked source references.
- * SOURCE_X patterns in the text are converted to clickable [X] links
+ * SOURCE_X patterns in the text are converted to clickable numbered links
  * that scroll to the corresponding recall and navigate to its detail view.
  * 
  * Features:
  * - Parses markdown with react-native-markdown-display
- * - Converts SOURCE_X to clickable [X] superscript links
+ * - Converts SOURCE_X to clickable numbered superscript links (without brackets)
  * - Provides haptic feedback on link press
  * - Maintains proper text flow with inline links
  */
@@ -36,88 +36,55 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
   recallReferences = [],
   onRecallPress 
 }) => {
-  // Parse the content to identify source references and convert them to hyperlinked numbers
-  // This creates a better UX by making source numbers clickable inline with the text
+  // Process content to replace SOURCE_X with inline hyperlinked numbers
   const processedContent = useMemo(() => {
     if (!recallReferences || recallReferences.length === 0) {
-      return { segments: [{ type: 'text' as const, content }] };
+      return content;
     }
     
-    const segments: Array<{ 
-      type: 'text' | 'link'; 
-      content: string; 
-      sourceNum?: number; 
-      recallId?: string; 
-      imageIndex?: number;
-    }> = [];
+    // Replace SOURCE_X patterns with placeholder markers that we'll render as links
+    // Using a unique marker format that won't appear in normal text
+    const processedText = content.replace(/SOURCE_(\d+)/g, (match, sourceNum) => {
+      return `{{LINK:${sourceNum}}}`;
+    });
     
-    // Match SOURCE_X patterns (where X is a number)
-    // This regex captures the source number for easy extraction
-    const sourceRegex = /SOURCE_(\d+)/g;
+    return processedText;
+  }, [content, recallReferences]);
+
+  // Split content into text and link segments for inline rendering
+  const renderInlineContent = useMemo(() => {
+    const segments: React.ReactNode[] = [];
+    const linkRegex = /\{\{LINK:(\d+)\}\}/g;
     let lastIndex = 0;
     let match;
-    
-    while ((match = sourceRegex.exec(content)) !== null) {
+    let key = 0;
+
+    while ((match = linkRegex.exec(processedContent)) !== null) {
       const sourceNum = parseInt(match[1], 10);
       const matchStart = match.index;
-      const matchEnd = sourceRegex.lastIndex;
       
-      // Add text before this match as regular markdown
+      // Add text before this link
       if (matchStart > lastIndex) {
-        segments.push({
-          type: 'text',
-          content: content.substring(lastIndex, matchStart),
-        });
+        const textBefore = processedContent.substring(lastIndex, matchStart);
+        segments.push(
+          <Text key={`text-${key++}`} style={styles.inlineText}>
+            {textBefore}
+          </Text>
+        );
       }
       
-      // Convert SOURCE_X to clickable [X] link
+      // Add the hyperlinked number (without brackets)
       const ref = recallReferences[sourceNum - 1];
       if (ref && onRecallPress) {
-        segments.push({
-          type: 'link',
-          content: `[${sourceNum}]`,
-          sourceNum,
-          recallId: ref.recallId,
-          imageIndex: ref.imageIndex,
-        });
-      } else {
-        // If no reference found, show as plain text (shouldn't happen in normal flow)
-        segments.push({
-          type: 'text',
-          content: match[0],
-        });
-      }
-      
-      lastIndex = matchEnd;
-    }
-    
-    // Add any remaining text after the last match
-    if (lastIndex < content.length) {
-      segments.push({
-        type: 'text',
-        content: content.substring(lastIndex),
-      });
-    }
-    
-    return { segments };
-  }, [content, recallReferences, onRecallPress]);
-
-  // Render the content with hyperlinked source numbers
-  // Links are rendered as pressable superscript numbers for better UX
-  const renderContent = useMemo(() => {
-    const { segments } = processedContent;
-    
-    return segments.map((segment, index) => {
-      if (segment.type === 'link' && segment.recallId && onRecallPress) {
-        // Render clickable source number with haptic feedback
-        return (
-          <Pressable
-            key={`link-${index}`}
+        segments.push(
+          <Text
+            key={`link-${key++}`}
+            style={styles.sourceLink}
             onPress={() => {
               console.log('[MarkdownAnswer] Source link pressed:', {
-                sourceNum: segment.sourceNum,
-                recallId: segment.recallId,
-                imageIndex: segment.imageIndex,
+                sourceNum,
+                recallId: ref.recallId,
+                imageIndex: ref.imageIndex,
               });
               
               // Provide haptic feedback for better UX
@@ -126,32 +93,51 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
               }
               
               // Trigger callback to scroll to recall and navigate
-              onRecallPress(segment.recallId, segment.imageIndex);
+              onRecallPress(ref.recallId, ref.imageIndex);
             }}
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           >
-            <Text style={styles.sourceLink}>{segment.content}</Text>
-          </Pressable>
+            {sourceNum}
+          </Text>
+        );
+      } else {
+        // If no reference found, show as plain text
+        segments.push(
+          <Text key={`text-${key++}`} style={styles.inlineText}>
+            {sourceNum}
+          </Text>
         );
       }
       
-      // Regular text - render with markdown parser
-      return (
-        <Markdown
-          key={`text-${index}`}
-          style={markdownStyles}
-        >
-          {segment.content}
-        </Markdown>
+      lastIndex = linkRegex.lastIndex;
+    }
+    
+    // Add any remaining text after the last link
+    if (lastIndex < processedContent.length) {
+      const textAfter = processedContent.substring(lastIndex);
+      segments.push(
+        <Text key={`text-${key++}`} style={styles.inlineText}>
+          {textAfter}
+        </Text>
       );
-    });
-  }, [processedContent, onRecallPress]);
+    }
+    
+    return segments;
+  }, [processedContent, recallReferences, onRecallPress]);
+
+  // Check if content has any links
+  const hasLinks = processedContent.includes('{{LINK:');
 
   return (
     <View style={styles.container}>
-      <View style={styles.contentWrapper}>
-        {renderContent}
-      </View>
+      {hasLinks ? (
+        <Text style={styles.inlineContainer}>
+          {renderInlineContent}
+        </Text>
+      ) : (
+        <Markdown style={markdownStyles}>
+          {content}
+        </Markdown>
+      )}
     </View>
   );
 };
@@ -160,22 +146,24 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
   },
-  contentWrapper: {
-    flexDirection: 'row',
+  inlineContainer: {
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 24,
     flexWrap: 'wrap',
-    alignItems: 'baseline',
+  },
+  inlineText: {
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 24,
   },
   sourceLink: {
     color: colors.primary,
     fontSize: 14,
     fontWeight: '700',
     textDecorationLine: 'underline',
-    marginHorizontal: 3,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 4,
-    backgroundColor: `${colors.primary}15`,
-    overflow: 'hidden',
+    lineHeight: 24,
+    paddingHorizontal: 2,
   },
 });
 
