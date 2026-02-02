@@ -94,31 +94,7 @@ Deno.serve(async (req) => {
     console.log('Processing recall ID:', recall_id);
     console.log('User ID:', user_id);
 
-    // Combine text and image_explanation
-    const combinedText = [text, image_explanation]
-      .filter(Boolean)
-      .join(' ')
-      .trim();
-
-    if (!combinedText) {
-      console.log('No text content to process, skipping people detection');
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'No text content to process',
-          names: [],
-          processingTimeMs: Date.now() - startTime,
-        }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    console.log('Combined text length:', combinedText.length);
-
-    // Validate environment variables
+    // Validate environment variables early
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
@@ -152,6 +128,56 @@ Deno.serve(async (req) => {
         persistSession: false,
       },
     });
+
+    // If image_explanation is not provided, fetch all image explanations from the database
+    let allImageExplanations: string[] = [];
+    if (!image_explanation) {
+      console.log('Fetching image explanations from database for recall:', recall_id);
+      
+      const { data: imagesData, error: imagesError } = await supabase
+        .from('recall_images')
+        .select('image_explanation')
+        .eq('recall_id', recall_id)
+        .eq('user_id', user_id);
+
+      if (imagesError) {
+        console.error('Error fetching image explanations:', imagesError);
+      } else if (imagesData && imagesData.length > 0) {
+        allImageExplanations = imagesData
+          .map(img => img.image_explanation)
+          .filter(Boolean);
+        console.log(`Fetched ${allImageExplanations.length} image explanations from database`);
+      }
+    } else {
+      allImageExplanations = [image_explanation];
+    }
+
+    // Combine text and all image explanations
+    const combinedText = [text, ...allImageExplanations]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    if (!combinedText) {
+      console.log('No text content to process, skipping people detection');
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'No text content to process',
+          names: [],
+          processingTimeMs: Date.now() - startTime,
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    console.log('Combined text length:', combinedText.length);
+    console.log('Text sources: recall text + ' + allImageExplanations.length + ' image explanations');
+
+
 
     // Call OpenAI API for Named Entity Recognition (NER)
     console.log('Calling OpenAI API for NER...');

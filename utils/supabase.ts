@@ -702,6 +702,58 @@ export async function triggerRecallEmbedding(
   }
 }
 
+export async function triggerPeopleFinder(
+  recallId: string,
+  userId: string,
+  text?: string,
+  imageExplanation?: string
+): Promise<{ success: boolean; error?: string; data?: any }> {
+  try {
+    console.log('=== Triggering people-finder ===');
+    console.log('Recall ID:', recallId);
+    console.log('User ID:', userId);
+
+    const requestBody: any = { 
+      recall_id: recallId,
+      user_id: userId,
+    };
+    
+    // Include optional parameters if provided
+    if (text !== undefined && text.trim().length > 0) {
+      requestBody.text = text;
+    }
+    if (imageExplanation !== undefined && imageExplanation.trim().length > 0) {
+      requestBody.image_explanation = imageExplanation;
+    }
+
+    const { data, error } = await supabase.functions.invoke('people-finder', {
+      body: requestBody,
+    });
+
+    if (error) {
+      console.error('Error invoking people-finder function:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Failed to invoke people-finder function' 
+      };
+    }
+
+    console.log('People-finder function invoked successfully');
+    console.log('Response:', data);
+    
+    return { 
+      success: true, 
+      data 
+    };
+  } catch (error) {
+    console.error('Exception in triggerPeopleFinder:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
+}
+
 export async function batchUploadImagesToCloudflare(batchSize: number = 100): Promise<{
   success: boolean;
   processed: number;

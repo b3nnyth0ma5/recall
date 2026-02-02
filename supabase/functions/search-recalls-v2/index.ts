@@ -386,7 +386,10 @@ CRITICAL RULES:
 - Use bullet points when listing multiple items
 - Provide a confidence score (0-100) based on how well the recalls answer the question
 - Research the answer thoroughly based on the provided information
-- Don't include the "SOURCE_" text in your final answer
+- IMPORTANT: When referencing sources in your answer, use the format "SOURCE_X" (e.g., SOURCE_1, SOURCE_2) inline with the text
+- Place source references immediately after the relevant information, like: "The restaurant is located in Collingwood SOURCE_1."
+- You can reference the same source multiple times if needed
+- Don't include explanatory text about sources - just use SOURCE_X inline
 
 MATCH INFORMATION:
 - Pay attention to match type indicators: [LOCATION], [PEOPLE], [KEYWORD]
@@ -398,7 +401,8 @@ Question: ${query}
 Available Recalls (sorted by highest match percentage first):
 ${context}
 
-Provide your answer in JSON format: {"answer": "your comprehensive answer based on the highest matching recalls including images", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
+Provide your answer in JSON format with inline source references: {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
+Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John mentioned he'll bring the presentation SOURCE_2.", "confidence": 90, "sources": ["SOURCE_1", "SOURCE_2"]}
 If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.`;
 
     console.log('Making request to OpenAI gpt-4o-mini...');

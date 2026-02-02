@@ -37,7 +37,7 @@ import { Note, Person } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
 import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
-import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding, triggerPeopleFinder } from '@/utils/supabase';
 import { processRecallUrls } from '@/utils/urlProcessor';
 import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1175,6 +1175,26 @@ export default function NoteEditorScreen() {
           console.error('[NoteEditor] [ASYNC] Error triggering embedding generation:', error);
         });
       }, 500);
+
+      // Trigger people-finder to extract person names from text and images
+      setTimeout(() => {
+        console.log('[NoteEditor] [ASYNC] Triggering people-finder for recall:', recallId);
+        triggerPeopleFinder(
+          recallId,
+          user.id,
+          noteData.text,
+          undefined // image_explanation will be fetched by the edge function
+        ).then(result => {
+          if (result.success) {
+            console.log('[NoteEditor] [ASYNC] People-finder triggered successfully');
+            console.log('[NoteEditor] [ASYNC] Found people:', result.data?.names || []);
+          } else {
+            console.error('[NoteEditor] [ASYNC] Failed to trigger people-finder:', result.error);
+          }
+        }).catch(error => {
+          console.error('[NoteEditor] [ASYNC] Error triggering people-finder:', error);
+        });
+      }, 1000);
 
     } catch (error: any) {
       console.error('[NoteEditor] 🔥 CRITICAL ERROR saving recall:', error);

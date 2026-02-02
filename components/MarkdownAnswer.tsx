@@ -17,21 +17,42 @@ interface MarkdownAnswerProps {
   onRecallPress?: (recallId: string, imageIndex?: number) => void;
 }
 
+/**
+ * MarkdownAnswer Component
+ * 
+ * Renders markdown content with hyperlinked source references.
+ * SOURCE_X patterns in the text are converted to clickable [X] links
+ * that scroll to the corresponding recall and navigate to its detail view.
+ * 
+ * Features:
+ * - Parses markdown with react-native-markdown-display
+ * - Converts SOURCE_X to clickable [X] superscript links
+ * - Provides haptic feedback on link press
+ * - Maintains proper text flow with inline links
+ */
+
 export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({ 
   content, 
   recallReferences = [],
   onRecallPress 
 }) => {
   // Parse the content to identify source references and convert them to hyperlinked numbers
+  // This creates a better UX by making source numbers clickable inline with the text
   const processedContent = useMemo(() => {
     if (!recallReferences || recallReferences.length === 0) {
       return { segments: [{ type: 'text' as const, content }] };
     }
     
-    let processed = content;
-    const segments: Array<{ type: 'text' | 'link'; content: string; sourceNum?: number; recallId?: string; imageIndex?: number }> = [];
+    const segments: Array<{ 
+      type: 'text' | 'link'; 
+      content: string; 
+      sourceNum?: number; 
+      recallId?: string; 
+      imageIndex?: number;
+    }> = [];
     
-    // Create a regex to match SOURCE_X patterns
+    // Match SOURCE_X patterns (where X is a number)
+    // This regex captures the source number for easy extraction
     const sourceRegex = /SOURCE_(\d+)/g;
     let lastIndex = 0;
     let match;
@@ -41,7 +62,7 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
       const matchStart = match.index;
       const matchEnd = sourceRegex.lastIndex;
       
-      // Add text before this match
+      // Add text before this match as regular markdown
       if (matchStart > lastIndex) {
         segments.push({
           type: 'text',
@@ -49,7 +70,7 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
         });
       }
       
-      // Add the hyperlinked source number
+      // Convert SOURCE_X to clickable [X] link
       const ref = recallReferences[sourceNum - 1];
       if (ref && onRecallPress) {
         segments.push({
@@ -60,7 +81,7 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
           imageIndex: ref.imageIndex,
         });
       } else {
-        // If no reference found, just add as text
+        // If no reference found, show as plain text (shouldn't happen in normal flow)
         segments.push({
           type: 'text',
           content: match[0],
@@ -70,7 +91,7 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
       lastIndex = matchEnd;
     }
     
-    // Add any remaining text
+    // Add any remaining text after the last match
     if (lastIndex < content.length) {
       segments.push({
         type: 'text',
@@ -82,29 +103,39 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
   }, [content, recallReferences, onRecallPress]);
 
   // Render the content with hyperlinked source numbers
+  // Links are rendered as pressable superscript numbers for better UX
   const renderContent = useMemo(() => {
     const { segments } = processedContent;
     
     return segments.map((segment, index) => {
       if (segment.type === 'link' && segment.recallId && onRecallPress) {
+        // Render clickable source number with haptic feedback
         return (
           <Pressable
             key={`link-${index}`}
             onPress={() => {
-              console.log('[MarkdownAnswer] Source number pressed for recall:', segment.recallId);
+              console.log('[MarkdownAnswer] Source link pressed:', {
+                sourceNum: segment.sourceNum,
+                recallId: segment.recallId,
+                imageIndex: segment.imageIndex,
+              });
+              
+              // Provide haptic feedback for better UX
               if (Platform.OS !== 'web') {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               }
+              
+              // Trigger callback to scroll to recall and navigate
               onRecallPress(segment.recallId, segment.imageIndex);
             }}
-            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           >
             <Text style={styles.sourceLink}>{segment.content}</Text>
           </Pressable>
         );
       }
       
-      // Regular text - render with markdown
+      // Regular text - render with markdown parser
       return (
         <Markdown
           key={`text-${index}`}
@@ -136,10 +167,15 @@ const styles = StyleSheet.create({
   },
   sourceLink: {
     color: colors.primary,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     textDecorationLine: 'underline',
-    marginHorizontal: 2,
+    marginHorizontal: 3,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: `${colors.primary}15`,
+    overflow: 'hidden',
   },
 });
 
