@@ -548,7 +548,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                 value={text}
                 onChangeText={handleTextChange}
                 multiline
-                maxLength={1000}
                 returnKeyType="default"
                 blurOnSubmit={false}
                 enablesReturnKeyAutomatically={false}

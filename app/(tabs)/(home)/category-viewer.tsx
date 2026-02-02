@@ -45,7 +45,7 @@ export default function CategoryViewerScreen() {
   const [isMatching, setIsMatching] = useState(false);
   const matchingCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [totalRecallCount, setTotalRecallCount] = useState(0);
-  const [sortOrder, setSortOrder] = useState<'Newest' | 'Oldest' | 'Best match'>('Newest');
+  const [sortOrder, setSortOrder] = useState<'Newest' | 'Oldest' | 'Best match'>('Best match');
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
@@ -345,23 +345,158 @@ export default function CategoryViewerScreen() {
       // Build query with appropriate sorting based on sortOrder
       console.log(`[CategoryViewer] Applying sort order: ${sortOrder}`);
       
+      // For date sorting, we need to fetch ALL recalls in the category first, then sort by the recall's created_at
+      if (sortOrder === 'Newest' || sortOrder === 'Oldest') {
+        console.log(`[CategoryViewer] Fetching ALL recalls for date sorting (${sortOrder})`);
+        
+        // Step 1: Get all recall_ids for this category
+        const { data: allRecollectionsData, error: allRecollectionsError } = await supabase
+          .from('recollections')
+          .select('recall_id, match_score')
+          .eq('category_id', id)
+          .eq('user_id', user.id);
+
+        if (allRecollectionsError) {
+          console.error('[CategoryViewer] Error fetching all recollections:', allRecollectionsError);
+          if (!append) {
+            setNotes([]);
+          }
+          return;
+        }
+
+        if (!allRecollectionsData || allRecollectionsData.length === 0) {
+          console.log('[CategoryViewer] No recalls found for this category');
+          setHasMore(false);
+          if (!append) {
+            setNotes([]);
+          }
+          return;
+        }
+
+        const allRecallIds = allRecollectionsData.map(r => r.recall_id);
+        const matchScoreMap = new Map(
+          allRecollectionsData.map(r => [r.recall_id, r.match_score])
+        );
+
+        console.log(`[CategoryViewer] Found ${allRecallIds.length} total recalls, fetching their created_at dates`);
+
+        // Step 2: Fetch all recalls with their created_at dates
+        const { data: allRecallsData, error: allRecallsError } = await supabase
+          .from('recalls')
+          .select('id, created_at')
+          .in('id', allRecallIds)
+          .eq('user_id', user.id);
+
+        if (allRecallsError) {
+          console.error('[CategoryViewer] Error fetching recalls for sorting:', allRecallsError);
+          if (!append) {
+            setNotes([]);
+          }
+          return;
+        }
+
+        // Step 3: Sort by created_at
+        const sortedRecalls = (allRecallsData || []).sort((a, b) => {
+          const dateA = new Date(a.created_at).getTime();
+          const dateB = new Date(b.created_at).getTime();
+          
+          if (sortOrder === 'Newest') {
+            return dateB - dateA; // Newest first
+          } else {
+            return dateA - dateB; // Oldest first
+          }
+        });
+
+        console.log(`[CategoryViewer] Sorted ${sortedRecalls.length} recalls by ${sortOrder}`);
+
+        // Step 4: Apply pagination to sorted results
+        const paginatedRecalls = sortedRecalls.slice(from, to + 1);
+        
+        if (paginatedRecalls.length < ITEMS_PER_PAGE) {
+          setHasMore(false);
+        }
+
+        console.log(`[CategoryViewer] Paginated to ${paginatedRecalls.length} recalls for page ${pageNum}`);
+
+        // Step 5: Create recollectionsData format with match_score
+        const recollectionsData = paginatedRecalls.map(recall => ({
+          recall_id: recall.id,
+          match_score: matchScoreMap.get(recall.id) || 0,
+        }));
+
+        // Continue with existing logic
+        const recallIds = recollectionsData.map(r => r.recall_id);
+        
+        // Check cache first for recalls (from landing page)
+        const cachedNotes: Note[] = [];
+        const uncachedRecallIds: string[] = [];
+
+        recallIds.forEach(recallId => {
+          const cachedNote = getCachedNote(recallId);
+          if (cachedNote) {
+            console.log(`[CategoryViewer] Using cached note for ${recallId}`);
+            cachedNotes.push({
+              ...cachedNote,
+              match_score: matchScoreMap.get(recallId) || 0,
+            });
+          } else {
+            uncachedRecallIds.push(recallId);
+          }
+        });
+
+        let transformedNotes: Note[] = [...cachedNotes];
+
+        // Fetch only uncached recalls
+        if (uncachedRecallIds.length > 0) {
+          console.log(`[CategoryViewer] Fetching ${uncachedRecallIds.length} uncached recalls from DB`);
+          
+          const { data: recallsData, error: recallsError } = await supabase
+            .from('recalls')
+            .select('*')
+            .in('id', uncachedRecallIds)
+            .eq('user_id', user.id);
+
+          if (recallsError) {
+            console.error('[CategoryViewer] Error fetching recalls:', recallsError);
+          } else if (recallsData) {
+            // Add match_score to recalls
+            const recallsWithScore = recallsData.map(recall => ({
+              ...recall,
+              match_score: matchScoreMap.get(recall.id) || 0,
+            }));
+
+            // Optimized image and people loading with lazy loading
+            const processedNotes = await loadImagesForRecalls(recallsWithScore);
+            transformedNotes = [...transformedNotes, ...processedNotes];
+          }
+        }
+
+        console.log(`[CategoryViewer] Loaded ${transformedNotes.length} recalls (${cachedNotes.length} from cache, ${uncachedRecallIds.length} from DB)`);
+        
+        if (append) {
+          // Prevent duplicates by filtering out notes that already exist
+          setNotes(prevNotes => {
+            const existingIds = new Set(prevNotes.map(note => note.id));
+            const newUniqueNotes = transformedNotes.filter(note => !existingIds.has(note.id));
+            console.log(`[CategoryViewer] Adding ${newUniqueNotes.length} new unique notes (filtered ${transformedNotes.length - newUniqueNotes.length} duplicates)`);
+            return [...prevNotes, ...newUniqueNotes];
+          });
+        } else {
+          setNotes(transformedNotes);
+        }
+        
+        return; // Exit early for date sorting
+      }
+      
+      // For "Best match" sorting, use the existing logic with match_score
       let recollectionsQuery = supabase
         .from('recollections')
         .select('recall_id, match_score')
         .eq('category_id', id)
         .eq('user_id', user.id);
 
-      // Apply sorting based on sortOrder
-      if (sortOrder === 'Best match') {
-        console.log('[CategoryViewer] Ordering by match_score DESC');
-        recollectionsQuery = recollectionsQuery.order('match_score', { ascending: false });
-      } else if (sortOrder === 'Newest') {
-        console.log('[CategoryViewer] Ordering by created_at DESC (newest first)');
-        recollectionsQuery = recollectionsQuery.order('created_at', { ascending: false });
-      } else if (sortOrder === 'Oldest') {
-        console.log('[CategoryViewer] Ordering by created_at ASC (oldest first)');
-        recollectionsQuery = recollectionsQuery.order('created_at', { ascending: true });
-      }
+      console.log('[CategoryViewer] Ordering by match_score DESC (Best match)');
+      recollectionsQuery = recollectionsQuery.order('match_score', { ascending: false });
       
       const { data: recollectionsData, error: recollectionsError } = await recollectionsQuery.range(from, to);
 
