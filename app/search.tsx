@@ -10,6 +10,7 @@ import {
   Keyboard,
   Platform,
   ActivityIndicator,
+  Share,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -22,6 +23,7 @@ import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
 import { MarkdownAnswer } from '@/components/MarkdownAnswer';
+import Toast from 'react-native-toast-message';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -329,6 +331,74 @@ export default function SearchScreen() {
     const lines = answer.split('\n');
     return lines.length > 3;
   }, []);
+
+  const handleShareAnswer = useCallback(async () => {
+    if (!searchAnswer) {
+      console.log('[SearchScreen] No answer to share');
+      return;
+    }
+
+    try {
+      console.log('[SearchScreen] Sharing answer text');
+      
+      // Trigger haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+
+      // Clean the answer text by removing SOURCE_ references for sharing
+      const cleanedAnswer = searchAnswer.replace(/\s*SOURCE_\d+/g, '');
+
+      // Prepare share message
+      const shareMessage = `Answer from Natively:\n\n${cleanedAnswer}\n\n---\nSearched: "${searchQuery}"`;
+
+      // Use native Share API
+      const result = await Share.share(
+        {
+          message: shareMessage,
+          title: 'Answer from Natively',
+        },
+        {
+          dialogTitle: 'Share Answer',
+          subject: 'Answer from Natively',
+        }
+      );
+
+      if (result.action === Share.sharedAction) {
+        console.log('[SearchScreen] Answer shared successfully');
+        
+        // Success haptic feedback
+        if (Platform.OS !== 'web') {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+
+        Toast.show({
+          type: 'success',
+          text1: 'Answer Shared',
+          text2: 'The answer has been shared successfully',
+          position: 'bottom',
+          visibilityTime: 2000,
+        });
+      } else if (result.action === Share.dismissedAction) {
+        console.log('[SearchScreen] Share dismissed');
+      }
+    } catch (error) {
+      console.error('[SearchScreen] Error sharing answer:', error);
+      
+      // Error haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+
+      Toast.show({
+        type: 'error',
+        text1: 'Share Failed',
+        text2: 'Failed to share the answer. Please try again.',
+        position: 'bottom',
+        visibilityTime: 3000,
+      });
+    }
+  }, [searchAnswer, searchQuery]);
 
   const renderHistorySkeletons = useMemo(() => {
     return (
@@ -643,13 +713,26 @@ export default function SearchScreen() {
                             />
                             <Text style={styles.answerTitle}>Answer</Text>
                           </View>
-                          <View style={styles.confidenceBadge}>
-                            <IconSymbol 
-                              name="checkmark.seal.fill" 
-                              size={14} 
-                              color={colors.primary} 
-                            />
-                            <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
+                          <View style={styles.answerHeaderRight}>
+                            <View style={styles.confidenceBadge}>
+                              <IconSymbol 
+                                name="checkmark.seal.fill" 
+                                size={14} 
+                                color={colors.primary} 
+                              />
+                              <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
+                            </View>
+                            <Pressable
+                              onPress={handleShareAnswer}
+                              style={styles.shareAnswerButton}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <IconSymbol 
+                                name="paperplane.fill" 
+                                size={18} 
+                                color={colors.primary} 
+                              />
+                            </Pressable>
                           </View>
                         </View>
                         <View style={styles.answerContent}>
@@ -945,6 +1028,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flex: 1,
+  },
+  answerHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   answerTitle: {
     fontSize: 18,
@@ -983,6 +1072,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: '600',
+  },
+  shareAnswerButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 107, 122, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   resultsText: {
     fontSize: 14,

@@ -12,7 +12,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { getImageDataUrl } from '@/utils/supabase';
 import { useNotes } from '@/hooks/useNotes';
-import { peopleCache, imageCache, CostCalculator } from '@/utils/memoryCache';
+import { peopleCache, imageCache, noteCache, CostCalculator } from '@/utils/memoryCache';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
 
 interface Category {
@@ -45,6 +45,7 @@ export default function CategoryViewerScreen() {
   const [isMatching, setIsMatching] = useState(false);
   const matchingCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [totalRecallCount, setTotalRecallCount] = useState(0);
+  const [sortOrder, setSortOrder] = useState<'Newest' | 'Oldest' | 'Best match'>('Newest');
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
@@ -341,13 +342,20 @@ export default function CategoryViewerScreen() {
       const from = (pageNum - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
-      const { data: recollectionsData, error: recollectionsError } = await supabase
+      // Build query with appropriate sorting based on sortOrder
+      let recollectionsQuery = supabase
         .from('recollections')
         .select('recall_id, match_score')
         .eq('category_id', id)
-        .eq('user_id', user.id)
-        .order('match_score', { ascending: false })
-        .range(from, to);
+        .eq('user_id', user.id);
+
+      // Apply sorting based on sortOrder
+      if (sortOrder === 'Best match') {
+        recollectionsQuery = recollectionsQuery.order('match_score', { ascending: false });
+      }
+      // For 'Newest' and 'Oldest', we'll sort by created_at after fetching recalls
+      
+      const { data: recollectionsData, error: recollectionsError } = await recollectionsQuery.range(from, to);
 
       if (recollectionsError) {
         console.error('[CategoryViewer] Error fetching recollections:', recollectionsError);
@@ -423,11 +431,20 @@ export default function CategoryViewerScreen() {
         }
       }
 
-      // Sort by created_at (most recent first) instead of match_score
+      // Sort based on sortOrder
       transformedNotes.sort((a, b) => {
-        const dateA = new Date(a.created_at).getTime();
-        const dateB = new Date(b.created_at).getTime();
-        return dateB - dateA; // Descending order (most recent first)
+        if (sortOrder === 'Newest') {
+          const dateA = new Date(a.created_at).getTime();
+          const dateB = new Date(b.created_at).getTime();
+          return dateB - dateA; // Descending order (most recent first)
+        } else if (sortOrder === 'Oldest') {
+          const dateA = new Date(a.created_at).getTime();
+          const dateB = new Date(b.created_at).getTime();
+          return dateA - dateB; // Ascending order (oldest first)
+        } else {
+          // Best match - already sorted by match_score from query
+          return (b.match_score || 0) - (a.match_score || 0);
+        }
       });
 
       console.log(`[CategoryViewer] Loaded ${transformedNotes.length} recalls (${cachedNotes.length} from cache, ${uncachedRecallIds.length} from DB)`);
@@ -465,7 +482,7 @@ export default function CategoryViewerScreen() {
         matchingCheckIntervalRef.current = null;
       }
     };
-  }, [id]); // Removed loadCategoryAndRecalls from dependencies to prevent infinite loop
+  }, [id, sortOrder]); // Reload when sortOrder changes
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -1231,6 +1248,55 @@ export default function CategoryViewerScreen() {
                 </Text>
               </View>
             </View>
+
+            {/* Sort By UI */}
+            <View style={styles.sortContainer}>
+              <Text style={styles.sortLabel}>Sort by:</Text>
+              <View style={styles.sortButtons}>
+                <Pressable
+                  style={[styles.sortButton, sortOrder === 'Newest' && styles.sortButtonActive]}
+                  onPress={() => {
+                    if (Platform.OS !== 'web') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    setSortOrder('Newest');
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.sortButtonText, sortOrder === 'Newest' && styles.sortButtonTextActive]}>
+                    Newest
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.sortButton, sortOrder === 'Oldest' && styles.sortButtonActive]}
+                  onPress={() => {
+                    if (Platform.OS !== 'web') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    setSortOrder('Oldest');
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.sortButtonText, sortOrder === 'Oldest' && styles.sortButtonTextActive]}>
+                    Oldest
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.sortButton, sortOrder === 'Best match' && styles.sortButtonActive]}
+                  onPress={() => {
+                    if (Platform.OS !== 'web') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    setSortOrder('Best match');
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.sortButtonText, sortOrder === 'Best match' && styles.sortButtonTextActive]}>
+                    Best match
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
           </View>
 
           {/* Recalls */}
@@ -1446,6 +1512,7 @@ const styles = StyleSheet.create({
   },
   categoryInfoContainer: {
     padding: 24,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -1668,5 +1735,41 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     fontWeight: '600',
+  },
+  sortContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  sortLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 12,
+  },
+  sortButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  sortButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sortButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  sortButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  sortButtonTextActive: {
+    color: '#FFFFFF',
   },
 });
