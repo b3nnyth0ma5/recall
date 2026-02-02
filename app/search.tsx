@@ -350,17 +350,17 @@ export default function SearchScreen() {
       const cleanedAnswer = searchAnswer.replace(/\s*SOURCE_\d+/g, '');
 
       // Prepare share message
-      const shareMessage = `Answer from Natively:\n\n${cleanedAnswer}\n\n---\nSearched: "${searchQuery}"`;
+      const shareMessage = `Answer from Recall:\n\n${cleanedAnswer}\n\n---\nSearched phrase: "${searchQuery}"`;
 
       // Use native Share API
       const result = await Share.share(
         {
           message: shareMessage,
-          title: 'Answer from Natively',
+          title: 'Answer from Recall',
         },
         {
           dialogTitle: 'Share Answer',
-          subject: 'Answer from Natively',
+          subject: 'Answer from Recall',
         }
       );
 

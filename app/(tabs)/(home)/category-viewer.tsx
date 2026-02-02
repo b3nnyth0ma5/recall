@@ -343,6 +343,8 @@ export default function CategoryViewerScreen() {
       const to = from + ITEMS_PER_PAGE - 1;
 
       // Build query with appropriate sorting based on sortOrder
+      console.log(`[CategoryViewer] Applying sort order: ${sortOrder}`);
+      
       let recollectionsQuery = supabase
         .from('recollections')
         .select('recall_id, match_score')
@@ -351,9 +353,15 @@ export default function CategoryViewerScreen() {
 
       // Apply sorting based on sortOrder
       if (sortOrder === 'Best match') {
+        console.log('[CategoryViewer] Ordering by match_score DESC');
         recollectionsQuery = recollectionsQuery.order('match_score', { ascending: false });
+      } else if (sortOrder === 'Newest') {
+        console.log('[CategoryViewer] Ordering by created_at DESC (newest first)');
+        recollectionsQuery = recollectionsQuery.order('created_at', { ascending: false });
+      } else if (sortOrder === 'Oldest') {
+        console.log('[CategoryViewer] Ordering by created_at ASC (oldest first)');
+        recollectionsQuery = recollectionsQuery.order('created_at', { ascending: true });
       }
-      // For 'Newest' and 'Oldest', we'll sort by created_at after fetching recalls
       
       const { data: recollectionsData, error: recollectionsError } = await recollectionsQuery.range(from, to);
 
@@ -431,22 +439,6 @@ export default function CategoryViewerScreen() {
         }
       }
 
-      // Sort based on sortOrder
-      transformedNotes.sort((a, b) => {
-        if (sortOrder === 'Newest') {
-          const dateA = new Date(a.created_at).getTime();
-          const dateB = new Date(b.created_at).getTime();
-          return dateB - dateA; // Descending order (most recent first)
-        } else if (sortOrder === 'Oldest') {
-          const dateA = new Date(a.created_at).getTime();
-          const dateB = new Date(b.created_at).getTime();
-          return dateA - dateB; // Ascending order (oldest first)
-        } else {
-          // Best match - already sorted by match_score from query
-          return (b.match_score || 0) - (a.match_score || 0);
-        }
-      });
-
       console.log(`[CategoryViewer] Loaded ${transformedNotes.length} recalls (${cachedNotes.length} from cache, ${uncachedRecallIds.length} from DB)`);
       
       if (append) {
@@ -470,7 +462,7 @@ export default function CategoryViewerScreen() {
   }, [id, user, router, getCachedNote, loadImagesForRecalls, startMatchingPolling]);
 
   useEffect(() => {
-    console.log('[CategoryViewer] Initial load triggered for category:', id);
+    console.log('[CategoryViewer] useEffect triggered - category:', id, 'sortOrder:', sortOrder);
     loadCategoryAndRecalls(1, false);
     setPage(1);
     setHasMore(true);
@@ -1256,6 +1248,7 @@ export default function CategoryViewerScreen() {
                 <Pressable
                   style={[styles.sortButton, sortOrder === 'Newest' && styles.sortButtonActive]}
                   onPress={() => {
+                    console.log('[CategoryViewer] User tapped "Newest" sort button');
                     if (Platform.OS !== 'web') {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     }
@@ -1270,6 +1263,7 @@ export default function CategoryViewerScreen() {
                 <Pressable
                   style={[styles.sortButton, sortOrder === 'Oldest' && styles.sortButtonActive]}
                   onPress={() => {
+                    console.log('[CategoryViewer] User tapped "Oldest" sort button');
                     if (Platform.OS !== 'web') {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     }
@@ -1284,6 +1278,7 @@ export default function CategoryViewerScreen() {
                 <Pressable
                   style={[styles.sortButton, sortOrder === 'Best match' && styles.sortButtonActive]}
                   onPress={() => {
+                    console.log('[CategoryViewer] User tapped "Best match" sort button');
                     if (Platform.OS !== 'web') {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     }
@@ -1741,12 +1736,14 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   sortLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.textSecondary,
-    marginBottom: 12,
   },
   sortButtons: {
     flexDirection: 'row',
