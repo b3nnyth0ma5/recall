@@ -608,27 +608,28 @@ export function useNotes() {
       console.log('Step 1: Running location, people, and keyword searches in PARALLEL...');
       const parallelSearchStart = Date.now();
       
-      // TEMPORARILY COMMENTED OUT - Location search disabled
-      // const locationPromise = (async () => {
-      //   const start = Date.now();
-      //   try {
-      //     const result = await supabase.functions.invoke('search-recalls-with-location', {
-      //       body: { 
-      //         query: query.trim(),
-      //         userLocation: userLocation,
-      //       },
-      //     });
-      //     const searchTime = Date.now() - start;
-      //     console.log(`[TIMING] Location search completed in ${searchTime}ms`);
-      //     return { ...result, searchTime };
-      //   } catch (error) {
-      //     console.error('Location search error:', error);
-      //     const searchTime = Date.now() - start;
-      //     return { data: null, error, searchTime };
-      //   }
-      // })();
+      // LOCATION SEARCH - RE-ENABLED
+      const locationPromise = (async () => {
+        const start = Date.now();
+        try {
+          console.log('[useNotes] Calling search-recalls-with-location edge function...');
+          const result = await supabase.functions.invoke('search-recalls-with-location', {
+            body: { 
+              query: query.trim(),
+              userLocation: userLocation,
+            },
+          });
+          const searchTime = Date.now() - start;
+          console.log(`[TIMING] Location search completed in ${searchTime}ms`);
+          return { ...result, searchTime };
+        } catch (error) {
+          console.error('Location search error:', error);
+          const searchTime = Date.now() - start;
+          return { data: null, error, searchTime };
+        }
+      })();
       
-      // PEOPLE SEARCH - NOW ENABLED
+      // PEOPLE SEARCH - ENABLED
       const peoplePromise = (async () => {
         const start = Date.now();
         try {
@@ -666,14 +667,11 @@ export function useNotes() {
       })();
 
       // Wait for all searches to complete in parallel
-      // Location search is temporarily disabled
-      const [peopleResult, keywordResult] = await Promise.all([
+      const [locationResult, peopleResult, keywordResult] = await Promise.all([
+        locationPromise,
         peoplePromise,
         keywordPromise,
       ]);
-      
-      // Temporary: Set location result to empty
-      const locationResult = { data: null, error: null, searchTime: 0 };
 
       const parallelSearchTime = Date.now() - parallelSearchStart;
       console.log(`All parallel searches completed in ${parallelSearchTime}ms`);
@@ -952,18 +950,21 @@ export function useNotes() {
     }
 
     try {
+      console.log('[useNotes] Fetching search history for user:', user.id);
+      
       const { data, error } = await supabase
         .from('search_history')
         .select('*')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false })
-        .limit(20);
+        .limit(50);
 
       if (error) {
         console.error('Error loading search history:', error);
         return [];
       }
 
+      console.log(`[useNotes] Loaded ${data?.length || 0} search history items`);
       return data || [];
     } catch (error) {
       console.error('Error loading search history:', error);

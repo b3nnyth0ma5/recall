@@ -43,17 +43,16 @@ interface StepConfig {
   timingKey?: 'locationSearchMs' | 'peopleSearchMs' | 'keywordSearchMs' | 'aiAnswerMs' | 'totalMs';
 }
 
-// UPDATED: People search is now enabled
-// Location search is temporarily disabled (can be re-enabled later)
+// UPDATED: Location search is now RE-ENABLED
 const STEPS: StepConfig[] = [
-  // {
-  //   id: 'resolving',
-  //   icon: 'map.fill',
-  //   title: 'Analysing for location(s)',
-  //   description: 'Looking up location details',
-  //   stages: ['resolving', 'people', 'keywords', 'searching', 'complete'],
-  //   timingKey: 'locationSearchMs',
-  // },
+  {
+    id: 'resolving',
+    icon: 'map.fill',
+    title: 'Analysing for location(s)',
+    description: 'Looking up location details',
+    stages: ['resolving', 'people', 'keywords', 'searching', 'complete'],
+    timingKey: 'locationSearchMs',
+  },
   {
     id: 'people',
     icon: 'person.2.fill',
@@ -156,7 +155,9 @@ export function SearchProgressIndicator({
 
   // Format timing for display
   const formatTiming = (ms?: number): string => {
-    if (ms === undefined) return '';
+    if (ms === undefined) {
+      return '';
+    }
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
@@ -322,10 +323,6 @@ function StepItem({
             </Text>
           )}
         </View>
-        {/* Step description commented out for now */}
-        {/* <Text style={[styles.stepDescription, { color: descriptionColor }]}>
-          {step.description}
-        </Text> */}
         
         {/* Show location badge - keep visible after search completes */}
         {locationDisplay && step.id === 'resolving' && (
@@ -431,10 +428,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.primary,
-  },
-  stepDescription: {
-    fontSize: 14,
-    lineHeight: 20,
   },
   infoBadge: {
     flexDirection: 'row',
