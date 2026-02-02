@@ -24,6 +24,8 @@ interface Category {
   is_matching: boolean;
 }
 
+type SortOrder = 'Newest' | 'Oldest' | 'Best match';
+
 export default function CategoryViewerScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -45,7 +47,7 @@ export default function CategoryViewerScreen() {
   const [isMatching, setIsMatching] = useState(false);
   const matchingCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [totalRecallCount, setTotalRecallCount] = useState(0);
-  const [sortOrder, setSortOrder] = useState<'Newest' | 'Oldest' | 'Best match'>('Best match');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('Best match');
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
@@ -276,7 +278,7 @@ export default function CategoryViewerScreen() {
         console.error('[CategoryViewer] Error in matching polling:', error);
       }
     }, 1500);
-  }, [id, loadCategoryAndRecalls]);
+  }, [id]);
 
   // Optimized category and recalls loading with pagination and cache usage
   const loadCategoryAndRecalls = useCallback(async (pageNum: number = 1, append: boolean = false) => {
@@ -293,7 +295,7 @@ export default function CategoryViewerScreen() {
         setIsLoadingMore(true);
       }
       
-      console.log(`[CategoryViewer] Loading category and recalls page ${pageNum} for:`, id);
+      console.log(`[CategoryViewer] Loading category and recalls page ${pageNum} for:`, id, 'sortOrder:', sortOrder);
       
       // Fetch category details (only on first load)
       if (pageNum === 1) {
@@ -349,7 +351,7 @@ export default function CategoryViewerScreen() {
       if (sortOrder === 'Newest' || sortOrder === 'Oldest') {
         console.log(`[CategoryViewer] Fetching ALL recalls for date sorting (${sortOrder})`);
         
-        // Step 1: Get all recall_ids for this category
+        // Step 1: Get all recollections (recall_id + match_score) for this category
         const { data: allRecollectionsData, error: allRecollectionsError } = await supabase
           .from('recollections')
           .select('recall_id, match_score')
@@ -361,6 +363,8 @@ export default function CategoryViewerScreen() {
           if (!append) {
             setNotes([]);
           }
+          setLoading(false);
+          setIsLoadingMore(false);
           return;
         }
 
@@ -370,6 +374,8 @@ export default function CategoryViewerScreen() {
           if (!append) {
             setNotes([]);
           }
+          setLoading(false);
+          setIsLoadingMore(false);
           return;
         }
 
@@ -378,9 +384,9 @@ export default function CategoryViewerScreen() {
           allRecollectionsData.map(r => [r.recall_id, r.match_score])
         );
 
-        console.log(`[CategoryViewer] Found ${allRecallIds.length} total recalls, fetching their created_at dates`);
+        console.log(`[CategoryViewer] Found ${allRecallIds.length} total recalls, fetching their created_at dates from recalls table`);
 
-        // Step 2: Fetch all recalls with their created_at dates
+        // Step 2: Fetch all recalls with their created_at dates from the recalls table
         const { data: allRecallsData, error: allRecallsError } = await supabase
           .from('recalls')
           .select('id, created_at')
@@ -392,46 +398,69 @@ export default function CategoryViewerScreen() {
           if (!append) {
             setNotes([]);
           }
+          setLoading(false);
+          setIsLoadingMore(false);
+          return;
+        }
+
+        if (!allRecallsData || allRecallsData.length === 0) {
+          console.log('[CategoryViewer] No recalls data found');
+          setHasMore(false);
+          if (!append) {
+            setNotes([]);
+          }
+          setLoading(false);
+          setIsLoadingMore(false);
           return;
         }
 
         // Step 3: Sort by created_at
-        const sortedRecalls = (allRecallsData || []).sort((a, b) => {
+        const sortedRecalls = allRecallsData.sort((a, b) => {
           const dateA = new Date(a.created_at).getTime();
           const dateB = new Date(b.created_at).getTime();
           
           if (sortOrder === 'Newest') {
-            return dateB - dateA; // Newest first
+            return dateB - dateA; // Newest first (descending)
           } else {
-            return dateA - dateB; // Oldest first
+            return dateA - dateB; // Oldest first (ascending)
           }
         });
 
         console.log(`[CategoryViewer] Sorted ${sortedRecalls.length} recalls by ${sortOrder}`);
+        console.log(`[CategoryViewer] First recall date: ${sortedRecalls[0]?.created_at}, Last recall date: ${sortedRecalls[sortedRecalls.length - 1]?.created_at}`);
 
         // Step 4: Apply pagination to sorted results
         const paginatedRecalls = sortedRecalls.slice(from, to + 1);
         
         if (paginatedRecalls.length < ITEMS_PER_PAGE) {
           setHasMore(false);
+        } else {
+          setHasMore(true);
         }
 
-        console.log(`[CategoryViewer] Paginated to ${paginatedRecalls.length} recalls for page ${pageNum}`);
+        console.log(`[CategoryViewer] Paginated to ${paginatedRecalls.length} recalls for page ${pageNum} (from index ${from} to ${to})`);
 
-        // Step 5: Create recollectionsData format with match_score
-        const recollectionsData = paginatedRecalls.map(recall => ({
-          recall_id: recall.id,
-          match_score: matchScoreMap.get(recall.id) || 0,
-        }));
+        if (paginatedRecalls.length === 0) {
+          console.log('[CategoryViewer] No recalls in this page');
+          setHasMore(false);
+          if (!append) {
+            setNotes([]);
+          }
+          setLoading(false);
+          setIsLoadingMore(false);
+          return;
+        }
 
-        // Continue with existing logic
-        const recallIds = recollectionsData.map(r => r.recall_id);
-        
+        const paginatedRecallIds = paginatedRecalls.map(r => r.id);
+
+        // Step 5: Fetch full recall data for paginated IDs
+        console.log(`[CategoryViewer] Fetching full data for ${paginatedRecallIds.length} paginated recalls`);
+
         // Check cache first for recalls (from landing page)
         const cachedNotes: Note[] = [];
         const uncachedRecallIds: string[] = [];
 
-        recallIds.forEach(recallId => {
+        paginatedRecallIds.forEach(recallId => {
           const cachedNote = getCachedNote(recallId);
           if (cachedNote) {
             console.log(`[CategoryViewer] Using cached note for ${recallId}`);
@@ -471,20 +500,27 @@ export default function CategoryViewerScreen() {
           }
         }
 
-        console.log(`[CategoryViewer] Loaded ${transformedNotes.length} recalls (${cachedNotes.length} from cache, ${uncachedRecallIds.length} from DB)`);
+        // Sort transformedNotes to match the order of paginatedRecallIds
+        const orderedNotes = paginatedRecallIds
+          .map(id => transformedNotes.find(note => note.id === id))
+          .filter((note): note is Note => note !== undefined);
+
+        console.log(`[CategoryViewer] Loaded ${orderedNotes.length} recalls (${cachedNotes.length} from cache, ${uncachedRecallIds.length} from DB)`);
         
         if (append) {
           // Prevent duplicates by filtering out notes that already exist
           setNotes(prevNotes => {
             const existingIds = new Set(prevNotes.map(note => note.id));
-            const newUniqueNotes = transformedNotes.filter(note => !existingIds.has(note.id));
-            console.log(`[CategoryViewer] Adding ${newUniqueNotes.length} new unique notes (filtered ${transformedNotes.length - newUniqueNotes.length} duplicates)`);
+            const newUniqueNotes = orderedNotes.filter(note => !existingIds.has(note.id));
+            console.log(`[CategoryViewer] Adding ${newUniqueNotes.length} new unique notes (filtered ${orderedNotes.length - newUniqueNotes.length} duplicates)`);
             return [...prevNotes, ...newUniqueNotes];
           });
         } else {
-          setNotes(transformedNotes);
+          setNotes(orderedNotes);
         }
         
+        setLoading(false);
+        setIsLoadingMore(false);
         return; // Exit early for date sorting
       }
       
@@ -505,6 +541,8 @@ export default function CategoryViewerScreen() {
         if (!append) {
           setNotes([]);
         }
+        setLoading(false);
+        setIsLoadingMore(false);
         return;
       }
 
@@ -514,6 +552,8 @@ export default function CategoryViewerScreen() {
         if (!append) {
           setNotes([]);
         }
+        setLoading(false);
+        setIsLoadingMore(false);
         return;
       }
 
@@ -594,7 +634,7 @@ export default function CategoryViewerScreen() {
       setLoading(false);
       setIsLoadingMore(false);
     }
-  }, [id, user, router, getCachedNote, loadImagesForRecalls, startMatchingPolling]);
+  }, [id, user, router, getCachedNote, loadImagesForRecalls, startMatchingPolling, sortOrder]);
 
   useEffect(() => {
     console.log('[CategoryViewer] useEffect triggered - category:', id, 'sortOrder:', sortOrder);
@@ -612,6 +652,7 @@ export default function CategoryViewerScreen() {
   }, [id, sortOrder]); // Reload when sortOrder changes
 
   const handleRefresh = async () => {
+    console.log('[CategoryViewer] User initiated refresh');
     setRefreshing(true);
     // Clear MemoryCache instances on refresh
     console.log('[CategoryViewer] Clearing caches on refresh');
@@ -658,6 +699,7 @@ export default function CategoryViewerScreen() {
   const loadMoreRecalls = useCallback(() => {
     if (!isLoadingMore && hasMore && !loading) {
       const nextPage = page + 1;
+      console.log('[CategoryViewer] Loading more recalls, page:', nextPage);
       setPage(nextPage);
       loadCategoryAndRecalls(nextPage, true);
     }
@@ -672,7 +714,7 @@ export default function CategoryViewerScreen() {
       const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
 
       if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
-        console.log('[CategoryViewer] Loading more recalls...');
+        console.log('[CategoryViewer] Near bottom, loading more recalls...');
         loadMoreRecalls();
       }
     } catch (error) {
@@ -681,14 +723,16 @@ export default function CategoryViewerScreen() {
   }, [hasMore, isLoadingMore, loading, loadMoreRecalls]);
 
   const handleBack = useCallback(() => {
+    console.log('[CategoryViewer] User tapped back button');
     router.back();
   }, [router]);
 
   const handleNotePress = useCallback((noteId: string) => {
     try {
+      console.log('[CategoryViewer] User tapped note:', noteId);
       router.push(`/note-editor?id=${noteId}`);
     } catch (error) {
-      console.error('Error navigating to note editor:', error);
+      console.error('[CategoryViewer] Error navigating to note editor:', error);
     }
   }, [router]);
 
@@ -782,6 +826,7 @@ export default function CategoryViewerScreen() {
   const handleEditPress = () => {
     if (!category) return;
     
+    console.log('[CategoryViewer] User tapped edit button');
     setEditName(category.category_name);
     setEditDescription(category.category_search_description);
     setEditImage(category.icon_cdn_url);
@@ -792,13 +837,14 @@ export default function CategoryViewerScreen() {
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
+        console.error('[CategoryViewer] Error triggering haptic feedback:', error);
       }
     }
   };
 
   const handleSelectImage = async () => {
     try {
+      console.log('[CategoryViewer] User tapped select image');
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       
       if (status !== 'granted') {
@@ -817,7 +863,7 @@ export default function CategoryViewerScreen() {
         setEditImage(result.assets[0].uri);
       }
     } catch (error) {
-      console.error('Error selecting image:', error);
+      console.error('[CategoryViewer] Error selecting image:', error);
       Alert.alert('Error', 'Failed to select image');
     }
   };
@@ -836,6 +882,7 @@ export default function CategoryViewerScreen() {
     }
 
     try {
+      console.log('[CategoryViewer] User tapped save edit');
       setIsSaving(true);
 
       // Check if name or description changed
@@ -872,16 +919,16 @@ export default function CategoryViewerScreen() {
         .eq('user_id', user.id);
 
       if (error) {
-        console.error('Error updating category:', error);
+        console.error('[CategoryViewer] Error updating category:', error);
         Alert.alert('Error', 'Failed to update category');
         return;
       }
 
-      console.log('Category updated successfully');
+      console.log('[CategoryViewer] Category updated successfully');
 
       // Trigger new-category-matching edge function if name or description changed
       if (nameChanged || descriptionChanged) {
-        console.log('Category name or description changed, triggering new-category-matching...');
+        console.log('[CategoryViewer] Category name or description changed, triggering new-category-matching...');
         
         // Set is_matching to true before triggering
         await supabase
@@ -901,7 +948,7 @@ export default function CategoryViewerScreen() {
         try {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (error) {
-          console.error('Error triggering haptic feedback:', error);
+          console.error('[CategoryViewer] Error triggering haptic feedback:', error);
         }
       }
 
@@ -909,7 +956,7 @@ export default function CategoryViewerScreen() {
       await loadCategoryAndRecalls(1, false);
       setShowEditModal(false);
     } catch (error) {
-      console.error('Error updating category:', error);
+      console.error('[CategoryViewer] Error updating category:', error);
       Alert.alert('Error', 'Failed to update category');
     } finally {
       setIsSaving(false);
@@ -918,7 +965,7 @@ export default function CategoryViewerScreen() {
 
   const triggerCategoryMatching = async (categoryId: string) => {
     try {
-      console.log('Triggering category matching for updated category:', categoryId);
+      console.log('[CategoryViewer] Triggering category matching for updated category:', categoryId);
       
       const { data, error } = await supabase.functions.invoke('new-category-matching', {
         body: { 
@@ -927,16 +974,17 @@ export default function CategoryViewerScreen() {
       });
 
       if (error) {
-        console.error('Error invoking category matching:', error);
+        console.error('[CategoryViewer] Error invoking category matching:', error);
       } else {
-        console.log('Category matching triggered successfully:', data);
+        console.log('[CategoryViewer] Category matching triggered successfully:', data);
       }
     } catch (error) {
-      console.error('Exception in triggerCategoryMatching:', error);
+      console.error('[CategoryViewer] Exception in triggerCategoryMatching:', error);
     }
   };
 
   const handleDeletePress = () => {
+    console.log('[CategoryViewer] User tapped delete button');
     Alert.alert(
       'Delete Category',
       'Are you sure you want to delete this category? This will not delete your recalls, only the category grouping.',
@@ -958,6 +1006,7 @@ export default function CategoryViewerScreen() {
     if (!category || !user) return;
 
     try {
+      console.log('[CategoryViewer] User confirmed delete');
       setIsDeleting(true);
 
       // Delete all recollections for this category first
@@ -968,7 +1017,7 @@ export default function CategoryViewerScreen() {
         .eq('user_id', user.id);
 
       if (recollectionsError) {
-        console.error('Error deleting recollections:', recollectionsError);
+        console.error('[CategoryViewer] Error deleting recollections:', recollectionsError);
         Alert.alert('Error', 'Failed to delete category');
         return;
       }
@@ -981,26 +1030,26 @@ export default function CategoryViewerScreen() {
         .eq('user_id', user.id);
 
       if (categoryError) {
-        console.error('Error deleting category:', categoryError);
+        console.error('[CategoryViewer] Error deleting category:', categoryError);
         Alert.alert('Error', 'Failed to delete category');
         return;
       }
 
-      console.log('Category deleted successfully');
+      console.log('[CategoryViewer] Category deleted successfully');
 
       // Haptic feedback
       if (Platform.OS !== 'web') {
         try {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (error) {
-          console.error('Error triggering haptic feedback:', error);
+          console.error('[CategoryViewer] Error triggering haptic feedback:', error);
         }
       }
 
       // Navigate back
       router.back();
     } catch (error) {
-      console.error('Error deleting category:', error);
+      console.error('[CategoryViewer] Error deleting category:', error);
       Alert.alert('Error', 'Failed to delete category');
     } finally {
       setIsDeleting(false);
@@ -1116,7 +1165,9 @@ export default function CategoryViewerScreen() {
               <NoteCard
                 key={`skeleton-${index}`}
                 note={{} as any}
-                onPress={() => {}}
+                onPress={() => {
+                  console.log('Skeleton card pressed');
+                }}
                 loading={true}
               />
             ))}
@@ -1191,7 +1242,9 @@ export default function CategoryViewerScreen() {
               <NoteCard
                 key={`matching-placeholder-${index}`}
                 note={{} as any}
-                onPress={() => {}}
+                onPress={() => {
+                  console.log('Matching placeholder card pressed');
+                }}
                 loading={true}
               />
             ))}

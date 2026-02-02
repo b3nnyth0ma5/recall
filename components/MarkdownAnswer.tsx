@@ -3,7 +3,6 @@ import React, { useMemo } from 'react';
 import { StyleSheet, View, Text, Pressable } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { colors } from '@/styles/commonStyles';
-import { IconSymbol } from './IconSymbol';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 
@@ -23,69 +22,86 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
   recallReferences = [],
   onRecallPress 
 }) => {
-  // Parse the content to identify source references and add hyperlink icons
+  // Parse the content to identify source references and convert them to hyperlinked numbers
   const processedContent = useMemo(() => {
     if (!recallReferences || recallReferences.length === 0) {
-      return { text: content, links: [] };
+      return { segments: [{ type: 'text' as const, content }] };
     }
     
     let processed = content;
-    const links: Array<{ sourceNum: number; recallId: string; imageIndex?: number }> = [];
+    const segments: Array<{ type: 'text' | 'link'; content: string; sourceNum?: number; recallId?: string; imageIndex?: number }> = [];
     
-    // Process each source reference
-    recallReferences.forEach((ref, index) => {
-      const sourceNum = index + 1;
-      const sourceMarker = `SOURCE_${sourceNum}`;
+    // Create a regex to match SOURCE_X patterns
+    const sourceRegex = /SOURCE_(\d+)/g;
+    let lastIndex = 0;
+    let match;
+    
+    while ((match = sourceRegex.exec(content)) !== null) {
+      const sourceNum = parseInt(match[1], 10);
+      const matchStart = match.index;
+      const matchEnd = sourceRegex.lastIndex;
       
-      // Find all occurrences of this source marker and replace with a placeholder
-      const regex = new RegExp(`\\s*${sourceMarker}`, 'g');
+      // Add text before this match
+      if (matchStart > lastIndex) {
+        segments.push({
+          type: 'text',
+          content: content.substring(lastIndex, matchStart),
+        });
+      }
       
-      processed = processed.replace(regex, () => {
-        links.push({ sourceNum, recallId: ref.recallId, imageIndex: ref.imageIndex });
-        return ` [LINK_${sourceNum}]`;
+      // Add the hyperlinked source number
+      const ref = recallReferences[sourceNum - 1];
+      if (ref && onRecallPress) {
+        segments.push({
+          type: 'link',
+          content: `[${sourceNum}]`,
+          sourceNum,
+          recallId: ref.recallId,
+          imageIndex: ref.imageIndex,
+        });
+      } else {
+        // If no reference found, just add as text
+        segments.push({
+          type: 'text',
+          content: match[0],
+        });
+      }
+      
+      lastIndex = matchEnd;
+    }
+    
+    // Add any remaining text
+    if (lastIndex < content.length) {
+      segments.push({
+        type: 'text',
+        content: content.substring(lastIndex),
       });
-    });
+    }
     
-    return { text: processed, links };
-  }, [content, recallReferences]);
+    return { segments };
+  }, [content, recallReferences, onRecallPress]);
 
-  // Split the content into segments with link placeholders
+  // Render the content with hyperlinked source numbers
   const renderContent = useMemo(() => {
-    const { text, links } = processedContent;
+    const { segments } = processedContent;
     
-    // Split by link placeholders
-    const parts = text.split(/(\[LINK_\d+\])/g);
-    
-    return parts.map((part, index) => {
-      // Check if this is a link placeholder
-      const linkMatch = part.match(/\[LINK_(\d+)\]/);
-      
-      if (linkMatch) {
-        const sourceNum = parseInt(linkMatch[1], 10);
-        const link = links.find(l => l.sourceNum === sourceNum);
-        
-        if (link && onRecallPress) {
-          return (
-            <Pressable
-              key={`link-${index}`}
-              onPress={() => {
-                console.log('[MarkdownAnswer] Link icon pressed for recall:', link.recallId);
-                if (Platform.OS !== 'web') {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }
-                onRecallPress(link.recallId, link.imageIndex);
-              }}
-              style={styles.linkIcon}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <IconSymbol 
-                name="link" 
-                size={14} 
-                color={colors.primary} 
-              />
-            </Pressable>
-          );
-        }
+    return segments.map((segment, index) => {
+      if (segment.type === 'link' && segment.recallId && onRecallPress) {
+        return (
+          <Pressable
+            key={`link-${index}`}
+            onPress={() => {
+              console.log('[MarkdownAnswer] Source number pressed for recall:', segment.recallId);
+              if (Platform.OS !== 'web') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }
+              onRecallPress(segment.recallId, segment.imageIndex);
+            }}
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+          >
+            <Text style={styles.sourceLink}>{segment.content}</Text>
+          </Pressable>
+        );
       }
       
       // Regular text - render with markdown
@@ -94,7 +110,7 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
           key={`text-${index}`}
           style={markdownStyles}
         >
-          {part}
+          {segment.content}
         </Markdown>
       );
     });
@@ -116,13 +132,14 @@ const styles = StyleSheet.create({
   contentWrapper: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    alignItems: 'center',
+    alignItems: 'baseline',
   },
-  linkIcon: {
-    marginLeft: 4,
-    marginRight: 2,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
+  sourceLink: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+    marginHorizontal: 2,
   },
 });
 
