@@ -7,8 +7,9 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-// Single threshold configuration
-const SIMILARITY_THRESHOLD = 0.40;
+// Threshold configuration
+const TEXT_SIMILARITY_THRESHOLD = 0.4;
+const IMAGE_SIMILARITY_THRESHOLD = 0.25;
 
 interface RecallMatch {
   recall_id: string;
@@ -261,7 +262,8 @@ async function generateKeywordEmbeddings(keywords: string[], openaiApiKey: strin
  */
 function calculateMultiKeywordMatch(
   keywordEmbeddings: number[][],
-  targetEmbedding: any
+  targetEmbedding: any,
+  threshold: number
 ): { matchCount: number; bestSimilarity: number } {
   let matchCount = 0;
   let bestSimilarity = 0;
@@ -270,7 +272,7 @@ function calculateMultiKeywordMatch(
     const sim = calculateCosineSimilarity(keywordEmb, targetEmbedding);
     
     // Count matches above threshold
-    if (sim >= SIMILARITY_THRESHOLD) {
+    if (sim >= threshold) {
       matchCount++;
     }
     
@@ -423,17 +425,17 @@ Deno.serve(async (req) => {
     const recallMatches: RecallMatch[] = [];
     
     for (const recall of allRecalls) {
-      // Calculate text similarity using cosine similarity for each keyword
-      const textMatch = calculateMultiKeywordMatch(keywordEmbeddings, recall.recall_embedding);
+      // Calculate text similarity using cosine similarity for each keyword with TEXT threshold
+      const textMatch = calculateMultiKeywordMatch(keywordEmbeddings, recall.recall_embedding, TEXT_SIMILARITY_THRESHOLD);
       
-      // Calculate image similarities for each keyword
+      // Calculate image similarities for each keyword with IMAGE threshold
       const recallImages = imagesByRecall.get(recall.id) || [];
       const imageSimilarities: number[] = [];
       const imagesData: RecallMatch['images_data'] = [];
       let totalImageKeywordMatches = 0;
       
       for (const image of recallImages) {
-        const imageMatch = calculateMultiKeywordMatch(keywordEmbeddings, image.recall_image_embedding);
+        const imageMatch = calculateMultiKeywordMatch(keywordEmbeddings, image.recall_image_embedding, IMAGE_SIMILARITY_THRESHOLD);
         imageSimilarities.push(imageMatch.bestSimilarity);
         totalImageKeywordMatches += imageMatch.matchCount;
         
@@ -448,8 +450,8 @@ Deno.serve(async (req) => {
       // Total keyword matches across text and images
       const totalKeywordMatches = textMatch.matchCount + totalImageKeywordMatches;
       
-      // Only include recalls that meet threshold
-      if (textMatch.bestSimilarity >= SIMILARITY_THRESHOLD || imageSimilarities.some(sim => sim >= SIMILARITY_THRESHOLD)) {
+      // Only include recalls that meet their respective thresholds
+      if (textMatch.bestSimilarity >= TEXT_SIMILARITY_THRESHOLD || imageSimilarities.some(sim => sim >= IMAGE_SIMILARITY_THRESHOLD)) {
         recallMatches.push({
           recall_id: recall.id,
           text_similarity: textMatch.bestSimilarity,
