@@ -471,6 +471,50 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Admin Tools Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <IconSymbol name="wrench.and.screwdriver" size={24} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Admin Tools</Text>
+          </View>
+
+          <Pressable 
+            onPress={() => router.push('/admin-regenerate-embeddings')} 
+            style={styles.adminButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <View style={styles.adminButtonLeft}>
+              <IconSymbol name="arrow.triangle.2.circlepath" size={20} color={colors.primary} />
+              <Text style={styles.adminButtonText}>Regenerate Embeddings</Text>
+            </View>
+            <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
+          </Pressable>
+
+          <Pressable 
+            onPress={() => router.push('/admin-process-images')} 
+            style={styles.adminButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <View style={styles.adminButtonLeft}>
+              <IconSymbol name="photo" size={20} color={colors.primary} />
+              <Text style={styles.adminButtonText}>Process Images</Text>
+            </View>
+            <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
+          </Pressable>
+
+          <Pressable 
+            onPress={() => router.push('/admin-embed-images')} 
+            style={styles.adminButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <View style={styles.adminButtonLeft}>
+              <IconSymbol name="photo.stack" size={20} color={colors.primary} />
+              <Text style={styles.adminButtonText}>Embed Null Images</Text>
+            </View>
+            <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
+          </Pressable>
+        </View>
+
         {/* Account Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -706,6 +750,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.primary,
+  },
+  adminButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 12,
+  },
+  adminButtonLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  adminButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
   },
   signOutButton: {
     flexDirection: 'row',
