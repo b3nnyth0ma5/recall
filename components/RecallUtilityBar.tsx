@@ -14,11 +14,11 @@ interface RecallUtilityBarProps {
 /**
  * RecallUtilityBar Component
  * 
- * Instagram-style utility bar with action icons positioned below image carousel
- * and above text content. Provides quick access to common recall actions.
+ * Instagram-style utility bar with action icons positioned below location and time ago component.
+ * Provides quick access to common recall actions.
  * 
  * Features:
- * - Left-aligned icons for consistent UX
+ * - Right-aligned icons for consistent UX
  * - Platform-agnostic icons (iOS SF Symbols + Android Material Icons)
  * - Good touch target areas with hitSlop
  * - Haptic feedback on interactions
@@ -94,6 +94,7 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 16,

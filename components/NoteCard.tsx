@@ -517,14 +517,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           </View>
         )}
 
-        {/* Instagram-style Utility Bar - Only shown if images exist */}
-        {hasImages && (
-          <RecallUtilityBar
-            onAskQuestion={handleAskQuestion}
-            onShare={handleSharePress}
-          />
-        )}
-
         {/* Swipeable Content - Text, Location, Time - FULL WIDTH DELETE UI */}
         <Swipeable
           ref={swipeableRef}
@@ -597,6 +589,14 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                 />
               </View>
             </View>
+
+            {/* Instagram-style Utility Bar - Positioned below location and time */}
+            {hasImages && (
+              <RecallUtilityBar
+                onAskQuestion={handleAskQuestion}
+                onShare={handleSharePress}
+              />
+            )}
           </View>
         </Swipeable>
       </Pressable>
