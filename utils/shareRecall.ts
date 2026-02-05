@@ -78,7 +78,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     }
 
     // Add app attribution with deep link
-    shareMessage += `Shared from Natively\n${deepLink}`;
+    shareMessage += `Shared from Recall}`;
 
     console.log('Share message prepared with recall text, length:', shareMessage.length);
 
