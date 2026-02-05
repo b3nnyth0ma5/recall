@@ -1,5 +1,6 @@
 
-import { Share, Platform } from 'react-native';
+import { Platform } from 'react-native';
+import Share from 'react-native-share';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Linking from 'expo-linking';
 import Toast from 'react-native-toast-message';
@@ -17,7 +18,7 @@ export interface SharedRecallData {
 }
 
 /**
- * Share a recall using the native device sharing feature
+ * Share a recall using react-native-share library
  * Includes text, location, and all images as actual files in a single share prompt
  * @param recall - The note/recall to share
  * @param currentImageIndex - The index of the image currently being viewed (becomes primary)
@@ -69,13 +70,13 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
           const timestamp = Date.now();
           const fileUri = `${FileSystem.cacheDirectory}share_recall_${recall.id}_${index}_${timestamp}.${fileExtension}`;
           
-          console.log(`Downloading image ${index + 1}/${recall.images!.length}`);
+          console.log(`Downloading image ${index + 1}/${recall.images!.length} from URL:`, imageUrl);
           
           try {
             const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
             
             if (downloadResult.status === 200) {
-              console.log(`Image ${index + 1} downloaded successfully`);
+              console.log(`Image ${index + 1} downloaded successfully to:`, downloadResult.uri);
               return downloadResult.uri;
             } else {
               console.warn(`Failed to download image ${index + 1}, status: ${downloadResult.status}`);
@@ -92,83 +93,55 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
         const successfulDownloads = results.filter((uri): uri is string => uri !== null);
         downloadedFiles.push(...successfulDownloads);
         
-        // If we successfully downloaded at least one image, share them
+        console.log(`Successfully downloaded ${downloadedFiles.length} out of ${recall.images.length} image(s)`);
+        
+        // If we successfully downloaded at least one image, share them using react-native-share
         if (downloadedFiles.length > 0) {
-          console.log(`Successfully downloaded ${downloadedFiles.length} image(s), preparing to share`);
+          console.log('Preparing to share with react-native-share');
+          console.log('Downloaded file URIs:', downloadedFiles);
           
-          // Use React Native's Share API with multiple files
-          // On iOS, the 'urls' parameter allows sharing multiple files
-          // On Android, we share the message with the first image URL
-          if (Platform.OS === 'ios') {
-            console.log('Sharing on iOS with multiple images via Share API');
+          // Use react-native-share which properly supports multiple files on both iOS and Android
+          const shareOptions: any = {
+            title: 'Share Recall',
+            message: shareMessage.trim(),
+            urls: downloadedFiles, // react-native-share supports multiple files on both platforms
+          };
+          
+          console.log('Calling Share.open with options:', {
+            title: shareOptions.title,
+            message: shareOptions.message.substring(0, 50) + '...',
+            urlCount: shareOptions.urls.length,
+          });
+          
+          try {
+            const result = await Share.open(shareOptions);
+            console.log('Share result:', result);
             
-            // iOS supports sharing multiple files through the urls parameter
-            const shareOptions: any = {
-              message: shareMessage.trim(),
-              urls: downloadedFiles, // iOS supports multiple file URLs
-              title: 'Share Recall',
-            };
+            // Clean up temporary files after sharing
+            await cleanupTempFiles(downloadedFiles);
             
-            const result = await Share.share(shareOptions, {
-              subject: 'Check out this recall!',
+            // Show success toast
+            Toast.show({
+              type: 'success',
+              text1: 'Recall Shared',
+              text2: `Successfully shared with ${downloadedFiles.length} image${downloadedFiles.length > 1 ? 's' : ''}`,
+              position: 'bottom',
+              visibilityTime: 2000,
             });
             
-            // Clean up temporary files
-            await cleanupTempFiles(downloadedFiles);
-            
-            if (result.action === Share.sharedAction) {
-              console.log('Recall shared successfully on iOS');
-              
-              Toast.show({
-                type: 'success',
-                text1: 'Recall Shared',
-                text2: `Successfully shared with ${downloadedFiles.length} image${downloadedFiles.length > 1 ? 's' : ''}`,
-                position: 'bottom',
-                visibilityTime: 2000,
-              });
-            } else if (result.action === Share.dismissedAction) {
+            return;
+          } catch (shareError: any) {
+            // User dismissed the share dialog
+            if (shareError.message && shareError.message.includes('User did not share')) {
               console.log('Share dismissed by user');
+              await cleanupTempFiles(downloadedFiles);
+              return;
             }
             
-            return;
-          } else if (Platform.OS === 'android') {
-            console.log('Sharing on Android with image via Share API');
-            
-            // Android: Share message with the primary image
-            // Note: Android's Share API has limited support for multiple files
-            // We share the primary image (or first image) with the message
-            const primaryImageUri = downloadedFiles[currentImageIndex] || downloadedFiles[0];
-            
-            const result = await Share.share(
-              {
-                message: shareMessage.trim(),
-                url: primaryImageUri,
-                title: 'Share Recall',
-              },
-              {
-                dialogTitle: 'Share Recall',
-                subject: 'Check out this recall!',
-              }
-            );
-
-            // Clean up temporary files
+            // Other errors
+            console.error('Error during share:', shareError);
             await cleanupTempFiles(downloadedFiles);
-
-            if (result.action === Share.sharedAction) {
-              console.log('Recall shared successfully on Android');
-              
-              Toast.show({
-                type: 'success',
-                text1: 'Recall Shared',
-                text2: 'Successfully shared recall',
-                position: 'bottom',
-                visibilityTime: 2000,
-              });
-            } else if (result.action === Share.dismissedAction) {
-              console.log('Share dismissed by user');
-            }
-            
-            return;
+            throw shareError;
           }
         } else {
           console.warn('No images were successfully downloaded, falling back to text-only share');
@@ -179,22 +152,16 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
       }
     }
 
-    // Fallback: Share using React Native's Share API (text only)
-    console.log('Sharing with standard Share API (text only)');
+    // Fallback: Share text only using react-native-share
+    console.log('Sharing with react-native-share (text only)');
     
-    const result = await Share.share(
-      {
-        message: shareMessage.trim(),
+    try {
+      const result = await Share.open({
         title: 'Share Recall',
-      },
-      {
-        dialogTitle: 'Share Recall',
-        subject: 'Check out this recall!',
-      }
-    );
-
-    if (result.action === Share.sharedAction) {
-      console.log('Recall shared successfully (text only)');
+        message: shareMessage.trim(),
+      });
+      
+      console.log('Text-only share result:', result);
       
       Toast.show({
         type: 'success',
@@ -203,12 +170,14 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
         position: 'bottom',
         visibilityTime: 2000,
       });
-      
-      if (result.activityType) {
-        console.log('Shared with activity type:', result.activityType);
+    } catch (shareError: any) {
+      // User dismissed the share dialog
+      if (shareError.message && shareError.message.includes('User did not share')) {
+        console.log('Share dismissed by user');
+        return;
       }
-    } else if (result.action === Share.dismissedAction) {
-      console.log('Share dismissed by user');
+      
+      throw shareError;
     }
   } catch (error) {
     console.error('Error sharing recall:', error);
