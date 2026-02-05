@@ -1,6 +1,5 @@
 
 import { Share, Platform } from 'react-native';
-import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Linking from 'expo-linking';
 import Toast from 'react-native-toast-message';
@@ -19,45 +18,30 @@ export interface SharedRecallData {
 
 /**
  * Share a recall using the native device sharing feature
- * Includes text, location, and all images as actual files (not URLs)
+ * Includes text, location, and all images as actual files in a single share prompt
  * @param recall - The note/recall to share
  * @param currentImageIndex - The index of the image currently being viewed (becomes primary)
  */
 export async function shareRecall(recall: Note, currentImageIndex: number = 0): Promise<void> {
   try {
-    console.log('Sharing recall:', recall.id);
+    console.log('User tapped Share button for recall:', recall.id);
     console.log('Current image index:', currentImageIndex);
     console.log('Total images:', recall.images?.length || 0);
 
-    // Prepare the shared data (excluding UUIDs)
-    const sharedData: SharedRecallData = {
-      text: recall.text || '',
-      images: recall.images || [],
-      primaryImageIndex: currentImageIndex,
-      location: recall.location,
-      latitude: recall.latitude,
-      longitude: recall.longitude,
-      location_primary_type: recall.location_primary_type,
-      created_at: recall.created_at,
-    };
-
-    console.log('Prepared shared data (without deep link)');
-
-    // Build comprehensive share message with recall text pre-entered
+    // Build comprehensive share message with recall text, location, and image info
     let shareMessage = '';
     
     // Pre-enter the recall text at the top
-    if (sharedData.text) {
-      shareMessage += `${sharedData.text}\n\n`;
+    if (recall.text) {
+      shareMessage += `${recall.text}\n\n`;
     }
 
-    // Add location information
-    if (sharedData.location) {
-      shareMessage += `📍 ${sharedData.location}\n`;
+    // Add location information with Google Maps link
+    if (recall.location) {
+      shareMessage += `📍 ${recall.location}\n`;
       
-      // Add Google Maps link if coordinates available
-      if (sharedData.latitude && sharedData.longitude) {
-        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${sharedData.latitude},${sharedData.longitude}`;
+      if (recall.latitude && recall.longitude) {
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${recall.latitude},${recall.longitude}`;
         shareMessage += `🗺️ ${mapsUrl}\n`;
       }
       
@@ -65,96 +49,101 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     }
 
     // Add image count information
-    if (sharedData.images && sharedData.images.length > 0) {
-      const imageCount = sharedData.images.length;
+    const imageCount = recall.images?.length || 0;
+    if (imageCount > 0) {
       const imageText = imageCount === 1 ? 'image' : 'images';
       shareMessage += `📷 ${imageCount} ${imageText} attached`;
     }
 
-    console.log('Share message prepared with recall text (no deep link), length:', shareMessage.length);
+    console.log('Share message prepared:', shareMessage.substring(0, 100) + '...');
 
-    // Try to share with actual image files (not URLs)
-    if (sharedData.images && sharedData.images.length > 0) {
-      console.log(`Attempting to download and share ${sharedData.images.length} image(s)`);
+    // If there are images, download them and share with the message
+    if (recall.images && recall.images.length > 0) {
+      console.log(`Downloading ${recall.images.length} image(s) for sharing`);
       
       try {
         // Download all images to temporary locations
         const downloadedFiles: string[] = [];
-        
-        for (let i = 0; i < sharedData.images.length; i++) {
-          const imageUrl = sharedData.images[i];
+        const downloadPromises = recall.images.map(async (imageUrl, index) => {
           const fileExtension = imageUrl.includes('.png') ? 'png' : 'jpg';
           const timestamp = Date.now();
-          const fileUri = `${FileSystem.cacheDirectory}share_recall_${recall.id}_${i}_${timestamp}.${fileExtension}`;
+          const fileUri = `${FileSystem.cacheDirectory}share_recall_${recall.id}_${index}_${timestamp}.${fileExtension}`;
           
-          console.log(`Downloading image ${i + 1}/${sharedData.images.length} from:`, imageUrl);
+          console.log(`Downloading image ${index + 1}/${recall.images!.length}`);
           
           try {
             const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
             
             if (downloadResult.status === 200) {
-              downloadedFiles.push(downloadResult.uri);
-              console.log(`Image ${i + 1} downloaded successfully to:`, downloadResult.uri);
+              console.log(`Image ${index + 1} downloaded successfully`);
+              return downloadResult.uri;
             } else {
-              console.log(`Failed to download image ${i + 1}, status:`, downloadResult.status);
+              console.warn(`Failed to download image ${index + 1}, status: ${downloadResult.status}`);
+              return null;
             }
           } catch (downloadError) {
-            console.error(`Error downloading image ${i + 1}:`, downloadError);
+            console.error(`Error downloading image ${index + 1}:`, downloadError);
+            return null;
           }
-        }
+        });
+        
+        // Wait for all downloads to complete
+        const results = await Promise.all(downloadPromises);
+        const successfulDownloads = results.filter((uri): uri is string => uri !== null);
+        downloadedFiles.push(...successfulDownloads);
         
         // If we successfully downloaded at least one image, share them
         if (downloadedFiles.length > 0) {
           console.log(`Successfully downloaded ${downloadedFiles.length} image(s), preparing to share`);
           
-          // Check if sharing is available
-          const isAvailable = await Sharing.isAvailableAsync();
-          
-          if (isAvailable && Platform.OS === 'ios') {
-            console.log(`Using expo-sharing for iOS with ${downloadedFiles.length} image(s)`);
+          // Use React Native's Share API with multiple files
+          // On iOS, the 'urls' parameter allows sharing multiple files
+          // On Android, we share the message with the first image URL
+          if (Platform.OS === 'ios') {
+            console.log('Sharing on iOS with multiple images via Share API');
             
-            // For iOS, share the primary image with the full message
-            const primaryFile = downloadedFiles[currentImageIndex] || downloadedFiles[0];
-            const fileExtension = primaryFile.includes('.png') ? 'png' : 'jpg';
-            const mimeType = fileExtension === 'png' ? 'image/png' : 'image/jpeg';
-            const uti = fileExtension === 'png' ? 'public.png' : 'public.jpeg';
+            // iOS supports sharing multiple files through the urls parameter
+            const shareOptions: any = {
+              message: shareMessage.trim(),
+              urls: downloadedFiles, // iOS supports multiple file URLs
+              title: 'Share Recall',
+            };
             
-            await Sharing.shareAsync(primaryFile, {
-              mimeType: mimeType,
-              dialogTitle: 'Share Recall',
-              UTI: uti,
-            });
-            
-            console.log('Recall shared successfully with image(s) via expo-sharing');
-            
-            // Show success toast
-            Toast.show({
-              type: 'success',
-              text1: 'Recall Shared',
-              text2: `Successfully shared recall with ${downloadedFiles.length} image${downloadedFiles.length > 1 ? 's' : ''}`,
-              position: 'bottom',
-              visibilityTime: 2000,
+            const result = await Share.share(shareOptions, {
+              subject: 'Check out this recall!',
             });
             
             // Clean up temporary files
-            for (const fileUri of downloadedFiles) {
-              try {
-                await FileSystem.deleteAsync(fileUri, { idempotent: true });
-                console.log('Cleaned up temp file:', fileUri);
-              } catch (cleanupError) {
-                console.log('Error cleaning up temp file:', cleanupError);
-              }
+            await cleanupTempFiles(downloadedFiles);
+            
+            if (result.action === Share.sharedAction) {
+              console.log('Recall shared successfully on iOS');
+              
+              Toast.show({
+                type: 'success',
+                text1: 'Recall Shared',
+                text2: `Successfully shared with ${downloadedFiles.length} image${downloadedFiles.length > 1 ? 's' : ''}`,
+                position: 'bottom',
+                visibilityTime: 2000,
+              });
+            } else if (result.action === Share.dismissedAction) {
+              console.log('Share dismissed by user');
             }
             
             return;
           } else if (Platform.OS === 'android') {
-            // For Android, use Share API with the message and first image URL
-            console.log('Using Share API for Android with message and image URL');
+            console.log('Sharing on Android with image via Share API');
+            
+            // Android: Share message with the primary image
+            // Note: Android's Share API has limited support for multiple files
+            // We share the primary image (or first image) with the message
+            const primaryImageUri = downloadedFiles[currentImageIndex] || downloadedFiles[0];
             
             const result = await Share.share(
               {
                 message: shareMessage.trim(),
-                url: sharedData.images[currentImageIndex] || sharedData.images[0],
+                url: primaryImageUri,
+                title: 'Share Recall',
               },
               {
                 dialogTitle: 'Share Recall',
@@ -163,16 +152,10 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
             );
 
             // Clean up temporary files
-            for (const fileUri of downloadedFiles) {
-              try {
-                await FileSystem.deleteAsync(fileUri, { idempotent: true });
-              } catch (cleanupError) {
-                console.log('Error cleaning up temp file:', cleanupError);
-              }
-            }
+            await cleanupTempFiles(downloadedFiles);
 
             if (result.action === Share.sharedAction) {
-              console.log('Recall shared successfully via Share API');
+              console.log('Recall shared successfully on Android');
               
               Toast.show({
                 type: 'success',
@@ -182,13 +165,13 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
                 visibilityTime: 2000,
               });
             } else if (result.action === Share.dismissedAction) {
-              console.log('Share dismissed');
+              console.log('Share dismissed by user');
             }
             
             return;
           }
         } else {
-          console.log('No images were successfully downloaded, falling back to text-only share');
+          console.warn('No images were successfully downloaded, falling back to text-only share');
         }
       } catch (imageError) {
         console.error('Error downloading/sharing images:', imageError);
@@ -213,7 +196,6 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     if (result.action === Share.sharedAction) {
       console.log('Recall shared successfully (text only)');
       
-      // Show success toast
       Toast.show({
         type: 'success',
         text1: 'Recall Shared',
@@ -226,12 +208,11 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
         console.log('Shared with activity type:', result.activityType);
       }
     } else if (result.action === Share.dismissedAction) {
-      console.log('Share dismissed');
+      console.log('Share dismissed by user');
     }
   } catch (error) {
     console.error('Error sharing recall:', error);
     
-    // Show error toast
     Toast.show({
       type: 'error',
       text1: 'Share Failed',
@@ -241,6 +222,23 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     });
     
     throw error;
+  }
+}
+
+/**
+ * Clean up temporary downloaded files
+ * @param fileUris - Array of file URIs to delete
+ */
+async function cleanupTempFiles(fileUris: string[]): Promise<void> {
+  console.log(`Cleaning up ${fileUris.length} temporary file(s)`);
+  
+  for (const fileUri of fileUris) {
+    try {
+      await FileSystem.deleteAsync(fileUri, { idempotent: true });
+      console.log('Cleaned up temp file:', fileUri);
+    } catch (cleanupError) {
+      console.warn('Error cleaning up temp file:', cleanupError);
+    }
   }
 }
 
