@@ -22,13 +22,14 @@ interface RecallUtilityBarProps {
  * - Platform-agnostic icons (iOS SF Symbols + Android Material Icons)
  * - Good touch target areas with hitSlop
  * - Haptic feedback on interactions
+ * - Matches Answer section styling (paperplane.fill for share)
  */
 export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
   onAskQuestion,
   onShare,
 }) => {
   const handleAskQuestion = async () => {
-    console.log('Ask a Question icon pressed');
+    console.log('User tapped Chat icon on recall');
     
     // Provide haptic feedback
     if (Platform.OS !== 'web') {
@@ -43,7 +44,7 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
   };
 
   const handleShare = async () => {
-    console.log('Share icon pressed');
+    console.log('User tapped Share icon on recall');
     
     // Provide haptic feedback
     if (Platform.OS !== 'web') {
@@ -59,29 +60,29 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
 
   return (
     <View style={styles.container}>
-      {/* Ask a Question Icon */}
+      {/* Chat Icon (formerly "Ask a Question") */}
       <Pressable
         onPress={handleAskQuestion}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         style={styles.iconButton}
       >
         <IconSymbol
-          name="questionmark.circle"
+          name="message.fill"
           size={24}
-          color={colors.text}
+          color={colors.primary}
         />
       </Pressable>
 
-      {/* Share Icon */}
+      {/* Share Icon - Matches Answer section styling */}
       <Pressable
         onPress={handleShare}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         style={styles.iconButton}
       >
         <IconSymbol
-          name="square.and.arrow.up"
+          name="paperplane.fill"
           size={24}
-          color={colors.text}
+          color={colors.primary}
         />
       </Pressable>
     </View>
@@ -93,9 +94,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 16,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    gap: 8,
   },
   iconButton: {
     padding: 4,
