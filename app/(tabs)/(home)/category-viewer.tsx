@@ -278,7 +278,7 @@ export default function CategoryViewerScreen() {
         console.error('[CategoryViewer] Error in matching polling:', error);
       }
     }, 1500);
-  }, [id]);
+  }, [id, loadCategoryAndRecalls]);
 
   // Optimized category and recalls loading with pagination and cache usage
   const loadCategoryAndRecalls = useCallback(async (pageNum: number = 1, append: boolean = false) => {
@@ -649,7 +649,7 @@ export default function CategoryViewerScreen() {
         matchingCheckIntervalRef.current = null;
       }
     };
-  }, [id, sortOrder]); // Reload when sortOrder changes
+  }, [id, sortOrder, loadCategoryAndRecalls]); // Reload when sortOrder changes
 
   const handleRefresh = async () => {
     console.log('[CategoryViewer] User initiated refresh');

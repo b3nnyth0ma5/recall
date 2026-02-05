@@ -137,7 +137,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     } else {
       setIsUploadingImages(false);
     }
-  }, [note.id, note.images, note.imageIds, loading, expectedImageCount]);
+    // note.images is intentionally excluded from deps to avoid re-running when images load
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note.id, note.imageIds, loading, expectedImageCount]);
 
   // Scroll to specific image if scrollToImageIndex is provided - MUST be before conditional returns
   useEffect(() => {

@@ -46,7 +46,7 @@ export default function AdminRegenerateEmbeddingsScreen() {
 
   useEffect(() => {
     loadStats();
-  }, [user]);
+  }, [user, loadStats]);
 
   const loadStats = async () => {
     if (!user) {

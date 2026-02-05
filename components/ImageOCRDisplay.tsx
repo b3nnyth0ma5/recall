@@ -102,7 +102,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  }, [imageId]);
+  }, [imageId, loadOCRResults]);
 
   const handleRetry = async () => {
     setIsLoading(true);
@@ -136,7 +136,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     if (autoLoad && imageId) {
       loadOCRResults();
     }
-  }, [imageId, autoLoad, loadOCRResults]);
+  }, [imageId, autoLoad]); // loadOCRResults is stable due to useCallback
 
   // If no results and not processing, show process button
   if (!ocrText && !explanation && !isProcessing && !isLoading) {
