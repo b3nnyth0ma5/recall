@@ -113,55 +113,25 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
           if (isAvailable && Platform.OS === 'ios') {
             console.log(`Using expo-sharing for iOS with ${downloadedFiles.length} image(s)`);
             
-            // For iOS, share all images sequentially
-            // Note: expo-sharing's shareAsync only accepts a single file URL, not an array
-            // iOS's UIActivityViewController supports multiple items, but expo-sharing doesn't expose this
-            // Best approach: Share each image with the message
+            // For iOS, share the primary image with the full message
+            const primaryFile = downloadedFiles[currentImageIndex] || downloadedFiles[0];
+            const fileExtension = primaryFile.includes('.png') ? 'png' : 'jpg';
+            const mimeType = fileExtension === 'png' ? 'image/png' : 'image/jpeg';
+            const uti = fileExtension === 'png' ? 'public.png' : 'public.jpeg';
             
-            // Share all downloaded images sequentially
-            for (let i = 0; i < downloadedFiles.length; i++) {
-              const fileUri = downloadedFiles[i];
-              const fileExtension = fileUri.includes('.png') ? 'png' : 'jpg';
-              const mimeType = fileExtension === 'png' ? 'image/png' : 'image/jpeg';
-              const uti = fileExtension === 'png' ? 'public.png' : 'public.jpeg';
-              
-              console.log(`Sharing image ${i + 1}/${downloadedFiles.length} on iOS`);
-              
-              try {
-                await Sharing.shareAsync(fileUri, {
-                  mimeType: mimeType,
-                  dialogTitle: downloadedFiles.length > 1 
-                    ? `Share Image ${i + 1} of ${downloadedFiles.length}` 
-                    : 'Share Recall',
-                  UTI: uti,
-                });
-                
-                console.log(`Image ${i + 1} shared successfully`);
-              } catch (shareError) {
-                console.error(`Error sharing image ${i + 1}:`, shareError);
-              }
-            }
+            await Sharing.shareAsync(primaryFile, {
+              mimeType: mimeType,
+              dialogTitle: 'Share Recall',
+              UTI: uti,
+            });
             
-            // After sharing all images, share the text message
-            if (shareMessage.trim()) {
-              try {
-                await Share.share({
-                  message: shareMessage.trim(),
-                  title: 'Recall Details',
-                });
-                console.log('Text message shared successfully');
-              } catch (textShareError) {
-                console.error('Error sharing text message:', textShareError);
-              }
-            }
-            
-            console.log('All images and text shared successfully via expo-sharing');
+            console.log('Recall shared successfully with image(s) via expo-sharing');
             
             // Show success toast
             Toast.show({
               type: 'success',
               text1: 'Recall Shared',
-              text2: `Successfully shared ${downloadedFiles.length} image${downloadedFiles.length > 1 ? 's' : ''} and text`,
+              text2: `Successfully shared recall with ${downloadedFiles.length} image${downloadedFiles.length > 1 ? 's' : ''}`,
               position: 'bottom',
               visibilityTime: 2000,
             });
