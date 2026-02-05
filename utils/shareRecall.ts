@@ -1,7 +1,6 @@
 
 import { Share, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 import * as Linking from 'expo-linking';
 import Toast from 'react-native-toast-message';
 import { Note } from '@/types/Note';
@@ -27,8 +26,6 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
   try {
     console.log('User tapped Share button for recall:', recall.id);
     console.log('Current image index:', currentImageIndex);
-    console.log('Recall images array:', recall.images);
-    console.log('Recall imageIds array:', recall.imageIds);
     console.log('Total images:', recall.images?.length || 0);
 
     // Build comprehensive share message with recall text, location, and image info
@@ -72,13 +69,13 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
           const timestamp = Date.now();
           const fileUri = `${FileSystem.cacheDirectory}share_recall_${recall.id}_${index}_${timestamp}.${fileExtension}`;
           
-          console.log(`Downloading image ${index + 1}/${recall.images!.length} from URL:`, imageUrl.substring(0, 50) + '...');
+          console.log(`Downloading image ${index + 1}/${recall.images!.length}`);
           
           try {
             const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
             
             if (downloadResult.status === 200) {
-              console.log(`Image ${index + 1} downloaded successfully to:`, downloadResult.uri);
+              console.log(`Image ${index + 1} downloaded successfully`);
               return downloadResult.uri;
             } else {
               console.warn(`Failed to download image ${index + 1}, status: ${downloadResult.status}`);
@@ -99,150 +96,79 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
         if (downloadedFiles.length > 0) {
           console.log(`Successfully downloaded ${downloadedFiles.length} image(s), preparing to share`);
           
-          // Check if sharing is available
-          const isSharingAvailable = await Sharing.isAvailableAsync();
-          
-          if (!isSharingAvailable) {
-            console.warn('Sharing is not available on this device, falling back to text-only share');
-            // Clean up and fall through to text-only share
+          // Use React Native's Share API with multiple files
+          // On iOS, the 'urls' parameter allows sharing multiple files
+          // On Android, we share the message with the first image URL
+          if (Platform.OS === 'ios') {
+            console.log('Sharing on iOS with multiple images via Share API');
+            
+            // iOS supports sharing multiple files through the urls parameter
+            const shareOptions: any = {
+              message: shareMessage.trim(),
+              urls: downloadedFiles, // iOS supports multiple file URLs
+              title: 'Share Recall',
+            };
+            
+            const result = await Share.share(shareOptions, {
+              subject: 'Check out this recall!',
+            });
+            
+            // Clean up temporary files
             await cleanupTempFiles(downloadedFiles);
-          } else {
-            // For single image, use Share API with both message and url
-            if (downloadedFiles.length === 1) {
-              console.log('Sharing single image with Share API');
+            
+            if (result.action === Share.sharedAction) {
+              console.log('Recall shared successfully on iOS');
               
-              try {
-                console.log('Sharing with message:', shareMessage.substring(0, 100) + '...');
-                console.log('Sharing image file:', downloadedFiles[0]);
-                
-                // Use Share API which supports both text and image
-                const result = await Share.share(
-                  {
-                    message: shareMessage.trim(),
-                    url: downloadedFiles[0],
-                    title: 'Share Recall',
-                  },
-                  {
-                    subject: 'Check out this recall!',
-                  }
-                );
-                
-                // Clean up temporary files
-                await cleanupTempFiles(downloadedFiles);
-                
-                if (result.action === Share.sharedAction) {
-                  console.log('Single image shared successfully');
-                  
-                  Toast.show({
-                    type: 'success',
-                    text1: 'Recall Shared',
-                    text2: 'Successfully shared with image',
-                    position: 'bottom',
-                    visibilityTime: 2000,
-                  });
-                } else if (result.action === Share.dismissedAction) {
-                  console.log('Share dismissed by user');
-                }
-                
-                return;
-              } catch (shareError) {
-                console.error('Error sharing single image:', shareError);
-                // Clean up and fall through to text-only share
-                await cleanupTempFiles(downloadedFiles);
-              }
-            } else {
-              // For multiple images, share them with the message
-              console.log(`Sharing ${downloadedFiles.length} images`);
-              
-              try {
-                // On iOS, use Share API with urls array
-                if (Platform.OS === 'ios') {
-                  console.log('Attempting iOS Share API with multiple URLs');
-                  
-                  // Create a text file with the message to include with images
-                  const textFileUri = `${FileSystem.cacheDirectory}share_message_${recall.id}_${Date.now()}.txt`;
-                  await FileSystem.writeAsStringAsync(textFileUri, shareMessage.trim(), {
-                    encoding: FileSystem.EncodingType.UTF8,
-                  });
-                  
-                  // Add text file to the files to share
-                  const allFilesToShare = [textFileUri, ...downloadedFiles];
-                  
-                  console.log(`Sharing ${allFilesToShare.length} files (1 text + ${downloadedFiles.length} images)`);
-                  console.log('Text file:', textFileUri);
-                  console.log('Image files:', downloadedFiles);
-                  
-                  // iOS Share API with urls parameter
-                  const shareOptions: any = {
-                    urls: allFilesToShare,
-                    title: 'Share Recall',
-                  };
-                  
-                  const result = await Share.share(shareOptions, {
-                    subject: 'Check out this recall!',
-                  });
-                  
-                  // Clean up temporary files (including text file)
-                  await cleanupTempFiles(allFilesToShare);
-                  
-                  if (result.action === Share.sharedAction) {
-                    console.log('Multiple images shared successfully on iOS');
-                    
-                    Toast.show({
-                      type: 'success',
-                      text1: 'Recall Shared',
-                      text2: `Successfully shared with ${downloadedFiles.length} images`,
-                      position: 'bottom',
-                      visibilityTime: 2000,
-                    });
-                  } else if (result.action === Share.dismissedAction) {
-                    console.log('Share dismissed by user');
-                  }
-                  
-                  return;
-                } else {
-                  // On Android, share the primary image with Share API
-                  console.log('Sharing primary image on Android with Share API');
-                  
-                  const primaryImageUri = downloadedFiles[currentImageIndex] || downloadedFiles[0];
-                  
-                  const result = await Share.share(
-                    {
-                      message: shareMessage.trim(),
-                      url: primaryImageUri,
-                      title: 'Share Recall',
-                    },
-                    {
-                      dialogTitle: 'Share Recall',
-                      subject: 'Check out this recall!',
-                    }
-                  );
-                  
-                  // Clean up temporary files
-                  await cleanupTempFiles(downloadedFiles);
-                  
-                  if (result.action === Share.sharedAction) {
-                    console.log('Primary image shared successfully on Android');
-                    
-                    Toast.show({
-                      type: 'success',
-                      text1: 'Recall Shared',
-                      text2: `Successfully shared with image (${downloadedFiles.length} total)`,
-                      position: 'bottom',
-                      visibilityTime: 2000,
-                    });
-                  } else if (result.action === Share.dismissedAction) {
-                    console.log('Share dismissed by user');
-                  }
-                  
-                  return;
-                }
-              } catch (shareError) {
-                console.error('Error sharing multiple images:', shareError);
-                // Clean up and fall through to text-only share
-                await cleanupTempFiles(downloadedFiles);
-              }
+              Toast.show({
+                type: 'success',
+                text1: 'Recall Shared',
+                text2: `Successfully shared with ${downloadedFiles.length} image${downloadedFiles.length > 1 ? 's' : ''}`,
+                position: 'bottom',
+                visibilityTime: 2000,
+              });
+            } else if (result.action === Share.dismissedAction) {
+              console.log('Share dismissed by user');
             }
+            
+            return;
+          } else if (Platform.OS === 'android') {
+            console.log('Sharing on Android with image via Share API');
+            
+            // Android: Share message with the primary image
+            // Note: Android's Share API has limited support for multiple files
+            // We share the primary image (or first image) with the message
+            const primaryImageUri = downloadedFiles[currentImageIndex] || downloadedFiles[0];
+            
+            const result = await Share.share(
+              {
+                message: shareMessage.trim(),
+                url: primaryImageUri,
+                title: 'Share Recall',
+              },
+              {
+                dialogTitle: 'Share Recall',
+                subject: 'Check out this recall!',
+              }
+            );
+
+            // Clean up temporary files
+            await cleanupTempFiles(downloadedFiles);
+
+            if (result.action === Share.sharedAction) {
+              console.log('Recall shared successfully on Android');
+              
+              Toast.show({
+                type: 'success',
+                text1: 'Recall Shared',
+                text2: 'Successfully shared recall',
+                position: 'bottom',
+                visibilityTime: 2000,
+              });
+            } else if (result.action === Share.dismissedAction) {
+              console.log('Share dismissed by user');
+            }
+            
+            return;
           }
         } else {
           console.warn('No images were successfully downloaded, falling back to text-only share');
