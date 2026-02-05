@@ -44,11 +44,7 @@ export default function AdminRegenerateEmbeddingsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [processingType, setProcessingType] = useState<'recalls' | 'images' | 'all' | null>(null);
 
-  useEffect(() => {
-    loadStats();
-  }, [user]);
-
-  const loadStats = async () => {
+  const loadStats = React.useCallback(async () => {
     if (!user) {
       console.log('No user found, skipping stats load');
       return;
@@ -117,7 +113,11 @@ export default function AdminRegenerateEmbeddingsScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    loadStats();
+  }, [user, loadStats]);
 
   const regenerateRecallEmbeddings = async () => {
     if (!user) {

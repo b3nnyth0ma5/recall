@@ -34,6 +34,34 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
   const [showExplanation, setShowExplanation] = useState(true);
   const [autoTriggered, setAutoTriggered] = useState(false);
 
+  const handleProcessImage = useCallback(async () => {
+    setIsLoading(true);
+    setError(undefined);
+    setIsProcessing(true);
+
+    try {
+      console.log('Manually triggering OCR processing for image:', imageId);
+      const result = await triggerOCRProcessing(imageId);
+
+      if (result.success) {
+        console.log('OCR processing triggered successfully');
+        // Wait a bit then reload results
+        setTimeout(() => {
+          loadOCRResults();
+        }, 2000);
+      } else {
+        setError(result.error || 'Failed to trigger OCR processing');
+        setIsProcessing(false);
+      }
+    } catch (err) {
+      console.error('Error triggering OCR processing:', err);
+      setError('An error occurred while processing the image');
+      setIsProcessing(false);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [imageId]);
+
   const loadOCRResults = useCallback(async () => {
     if (!imageId) {
       console.log('No imageId provided to ImageOCRDisplay');
@@ -74,37 +102,9 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  }, [imageId, autoTriggered]);
+  }, [imageId, autoTriggered, handleProcessImage]);
 
-  const handleProcessImage = useCallback(async () => {
-    setIsLoading(true);
-    setError(undefined);
-    setIsProcessing(true);
-
-    try {
-      console.log('Manually triggering OCR processing for image:', imageId);
-      const result = await triggerOCRProcessing(imageId);
-
-      if (result.success) {
-        console.log('OCR processing triggered successfully');
-        // Wait a bit then reload results
-        setTimeout(() => {
-          loadOCRResults();
-        }, 2000);
-      } else {
-        setError(result.error || 'Failed to trigger OCR processing');
-        setIsProcessing(false);
-      }
-    } catch (err) {
-      console.error('Error triggering OCR processing:', err);
-      setError('An error occurred while processing the image');
-      setIsProcessing(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [imageId]);
-
-  const handleRetry = async () => {
+  const handleRetry = useCallback(async () => {
     setIsLoading(true);
     setError(undefined);
     setIsProcessing(true);
@@ -130,7 +130,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [imageId, loadOCRResults]);
 
   useEffect(() => {
     if (autoLoad && imageId) {
@@ -146,7 +146,12 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
           style={styles.processButton}
           onPress={handleProcessImage}
         >
-          <IconSymbol name="sparkles" size={20} color={colors.primary} />
+          <IconSymbol 
+            ios_icon_name="sparkles" 
+            android_material_icon_name="auto-awesome" 
+            size={20} 
+            color={colors.primary} 
+          />
           <Text style={styles.processButtonText}>Analyze Image with AI</Text>
         </Pressable>
       </Animated.View>
@@ -172,7 +177,12 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     return (
       <Animated.View entering={FadeIn} style={styles.container}>
         <View style={styles.errorContainer}>
-          <IconSymbol name="exclamationmark.triangle" size={20} color={colors.error} />
+          <IconSymbol 
+            ios_icon_name="exclamationmark.triangle" 
+            android_material_icon_name="warning" 
+            size={20} 
+            color={colors.error} 
+          />
           <Text style={styles.errorText}>{error}</Text>
           <Pressable style={styles.retryButton} onPress={handleRetry}>
             <Text style={styles.retryButtonText}>Retry</Text>
@@ -194,11 +204,17 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
               onPress={() => setShowOcrText(!showOcrText)}
             >
               <View style={styles.sectionHeaderLeft}>
-                <IconSymbol name="doc.text" size={18} color={colors.primary} />
+                <IconSymbol 
+                  ios_icon_name="doc.text" 
+                  android_material_icon_name="description" 
+                  size={18} 
+                  color={colors.primary} 
+                />
                 <Text style={styles.sectionTitle}>Extracted Text</Text>
               </View>
               <IconSymbol
-                name={showOcrText ? 'chevron.up' : 'chevron.down'}
+                ios_icon_name={showOcrText ? 'chevron.up' : 'chevron.down'}
+                android_material_icon_name={showOcrText ? 'expand-less' : 'expand-more'}
                 size={16}
                 color={colors.textSecondary}
               />
@@ -219,11 +235,17 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
               onPress={() => setShowExplanation(!showExplanation)}
             >
               <View style={styles.sectionHeaderLeft}>
-                <IconSymbol name="sparkles" size={18} color={colors.primary} />
+                <IconSymbol 
+                  ios_icon_name="sparkles" 
+                  android_material_icon_name="auto-awesome" 
+                  size={18} 
+                  color={colors.primary} 
+                />
                 <Text style={styles.sectionTitle}>AI Explanation</Text>
               </View>
               <IconSymbol
-                name={showExplanation ? 'chevron.up' : 'chevron.down'}
+                ios_icon_name={showExplanation ? 'chevron.up' : 'chevron.down'}
+                android_material_icon_name={showExplanation ? 'expand-less' : 'expand-more'}
                 size={16}
                 color={colors.textSecondary}
               />
@@ -239,7 +261,12 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
         {/* Metadata */}
         {processedAt && (
           <View style={styles.metadata}>
-            <IconSymbol name="clock" size={14} color={colors.textSecondary} />
+            <IconSymbol 
+              ios_icon_name="clock" 
+              android_material_icon_name="schedule" 
+              size={14} 
+              color={colors.textSecondary} 
+            />
             <Text style={styles.metadataText}>
               Processed {new Date(processedAt).toLocaleString()}
             </Text>
@@ -248,7 +275,12 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
 
         {/* Retry button */}
         <Pressable style={styles.retrySmallButton} onPress={handleRetry}>
-          <IconSymbol name="arrow.clockwise" size={14} color={colors.primary} />
+          <IconSymbol 
+            ios_icon_name="arrow.clockwise" 
+            android_material_icon_name="refresh" 
+            size={14} 
+            color={colors.primary} 
+          />
           <Text style={styles.retrySmallButtonText}>Reprocess</Text>
         </Pressable>
       </Animated.View>
