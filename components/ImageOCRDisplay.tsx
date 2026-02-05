@@ -113,7 +113,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  }, [imageId]); // Removed loadOCRResults from dependencies to avoid circular dependency
+  }, [imageId, loadOCRResults]);
 
   const handleRetry = useCallback(async () => {
     setIsLoading(true);
@@ -141,7 +141,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  }, [imageId]); // Removed loadOCRResults from dependencies to avoid circular dependency
+  }, [imageId, loadOCRResults]);
 
   useEffect(() => {
     if (autoLoad && imageId) {
