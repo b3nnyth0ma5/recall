@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, memo } from 'react';
+import React, { useState, useRef, useEffect, memo, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
@@ -9,6 +9,7 @@ import { TimeAgo } from './TimeAgo';
 import { shareRecall } from '@/utils/shareRecall';
 import { getImageDataUrl } from '@/utils/supabase';
 import { PeopleAvatars } from './PeopleAvatars';
+import { RecallUtilityBar } from './RecallUtilityBar';
 import * as Haptics from 'expo-haptics';
 import { NoteCardSkeleton } from './NoteCardSkeleton';
 import { SkeletonLoader } from './SkeletonLoader';
@@ -99,6 +100,21 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     };
   });
 
+  // Callbacks - MUST be defined at top level before any conditional returns
+  const handleSharePress = useCallback(async () => {
+    console.log('User tapped Share button on recall:', note.id);
+    try {
+      await shareRecall(note, currentImageIndex);
+    } catch (error) {
+      console.error('Error sharing recall:', error);
+    }
+  }, [note, currentImageIndex]);
+
+  const handleAskQuestion = useCallback(() => {
+    console.log('User tapped Ask a Question button on recall:', note.id);
+    // Functionality to be added later
+  }, [note.id]);
+
   // Initialize with first TWO images for better performance
   useEffect(() => {
     if (!loading && note.images && note.images.length > 0) {
@@ -152,7 +168,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         setCurrentImageIndex(scrollToImageIndex);
       }, 300);
     }
-  }, [scrollToImageIndex, note.images?.length]);
+  }, [scrollToImageIndex, note.images]);
 
   // Show skeleton if loading
   if (loading) {
@@ -296,8 +312,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     onPress(scrollToImageIndex);
   };
 
-
-
   const handleToggleExpand = (e: any) => {
     // Stop propagation to prevent opening the note editor
     e.stopPropagation();
@@ -341,14 +355,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       }
     } catch (error) {
       console.error('Error opening maps:', error);
-    }
-  };
-
-  const handleSharePress = async () => {
-    try {
-      await shareRecall(note, currentImageIndex);
-    } catch (error) {
-      console.error('Error sharing recall:', error);
     }
   };
 
@@ -511,6 +517,14 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           </View>
         )}
 
+        {/* Instagram-style Utility Bar - Only shown if images exist */}
+        {hasImages && (
+          <RecallUtilityBar
+            onAskQuestion={handleAskQuestion}
+            onShare={handleSharePress}
+          />
+        )}
+
         {/* Swipeable Content - Text, Location, Time - FULL WIDTH DELETE UI */}
         <Swipeable
           ref={swipeableRef}
@@ -638,7 +652,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   imagesContainer: {
-    marginBottom: 12,
+    marginBottom: 0,
     marginHorizontal: -CARD_PADDING,
     position: 'relative',
     zIndex: 10,

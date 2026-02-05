@@ -34,7 +34,8 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
   const [showExplanation, setShowExplanation] = useState(true);
   const [autoTriggered, setAutoTriggered] = useState(false);
 
-  const loadOCRResults = useCallback(async () => {
+  // Separate function for loading OCR results (not a callback to avoid circular dependencies)
+  const loadOCRResults = async () => {
     if (!imageId) {
       console.log('No imageId provided to ImageOCRDisplay');
       return;
@@ -74,9 +75,9 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  }, [imageId, autoTriggered]);
+  };
 
-  const handleProcessImage = useCallback(async () => {
+  const handleProcessImage = async () => {
     setIsLoading(true);
     setError(undefined);
     setIsProcessing(true);
@@ -102,7 +103,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  }, [imageId, loadOCRResults]);
+  };
 
   const handleRetry = async () => {
     setIsLoading(true);
@@ -136,7 +137,8 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     if (autoLoad && imageId) {
       loadOCRResults();
     }
-  }, [imageId, autoLoad, loadOCRResults]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageId, autoLoad]);
 
   // If no results and not processing, show process button
   if (!ocrText && !explanation && !isProcessing && !isLoading) {
