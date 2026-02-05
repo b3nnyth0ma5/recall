@@ -1070,12 +1070,7 @@ export default function CategoryViewerScreen() {
           </Text>
           <View style={styles.emptyInfoCard}>
             <View style={styles.emptyInfoHeader}>
-              <IconSymbol 
-                ios_icon_name="sparkles" 
-                android_material_icon_name="auto-awesome" 
-                size={20} 
-                color={colors.primary} 
-              />
+              <IconSymbol name="sparkles" size={20} color={colors.primary} />
               <Text style={styles.emptyInfoTitle}>What&apos;s Happening?</Text>
             </View>
             <Text style={styles.emptyInfoText}>
@@ -1091,8 +1086,7 @@ export default function CategoryViewerScreen() {
       <View style={styles.emptyContainer}>
         <View style={styles.emptyIconContainer}>
           <IconSymbol 
-            ios_icon_name="tray" 
-            android_material_icon_name="inbox" 
+            name="tray" 
             size={64} 
             color={colors.textTertiary} 
           />
@@ -1103,12 +1097,7 @@ export default function CategoryViewerScreen() {
         </Text>
         <View style={styles.emptyInfoCard}>
           <View style={styles.emptyInfoHeader}>
-            <IconSymbol 
-              ios_icon_name="sparkles" 
-              android_material_icon_name="auto-awesome" 
-              size={20} 
-              color={colors.primary} 
-            />
+            <IconSymbol name="sparkles" size={20} color={colors.primary} />
             <Text style={styles.emptyInfoTitle}>Auto-Matching</Text>
           </View>
           <Text style={styles.emptyInfoText}>
@@ -1263,12 +1252,7 @@ export default function CategoryViewerScreen() {
           
           {/* Info message */}
           <View style={styles.matchingInfoContainer}>
-            <IconSymbol 
-              ios_icon_name="sparkles" 
-              android_material_icon_name="auto-awesome" 
-              size={20} 
-              color={colors.primary} 
-            />
+            <IconSymbol name="sparkles" size={20} color={colors.primary} />
             <Text style={styles.matchingInfoText}>
               Analyzing your recalls to find matches...
             </Text>
@@ -1301,12 +1285,7 @@ export default function CategoryViewerScreen() {
                 style={styles.headerButton}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <IconSymbol 
-                  ios_icon_name="chevron.left" 
-                  android_material_icon_name="arrow-back" 
-                  size={24} 
-                  color={colors.text} 
-                />
+                <IconSymbol name="chevron.left" size={24} color={colors.text} />
               </Pressable>
             ),
           }}
@@ -1380,12 +1359,7 @@ export default function CategoryViewerScreen() {
               style={styles.headerButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol 
-                ios_icon_name="trash" 
-                android_material_icon_name="delete" 
-                size={24} 
-                color={colors.error} 
-              />
+              <IconSymbol name="trash" size={24} color={colors.error} />
             </Pressable>
           ),
         }}

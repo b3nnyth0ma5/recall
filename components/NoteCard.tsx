@@ -13,6 +13,7 @@ import * as Haptics from 'expo-haptics';
 import { NoteCardSkeleton } from './NoteCardSkeleton';
 import { SkeletonLoader } from './SkeletonLoader';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
+import { RecallContextMenu } from './RecallContextMenu';
 import Animated, { 
   useAnimatedStyle, 
   useSharedValue, 
@@ -71,6 +72,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const imageScrollRef = useRef<ScrollView>(null);
   const swipeableRef = useRef<Swipeable>(null);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   
   // Optimized lazy loading state for images
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
@@ -296,6 +299,77 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     onPress(scrollToImageIndex);
   };
 
+  const handleLongPress = (event: any) => {
+    console.log('User long-pressed recall card:', note.id);
+    
+    // Trigger heavy haptic feedback
+    if (Platform.OS !== 'web') {
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
+    }
+    
+    // Get touch position for menu placement
+    const { pageX, pageY } = event.nativeEvent;
+    
+    // Calculate menu position (centered horizontally, slightly below touch point)
+    const screenWidth = Dimensions.get('window').width;
+    const menuWidth = 200;
+    const menuX = Math.max(16, Math.min(pageX - menuWidth / 2, screenWidth - menuWidth - 16));
+    const menuY = pageY + 20;
+    
+    setContextMenuPosition({ x: menuX, y: menuY });
+    setShowContextMenu(true);
+  };
+
+  const handleCloseContextMenu = () => {
+    console.log('Closing context menu');
+    setShowContextMenu(false);
+  };
+
+  const handleShareRecall = async () => {
+    console.log('User tapped Share Recall for:', note.id);
+    
+    // Close the context menu
+    setShowContextMenu(false);
+    
+    // Trigger haptic feedback
+    if (Platform.OS !== 'web') {
+      try {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
+    }
+    
+    // Share the recall with all images
+    try {
+      await shareRecall(note, currentImageIndex);
+    } catch (error) {
+      console.error('Error sharing recall:', error);
+    }
+  };
+
+  const handleAskQuestion = () => {
+    console.log('User tapped Ask a Question for:', note.id);
+    
+    // Close the context menu
+    setShowContextMenu(false);
+    
+    // Trigger haptic feedback
+    if (Platform.OS !== 'web') {
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
+    }
+    
+    // TODO: Implement ask question functionality
+  };
+
   const handleToggleExpand = (e: any) => {
     // Stop propagation to prevent opening the note editor
     e.stopPropagation();
@@ -343,37 +417,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   const handleSharePress = async () => {
-    console.log('User tapped Share icon for recall:', note.id);
-    
-    // Trigger haptic feedback
-    if (Platform.OS !== 'web') {
-      try {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
-    
     try {
       await shareRecall(note, currentImageIndex);
     } catch (error) {
       console.error('Error sharing recall:', error);
     }
-  };
-
-  const handleAskQuestionPress = () => {
-    console.log('User tapped Ask a Question icon for recall:', note.id);
-    
-    // Trigger haptic feedback
-    if (Platform.OS !== 'web') {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
-    
-    // TODO: Implement ask question functionality
   };
 
   const handleDelete = async () => {
@@ -409,12 +457,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           style={styles.deleteAction}
           onPress={handleDelete}
         >
-          <IconSymbol 
-            ios_icon_name="trash.fill" 
-            android_material_icon_name="delete" 
-            size={24} 
-            color="#FFFFFF" 
-          />
+          <IconSymbol name="trash.fill" size={24} color="#FFFFFF" />
           <Text style={styles.deleteActionText}>Delete</Text>
         </Pressable>
       </View>
@@ -443,8 +486,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
+      {/* ENTIRE CARD WRAPPER - This makes the whole card a touch area for long press */}
       <Pressable 
-        onPress={handleCardPress}
+        onPress={handleCardPress} 
+        onLongPress={handleLongPress}
+        delayLongPress={500}
         style={styles.entireCardTouchArea}
       >
         {/* Images - Displayed FIRST if available */}
@@ -491,12 +537,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                       )}
                       {imageErrorStates[index] ? (
                         <View style={styles.imageErrorContainer}>
-                          <IconSymbol 
-                            ios_icon_name="exclamationmark.triangle" 
-                            android_material_icon_name="warning" 
-                            size={40} 
-                            color={colors.error} 
-                          />
+                          <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
                           <Text style={styles.imageErrorText}>Failed to load image</Text>
                         </View>
                       ) : (
@@ -514,7 +555,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                 </Pressable>
               ))}
             </ScrollView>
-            
             {/* Image counter with busy spinner - visible immediately */}
             {totalImageCount > 0 && (
               <View style={styles.imageCounter}>
@@ -542,37 +582,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                 />
               </View>
             )}
-
-            {/* Instagram-style Utility Bar - Below image carousel, above text */}
-            <View style={styles.utilityBar}>
-              <View style={styles.utilityBarSpacer} />
-              <View style={styles.utilityBarIcons}>
-                <Pressable
-                  onPress={handleAskQuestionPress}
-                  style={styles.utilityBarButton}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <IconSymbol
-                    ios_icon_name="questionmark.circle"
-                    android_material_icon_name="help"
-                    size={24}
-                    color={colors.text}
-                  />
-                </Pressable>
-                <Pressable
-                  onPress={handleSharePress}
-                  style={styles.utilityBarButton}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <IconSymbol
-                    ios_icon_name="square.and.arrow.up"
-                    android_material_icon_name="share"
-                    size={24}
-                    color={colors.text}
-                  />
-                </Pressable>
-              </View>
-            </View>
           </View>
         )}
 
@@ -630,22 +639,12 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                   onPress={handleLocationPress}
                   style={styles.locationWrapper}
                 >
-                  <IconSymbol 
-                    ios_icon_name="location.fill" 
-                    android_material_icon_name="location-on" 
-                    size={14} 
-                    color={colors.primary} 
-                  />
+                  <IconSymbol name="location.fill" size={14} color={colors.primary} />
                   <View style={styles.locationTextChevronWrapper}>
                     <Text style={styles.location} numberOfLines={1} ellipsizeMode="tail">
                       {note.location}
                     </Text>
-                    <IconSymbol 
-                      ios_icon_name="chevron.right" 
-                      android_material_icon_name="chevron-right" 
-                      size={12} 
-                      color={colors.primary} 
-                    />
+                    <IconSymbol name="chevron.right" size={12} color={colors.primary} />
                   </View>
                 </Pressable>
               )}
@@ -672,6 +671,16 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           onClose={() => setShowFullScreenImage(false)}
         />
       )}
+
+      {/* Context Menu */}
+      <RecallContextMenu
+        visible={showContextMenu}
+        onClose={handleCloseContextMenu}
+        onShareRecall={handleShareRecall}
+        onAskQuestion={handleAskQuestion}
+        recallId={note.id}
+        position={contextMenuPosition}
+      />
     </Animated.View>
   );
 }, (prevProps, nextProps) => {
@@ -713,7 +722,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   imagesContainer: {
-    marginBottom: 0,
+    marginBottom: 12,
     marginHorizontal: -CARD_PADDING,
     position: 'relative',
     zIndex: 10,
@@ -804,30 +813,6 @@ const styles = StyleSheet.create({
     elevation: 1000,
     pointerEvents: 'box-none',
     backgroundColor: 'transparent',
-  },
-  utilityBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: colors.card,
-    borderTopWidth: 0,
-  },
-  utilityBarSpacer: {
-    flex: 1,
-  },
-  utilityBarIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  utilityBarButton: {
-    padding: 4,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minWidth: 44,
-    minHeight: 44,
   },
   text: {
     fontSize: 15,
