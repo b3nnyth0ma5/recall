@@ -329,6 +329,47 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     setShowContextMenu(false);
   };
 
+  const handleShareRecall = async () => {
+    console.log('User tapped Share Recall for:', note.id);
+    
+    // Close the context menu
+    setShowContextMenu(false);
+    
+    // Trigger haptic feedback
+    if (Platform.OS !== 'web') {
+      try {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
+    }
+    
+    // Share the recall with all images
+    try {
+      await shareRecall(note, currentImageIndex);
+    } catch (error) {
+      console.error('Error sharing recall:', error);
+    }
+  };
+
+  const handleAskQuestion = () => {
+    console.log('User tapped Ask a Question for:', note.id);
+    
+    // Close the context menu
+    setShowContextMenu(false);
+    
+    // Trigger haptic feedback
+    if (Platform.OS !== 'web') {
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
+    }
+    
+    // TODO: Implement ask question functionality
+  };
+
   const handleToggleExpand = (e: any) => {
     // Stop propagation to prevent opening the note editor
     e.stopPropagation();
@@ -445,177 +486,180 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
-      {/* Images - Displayed FIRST if available */}
-      {hasImages && (
-        <View style={styles.imagesContainer}>
-          <ScrollView
-            ref={imageScrollRef}
-            horizontal
-            pagingEnabled={false}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.imagesScrollContent}
-            onScroll={handleImageScroll}
-            scrollEventThrottle={16}
-            decelerationRate={0.9}
-            snapToInterval={IMAGE_WIDTH + IMAGE_SPACING}
-            snapToAlignment="start"
-          >
-            {displayImages.map((imageUrl, index) => (
-              <Pressable 
-                key={`${note.id}-image-${index}`}
-                onPress={() => handleImagePress(index)}
-                style={styles.imageWrapper}
-              >
-                {!imageUrl ? (
-                  <View style={styles.imageLoadingContainer}>
-                    <SkeletonLoader
-                      width={IMAGE_WIDTH}
-                      height={IMAGE_HEIGHT}
-                      borderRadius={12}
-                      variant="wave"
-                    />
-                  </View>
-                ) : (
-                  <>
-                    {imageLoadingStates[index] && !imageErrorStates[index] && !imageLoadedStates[index] && (
-                      <View style={styles.imageLoadingContainer}>
-                        <SkeletonLoader
-                          width={IMAGE_WIDTH}
-                          height={IMAGE_HEIGHT}
-                          borderRadius={12}
-                          variant="wave"
-                        />
-                      </View>
-                    )}
-                    {imageErrorStates[index] ? (
-                      <View style={styles.imageErrorContainer}>
-                        <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
-                        <Text style={styles.imageErrorText}>Failed to load image</Text>
-                      </View>
-                    ) : (
-                      <Image
-                        source={{ uri: imageUrl }}
-                        style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
-                        resizeMode="cover"
-                        onLoadStart={() => handleImageLoadStart(index)}
-                        onLoad={() => handleImageLoad(index)}
-                        onError={() => handleImageError(index)}
-                      />
-                    )}
-                  </>
-                )}
-              </Pressable>
-            ))}
-          </ScrollView>
-          {/* Image counter with busy spinner - visible immediately */}
-          {totalImageCount > 0 && (
-            <View style={styles.imageCounter}>
-              {isUploadingImages && (
-                <ActivityIndicator 
-                  size="small" 
-                  color="#FFFFFF" 
-                  style={styles.imageCounterSpinner}
-                />
-              )}
-              <Text style={styles.imageCounterText}>
-                {totalImageCount > 1 ? `${currentImageIndex + 1} / ${totalImageCount}` : `1 / ${totalImageCount}`}
-              </Text>
-            </View>
-          )}
-          
-          {/* People Avatars - Positioned absolutely at top right OVER the image */}
-          {hasPeople && (
-            <View style={styles.peopleAvatarsContainerWithImages}>
-              <PeopleAvatars 
-                people={note.people || []} 
-                maxVisible={5}
-                avatarSize={32}
-                overlapOffset={8}
-              />
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* Swipeable Content - Text, Location, Time - FULL WIDTH DELETE UI */}
-      <Swipeable
-        ref={swipeableRef}
-        renderRightActions={renderRightActions}
-        overshootRight={false}
-        friction={2}
-        rightThreshold={40}
-        containerStyle={styles.swipeableContainer}
+      {/* ENTIRE CARD WRAPPER - This makes the whole card a touch area for long press */}
+      <Pressable 
+        onPress={handleCardPress} 
+        onLongPress={handleLongPress}
+        delayLongPress={500}
+        style={styles.entireCardTouchArea}
       >
-        <Pressable 
-          onPress={handleCardPress} 
-          onLongPress={handleLongPress}
-          delayLongPress={500}
-          style={styles.cardContent}
-        >
-          {/* People Avatars - For text-only notes, show at top of card content */}
-          {!hasImages && hasPeople && (
-            <View style={styles.peopleAvatarsContainerNoImages}>
-              <PeopleAvatars 
-                people={note.people || []} 
-                maxVisible={5}
-                avatarSize={32}
-                overlapOffset={8}
-              />
-            </View>
-          )}
-
-          {/* Text Content */}
-          {note.text && (
-            <Pressable onPress={handleTextPress}>
-              <Text style={styles.text}>
-                {hasUrl(note.text) ? (
-                  renderTextWithLinks(isExpanded ? note.text : getPreviewText())
-                ) : (
-                  isExpanded ? note.text : getPreviewText()
-                )}
-              </Text>
-              {shouldShowToggle() && (
+        {/* Images - Displayed FIRST if available */}
+        {hasImages && (
+          <View style={styles.imagesContainer}>
+            <ScrollView
+              ref={imageScrollRef}
+              horizontal
+              pagingEnabled={false}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.imagesScrollContent}
+              onScroll={handleImageScroll}
+              scrollEventThrottle={16}
+              decelerationRate={0.9}
+              snapToInterval={IMAGE_WIDTH + IMAGE_SPACING}
+              snapToAlignment="start"
+            >
+              {displayImages.map((imageUrl, index) => (
                 <Pressable 
-                  onPress={handleToggleExpand}
-                  style={styles.toggleContainer}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  key={`${note.id}-image-${index}`}
+                  onPress={() => handleImagePress(index)}
+                  style={styles.imageWrapper}
                 >
-                  <Text style={styles.toggleText}>
-                    {isExpanded ? 'Show less' : 'Show more'}
-                  </Text>
+                  {!imageUrl ? (
+                    <View style={styles.imageLoadingContainer}>
+                      <SkeletonLoader
+                        width={IMAGE_WIDTH}
+                        height={IMAGE_HEIGHT}
+                        borderRadius={12}
+                        variant="wave"
+                      />
+                    </View>
+                  ) : (
+                    <>
+                      {imageLoadingStates[index] && !imageErrorStates[index] && !imageLoadedStates[index] && (
+                        <View style={styles.imageLoadingContainer}>
+                          <SkeletonLoader
+                            width={IMAGE_WIDTH}
+                            height={IMAGE_HEIGHT}
+                            borderRadius={12}
+                            variant="wave"
+                          />
+                        </View>
+                      )}
+                      {imageErrorStates[index] ? (
+                        <View style={styles.imageErrorContainer}>
+                          <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
+                          <Text style={styles.imageErrorText}>Failed to load image</Text>
+                        </View>
+                      ) : (
+                        <Image
+                          source={{ uri: imageUrl }}
+                          style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
+                          resizeMode="cover"
+                          onLoadStart={() => handleImageLoadStart(index)}
+                          onLoad={() => handleImageLoad(index)}
+                          onError={() => handleImageError(index)}
+                        />
+                      )}
+                    </>
+                  )}
                 </Pressable>
-              )}
-            </Pressable>
-          )}
-
-          {/* Location and Time on the same line */}
-          <View style={styles.locationTimeContainer}>
-            {/* Location - Left-aligned, occupies 75% of space */}
-            {note.location && (
-              <Pressable 
-                onPress={handleLocationPress}
-                style={styles.locationWrapper}
-              >
-                <IconSymbol name="location.fill" size={14} color={colors.primary} />
-                <View style={styles.locationTextChevronWrapper}>
-                  <Text style={styles.location} numberOfLines={1} ellipsizeMode="tail">
-                    {note.location}
-                  </Text>
-                  <IconSymbol name="chevron.right" size={12} color={colors.primary} />
-                </View>
-              </Pressable>
+              ))}
+            </ScrollView>
+            {/* Image counter with busy spinner - visible immediately */}
+            {totalImageCount > 0 && (
+              <View style={styles.imageCounter}>
+                {isUploadingImages && (
+                  <ActivityIndicator 
+                    size="small" 
+                    color="#FFFFFF" 
+                    style={styles.imageCounterSpinner}
+                  />
+                )}
+                <Text style={styles.imageCounterText}>
+                  {totalImageCount > 1 ? `${currentImageIndex + 1} / ${totalImageCount}` : `1 / ${totalImageCount}`}
+                </Text>
+              </View>
             )}
             
-            {/* Time Ago - Right-aligned, occupies remaining space */}
-            <View style={styles.timeAgoWrapper}>
-              <TimeAgo 
-                date={note.created_at} 
-                style={styles.date}
-              />
+            {/* People Avatars - Positioned absolutely at top right OVER the image */}
+            {hasPeople && (
+              <View style={styles.peopleAvatarsContainerWithImages}>
+                <PeopleAvatars 
+                  people={note.people || []} 
+                  maxVisible={5}
+                  avatarSize={32}
+                  overlapOffset={8}
+                />
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Swipeable Content - Text, Location, Time - FULL WIDTH DELETE UI */}
+        <Swipeable
+          ref={swipeableRef}
+          renderRightActions={renderRightActions}
+          overshootRight={false}
+          friction={2}
+          rightThreshold={40}
+          containerStyle={styles.swipeableContainer}
+        >
+          <View style={styles.cardContent}>
+            {/* People Avatars - For text-only notes, show at top of card content */}
+            {!hasImages && hasPeople && (
+              <View style={styles.peopleAvatarsContainerNoImages}>
+                <PeopleAvatars 
+                  people={note.people || []} 
+                  maxVisible={5}
+                  avatarSize={32}
+                  overlapOffset={8}
+                />
+              </View>
+            )}
+
+            {/* Text Content */}
+            {note.text && (
+              <Pressable onPress={handleTextPress}>
+                <Text style={styles.text}>
+                  {hasUrl(note.text) ? (
+                    renderTextWithLinks(isExpanded ? note.text : getPreviewText())
+                  ) : (
+                    isExpanded ? note.text : getPreviewText()
+                  )}
+                </Text>
+                {shouldShowToggle() && (
+                  <Pressable 
+                    onPress={handleToggleExpand}
+                    style={styles.toggleContainer}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Text style={styles.toggleText}>
+                      {isExpanded ? 'Show less' : 'Show more'}
+                    </Text>
+                  </Pressable>
+                )}
+              </Pressable>
+            )}
+
+            {/* Location and Time on the same line */}
+            <View style={styles.locationTimeContainer}>
+              {/* Location - Left-aligned, occupies 75% of space */}
+              {note.location && (
+                <Pressable 
+                  onPress={handleLocationPress}
+                  style={styles.locationWrapper}
+                >
+                  <IconSymbol name="location.fill" size={14} color={colors.primary} />
+                  <View style={styles.locationTextChevronWrapper}>
+                    <Text style={styles.location} numberOfLines={1} ellipsizeMode="tail">
+                      {note.location}
+                    </Text>
+                    <IconSymbol name="chevron.right" size={12} color={colors.primary} />
+                  </View>
+                </Pressable>
+              )}
+              
+              {/* Time Ago - Right-aligned, occupies remaining space */}
+              <View style={styles.timeAgoWrapper}>
+                <TimeAgo 
+                  date={note.created_at} 
+                  style={styles.date}
+                />
+              </View>
             </View>
           </View>
-        </Pressable>
-      </Swipeable>
+        </Swipeable>
+      </Pressable>
 
       {/* Full Screen Image Component - Pass original images array, not lazy loaded */}
       {note.images && note.images.length > 0 && (
@@ -632,6 +676,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       <RecallContextMenu
         visible={showContextMenu}
         onClose={handleCloseContextMenu}
+        onShareRecall={handleShareRecall}
+        onAskQuestion={handleAskQuestion}
         recallId={note.id}
         position={contextMenuPosition}
       />
@@ -661,6 +707,10 @@ const styles = StyleSheet.create({
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
     elevation: 2,
     position: 'relative',
+  },
+  entireCardTouchArea: {
+    flex: 1,
+    width: '100%',
   },
   swipeableContainer: {
     borderRadius: 16,

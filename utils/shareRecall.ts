@@ -1,8 +1,9 @@
 
-import { Share, Platform } from 'react-native';
+import { Share, Platform, Alert } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Linking from 'expo-linking';
+import Toast from 'react-native-toast-message';
 import { Note } from '@/types/Note';
 import { generateSharedNoteHTML } from '@/components/SharedNote';
 
@@ -19,6 +20,7 @@ export interface SharedRecallData {
 
 /**
  * Share a recall using the native device sharing feature
+ * Includes text, location, and all images
  * @param recall - The note/recall to share
  * @param currentImageIndex - The index of the image currently being viewed (becomes primary)
  */
@@ -26,6 +28,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
   try {
     console.log('Sharing recall:', recall.id);
     console.log('Current image index:', currentImageIndex);
+    console.log('Total images:', recall.images?.length || 0);
 
     // Prepare the shared data (excluding UUIDs)
     const sharedData: SharedRecallData = {
@@ -47,85 +50,52 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
 
     console.log('Created deep link:', deepLink);
 
+    // Build comprehensive share message
+    let shareMessage = '';
+    
+    // Add text content
+    if (sharedData.text) {
+      shareMessage += `${sharedData.text}\n\n`;
+    }
+
+    // Add location
+    if (sharedData.location) {
+      shareMessage += `📍 Location: ${sharedData.location}\n`;
+      
+      // Add Google Maps link if coordinates available
+      if (sharedData.latitude && sharedData.longitude) {
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${sharedData.latitude},${sharedData.longitude}`;
+        shareMessage += `🗺️ View on Maps: ${mapsUrl}\n`;
+      }
+      
+      shareMessage += '\n';
+    }
+
+    // Add image count
+    if (sharedData.images && sharedData.images.length > 0) {
+      shareMessage += `📷 ${sharedData.images.length} ${sharedData.images.length === 1 ? 'image' : 'images'} attached\n\n`;
+      
+      // Add image URLs for platforms that support them
+      sharedData.images.forEach((imageUrl, index) => {
+        shareMessage += `Image ${index + 1}: ${imageUrl}\n`;
+      });
+      
+      shareMessage += '\n';
+    }
+
+    // Add app attribution
+    shareMessage += `Shared from Natively\n${deepLink}`;
+
+    console.log('Share message prepared, length:', shareMessage.length);
+
     // Get the primary image URL
     const primaryImageUrl = sharedData.images && sharedData.images.length > 0
       ? sharedData.images[currentImageIndex] || sharedData.images[0]
       : undefined;
 
-    // Generate the SharedNote HTML component
-    const sharedNoteHTML = generateSharedNoteHTML({
-      text: sharedData.text,
-      imageUrl: primaryImageUrl,
-      location: sharedData.location,
-      deepLinkUrl: deepLink,
-    });
-
-    console.log('Generated SharedNote HTML component');
-
-    // Prepare share message for platforms that don't support HTML
-    let shareMessage = 'Check out this note from Natively!\n\n';
-    
-    if (sharedData.text) {
-      const previewText = sharedData.text.length > 100 
-        ? sharedData.text.substring(0, 100) + '...' 
-        : sharedData.text;
-      shareMessage += `"${previewText}"\n\n`;
-    }
-
-    if (sharedData.location) {
-      shareMessage += `📍 ${sharedData.location}\n\n`;
-    }
-
-    if (sharedData.images && sharedData.images.length > 0) {
-      shareMessage += `📷 ${sharedData.images.length} ${sharedData.images.length === 1 ? 'image' : 'images'}\n\n`;
-    }
-
-    // Add the deep link at the end
-    shareMessage += `Open in app: ${deepLink}`;
-
-    // Try to create an HTML file for sharing (for platforms that support it)
-    try {
-      const htmlFileName = `shared_note_${Date.now()}.html`;
-      const htmlFileUri = FileSystem.cacheDirectory + htmlFileName;
-      
-      console.log('Creating HTML file at:', htmlFileUri);
-      await FileSystem.writeAsStringAsync(htmlFileUri, sharedNoteHTML, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-
-      console.log('HTML file created successfully');
-
-      // Check if Sharing is available
-      const isAvailable = await Sharing.isAvailableAsync();
-      
-      if (isAvailable && Platform.OS === 'ios') {
-        // On iOS, try to share the HTML file
-        console.log('Sharing HTML file on iOS');
-        
-        await Sharing.shareAsync(htmlFileUri, {
-          mimeType: 'text/html',
-          dialogTitle: 'Share Note',
-          UTI: 'public.html',
-        });
-        
-        console.log('Note shared successfully with HTML preview');
-        
-        // Clean up temporary file
-        try {
-          await FileSystem.deleteAsync(htmlFileUri, { idempotent: true });
-        } catch (cleanupError) {
-          console.log('Error cleaning up HTML file:', cleanupError);
-        }
-        
-        return;
-      }
-    } catch (htmlError) {
-      console.log('Could not create/share HTML file, falling back to standard share:', htmlError);
-    }
-
-    // If there's an image, try to download and share it with the message
-    if (primaryImageUrl) {
-      console.log('Attempting to share with image:', primaryImageUrl);
+    // Try to share with image preview on iOS
+    if (primaryImageUrl && Platform.OS === 'ios') {
+      console.log('Attempting to share with image preview on iOS:', primaryImageUrl);
       
       try {
         // Download the image to a temporary location
@@ -141,18 +111,26 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
           // Check if Sharing is available
           const isAvailable = await Sharing.isAvailableAsync();
           
-          if (isAvailable && Platform.OS === 'ios') {
-            // For iOS, use expo-sharing with the image
+          if (isAvailable) {
             console.log('Using expo-sharing for iOS with image preview');
             
-            // Share the image with the message as the dialog title
+            // Share the image with the message
             await Sharing.shareAsync(downloadResult.uri, {
               mimeType: fileExtension === 'png' ? 'image/png' : 'image/jpeg',
               dialogTitle: shareMessage.trim(),
               UTI: fileExtension === 'png' ? 'public.png' : 'public.jpeg',
             });
             
-            console.log('Note shared successfully with image preview');
+            console.log('Recall shared successfully with image preview');
+            
+            // Show success toast
+            Toast.show({
+              type: 'success',
+              text1: 'Recall Shared',
+              text2: 'Successfully shared recall with image',
+              position: 'bottom',
+              visibilityTime: 2000,
+            });
             
             // Clean up temporary file
             try {
@@ -178,17 +156,27 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     const result = await Share.share(
       {
         message: shareMessage.trim(),
-        title: 'Share Note from Natively',
-        url: deepLink, // Some platforms support URL separately
+        title: 'Share Recall from Natively',
+        url: Platform.OS === 'ios' ? deepLink : undefined, // iOS supports URL separately
       },
       {
-        dialogTitle: 'Share this Note',
-        subject: 'Check out this note from Natively!',
+        dialogTitle: 'Share this Recall',
+        subject: 'Check out this recall from Natively!',
       }
     );
 
     if (result.action === Share.sharedAction) {
-      console.log('Note shared successfully');
+      console.log('Recall shared successfully');
+      
+      // Show success toast
+      Toast.show({
+        type: 'success',
+        text1: 'Recall Shared',
+        text2: 'Successfully shared recall',
+        position: 'bottom',
+        visibilityTime: 2000,
+      });
+      
       if (result.activityType) {
         console.log('Shared with activity type:', result.activityType);
       }
@@ -197,6 +185,16 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     }
   } catch (error) {
     console.error('Error sharing recall:', error);
+    
+    // Show error toast
+    Toast.show({
+      type: 'error',
+      text1: 'Share Failed',
+      text2: 'Could not share recall. Please try again.',
+      position: 'bottom',
+      visibilityTime: 3000,
+    });
+    
     throw error;
   }
 }

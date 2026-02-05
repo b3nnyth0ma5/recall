@@ -1,18 +1,20 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, Modal, Pressable, Platform } from 'react-native';
-import { IconSymbol } from './IconSymbol';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '@/styles/commonStyles';
 import * as Haptics from 'expo-haptics';
 
 interface RecallContextMenuProps {
   visible: boolean;
   onClose: () => void;
+  onShareRecall: () => void;
+  onAskQuestion: () => void;
   recallId: string | null;
   position: { x: number; y: number };
 }
 
-export function RecallContextMenu({ visible, onClose, recallId, position }: RecallContextMenuProps) {
+export function RecallContextMenu({ visible, onClose, onShareRecall, onAskQuestion, recallId, position }: RecallContextMenuProps) {
   if (!visible || !recallId) {
     return null;
   }
@@ -29,8 +31,7 @@ export function RecallContextMenu({ visible, onClose, recallId, position }: Reca
       }
     }
     
-    // TODO: Implement share functionality
-    onClose();
+    onShareRecall();
   };
 
   const handleAskQuestionPress = () => {
@@ -45,8 +46,7 @@ export function RecallContextMenu({ visible, onClose, recallId, position }: Reca
       }
     }
     
-    // TODO: Implement ask question functionality
-    onClose();
+    onAskQuestion();
   };
 
   return (
@@ -73,9 +73,8 @@ export function RecallContextMenu({ visible, onClose, recallId, position }: Reca
             android_ripple={{ color: colors.borderLight }}
           >
             <View style={styles.iconContainer}>
-              <IconSymbol 
-                ios_icon_name="square.and.arrow.up" 
-                android_material_icon_name="share" 
+              <MaterialCommunityIcons 
+                name="share-variant" 
                 size={24} 
                 color={colors.text} 
               />
@@ -91,9 +90,8 @@ export function RecallContextMenu({ visible, onClose, recallId, position }: Reca
             android_ripple={{ color: colors.borderLight }}
           >
             <View style={styles.iconContainer}>
-              <IconSymbol 
-                ios_icon_name="questionmark.circle" 
-                android_material_icon_name="help" 
+              <MaterialCommunityIcons 
+                name="help-circle-outline" 
                 size={24} 
                 color={colors.text} 
               />
