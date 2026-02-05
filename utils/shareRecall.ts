@@ -41,13 +41,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
       created_at: recall.created_at,
     };
 
-    // Create a deep link with the shared data
-    const encodedData = encodeURIComponent(JSON.stringify(sharedData));
-    const deepLink = Linking.createURL('shared-recall', {
-      queryParams: { data: encodedData },
-    });
-
-    console.log('Created deep link for recall sharing');
+    console.log('Prepared shared data (without deep link)');
 
     // Build comprehensive share message with recall text pre-entered
     let shareMessage = '';
@@ -74,13 +68,10 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     if (sharedData.images && sharedData.images.length > 0) {
       const imageCount = sharedData.images.length;
       const imageText = imageCount === 1 ? 'image' : 'images';
-      shareMessage += `📷 ${imageCount} ${imageText} attached\n\n`;
+      shareMessage += `📷 ${imageCount} ${imageText} attached`;
     }
 
-    // Add app attribution with deep link
-    shareMessage += `Shared from Recall}`;
-
-    console.log('Share message prepared with recall text, length:', shareMessage.length);
+    console.log('Share message prepared with recall text (no deep link), length:', shareMessage.length);
 
     // Try to share with actual image files (not URLs)
     if (sharedData.images && sharedData.images.length > 0) {
@@ -167,7 +158,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
               },
               {
                 dialogTitle: 'Share Recall',
-                subject: 'Check out this recall from Natively!',
+                subject: 'Check out this recall!',
               }
             );
 
@@ -211,11 +202,11 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     const result = await Share.share(
       {
         message: shareMessage.trim(),
-        title: 'Share Recall from Natively',
+        title: 'Share Recall',
       },
       {
         dialogTitle: 'Share Recall',
-        subject: 'Check out this recall from Natively!',
+        subject: 'Check out this recall!',
       }
     );
 
