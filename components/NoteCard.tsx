@@ -13,6 +13,7 @@ import * as Haptics from 'expo-haptics';
 import { NoteCardSkeleton } from './NoteCardSkeleton';
 import { SkeletonLoader } from './SkeletonLoader';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
+import { RecallContextMenu } from './RecallContextMenu';
 import Animated, { 
   useAnimatedStyle, 
   useSharedValue, 
@@ -71,6 +72,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const imageScrollRef = useRef<ScrollView>(null);
   const swipeableRef = useRef<Swipeable>(null);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   
   // Optimized lazy loading state for images
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
@@ -296,6 +299,36 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     onPress(scrollToImageIndex);
   };
 
+  const handleLongPress = (event: any) => {
+    console.log('User long-pressed recall card:', note.id);
+    
+    // Trigger heavy haptic feedback
+    if (Platform.OS !== 'web') {
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      } catch (error) {
+        console.error('Error triggering haptic feedback:', error);
+      }
+    }
+    
+    // Get touch position for menu placement
+    const { pageX, pageY } = event.nativeEvent;
+    
+    // Calculate menu position (centered horizontally, slightly below touch point)
+    const screenWidth = Dimensions.get('window').width;
+    const menuWidth = 200;
+    const menuX = Math.max(16, Math.min(pageX - menuWidth / 2, screenWidth - menuWidth - 16));
+    const menuY = pageY + 20;
+    
+    setContextMenuPosition({ x: menuX, y: menuY });
+    setShowContextMenu(true);
+  };
+
+  const handleCloseContextMenu = () => {
+    console.log('Closing context menu');
+    setShowContextMenu(false);
+  };
+
   const handleToggleExpand = (e: any) => {
     // Stop propagation to prevent opening the note editor
     e.stopPropagation();
@@ -513,7 +546,12 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         rightThreshold={40}
         containerStyle={styles.swipeableContainer}
       >
-        <Pressable onPress={handleCardPress} style={styles.cardContent}>
+        <Pressable 
+          onPress={handleCardPress} 
+          onLongPress={handleLongPress}
+          delayLongPress={500}
+          style={styles.cardContent}
+        >
           {/* People Avatars - For text-only notes, show at top of card content */}
           {!hasImages && hasPeople && (
             <View style={styles.peopleAvatarsContainerNoImages}>
@@ -589,6 +627,14 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           onClose={() => setShowFullScreenImage(false)}
         />
       )}
+
+      {/* Context Menu */}
+      <RecallContextMenu
+        visible={showContextMenu}
+        onClose={handleCloseContextMenu}
+        recallId={note.id}
+        position={contextMenuPosition}
+      />
     </Animated.View>
   );
 }, (prevProps, nextProps) => {
