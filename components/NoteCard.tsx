@@ -13,7 +13,6 @@ import * as Haptics from 'expo-haptics';
 import { NoteCardSkeleton } from './NoteCardSkeleton';
 import { SkeletonLoader } from './SkeletonLoader';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
-import { RecallContextMenu } from './RecallContextMenu';
 import Animated, { 
   useAnimatedStyle, 
   useSharedValue, 
@@ -72,8 +71,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const imageScrollRef = useRef<ScrollView>(null);
   const swipeableRef = useRef<Swipeable>(null);
-  const [showContextMenu, setShowContextMenu] = useState(false);
-  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   
   // Optimized lazy loading state for images
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
@@ -137,9 +134,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     } else {
       setIsUploadingImages(false);
     }
-    // note.images is intentionally excluded from deps to avoid re-running when images load
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [note.id, note.imageIds, loading, expectedImageCount]);
+  }, [note.id, note.imageIds, note.images, loading, expectedImageCount]);
 
   // Scroll to specific image if scrollToImageIndex is provided - MUST be before conditional returns
   useEffect(() => {
@@ -301,76 +296,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     onPress(scrollToImageIndex);
   };
 
-  const handleLongPress = (event: any) => {
-    console.log('User long-pressed recall card:', note.id);
-    
-    // Trigger heavy haptic feedback
-    if (Platform.OS !== 'web') {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
-    
-    // Get touch position for menu placement
-    const { pageX, pageY } = event.nativeEvent;
-    
-    // Calculate menu position (centered horizontally, slightly below touch point)
-    const screenWidth = Dimensions.get('window').width;
-    const menuWidth = 200;
-    const menuX = Math.max(16, Math.min(pageX - menuWidth / 2, screenWidth - menuWidth - 16));
-    const menuY = pageY + 20;
-    
-    setContextMenuPosition({ x: menuX, y: menuY });
-    setShowContextMenu(true);
-  };
 
-  const handleCloseContextMenu = () => {
-    console.log('Closing context menu');
-    setShowContextMenu(false);
-  };
-
-  const handleShareRecall = async () => {
-    console.log('User tapped Share Recall for:', note.id);
-    
-    // Close the context menu
-    setShowContextMenu(false);
-    
-    // Trigger haptic feedback
-    if (Platform.OS !== 'web') {
-      try {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
-    
-    // Share the recall with all images
-    try {
-      await shareRecall(note, currentImageIndex);
-    } catch (error) {
-      console.error('Error sharing recall:', error);
-    }
-  };
-
-  const handleAskQuestion = () => {
-    console.log('User tapped Ask a Question for:', note.id);
-    
-    // Close the context menu
-    setShowContextMenu(false);
-    
-    // Trigger haptic feedback
-    if (Platform.OS !== 'web') {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
-    
-    // TODO: Implement ask question functionality
-  };
 
   const handleToggleExpand = (e: any) => {
     // Stop propagation to prevent opening the note editor
@@ -488,11 +414,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
-      {/* ENTIRE CARD WRAPPER - This makes the whole card a touch area for long press */}
+      {/* ENTIRE CARD WRAPPER - This makes the whole card a touch area */}
       <Pressable 
-        onPress={handleCardPress} 
-        onLongPress={handleLongPress}
-        delayLongPress={500}
+        onPress={handleCardPress}
         style={styles.entireCardTouchArea}
       >
         {/* Images - Displayed FIRST if available */}
@@ -673,16 +597,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           onClose={() => setShowFullScreenImage(false)}
         />
       )}
-
-      {/* Context Menu */}
-      <RecallContextMenu
-        visible={showContextMenu}
-        onClose={handleCloseContextMenu}
-        onShareRecall={handleShareRecall}
-        onAskQuestion={handleAskQuestion}
-        recallId={note.id}
-        position={contextMenuPosition}
-      />
     </Animated.View>
   );
 }, (prevProps, nextProps) => {
