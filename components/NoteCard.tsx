@@ -923,6 +923,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 });
+
 </write file>
 
 Now let me fix the linting errors in the other files:Now I'll fix the linting errors by adding the missing dependencies to the useCallback and useEffect hooks:

@@ -1,11 +1,12 @@
+
+import { Platform } from "react-native";
+import Constants from "expo-constants";
+
 // Global error logging for runtime errors
 // Captures console.log/warn/error and sends to Natively server for AI debugging
 
 // Declare __DEV__ global (React Native global for development mode detection)
 declare const __DEV__: boolean;
-
-import { Platform } from "react-native";
-import Constants from "expo-constants";
 
 // Simple debouncing to prevent duplicate logs
 const recentLogs: { [key: string]: boolean } = {};

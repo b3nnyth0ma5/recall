@@ -34,6 +34,59 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
   const [showExplanation, setShowExplanation] = useState(true);
   const [autoTriggered, setAutoTriggered] = useState(false);
 
+  const loadOCRResults = useCallback(async () => {
+    if (!imageId) {
+      console.log('No imageId provided to ImageOCRDisplay');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(undefined);
+
+    try {
+      console.log('Loading OCR results for image:', imageId);
+      const results = await getImageOCRResults(imageId);
+
+      if (results) {
+        setOcrText(results.ocrText);
+        setExplanation(results.explanation);
+        setProcessedAt(results.processedAt);
+        setIsProcessing(results.isProcessing || false);
+
+        // If image is unprocessed (processed_at is NULL) and we haven't auto-triggered yet
+        if (results.isProcessing && !results.processedAt && !autoTriggered) {
+          console.log('Image is unprocessed, auto-triggering OCR processing');
+          setAutoTriggered(true);
+          // Trigger OCR processing inline to avoid circular dependency
+          try {
+            const processResult = await triggerOCRProcessing(imageId);
+            if (processResult.success) {
+              console.log('OCR processing triggered successfully');
+              setTimeout(() => {
+                loadOCRResults();
+              }, 2000);
+            }
+          } catch (err) {
+            console.error('Error auto-triggering OCR:', err);
+          }
+        } else if (results.isProcessing) {
+          console.log('Image is still being processed, will retry in 3 seconds');
+          // Retry after a delay if still processing
+          setTimeout(() => {
+            loadOCRResults();
+          }, 3000);
+        }
+      } else {
+        setError('Failed to load OCR results');
+      }
+    } catch (err) {
+      console.error('Error loading OCR results:', err);
+      setError('An error occurred while loading OCR results');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [imageId, autoTriggered]);
+
   const handleProcessImage = useCallback(async () => {
     setIsLoading(true);
     setError(undefined);
@@ -60,49 +113,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  }, [imageId]);
-
-  const loadOCRResults = useCallback(async () => {
-    if (!imageId) {
-      console.log('No imageId provided to ImageOCRDisplay');
-      return;
-    }
-
-    setIsLoading(true);
-    setError(undefined);
-
-    try {
-      console.log('Loading OCR results for image:', imageId);
-      const results = await getImageOCRResults(imageId);
-
-      if (results) {
-        setOcrText(results.ocrText);
-        setExplanation(results.explanation);
-        setProcessedAt(results.processedAt);
-        setIsProcessing(results.isProcessing || false);
-
-        // If image is unprocessed (processed_at is NULL) and we haven't auto-triggered yet
-        if (results.isProcessing && !results.processedAt && !autoTriggered) {
-          console.log('Image is unprocessed, auto-triggering OCR processing');
-          setAutoTriggered(true);
-          handleProcessImage();
-        } else if (results.isProcessing) {
-          console.log('Image is still being processed, will retry in 3 seconds');
-          // Retry after a delay if still processing
-          setTimeout(() => {
-            loadOCRResults();
-          }, 3000);
-        }
-      } else {
-        setError('Failed to load OCR results');
-      }
-    } catch (err) {
-      console.error('Error loading OCR results:', err);
-      setError('An error occurred while loading OCR results');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [imageId, autoTriggered, handleProcessImage]);
+  }, [imageId]); // Removed loadOCRResults from dependencies to avoid circular dependency
 
   const handleRetry = useCallback(async () => {
     setIsLoading(true);
@@ -130,7 +141,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     } finally {
       setIsLoading(false);
     }
-  }, [imageId, loadOCRResults]);
+  }, [imageId]); // Removed loadOCRResults from dependencies to avoid circular dependency
 
   useEffect(() => {
     if (autoLoad && imageId) {
