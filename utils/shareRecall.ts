@@ -1,10 +1,19 @@
 
-import { Platform } from 'react-native';
-import Share from 'react-native-share';
+import { Platform, Share as RNShare } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Linking from 'expo-linking';
 import Toast from 'react-native-toast-message';
 import { Note } from '@/types/Note';
+
+// Conditionally import react-native-share only for native platforms
+let Share: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    Share = require('react-native-share').default;
+  } catch (error) {
+    console.warn('react-native-share not available, falling back to React Native Share API');
+  }
+}
 
 export interface SharedRecallData {
   text: string;
@@ -59,7 +68,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     console.log('Share message prepared:', shareMessage.substring(0, 100) + '...');
 
     // If there are images, download them and share with the message
-    if (recall.images && recall.images.length > 0) {
+    if (recall.images && recall.images.length > 0 && Platform.OS !== 'web' && Share) {
       console.log(`Downloading ${recall.images.length} image(s) for sharing`);
       
       try {
@@ -152,16 +161,28 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
       }
     }
 
-    // Fallback: Share text only using react-native-share
-    console.log('Sharing with react-native-share (text only)');
+    // Fallback: Share text only
+    // Use react-native-share on native platforms, React Native Share API on web
+    console.log(`Sharing text only (Platform: ${Platform.OS})`);
     
     try {
-      const result = await Share.open({
-        title: 'Share Recall',
-        message: shareMessage.trim(),
-      });
-      
-      console.log('Text-only share result:', result);
+      if (Platform.OS !== 'web' && Share) {
+        // Use react-native-share on native platforms
+        const result = await Share.open({
+          title: 'Share Recall',
+          message: shareMessage.trim(),
+        });
+        
+        console.log('Text-only share result (react-native-share):', result);
+      } else {
+        // Use React Native's built-in Share API on web
+        const result = await RNShare.share({
+          message: shareMessage.trim(),
+          title: 'Share Recall',
+        });
+        
+        console.log('Text-only share result (RN Share):', result);
+      }
       
       Toast.show({
         type: 'success',
@@ -172,7 +193,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
       });
     } catch (shareError: any) {
       // User dismissed the share dialog
-      if (shareError.message && shareError.message.includes('User did not share')) {
+      if (shareError.message && (shareError.message.includes('User did not share') || shareError.message.includes('dismissed'))) {
         console.log('Share dismissed by user');
         return;
       }
