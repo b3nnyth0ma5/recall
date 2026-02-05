@@ -590,13 +590,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               </View>
             </View>
 
-            {/* Instagram-style Utility Bar - Positioned below location and time */}
-            {hasImages && (
-              <RecallUtilityBar
-                onAskQuestion={handleAskQuestion}
-                onShare={handleSharePress}
-              />
-            )}
+            {/* Instagram-style Utility Bar - Positioned below location and time - Always visible */}
+            <RecallUtilityBar
+              onAskQuestion={handleAskQuestion}
+              onShare={handleSharePress}
+            />
           </View>
         </Swipeable>
       </Pressable>

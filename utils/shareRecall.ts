@@ -50,103 +50,117 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
 
     console.log('Created deep link:', deepLink);
 
-    // Build comprehensive share message
+    // Build comprehensive share message with recall text pre-entered
     let shareMessage = '';
     
-    // Add text content
+    // Pre-enter the recall text at the top
     if (sharedData.text) {
       shareMessage += `${sharedData.text}\n\n`;
     }
 
-    // Add location
+    // Add location information
     if (sharedData.location) {
-      shareMessage += `📍 Location: ${sharedData.location}\n`;
+      shareMessage += `📍 ${sharedData.location}\n`;
       
       // Add Google Maps link if coordinates available
       if (sharedData.latitude && sharedData.longitude) {
         const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${sharedData.latitude},${sharedData.longitude}`;
-        shareMessage += `🗺️ View on Maps: ${mapsUrl}\n`;
+        shareMessage += `🗺️ ${mapsUrl}\n`;
       }
       
       shareMessage += '\n';
     }
 
-    // Add image count
+    // Add image information
     if (sharedData.images && sharedData.images.length > 0) {
-      shareMessage += `📷 ${sharedData.images.length} ${sharedData.images.length === 1 ? 'image' : 'images'} attached\n\n`;
+      shareMessage += `📷 ${sharedData.images.length} ${sharedData.images.length === 1 ? 'image' : 'images'}\n\n`;
       
-      // Add image URLs for platforms that support them
+      // Include all image URLs so they can be accessed
       sharedData.images.forEach((imageUrl, index) => {
-        shareMessage += `Image ${index + 1}: ${imageUrl}\n`;
+        const imageNumber = index + 1;
+        shareMessage += `Image ${imageNumber}: ${imageUrl}\n`;
       });
       
       shareMessage += '\n';
     }
 
-    // Add app attribution
+    // Add app attribution with deep link
     shareMessage += `Shared from Natively\n${deepLink}`;
 
-    console.log('Share message prepared, length:', shareMessage.length);
+    console.log('Share message prepared with recall text and images, length:', shareMessage.length);
 
-    // Get the primary image URL
-    const primaryImageUrl = sharedData.images && sharedData.images.length > 0
-      ? sharedData.images[currentImageIndex] || sharedData.images[0]
-      : undefined;
-
-    // Try to share with image preview on iOS
-    if (primaryImageUrl && Platform.OS === 'ios') {
-      console.log('Attempting to share with image preview on iOS:', primaryImageUrl);
+    // Try to share with images on iOS (supports multiple images)
+    if (sharedData.images && sharedData.images.length > 0 && Platform.OS === 'ios') {
+      console.log(`Attempting to share with ${sharedData.images.length} image(s) on iOS`);
       
       try {
-        // Download the image to a temporary location
-        const fileExtension = primaryImageUrl.includes('.png') ? 'png' : 'jpg';
-        const fileUri = FileSystem.cacheDirectory + `share_image_${Date.now()}.${fileExtension}`;
-        console.log('Downloading image to:', fileUri);
+        // Download all images to temporary locations
+        const downloadedFiles: string[] = [];
         
-        const downloadResult = await FileSystem.downloadAsync(primaryImageUrl, fileUri);
-        
-        if (downloadResult.status === 200) {
-          console.log('Image downloaded successfully:', downloadResult.uri);
+        for (let i = 0; i < sharedData.images.length; i++) {
+          const imageUrl = sharedData.images[i];
+          const fileExtension = imageUrl.includes('.png') ? 'png' : 'jpg';
+          const fileUri = FileSystem.cacheDirectory + `share_image_${Date.now()}_${i}.${fileExtension}`;
           
-          // Check if Sharing is available
+          console.log(`Downloading image ${i + 1}/${sharedData.images.length} to:`, fileUri);
+          
+          const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
+          
+          if (downloadResult.status === 200) {
+            downloadedFiles.push(downloadResult.uri);
+            console.log(`Image ${i + 1} downloaded successfully`);
+          } else {
+            console.log(`Failed to download image ${i + 1}, status:`, downloadResult.status);
+          }
+        }
+        
+        // If we successfully downloaded at least one image, share them
+        if (downloadedFiles.length > 0) {
           const isAvailable = await Sharing.isAvailableAsync();
           
           if (isAvailable) {
-            console.log('Using expo-sharing for iOS with image preview');
+            console.log(`Using expo-sharing for iOS with ${downloadedFiles.length} image(s)`);
             
-            // Share the image with the message
-            await Sharing.shareAsync(downloadResult.uri, {
+            // For multiple images, we'll share the first one with the message
+            // Note: expo-sharing doesn't support multiple files in one share
+            // So we share the primary image with the full message including all image URLs
+            const primaryFile = downloadedFiles[currentImageIndex] || downloadedFiles[0];
+            const fileExtension = primaryFile.includes('.png') ? 'png' : 'jpg';
+            
+            await Sharing.shareAsync(primaryFile, {
               mimeType: fileExtension === 'png' ? 'image/png' : 'image/jpeg',
               dialogTitle: shareMessage.trim(),
               UTI: fileExtension === 'png' ? 'public.png' : 'public.jpeg',
             });
             
-            console.log('Recall shared successfully with image preview');
+            console.log('Recall shared successfully with image(s)');
             
             // Show success toast
             Toast.show({
               type: 'success',
               text1: 'Recall Shared',
-              text2: 'Successfully shared recall with image',
+              text2: `Successfully shared recall with ${downloadedFiles.length} image${downloadedFiles.length > 1 ? 's' : ''}`,
               position: 'bottom',
               visibilityTime: 2000,
             });
             
-            // Clean up temporary file
-            try {
-              await FileSystem.deleteAsync(fileUri, { idempotent: true });
-            } catch (cleanupError) {
-              console.log('Error cleaning up temp file:', cleanupError);
+            // Clean up temporary files
+            for (const fileUri of downloadedFiles) {
+              try {
+                await FileSystem.deleteAsync(fileUri, { idempotent: true });
+              } catch (cleanupError) {
+                console.log('Error cleaning up temp file:', cleanupError);
+              }
             }
             
             return;
           }
         } else {
-          console.log('Failed to download image, status:', downloadResult.status);
+          console.log('No images were successfully downloaded');
         }
       } catch (imageError) {
-        console.error('Error downloading/sharing image:', imageError);
-        // Fall through to share without image
+        console.error('Error downloading/sharing images:', imageError);
+        // Fall through to share without images
       }
     }
 

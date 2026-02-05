@@ -66,8 +66,7 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
         style={styles.iconButton}
       >
         <IconSymbol
-          ios_icon_name="questionmark.circle"
-          android_material_icon_name="help"
+          name="questionmark.circle"
           size={24}
           color={colors.text}
         />
@@ -80,8 +79,7 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
         style={styles.iconButton}
       >
         <IconSymbol
-          ios_icon_name="square.and.arrow.up"
-          android_material_icon_name="share"
+          name="square.and.arrow.up"
           size={24}
           color={colors.text}
         />
