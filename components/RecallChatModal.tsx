@@ -8,16 +8,17 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Keyboard,
+  Clipboard,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { Note } from '@/types/Note';
 import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
+import Toast from 'react-native-toast-message';
 import Animated, { 
   FadeIn, 
   SlideInDown,
@@ -52,6 +53,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const translateY = useSharedValue(0);
 
   // Load chat history when modal opens
   useEffect(() => {
@@ -72,6 +74,36 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
       }, 100);
     }
   }, [messages]);
+
+  // Keyboard handling - same pattern as CombinedSearchAdd
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        console.log('Keyboard showing, height:', e.endCoordinates.height);
+        translateY.value = withTiming(-(e.endCoordinates.height - 10), { duration: 250 });
+      }
+    );
+
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        console.log('Keyboard hiding');
+        translateY.value = withTiming(0, { duration: 250 });
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, [translateY]);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: translateY.value }],
+    };
+  });
 
   const loadChatHistory = async () => {
     if (!recall) {
@@ -125,6 +157,41 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
       setIsLoadingHistory(false);
     }
   };
+
+  const handleCopyMessage = useCallback(async (content: string) => {
+    console.log('User long-pressed message to copy');
+    
+    try {
+      if (Platform.OS === 'web') {
+        await navigator.clipboard.writeText(content);
+      } else {
+        Clipboard.setString(content);
+      }
+      
+      // Haptic feedback
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      
+      // Show toast
+      Toast.show({
+        type: 'success',
+        text1: 'Copied to clipboard',
+        position: 'bottom',
+        visibilityTime: 2000,
+      });
+      
+      console.log('Message copied to clipboard');
+    } catch (error) {
+      console.error('Error copying to clipboard:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to copy',
+        position: 'bottom',
+        visibilityTime: 2000,
+      });
+    }
+  }, []);
 
   const handleSendMessage = async () => {
     const trimmedText = inputText.trim();
@@ -301,8 +368,9 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
           )}
         </View>
 
-        {/* Message Bubble */}
-        <View
+        {/* Message Bubble - Pressable for copy-paste */}
+        <Pressable
+          onLongPress={() => handleCopyMessage(message.content)}
           style={[
             styles.messageBubble,
             isUser ? styles.userBubble : styles.assistantBubble,
@@ -311,7 +379,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
           <Text style={styles.messageText}>
             {message.content}
           </Text>
-        </View>
+        </Pressable>
       </Animated.View>
     );
   };
@@ -350,7 +418,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
         -1,
         false
       );
-    }, []);
+    }, [dot1Opacity, dot2Opacity, dot3Opacity]);
 
     const dot1Style = useAnimatedStyle(() => ({
       opacity: dot1Opacity.value,
@@ -400,7 +468,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     >
       <Pressable style={styles.backdrop} onPress={handleBackdropPress}>
         <Pressable style={styles.modalContainer} onPress={(e) => e.stopPropagation()}>
-          <Animated.View entering={SlideInDown.duration(300)} style={styles.modalContent}>
+          <Animated.View entering={SlideInDown.duration(300)} style={[styles.modalContent, animatedStyle]}>
             {/* Header */}
             <View style={styles.header}>
               <View style={styles.headerLeft}>
@@ -436,6 +504,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                 bounces={true}
                 keyboardShouldPersistTaps="handled"
                 nestedScrollEnabled={true}
+                removeClippedSubviews={false}
               >
                 {isLoadingHistory ? (
                   <View style={styles.loadingContainer}>
@@ -462,40 +531,35 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
               </ScrollView>
             </View>
 
-            {/* Input Area - Fixed at bottom with KeyboardAvoidingView */}
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-            >
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ask a question..."
-                  placeholderTextColor={colors.textSecondary}
-                  value={inputText}
-                  onChangeText={setInputText}
-                  multiline
-                  maxLength={500}
-                  editable={!isLoading}
-                  onSubmitEditing={handleSendMessage}
-                  blurOnSubmit={false}
+            {/* Input Area - Fixed at bottom */}
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Ask a question..."
+                placeholderTextColor={colors.textSecondary}
+                value={inputText}
+                onChangeText={setInputText}
+                multiline
+                maxLength={500}
+                editable={!isLoading}
+                onSubmitEditing={handleSendMessage}
+                blurOnSubmit={false}
+              />
+              <Pressable
+                onPress={handleSendMessage}
+                disabled={!canSend}
+                style={[
+                  styles.sendButton,
+                  canSend ? styles.sendButtonActive : styles.sendButtonDisabled,
+                ]}
+              >
+                <IconSymbol
+                  name="paperplane.fill"
+                  size={20}
+                  color={canSend ? colors.background : colors.textSecondary}
                 />
-                <Pressable
-                  onPress={handleSendMessage}
-                  disabled={!canSend}
-                  style={[
-                    styles.sendButton,
-                    canSend ? styles.sendButtonActive : styles.sendButtonDisabled,
-                  ]}
-                >
-                  <IconSymbol
-                    name="paperplane.fill"
-                    size={20}
-                    color={canSend ? colors.background : colors.textSecondary}
-                  />
-                </Pressable>
-              </View>
-            </KeyboardAvoidingView>
+              </Pressable>
+            </View>
           </Animated.View>
         </Pressable>
       </Pressable>
@@ -630,7 +694,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: colors.cardDark,
     justifyContent: 'center',
     alignItems: 'center',
   },

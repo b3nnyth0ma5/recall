@@ -1,9 +1,11 @@
+
 // Global error logging for runtime errors
 // Captures console.log/warn/error and sends to Natively server for AI debugging
 
 // Declare __DEV__ global (React Native global for development mode detection)
 declare const __DEV__: boolean;
 
+// Import statements at the top
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 
@@ -25,7 +27,7 @@ const shouldMuteMessage = (message: string): boolean => {
 };
 
 // Queue for batching logs
-let logQueue: Array<{ level: string; message: string; source: string; timestamp: string; platform: string }> = [];
+let logQueue: { level: string; message: string; source: string; timestamp: string; platform: string }[] = [];
 let flushTimeout: ReturnType<typeof setTimeout> | null = null;
 const FLUSH_INTERVAL = 500; // Flush every 500ms
 
@@ -49,7 +51,9 @@ let urlChecked = false;
 
 // Get the log server URL based on platform
 const getLogServerUrl = (): string | null => {
-  if (urlChecked) return cachedLogServerUrl;
+  if (urlChecked) {
+    return cachedLogServerUrl;
+  }
 
   try {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -93,10 +97,12 @@ let fetchErrorLogged = false;
 
 // Flush the log queue to server
 const flushLogs = async () => {
-  if (logQueue.length === 0) return;
+  if (logQueue.length === 0) {
+    return;
+  }
 
   const logsToSend = [...logQueue];
-  logQueue = [];
+  logQueue.length = 0;
   flushTimeout = null;
 
   const url = getLogServerUrl();
@@ -132,7 +138,9 @@ const queueLog = (level: string, message: string, source: string = '') => {
   const logKey = `${level}:${message}`;
 
   // Skip duplicates
-  if (recentLogs[logKey]) return;
+  if (recentLogs[logKey]) {
+    return;
+  }
   recentLogs[logKey] = true;
   clearLogAfterDelay(logKey);
 
@@ -183,7 +191,9 @@ const sendErrorToParent = (level: string, message: string, data: any) => {
 
 // Function to extract meaningful source location from stack trace
 const extractSourceLocation = (stack: string): string => {
-  if (!stack) return '';
+  if (!stack) {
+    return '';
+  }
 
   // Look for various patterns in the stack trace
   const patterns = [
@@ -263,9 +273,15 @@ const getCallerInfo = (): string => {
 // Helper to safely stringify arguments
 const stringifyArgs = (args: any[]): string => {
   return args.map(arg => {
-    if (typeof arg === 'string') return arg;
-    if (arg === null) return 'null';
-    if (arg === undefined) return 'undefined';
+    if (typeof arg === 'string') {
+      return arg;
+    }
+    if (arg === null) {
+      return 'null';
+    }
+    if (arg === undefined) {
+      return 'undefined';
+    }
     try {
       return JSON.stringify(arg);
     } catch {
@@ -309,7 +325,9 @@ export const setupErrorLogging = () => {
 
     // Queue log for sending to server (skip muted messages)
     const message = stringifyArgs(args);
-    if (shouldMuteMessage(message)) return;
+    if (shouldMuteMessage(message)) {
+      return;
+    }
 
     const source = getCallerInfo();
     queueLog('warn', message, source);
@@ -319,7 +337,9 @@ export const setupErrorLogging = () => {
   console.error = (...args: any[]) => {
     // Queue log for sending to server (skip muted messages)
     const message = stringifyArgs(args);
-    if (shouldMuteMessage(message)) return;
+    if (shouldMuteMessage(message)) {
+      return;
+    }
 
     // Always call original first
     originalConsoleError.apply(console, args);

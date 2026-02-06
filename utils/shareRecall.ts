@@ -6,9 +6,11 @@ import Toast from 'react-native-toast-message';
 import { Note } from '@/types/Note';
 
 // Conditionally import react-native-share only for native platforms
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 let Share: any = null;
 if (Platform.OS !== 'web') {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     Share = require('react-native-share').default;
   } catch (error) {
     console.warn('react-native-share not available, falling back to React Native Share API');
