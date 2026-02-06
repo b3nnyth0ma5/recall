@@ -18,7 +18,16 @@ import { IconSymbol } from './IconSymbol';
 import { Note } from '@/types/Note';
 import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
-import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
+import Animated, { 
+  FadeIn, 
+  SlideInDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -157,20 +166,40 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
         content: msg.content,
       }));
 
-      // Prepare recall data for API
+      // Fetch complete image data from database if images exist
+      let imageData: Array<{ id: string; ocr_text?: string; image_explanation?: string }> = [];
+      
+      if (recall.imageIds && recall.imageIds.length > 0) {
+        console.log('Fetching image data for', recall.imageIds.length, 'images');
+        
+        const { data: fetchedImages, error: imageError } = await supabase
+          .from('recall_images')
+          .select('id, ocr_text, image_explanation')
+          .in('id', recall.imageIds);
+
+        if (imageError) {
+          console.error('Error fetching image data:', imageError);
+          // Continue with empty image data
+          imageData = recall.imageIds.map(id => ({ id }));
+        } else if (fetchedImages && fetchedImages.length > 0) {
+          console.log('Successfully fetched', fetchedImages.length, 'images with OCR and explanations');
+          imageData = fetchedImages;
+        } else {
+          console.log('No images found in database');
+          imageData = recall.imageIds.map(id => ({ id }));
+        }
+      }
+
+      // Prepare recall data for API with complete image information
       const recallData = {
         id: recall.id,
         text: recall.text || '',
         location: recall.location,
         location_primary_type: recall.location_primary_type,
-        images: recall.imageIds?.map((id, index) => ({
-          id,
-          ocr_text: '',
-          image_explanation: '',
-        })) || [],
+        images: imageData,
       };
 
-      console.log('Calling chat-with-recalls edge function...');
+      console.log('Calling chat-with-recalls edge function with', imageData.length, 'images');
 
       const { data, error } = await supabase.functions.invoke('chat-with-recalls', {
         body: {
@@ -255,11 +284,21 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
         <View style={styles.avatarContainer}>
           {isUser ? (
             <View style={styles.userAvatar}>
-              <IconSymbol name="person" size={20} color={colors.background} />
+              <IconSymbol 
+                ios_icon_name="person.fill" 
+                android_material_icon_name="person" 
+                size={20} 
+                color={colors.text} 
+              />
             </View>
           ) : (
             <View style={styles.assistantAvatar}>
-              <IconSymbol name="brain" size={20} color="#FFFFFF" />
+              <IconSymbol 
+                ios_icon_name="brain" 
+                android_material_icon_name="psychology" 
+                size={20} 
+                color={colors.background} 
+              />
             </View>
           )}
         </View>
@@ -284,7 +323,54 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     );
   };
 
-  const renderTypingIndicator = () => {
+  const TypingIndicator = () => {
+    const dot1Opacity = useSharedValue(0.3);
+    const dot2Opacity = useSharedValue(0.3);
+    const dot3Opacity = useSharedValue(0.3);
+
+    useEffect(() => {
+      dot1Opacity.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 400, easing: Easing.ease }),
+          withTiming(0.3, { duration: 400, easing: Easing.ease })
+        ),
+        -1,
+        false
+      );
+
+      dot2Opacity.value = withRepeat(
+        withSequence(
+          withTiming(0.3, { duration: 200 }),
+          withTiming(1, { duration: 400, easing: Easing.ease }),
+          withTiming(0.3, { duration: 400, easing: Easing.ease })
+        ),
+        -1,
+        false
+      );
+
+      dot3Opacity.value = withRepeat(
+        withSequence(
+          withTiming(0.3, { duration: 400 }),
+          withTiming(1, { duration: 400, easing: Easing.ease }),
+          withTiming(0.3, { duration: 400, easing: Easing.ease })
+        ),
+        -1,
+        false
+      );
+    }, []);
+
+    const dot1Style = useAnimatedStyle(() => ({
+      opacity: dot1Opacity.value,
+    }));
+
+    const dot2Style = useAnimatedStyle(() => ({
+      opacity: dot2Opacity.value,
+    }));
+
+    const dot3Style = useAnimatedStyle(() => ({
+      opacity: dot3Opacity.value,
+    }));
+
     return (
       <Animated.View
         entering={FadeIn.duration(300)}
@@ -292,14 +378,19 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
       >
         <View style={styles.avatarContainer}>
           <View style={styles.assistantAvatar}>
-            <IconSymbol name="brain" size={20} color="#FFFFFF" />
+            <IconSymbol 
+              ios_icon_name="brain" 
+              android_material_icon_name="psychology" 
+              size={20} 
+              color={colors.background} 
+            />
           </View>
         </View>
         <View style={[styles.messageBubble, styles.assistantBubble, styles.typingBubble]}>
           <View style={styles.typingIndicator}>
-            <View style={[styles.typingDot, styles.typingDot1]} />
-            <View style={[styles.typingDot, styles.typingDot2]} />
-            <View style={[styles.typingDot, styles.typingDot3]} />
+            <Animated.View style={[styles.typingDot, dot1Style]} />
+            <Animated.View style={[styles.typingDot, dot2Style]} />
+            <Animated.View style={[styles.typingDot, dot3Style]} />
           </View>
         </View>
       </Animated.View>
@@ -322,52 +413,66 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <View style={styles.brainIconContainer}>
-                  <IconSymbol name="brain" size={24} color={colors.primary} />
+                  <IconSymbol 
+                    ios_icon_name="brain" 
+                    android_material_icon_name="psychology" 
+                    size={24} 
+                    color={colors.text} 
+                  />
                 </View>
                 <View style={styles.headerTextContainer}>
-                  <Text style={styles.headerTitle}>Chat with Recall</Text>
+                  <Text style={styles.headerTitle}>Chat with this Recall</Text>
                   <Text style={styles.headerSubtitle}>Ask questions about this memory</Text>
                 </View>
               </View>
               <Pressable onPress={handleClose} style={styles.closeButton}>
-                <IconSymbol name="close" size={24} color={colors.text} />
+                <IconSymbol 
+                  ios_icon_name="xmark" 
+                  android_material_icon_name="close" 
+                  size={20} 
+                  color={colors.text} 
+                />
               </Pressable>
             </View>
 
             {/* Messages */}
+            <ScrollView
+              ref={scrollViewRef}
+              style={styles.messagesScrollView}
+              contentContainerStyle={styles.messagesContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {isLoadingHistory ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.loadingText}>Loading chat history...</Text>
+                </View>
+              ) : messages.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <IconSymbol 
+                    ios_icon_name="message" 
+                    android_material_icon_name="message" 
+                    size={48} 
+                    color={colors.textSecondary} 
+                  />
+                  <Text style={styles.emptyText}>Start a conversation</Text>
+                  <Text style={styles.emptySubtext}>
+                    Ask questions about this recall and I'll help you find answers
+                  </Text>
+                </View>
+              ) : (
+                messages.map((message) => renderMessage(message))
+              )}
+
+              {isLoading && <TypingIndicator />}
+            </ScrollView>
+
+            {/* Input Area - Always visible */}
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.chatContainer}
               keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
-              <ScrollView
-                ref={scrollViewRef}
-                style={styles.messagesScrollView}
-                contentContainerStyle={styles.messagesContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-              >
-                {isLoadingHistory ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.primary} />
-                    <Text style={styles.loadingText}>Loading chat history...</Text>
-                  </View>
-                ) : messages.length === 0 ? (
-                  <View style={styles.emptyContainer}>
-                    <IconSymbol name="message" size={48} color={colors.textSecondary} />
-                    <Text style={styles.emptyText}>Start a conversation</Text>
-                    <Text style={styles.emptySubtext}>
-                      Ask questions about this recall and I'll help you find answers
-                    </Text>
-                  </View>
-                ) : (
-                  messages.map((message) => renderMessage(message))
-                )}
-
-                {isLoading && renderTypingIndicator()}
-              </ScrollView>
-
-              {/* Input Area */}
               <View style={styles.inputContainer}>
                 <TextInput
                   style={styles.input}
@@ -390,9 +495,10 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                   ]}
                 >
                   <IconSymbol
-                    name="paperplane.fill"
+                    ios_icon_name="paperplane.fill"
+                    android_material_icon_name="send"
                     size={20}
-                    color={canSend ? '#FFFFFF' : colors.textSecondary}
+                    color={canSend ? colors.background : colors.textSecondary}
                   />
                 </Pressable>
               </View>
@@ -444,7 +550,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primaryLight,
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -463,11 +569,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   closeButton: {
-    padding: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginLeft: 8,
-  },
-  chatContainer: {
-    flex: 1,
   },
   messagesScrollView: {
     flex: 1,
@@ -525,7 +632,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: colors.primary,
+    backgroundColor: '#E0E0E0',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -533,7 +640,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#FF69B4',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -544,11 +651,11 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   userBubble: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#E0E0E0',
     borderBottomRightRadius: 4,
   },
   assistantBubble: {
-    backgroundColor: '#FF69B4',
+    backgroundColor: colors.primary,
     borderBottomLeftRadius: 4,
   },
   messageText: {
@@ -556,10 +663,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   userMessageText: {
-    color: '#FFFFFF',
+    color: colors.text,
   },
   assistantMessageText: {
-    color: '#FFFFFF',
+    color: colors.background,
   },
   typingBubble: {
     paddingVertical: 12,
@@ -573,17 +680,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#FFFFFF',
-    opacity: 0.6,
-  },
-  typingDot1: {
-    animationDelay: '0s',
-  },
-  typingDot2: {
-    animationDelay: '0.2s',
-  },
-  typingDot3: {
-    animationDelay: '0.4s',
+    backgroundColor: colors.background,
   },
   inputContainer: {
     flexDirection: 'row',
