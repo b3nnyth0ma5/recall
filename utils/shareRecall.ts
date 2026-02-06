@@ -52,17 +52,11 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
       
       if (recall.latitude && recall.longitude) {
         const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${recall.latitude},${recall.longitude}`;
-        shareMessage += `🗺️ ${mapsUrl}\n`;
+        shareMessage += `${mapsUrl}\n`;
       }
       
       shareMessage += '\n';
-    }
-
-    // Add image count information
-    const imageCount = recall.images?.length || 0;
-    if (imageCount > 0) {
-      const imageText = imageCount === 1 ? 'image' : 'images';
-      shareMessage += `📷 ${imageCount} ${imageText} attached`;
+			shareMessage += `Shared from Recall`;
     }
 
     console.log('Share message prepared:', shareMessage.substring(0, 100) + '...');
