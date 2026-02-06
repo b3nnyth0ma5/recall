@@ -402,75 +402,74 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
       onRequestClose={handleClose}
     >
       <Pressable style={styles.backdrop} onPress={handleBackdropPress}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardAvoidingView}
-          keyboardVerticalOffset={0}
-        >
-          <Pressable style={styles.modalContainer} onPress={(e) => e.stopPropagation()}>
-            <Animated.View entering={SlideInDown.duration(300)} style={styles.modalContent}>
-              {/* Header */}
-              <View style={styles.header}>
-                <View style={styles.headerLeft}>
-                  <View style={styles.brainIconContainer}>
-                    <IconSymbol 
-                      ios_icon_name="psychology" 
-                      android_material_icon_name="psychology" 
-                      size={24} 
-                      color={colors.text} 
-                    />
-                  </View>
-                  <View style={styles.headerTextContainer}>
-                    <Text style={styles.headerTitle}>Chat with this Recall</Text>
-                    <Text style={styles.headerSubtitle}>Ask questions about this memory</Text>
-                  </View>
-                </View>
-                <Pressable onPress={handleClose} style={styles.closeButton}>
+        <Pressable style={styles.modalContainer} onPress={(e) => e.stopPropagation()}>
+          <Animated.View entering={SlideInDown.duration(300)} style={styles.modalContent}>
+            {/* Header */}
+            <View style={styles.header}>
+              <View style={styles.headerLeft}>
+                <View style={styles.brainIconContainer}>
                   <IconSymbol 
-                    ios_icon_name="close" 
-                    android_material_icon_name="close" 
-                    size={20} 
+                    ios_icon_name="psychology" 
+                    android_material_icon_name="psychology" 
+                    size={24} 
                     color={colors.text} 
                   />
-                </Pressable>
+                </View>
+                <View style={styles.headerTextContainer}>
+                  <Text style={styles.headerTitle}>Chat with this Recall</Text>
+                  <Text style={styles.headerSubtitle}>Ask questions about this memory</Text>
+                </View>
               </View>
+              <Pressable onPress={handleClose} style={styles.closeButton}>
+                <IconSymbol 
+                  ios_icon_name="xmark" 
+                  android_material_icon_name="close" 
+                  size={20} 
+                  color={colors.text} 
+                />
+              </Pressable>
+            </View>
 
-              {/* Messages - Scrollable */}
-              <ScrollView
-                ref={scrollViewRef}
-                style={styles.messagesScrollView}
-                contentContainerStyle={styles.messagesContent}
-                showsVerticalScrollIndicator={true}
-                keyboardShouldPersistTaps="handled"
-                scrollEnabled={true}
-                bounces={true}
-              >
-                {isLoadingHistory ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.primary} />
-                    <Text style={styles.loadingText}>Loading chat history...</Text>
-                  </View>
-                ) : messages.length === 0 ? (
-                  <View style={styles.emptyContainer}>
-                    <IconSymbol 
-                      ios_icon_name="message" 
-                      android_material_icon_name="message" 
-                      size={48} 
-                      color={colors.textSecondary} 
-                    />
-                    <Text style={styles.emptyText}>Start a conversation</Text>
-                    <Text style={styles.emptySubtext}>
-                      Ask questions about this recall and I'll help you find answers
-                    </Text>
-                  </View>
-                ) : (
-                  messages.map((message) => renderMessage(message))
-                )}
+            {/* Messages - Scrollable (copied from landing page pattern) */}
+            <ScrollView
+              ref={scrollViewRef}
+              style={styles.messagesScrollView}
+              contentContainerStyle={styles.messagesContent}
+              showsVerticalScrollIndicator={true}
+              scrollEnabled={true}
+              bounces={true}
+              keyboardShouldPersistTaps="handled"
+            >
+              {isLoadingHistory ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.loadingText}>Loading chat history...</Text>
+                </View>
+              ) : messages.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <IconSymbol 
+                    ios_icon_name="message" 
+                    android_material_icon_name="message" 
+                    size={48} 
+                    color={colors.textSecondary} 
+                  />
+                  <Text style={styles.emptyText}>Start a conversation</Text>
+                  <Text style={styles.emptySubtext}>
+                    Ask questions about this recall and I&apos;ll help you find answers
+                  </Text>
+                </View>
+              ) : (
+                messages.map((message) => renderMessage(message))
+              )}
 
-                {isLoading && <TypingIndicator />}
-              </ScrollView>
+              {isLoading && <TypingIndicator />}
+            </ScrollView>
 
-              {/* Input Area - Always visible at bottom */}
+            {/* Input Area - Always visible at bottom with KeyboardAvoidingView */}
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={0}
+            >
               <View style={styles.inputContainer}>
                 <TextInput
                   style={styles.input}
@@ -500,9 +499,9 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                   />
                 </Pressable>
               </View>
-            </Animated.View>
-          </Pressable>
-        </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
+          </Animated.View>
+        </Pressable>
       </Pressable>
     </Modal>
   );
@@ -514,12 +513,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  keyboardAvoidingView: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
   },
   modalContainer: {
     width: '90%',
