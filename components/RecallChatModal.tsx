@@ -285,8 +285,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
           {isUser ? (
             <View style={styles.userAvatar}>
               <IconSymbol 
-                ios_icon_name="person" 
-                android_material_icon_name="person" 
+                name="person" 
                 size={20} 
                 color={colors.text} 
               />
@@ -294,8 +293,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
           ) : (
             <View style={styles.assistantAvatar}>
               <IconSymbol 
-                ios_icon_name="psychology" 
-                android_material_icon_name="psychology" 
+                name="sparkles" 
                 size={20} 
                 color={colors.background} 
               />
@@ -374,8 +372,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
         <View style={styles.avatarContainer}>
           <View style={styles.assistantAvatar}>
             <IconSymbol 
-              ios_icon_name="psychology" 
-              android_material_icon_name="psychology" 
+              name="sparkles" 
               size={20} 
               color={colors.background} 
             />
@@ -409,8 +406,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
               <View style={styles.headerLeft}>
                 <View style={styles.brainIconContainer}>
                   <IconSymbol 
-                    ios_icon_name="psychology" 
-                    android_material_icon_name="psychology" 
+                    name="sparkles" 
                     size={24} 
                     color={colors.text} 
                   />
@@ -422,53 +418,54 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
               </View>
               <Pressable onPress={handleClose} style={styles.closeButton}>
                 <IconSymbol 
-                  ios_icon_name="xmark" 
-                  android_material_icon_name="close" 
+                  name="xmark" 
                   size={20} 
                   color={colors.text} 
                 />
               </Pressable>
             </View>
 
-            {/* Messages - Scrollable (copied from landing page pattern) */}
-            <ScrollView
-              ref={scrollViewRef}
-              style={styles.messagesScrollView}
-              contentContainerStyle={styles.messagesContent}
-              showsVerticalScrollIndicator={true}
-              scrollEnabled={true}
-              bounces={true}
-              keyboardShouldPersistTaps="handled"
-            >
-              {isLoadingHistory ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color={colors.primary} />
-                  <Text style={styles.loadingText}>Loading chat history...</Text>
-                </View>
-              ) : messages.length === 0 ? (
-                <View style={styles.emptyContainer}>
-                  <IconSymbol 
-                    ios_icon_name="message" 
-                    android_material_icon_name="message" 
-                    size={48} 
-                    color={colors.textSecondary} 
-                  />
-                  <Text style={styles.emptyText}>Start a conversation</Text>
-                  <Text style={styles.emptySubtext}>
-                    Ask questions about this recall and I&apos;ll help you find answers
-                  </Text>
-                </View>
-              ) : (
-                messages.map((message) => renderMessage(message))
-              )}
+            {/* Messages Area - Properly structured for scrolling */}
+            <View style={styles.messagesContainer}>
+              <ScrollView
+                ref={scrollViewRef}
+                style={styles.messagesScrollView}
+                contentContainerStyle={styles.messagesContent}
+                showsVerticalScrollIndicator={true}
+                scrollEnabled={true}
+                bounces={true}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled={true}
+              >
+                {isLoadingHistory ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={styles.loadingText}>Loading chat history...</Text>
+                  </View>
+                ) : messages.length === 0 ? (
+                  <View style={styles.emptyContainer}>
+                    <IconSymbol 
+                      name="message" 
+                      size={48} 
+                      color={colors.textSecondary} 
+                    />
+                    <Text style={styles.emptyText}>Start a conversation</Text>
+                    <Text style={styles.emptySubtext}>
+                      Ask questions about this recall and I&apos;ll help you find answers
+                    </Text>
+                  </View>
+                ) : (
+                  messages.map((message) => renderMessage(message))
+                )}
 
-              {isLoading && <TypingIndicator />}
-            </ScrollView>
+                {isLoading && <TypingIndicator />}
+              </ScrollView>
+            </View>
 
-            {/* Input Area - Always visible at bottom with KeyboardAvoidingView */}
+            {/* Input Area - Fixed at bottom with KeyboardAvoidingView */}
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              keyboardVerticalOffset={0}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
             >
               <View style={styles.inputContainer}>
                 <TextInput
@@ -492,8 +489,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                   ]}
                 >
                   <IconSymbol
-                    ios_icon_name="send"
-                    android_material_icon_name="send"
+                    name="paperplane.fill"
                     size={20}
                     color={canSend ? colors.background : colors.textSecondary}
                   />
@@ -572,6 +568,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
+  },
+  messagesContainer: {
+    flex: 1,
+    overflow: 'hidden',
   },
   messagesScrollView: {
     flex: 1,
