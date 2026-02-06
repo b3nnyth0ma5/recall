@@ -10,6 +10,7 @@ import { shareRecall } from '@/utils/shareRecall';
 import { getImageDataUrl } from '@/utils/supabase';
 import { PeopleAvatars } from './PeopleAvatars';
 import { RecallUtilityBar } from './RecallUtilityBar';
+import { RecallChatModal } from './RecallChatModal';
 import * as Haptics from 'expo-haptics';
 import { NoteCardSkeleton } from './NoteCardSkeleton';
 import { SkeletonLoader } from './SkeletonLoader';
@@ -37,7 +38,6 @@ interface NoteCardProps {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 8;
 const IMAGE_WIDTH = SCREEN_WIDTH - (CARD_PADDING * 4.8);
-// FIXED: Reduced image height by 10% (from 1.08 to 0.972)
 const IMAGE_HEIGHT = IMAGE_WIDTH * 0.972;
 const IMAGE_SPACING = 3;
 
@@ -48,14 +48,7 @@ const hasUrl = (text: string): boolean => {
 };
 
 // Helper function to count newline characters
-// Updated to include all NSCharacterSet.newlines characters:
-// U+000A (Line Feed - \n)
-// U+000D (Carriage Return - \r)
-// U+0085 (Next Line)
-// U+2028 (Line Separator)
-// U+2029 (Paragraph Separator)
 const countNewlines = (text: string): number => {
-  // Match all newline characters from NSCharacterSet.newlines
   const newlineRegex = /[\n\r\u0085\u2028\u2029]/g;
   const matches = text.match(newlineRegex);
   return matches ? matches.length : 0;
@@ -70,6 +63,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const [imageErrorStates, setImageErrorStates] = useState<{ [key: number]: boolean }>({});
   const [imageLoadedStates, setImageLoadedStates] = useState<{ [key: number]: boolean }>({});
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [showChatModal, setShowChatModal] = useState(false);
   const imageScrollRef = useRef<ScrollView>(null);
   const swipeableRef = useRef<Swipeable>(null);
   
@@ -111,8 +105,13 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   }, [note, currentImageIndex]);
 
   const handleAskQuestion = useCallback(() => {
-    console.log('User tapped Ask a Question button on recall:', note.id);
-    // Functionality to be added later
+    console.log('User tapped Chat icon on recall:', note.id);
+    setShowChatModal(true);
+  }, [note.id]);
+
+  const handleCloseChatModal = useCallback(() => {
+    console.log('User closed chat modal for recall:', note.id);
+    setShowChatModal(false);
   }, [note.id]);
 
   // Initialize with first TWO images for better performance
@@ -265,7 +264,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     return note.text.substring(0, maxLength) + '...';
   };
 
-  // Updated: Check for text length > 125 OR more than 6 newlines
   const shouldShowToggle = () => {
     if (!note.text) {
       return false;
@@ -282,14 +280,12 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   const handleImageLoadStart = (index: number) => {
-    // Only set loading state if the image hasn't been loaded before
     if (!imageLoadedStates[index]) {
       setImageLoadingStates(prev => ({ ...prev, [index]: true }));
     }
   };
 
   const handleImageLoad = (index: number) => {
-    // Mark as loaded and stop showing loading indicator
     setImageLoadingStates(prev => ({ ...prev, [index]: false }));
     setImageLoadedStates(prev => ({ ...prev, [index]: true }));
   };
@@ -303,17 +299,14 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   const handleTextPress = () => {
-    // Open note editor when text is clicked
     onPress();
   };
   
   const handleCardPress = () => {
-    // Open note editor with optional image scroll
     onPress(scrollToImageIndex);
   };
 
   const handleToggleExpand = (e: any) => {
-    // Stop propagation to prevent opening the note editor
     e.stopPropagation();
     setIsExpanded(!isExpanded);
   };
@@ -324,7 +317,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       return;
     }
 
-    // Trigger heavy haptic feedback
     if (Platform.OS !== 'web') {
       try {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -337,10 +329,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     const locationName = note.location || '';
     
     try {
-      // Use universal URL format with location name for better context
       let universalUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
       
-      // If we have a location name, include it in the query for better context
       if (locationName) {
         const encodedLocationName = encodeURIComponent(locationName);
         universalUrl = `https://www.google.com/maps/search/?api=1&query=${encodedLocationName}+${latitude},${longitude}`;
@@ -359,10 +349,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   const handleDelete = async () => {
-    // Close the swipeable immediately
     swipeableRef.current?.close();
     
-    // Trigger success haptic feedback FIRST
     if (Platform.OS !== 'web') {
       try {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -371,12 +359,10 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       }
     }
     
-    // Animate deletion: fade out and scale down smoothly
     opacity.value = withTiming(0, { duration: 300 });
     scale.value = withTiming(0.9, { duration: 300 });
     height.value = withTiming(0, { duration: 300 }, (finished) => {
       if (finished) {
-        // Call onDelete callback after animation completes
         if (onDelete) {
           runOnJS(onDelete)();
         }
@@ -398,34 +384,27 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     );
   };
 
-  // Create display array with placeholders based on totalImageCount
   const displayImages = totalImageCount > 0 
     ? Array.from({ length: totalImageCount }, (_, index) => {
-        // First check if we have a lazy loaded image
         if (lazyLoadedImages[index]) {
           return lazyLoadedImages[index];
         }
-        // Then check if we have the image in the note.images array
         if (note.images && note.images[index]) {
           return note.images[index];
         }
-        // Otherwise return empty string for placeholder
         return '';
       }) 
     : [];
 
-  // Check if note has people mentioned
   const hasPeople = note.people && note.people.length > 0;
   const hasImages = displayImages && displayImages.length > 0;
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
-      {/* ENTIRE CARD WRAPPER - This makes the whole card a touch area */}
       <Pressable 
         onPress={handleCardPress}
         style={styles.entireCardTouchArea}
       >
-        {/* Images - Displayed FIRST if available */}
         {hasImages && (
           <View style={styles.imagesContainer}>
             <ScrollView
@@ -487,7 +466,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                 </Pressable>
               ))}
             </ScrollView>
-            {/* Image counter with busy spinner - visible immediately */}
             {totalImageCount > 0 && (
               <View style={styles.imageCounter}>
                 {isUploadingImages && (
@@ -503,7 +481,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               </View>
             )}
             
-            {/* People Avatars - Positioned absolutely at top right OVER the image */}
             {hasPeople && (
               <View style={styles.peopleAvatarsContainerWithImages}>
                 <PeopleAvatars 
@@ -517,7 +494,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           </View>
         )}
 
-        {/* Swipeable Content - Text, Location, Time - FULL WIDTH DELETE UI */}
         <Swipeable
           ref={swipeableRef}
           renderRightActions={renderRightActions}
@@ -527,7 +503,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           containerStyle={styles.swipeableContainer}
         >
           <View style={styles.cardContent}>
-            {/* People Avatars - For text-only notes, show at top of card content */}
             {!hasImages && hasPeople && (
               <View style={styles.peopleAvatarsContainerNoImages}>
                 <PeopleAvatars 
@@ -539,7 +514,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               </View>
             )}
 
-            {/* Text Content */}
             {note.text && (
               <Pressable onPress={handleTextPress}>
                 <Text style={styles.text}>
@@ -563,9 +537,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               </Pressable>
             )}
 
-            {/* Location and Time on the same line */}
             <View style={styles.locationTimeContainer}>
-              {/* Location - Left-aligned, occupies 75% of space */}
               {note.location && (
                 <Pressable 
                   onPress={handleLocationPress}
@@ -581,7 +553,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                 </Pressable>
               )}
               
-              {/* Time Ago - Right-aligned, occupies remaining space */}
               <View style={styles.timeAgoWrapper}>
                 <TimeAgo 
                   date={note.created_at} 
@@ -590,7 +561,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               </View>
             </View>
 
-            {/* Instagram-style Utility Bar - Positioned below location and time - Always visible */}
             <RecallUtilityBar
               onAskQuestion={handleAskQuestion}
               onShare={handleSharePress}
@@ -599,7 +569,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         </Swipeable>
       </Pressable>
 
-      {/* Full Screen Image Component - Pass original images array, not lazy loaded */}
       {note.images && note.images.length > 0 && (
         <FullScreenImage
           visible={showFullScreenImage}
@@ -609,11 +578,15 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           onClose={() => setShowFullScreenImage(false)}
         />
       )}
+
+      <RecallChatModal
+        visible={showChatModal}
+        recall={note}
+        onClose={handleCloseChatModal}
+      />
     </Animated.View>
   );
 }, (prevProps, nextProps) => {
-  // Custom comparison function for memo
-  // Only re-render if note data actually changed or loading state changed
   return (
     prevProps.note.id === nextProps.note.id &&
     prevProps.note.updated_at === nextProps.note.updated_at &&
