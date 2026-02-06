@@ -285,7 +285,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
           {isUser ? (
             <View style={styles.userAvatar}>
               <IconSymbol 
-                ios_icon_name="person.fill" 
+                ios_icon_name="person" 
                 android_material_icon_name="person" 
                 size={20} 
                 color={colors.text} 
@@ -294,7 +294,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
           ) : (
             <View style={styles.assistantAvatar}>
               <IconSymbol 
-                ios_icon_name="brain" 
+                ios_icon_name="psychology" 
                 android_material_icon_name="psychology" 
                 size={20} 
                 color={colors.background} 
@@ -310,12 +310,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
             isUser ? styles.userBubble : styles.assistantBubble,
           ]}
         >
-          <Text
-            style={[
-              styles.messageText,
-              isUser ? styles.userMessageText : styles.assistantMessageText,
-            ]}
-          >
+          <Text style={styles.messageText}>
             {message.content}
           </Text>
         </View>
@@ -379,7 +374,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
         <View style={styles.avatarContainer}>
           <View style={styles.assistantAvatar}>
             <IconSymbol 
-              ios_icon_name="brain" 
+              ios_icon_name="psychology" 
               android_material_icon_name="psychology" 
               size={20} 
               color={colors.background} 
@@ -419,7 +414,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                 <View style={styles.headerLeft}>
                   <View style={styles.brainIconContainer}>
                     <IconSymbol 
-                      ios_icon_name="brain" 
+                      ios_icon_name="psychology" 
                       android_material_icon_name="psychology" 
                       size={24} 
                       color={colors.text} 
@@ -432,7 +427,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                 </View>
                 <Pressable onPress={handleClose} style={styles.closeButton}>
                   <IconSymbol 
-                    ios_icon_name="xmark" 
+                    ios_icon_name="close" 
                     android_material_icon_name="close" 
                     size={20} 
                     color={colors.text} 
@@ -447,7 +442,8 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                 contentContainerStyle={styles.messagesContent}
                 showsVerticalScrollIndicator={true}
                 keyboardShouldPersistTaps="handled"
-                nestedScrollEnabled={true}
+                scrollEnabled={true}
+                bounces={true}
               >
                 {isLoadingHistory ? (
                   <View style={styles.loadingContainer}>
@@ -497,7 +493,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                   ]}
                 >
                   <IconSymbol
-                    ios_icon_name="paperplane.fill"
+                    ios_icon_name="send"
                     android_material_icon_name="send"
                     size={20}
                     color={canSend ? colors.background : colors.textSecondary}
@@ -670,12 +666,7 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 15,
     lineHeight: 20,
-  },
-  userMessageText: {
-    color: colors.text,
-  },
-  assistantMessageText: {
-    color: colors.background,
+    color: '#1A1A1A',
   },
   typingBubble: {
     paddingVertical: 12,
