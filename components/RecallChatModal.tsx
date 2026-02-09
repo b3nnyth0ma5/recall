@@ -11,8 +11,9 @@ import {
   Platform,
   ActivityIndicator,
   Keyboard,
-  Clipboard,
+  Linking,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { Note } from '@/types/Note';
@@ -162,11 +163,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     console.log('User long-pressed message to copy');
     
     try {
-      if (Platform.OS === 'web') {
-        await navigator.clipboard.writeText(content);
-      } else {
-        Clipboard.setString(content);
-      }
+      await Clipboard.setStringAsync(content);
       
       // Haptic feedback
       if (Platform.OS !== 'web') {
@@ -222,9 +219,6 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     setMessages((prev) => [...prev, userMessage]);
     setInputText('');
     setIsLoading(true);
-
-    // Dismiss keyboard
-    Keyboard.dismiss();
 
     try {
       // Build chat history for API (only role and content)
@@ -335,6 +329,47 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     handleClose();
   };
 
+  const renderMessageContent = (content: string) => {
+    // URL regex pattern to detect http/https URLs
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = content.split(urlRegex);
+    
+    return parts.map((part, index) => {
+      // Check if this part is a URL
+      if (part.match(urlRegex)) {
+        const urlText = part;
+        return (
+          <Text
+            key={index}
+            style={styles.linkText}
+            onPress={() => {
+              console.log('User tapped URL:', urlText);
+              Linking.openURL(urlText).catch((err) => {
+                console.error('Error opening URL:', err);
+                Toast.show({
+                  type: 'error',
+                  text1: 'Could not open link',
+                  position: 'bottom',
+                  visibilityTime: 2000,
+                });
+              });
+            }}
+          >
+            {urlText}
+          </Text>
+        );
+      }
+      
+      // Regular text
+      const textContent = part;
+      return (
+        <Text key={index}>
+          {textContent}
+        </Text>
+      );
+    });
+  };
+
   const renderMessage = (message: ChatMessage) => {
     const isUser = message.role === 'user';
     
@@ -368,18 +403,21 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
           )}
         </View>
 
-        {/* Message Bubble - Pressable for copy-paste */}
-        <Pressable
-          onLongPress={() => handleCopyMessage(message.content)}
+        {/* Message Bubble - Text with selectable prop for native text selection */}
+        <View
           style={[
             styles.messageBubble,
             isUser ? styles.userBubble : styles.assistantBubble,
           ]}
         >
-          <Text style={styles.messageText}>
-            {message.content}
+          <Text 
+            style={styles.messageText}
+            selectable={true}
+            onLongPress={() => handleCopyMessage(message.content)}
+          >
+            {renderMessageContent(message.content)}
           </Text>
-        </Pressable>
+        </View>
       </Animated.View>
     );
   };
@@ -532,7 +570,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
             </View>
 
             {/* Input Area - Fixed at bottom */}
-            <View style={styles.inputContainer}>
+            <Pressable style={styles.inputContainer} onPress={(e) => e.stopPropagation()}>
               <TextInput
                 style={styles.input}
                 placeholder="Ask a question..."
@@ -542,7 +580,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                 multiline
                 maxLength={500}
                 editable={!isLoading}
-                onSubmitEditing={handleSendMessage}
+                returnKeyType="send"
                 blurOnSubmit={false}
               />
               <Pressable
@@ -559,7 +597,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                   color={canSend ? colors.background : colors.textSecondary}
                 />
               </Pressable>
-            </View>
+            </Pressable>
           </Animated.View>
         </Pressable>
       </Pressable>
@@ -724,6 +762,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: '#1A1A1A',
+  },
+  linkText: {
+    fontSize: 15,
+    lineHeight: 20,
+    color: '#0066CC',
+    textDecorationLine: 'underline',
   },
   typingBubble: {
     paddingVertical: 12,
