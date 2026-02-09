@@ -582,6 +582,8 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                 editable={!isLoading}
                 returnKeyType="send"
                 blurOnSubmit={false}
+                onSubmitEditing={handleSendMessage}
+                enablesReturnKeyAutomatically={true}
               />
               <Pressable
                 onPress={handleSendMessage}
