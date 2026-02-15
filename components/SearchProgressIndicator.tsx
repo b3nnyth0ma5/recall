@@ -25,10 +25,13 @@ interface SearchProgressIndicatorProps {
     locationCount?: number;
   };
   searchTimings?: {
-    locationSearchMs?: number;
-    peopleSearchMs?: number;
-    keywordSearchMs?: number;
-    aiAnswerMs?: number;
+    entityExtractionMs?: number;
+    embeddingMs?: number;
+    locationMs?: number;
+    peopleMs?: number;
+    dbQueryMs?: number;
+    filteringMs?: number;
+    answerMs?: number;
     totalMs?: number;
   };
   shouldShowTimings?: boolean;
@@ -40,42 +43,34 @@ interface StepConfig {
   title: string;
   description: string;
   stages: string[];
-  timingKey?: 'locationSearchMs' | 'peopleSearchMs' | 'keywordSearchMs' | 'aiAnswerMs' | 'totalMs';
+  timingKey?: 'entityExtractionMs' | 'dbQueryMs' | 'filteringMs' | 'answerMs' | 'totalMs';
 }
 
-// UPDATED: Location search is now RE-ENABLED
+// UPDATED: New simplified steps for v3
 const STEPS: StepConfig[] = [
   {
     id: 'resolving',
-    icon: 'map.fill',
-    title: 'Analysing for location(s)',
-    description: 'Looking up location details',
+    icon: 'sparkles',
+    title: 'Extracting entities',
+    description: 'Analyzing query for keywords, people, and location',
     stages: ['resolving', 'people', 'keywords', 'searching', 'complete'],
-    timingKey: 'locationSearchMs',
-  },
-  {
-    id: 'people',
-    icon: 'person.2.fill',
-    title: 'Analysing for people',
-    description: 'Matching people in your recalls',
-    stages: ['people', 'keywords', 'searching', 'complete'],
-    timingKey: 'peopleSearchMs',
+    timingKey: 'entityExtractionMs',
   },
   {
     id: 'keywords',
-    icon: 'text.word.spacing',
-    title: 'Extracting keywords',
-    description: 'Analyzing content and images',
+    icon: 'magnifyingglass',
+    title: 'Searching recalls',
+    description: 'Finding matching recalls in database',
     stages: ['keywords', 'searching', 'complete'],
-    timingKey: 'keywordSearchMs',
+    timingKey: 'dbQueryMs',
   },
   {
     id: 'searching',
-    icon: 'sparkles',
+    icon: 'cpu',
     title: 'Generating answer with AI',
     description: 'Crafting your personalized answer',
     stages: ['searching', 'complete'],
-    timingKey: 'aiAnswerMs',
+    timingKey: 'answerMs',
   },
   {
     id: 'complete',
@@ -113,7 +108,6 @@ export function SearchProgressIndicator({
   });
 
   const isStepComplete = (step: StepConfig): boolean => {
-    // Check if we've passed this stage
     const stageOrder = ['resolving', 'people', 'keywords', 'searching', 'complete'];
     const currentStageIndex = stageOrder.indexOf(stage);
     const stepStageIndex = stageOrder.indexOf(step.id);
@@ -135,17 +129,6 @@ export function SearchProgressIndicator({
     return 'pending';
   };
 
-  const getStepTitle = (step: StepConfig): string => {
-    if (step.id === 'resolving' && locationName) {
-      return `Finding ${locationName}`;
-    }
-    if (step.id === 'people' && personNames && personNames.length > 0) {
-      return `Finding recalls with ${personNames.join(', ')}`;
-    }
-    return step.title;
-  };
-
-  // Determine the header title based on stage
   const getHeaderTitle = (): string => {
     if (stage === 'complete') {
       return 'Search Completed';
@@ -153,7 +136,6 @@ export function SearchProgressIndicator({
     return 'Search Steps';
   };
 
-  // Format timing for display
   const formatTiming = (ms?: number): string => {
     if (ms === undefined) {
       return '';
@@ -200,7 +182,6 @@ export function SearchProgressIndicator({
                   locationName={locationName}
                   personNames={personNames}
                   extractedKeywords={extractedKeywords}
-                  title={getStepTitle(step)}
                   isSearchComplete={stage === 'complete'}
                   locationInfo={locationInfo}
                   timing={timing}
@@ -223,7 +204,6 @@ interface StepItemProps {
   locationName?: string;
   personNames?: string[];
   extractedKeywords?: string[];
-  title: string;
   isSearchComplete: boolean;
   locationInfo?: {
     proximity?: number;
@@ -242,21 +222,18 @@ function StepItem({
   locationName, 
   personNames, 
   extractedKeywords,
-  title,
   isSearchComplete,
   locationInfo,
   timing,
   shouldShowTimings,
   formatTiming,
 }: StepItemProps) {
-  // Keep colors active even after search completes
   const iconColor = status === 'complete' 
     ? colors.success 
     : status === 'active' 
     ? colors.primary 
     : colors.textTertiary;
 
-  // Keep text colors active (don't grey out after completion)
   const textColor = colors.text;
 
   const iconContainerStyle = useAnimatedStyle(() => {
@@ -269,39 +246,36 @@ function StepItem({
     };
   });
 
-  // Determine what to show for location step
   const getLocationDisplay = () => {
-    if (step.id === 'resolving') {
-      if (!locationName) {
-        return 'No location(s) detected';
-      }
-      
-      // Show location with search radius/area
+    if (step.id === 'resolving' && locationName) {
       if (locationInfo) {
         const radiusText = locationInfo.proximity 
           ? ` (${locationInfo.proximity}km radius)` 
           : '';
         return `${locationName}${radiusText}`;
       }
-      
       return locationName;
     }
     return null;
   };
 
-  // Determine what to show for people step
   const getPeopleDisplay = () => {
-    if (step.id === 'people') {
-      if (!personNames || personNames.length === 0) {
-        return 'No people detected';
-      }
+    if (step.id === 'resolving' && personNames && personNames.length > 0) {
       return personNames.join(', ');
+    }
+    return null;
+  };
+
+  const getKeywordsDisplay = () => {
+    if (step.id === 'resolving' && extractedKeywords && extractedKeywords.length > 0) {
+      return extractedKeywords.join(', ');
     }
     return null;
   };
 
   const locationDisplay = getLocationDisplay();
   const peopleDisplay = getPeopleDisplay();
+  const keywordsDisplay = getKeywordsDisplay();
 
   return (
     <View style={styles.stepItem}>
@@ -315,7 +289,7 @@ function StepItem({
       <View style={styles.stepContent}>
         <View style={styles.stepTitleRow}>
           <Text style={[styles.stepTitle, { color: textColor }]}>
-            {title}
+            {step.title}
           </Text>
           {shouldShowTimings && timing !== undefined && (
             <Text style={styles.timingText}>
@@ -324,27 +298,24 @@ function StepItem({
           )}
         </View>
         
-        {/* Show location badge - keep visible after search completes */}
-        {locationDisplay && step.id === 'resolving' && (
+        {locationDisplay && (
           <View style={styles.infoBadge}>
             <IconSymbol name="mappin.circle.fill" size={14} color={colors.primary} />
             <Text style={styles.infoText}>{locationDisplay}</Text>
           </View>
         )}
 
-        {/* Show people badge - keep visible after search completes */}
-        {peopleDisplay && step.id === 'people' && (
+        {peopleDisplay && (
           <View style={styles.infoBadge}>
             <IconSymbol name="person.circle.fill" size={14} color={colors.primary} />
             <Text style={styles.infoText}>{peopleDisplay}</Text>
           </View>
         )}
 
-        {/* Show extracted keywords badge - keep visible after search completes */}
-        {extractedKeywords && extractedKeywords.length > 0 && step.id === 'keywords' && (
+        {keywordsDisplay && (
           <View style={styles.infoBadge}>
             <IconSymbol name="text.word.spacing" size={14} color={colors.primary} />
-            <Text style={styles.infoText}>{extractedKeywords.join(', ')}</Text>
+            <Text style={styles.infoText}>{keywordsDisplay}</Text>
           </View>
         )}
       </View>
