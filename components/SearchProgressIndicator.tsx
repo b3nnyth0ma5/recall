@@ -25,9 +25,7 @@ interface SearchProgressIndicatorProps {
     locationCount?: number;
   };
   searchTimings?: {
-    locationSearchMs?: number;
-    peopleSearchMs?: number;
-    keywordSearchMs?: number;
+    entitySearchMs?: number;
     aiAnswerMs?: number;
     totalMs?: number;
   };
@@ -40,34 +38,18 @@ interface StepConfig {
   title: string;
   description: string;
   stages: string[];
-  timingKey?: 'locationSearchMs' | 'peopleSearchMs' | 'keywordSearchMs' | 'aiAnswerMs' | 'totalMs';
+  timingKey?: 'entitySearchMs' | 'aiAnswerMs' | 'totalMs';
 }
 
-// UPDATED: Location search is now RE-ENABLED
+// UPDATED: Single unified entity extraction step
 const STEPS: StepConfig[] = [
   {
     id: 'resolving',
-    icon: 'map.fill',
-    title: 'Analysing for location(s)',
-    description: 'Looking up location details',
+    icon: 'brain',
+    title: 'Extracting entities with AI',
+    description: 'Analyzing for people, keywords, and locations',
     stages: ['resolving', 'people', 'keywords', 'searching', 'complete'],
-    timingKey: 'locationSearchMs',
-  },
-  {
-    id: 'people',
-    icon: 'person.2.fill',
-    title: 'Analysing for people',
-    description: 'Matching people in your recalls',
-    stages: ['people', 'keywords', 'searching', 'complete'],
-    timingKey: 'peopleSearchMs',
-  },
-  {
-    id: 'keywords',
-    icon: 'text.word.spacing',
-    title: 'Extracting keywords',
-    description: 'Analyzing content and images',
-    stages: ['keywords', 'searching', 'complete'],
-    timingKey: 'keywordSearchMs',
+    timingKey: 'entitySearchMs',
   },
   {
     id: 'searching',
@@ -269,39 +251,25 @@ function StepItem({
     };
   });
 
-  // Determine what to show for location step
-  const getLocationDisplay = () => {
+  // Determine what to show for the unified entity extraction step
+  const hasAnyEntities = locationName || (personNames && personNames.length > 0) || (extractedKeywords && extractedKeywords.length > 0);
+  
+  const getEntityDisplay = () => {
     if (step.id === 'resolving') {
-      if (!locationName) {
-        return 'No location(s) detected';
+      if (!hasAnyEntities) {
+        return null;
       }
       
-      // Show location with search radius/area
-      if (locationInfo) {
-        const radiusText = locationInfo.proximity 
-          ? ` (${locationInfo.proximity}km radius)` 
-          : '';
-        return `${locationName}${radiusText}`;
-      }
-      
-      return locationName;
+      return {
+        location: locationName,
+        people: personNames && personNames.length > 0 ? personNames : null,
+        keywords: extractedKeywords && extractedKeywords.length > 0 ? extractedKeywords : null,
+      };
     }
     return null;
   };
 
-  // Determine what to show for people step
-  const getPeopleDisplay = () => {
-    if (step.id === 'people') {
-      if (!personNames || personNames.length === 0) {
-        return 'No people detected';
-      }
-      return personNames.join(', ');
-    }
-    return null;
-  };
-
-  const locationDisplay = getLocationDisplay();
-  const peopleDisplay = getPeopleDisplay();
+  const entityDisplay = getEntityDisplay();
 
   return (
     <View style={styles.stepItem}>
@@ -324,27 +292,30 @@ function StepItem({
           )}
         </View>
         
-        {/* Show location badge - keep visible after search completes */}
-        {locationDisplay && step.id === 'resolving' && (
-          <View style={styles.infoBadge}>
-            <IconSymbol name="mappin.circle.fill" size={14} color={colors.primary} />
-            <Text style={styles.infoText}>{locationDisplay}</Text>
-          </View>
-        )}
-
-        {/* Show people badge - keep visible after search completes */}
-        {peopleDisplay && step.id === 'people' && (
-          <View style={styles.infoBadge}>
-            <IconSymbol name="person.circle.fill" size={14} color={colors.primary} />
-            <Text style={styles.infoText}>{peopleDisplay}</Text>
-          </View>
-        )}
-
-        {/* Show extracted keywords badge - keep visible after search completes */}
-        {extractedKeywords && extractedKeywords.length > 0 && step.id === 'keywords' && (
-          <View style={styles.infoBadge}>
-            <IconSymbol name="text.word.spacing" size={14} color={colors.primary} />
-            <Text style={styles.infoText}>{extractedKeywords.join(', ')}</Text>
+        {/* Show all extracted entities in the first step */}
+        {entityDisplay && step.id === 'resolving' && (
+          <View style={styles.entityBadgesContainer}>
+            {entityDisplay.people && (
+              <View style={styles.infoBadge}>
+                <IconSymbol name="person.circle.fill" size={14} color={colors.primary} />
+                <Text style={styles.infoText}>People: {entityDisplay.people.join(', ')}</Text>
+              </View>
+            )}
+            {entityDisplay.keywords && (
+              <View style={styles.infoBadge}>
+                <IconSymbol name="text.word.spacing" size={14} color={colors.primary} />
+                <Text style={styles.infoText}>Keywords: {entityDisplay.keywords.join(', ')}</Text>
+              </View>
+            )}
+            {entityDisplay.location && (
+              <View style={styles.infoBadge}>
+                <IconSymbol name="mappin.circle.fill" size={14} color={colors.primary} />
+                <Text style={styles.infoText}>
+                  {entityDisplay.location}
+                  {locationInfo?.proximity ? ` (${locationInfo.proximity}km radius)` : ''}
+                </Text>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -429,6 +400,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primary,
   },
+  entityBadgesContainer: {
+    flexDirection: 'column',
+    gap: 8,
+    marginTop: 8,
+  },
   infoBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -437,7 +413,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 12,
-    marginTop: 8,
     alignSelf: 'flex-start',
   },
   infoText: {

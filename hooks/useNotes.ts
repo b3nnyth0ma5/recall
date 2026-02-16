@@ -14,9 +14,7 @@ export interface PersonInfo {
 }
 
 export interface SearchTimings {
-  locationSearchMs?: number;
-  peopleSearchMs?: number;
-  keywordSearchMs?: number;
+  entitySearchMs?: number;
   aiAnswerMs?: number;
   totalMs?: number;
 }
@@ -569,7 +567,7 @@ export function useNotes() {
     
     try {
       const searchStartTime = Date.now();
-      console.log('=== STARTING PARALLEL OPTIMIZED SEARCH ===');
+      console.log('=== STARTING UNIFIED ENTITY SEARCH ===');
       console.log('Search query:', query);
       setLoading(true);
       
@@ -604,184 +602,123 @@ export function useNotes() {
       // Add a small delay to ensure "resolving" stage is visible
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      // PARALLEL EXECUTION: Run all three search functions simultaneously
-      console.log('Step 1: Running location, people, and keyword searches in PARALLEL...');
-      const parallelSearchStart = Date.now();
+      // Step 1: Call the unified entity extraction function
+      console.log('Step 1: Calling unified entity extraction...');
+      const entitySearchStart = Date.now();
       
-      // LOCATION SEARCH - RE-ENABLED
-      const locationPromise = (async () => {
-        const start = Date.now();
-        try {
-          console.log('[useNotes] Calling search-recalls-with-location edge function...');
-          const result = await supabase.functions.invoke('search-recalls-with-location', {
-            body: { 
-              query: query.trim(),
-              userLocation: userLocation,
-            },
-          });
-          const searchTime = Date.now() - start;
-          console.log(`[TIMING] Location search completed in ${searchTime}ms`);
-          return { ...result, searchTime };
-        } catch (error) {
-          console.error('Location search error:', error);
-          const searchTime = Date.now() - start;
-          return { data: null, error, searchTime };
-        }
-      })();
-      
-      // PEOPLE SEARCH - ENABLED
-      const peoplePromise = (async () => {
-        const start = Date.now();
-        try {
-          console.log('[useNotes] Calling search-recalls-with-people edge function...');
-          const result = await supabase.functions.invoke('search-recalls-with-people', {
-            body: { query: query.trim() },
-          });
-          const searchTime = Date.now() - start;
-          console.log(`[TIMING] People search completed in ${searchTime}ms`);
-          return { ...result, searchTime };
-        } catch (error) {
-          console.error('People search error:', error);
-          const searchTime = Date.now() - start;
-          return { data: null, error, searchTime };
-        }
-      })();
-      
-      const keywordPromise = (async () => {
-        const start = Date.now();
-        try {
-          const result = await supabase.functions.invoke('search-recalls-with-keywords', {
-            body: { 
-              query: query.trim(),
-              priorityRecallIds: [], // Will be updated with location/people results
-            },
-          });
-          const searchTime = Date.now() - start;
-          console.log(`[TIMING] Keyword search completed in ${searchTime}ms`);
-          return { ...result, searchTime };
-        } catch (error) {
-          console.error('Keyword search error:', error);
-          const searchTime = Date.now() - start;
-          return { data: null, error, searchTime };
-        }
-      })();
+      const { data: entityResult, error: entityError } = await supabase.functions.invoke('search-recalls-with-entities', {
+        body: { 
+          query: query.trim(),
+          userLocation: userLocation,
+        },
+      });
 
-      // Wait for all searches to complete in parallel
-      const [locationResult, peopleResult, keywordResult] = await Promise.all([
-        locationPromise,
-        peoplePromise,
-        keywordPromise,
-      ]);
+      const entitySearchTime = Date.now() - entitySearchStart;
+      console.log(`[TIMING] Entity search completed in ${entitySearchTime}ms`);
 
-      const parallelSearchTime = Date.now() - parallelSearchStart;
-      console.log(`All parallel searches completed in ${parallelSearchTime}ms`);
+      if (entityError || !entityResult) {
+        console.error('Error in entity extraction:', entityError);
+        
+        // Fallback to basic search
+        const { data: recallsData } = await supabase
+          .from('recalls')
+          .select('*')
+          .eq('user_id', user.id)
+          .or(`text.ilike.%${query}%,location.ilike.%${query}%`)
+          .order('created_at', { ascending: false });
 
-      // Process location results
-      let locationRecalls: any[] = [];
-      let locationInfoData: any = null;
-      
-      if (locationResult.data?.hasLocationIntent && locationResult.data?.locationResolved && locationResult.data?.recallIds?.length > 0) {
-        console.log('Location intent detected and resolved!');
-        console.log('Location info:', locationResult.data.locationInfo);
+        const notesWithImages = await loadImagesForRecalls(recallsData || []);
+        setNotes(notesWithImages);
+        setSearchAnswer(null);
+        setSearchConfidence(undefined);
+        setSearchStage('complete');
         
-        // Handle multiple locations
-        const locationInfo = locationResult.data.locationInfo;
-        const displayName = locationInfo.multipleLocations 
-          ? `${locationInfo.locationCount} locations: ${locationInfo.resolvedPlace}`
-          : locationInfo.resolvedPlace;
+        const totalSearchTime = Date.now() - searchStartTime;
+        setSearchTimeMs(totalSearchTime);
+        setSearchTimings({
+          totalMs: totalSearchTime,
+        });
         
-        setSearchStage('resolving');
-        setSearchLocationName(displayName);
-        locationInfoData = locationInfo;
-        setLocationInfo(locationInfoData);
-        
-        // Add delay to show resolving stage
-        await new Promise(resolve => setTimeout(resolve, 400));
-        
-        // Create location recalls with match info
-        locationRecalls = locationResult.data.recallIds.map((id: string) => ({
-          recall_id: id,
-          matchPercentage: 100,
-          tier: 'HIGH',
-          recall_data: { text: '', location: '', location_primary_type: '' },
-          images_data: []
-        }));
-      } else {
-        console.log('No location intent detected');
-        setLocationInfo(null);
+        return;
       }
 
-      // Process people results
-      let peopleRecalls: any[] = [];
-      let personInfoData: PersonInfo | null = null;
+      console.log('[Entity Search] Results:', entityResult);
+      console.log('[Entity Search] Matching recalls:', entityResult.matchingRecallIds?.length || 0);
+      console.log('[Entity Search] Extracted entities:', entityResult.extractedEntities);
+
+      // Update UI with extracted entities
+      const entities = entityResult.extractedEntities || { people: [], keywords: [], locations: [] };
       
-      if (peopleResult.data?.hasPeopleIntent && peopleResult.data?.recallIds?.length > 0) {
-        console.log('People intent detected!');
-        console.log('Person info:', peopleResult.data.personInfo);
-        
+      // Set people info
+      if (entities.people.length > 0 && entityResult.matchedPeople?.length > 0) {
         setSearchStage('people');
-        personInfoData = peopleResult.data.personInfo;
+        const personInfoData: PersonInfo = {
+          detectedNames: entities.people,
+          matchedNames: entityResult.matchedPeople,
+        };
         setPersonInfo(personInfoData);
-        setSearchPersonNames(personInfoData?.matchedNames || []);
-        
-        // Add delay to show people stage
-        await new Promise(resolve => setTimeout(resolve, 400));
-        
-        // Create people recalls with match info
-        peopleRecalls = peopleResult.data.recallIds.map((id: string) => ({
-          recall_id: id,
-          matchPercentage: 100,
-          tier: 'HIGH',
-          recall_data: { text: '', location: '', location_primary_type: '' },
-          images_data: []
-        }));
+        setSearchPersonNames(entityResult.matchedPeople);
+        await new Promise(resolve => setTimeout(resolve, 300));
       } else {
-        console.log('No people intent detected');
         setPersonInfo(null);
         setSearchPersonNames(undefined);
       }
 
-      // Process keyword results
-      let keywordRecalls: any[] = [];
-      let extractedKeywords: string[] = [];
-      
-      if (keywordResult.data?.results && keywordResult.data.results.length > 0) {
-        console.log('Keyword matches found!');
-        console.log(`Found ${keywordResult.data.results.length} keyword matches`);
-        
+      // Set keywords
+      if (entities.keywords.length > 0) {
         setSearchStage('keywords');
-        
-        // Extract keywords from the result
-        if (keywordResult.data.keywords && Array.isArray(keywordResult.data.keywords)) {
-          extractedKeywords = keywordResult.data.keywords;
-          setSearchExtractedKeywords(extractedKeywords);
-          console.log('Extracted keywords:', extractedKeywords);
-        }
-        
-        // Add delay to show keywords stage
-        await new Promise(resolve => setTimeout(resolve, 400));
-        
-        keywordRecalls = keywordResult.data.results;
+        setSearchExtractedKeywords(entities.keywords);
+        await new Promise(resolve => setTimeout(resolve, 300));
       } else {
-        console.log('No keyword matches found');
         setSearchExtractedKeywords(undefined);
       }
 
-      // Step 2: Use search-recalls-v2 with combined results
-      console.log('Step 2: Running AI answer generation with combined results...');
+      // Set location info
+      if (entities.locations.length > 0 && entityResult.resolvedLocations?.length > 0) {
+        setSearchStage('resolving');
+        const locationNames = entityResult.resolvedLocations.map((loc: any) => loc.resolved).join(', ');
+        setSearchLocationName(locationNames);
+        
+        const locationInfoData = {
+          resolvedPlace: locationNames,
+          proximity: 1,
+          multipleLocations: entityResult.resolvedLocations.length > 1,
+          locationCount: entityResult.resolvedLocations.length,
+          locations: entityResult.resolvedLocations,
+        };
+        setLocationInfo(locationInfoData);
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } else {
+        setLocationInfo(null);
+        setSearchLocationName(undefined);
+      }
+
+      // Step 2: Use search-recalls-v2 with entity results
+      console.log('Step 2: Running AI answer generation with entity results...');
       setSearchStage('searching');
       
-      // Add delay to show searching stage
       await new Promise(resolve => setTimeout(resolve, 300));
       
       const answerStart = Date.now();
+      
+      // Format results for search-recalls-v2
+      const matchingRecallIds = entityResult.matchingRecallIds || [];
+      const formattedRecalls = matchingRecallIds.map((id: string) => ({
+        recall_id: id,
+        matchPercentage: 100,
+        tier: 'HIGH',
+        recall_data: { text: '', location: '', location_primary_type: '' },
+        images_data: []
+      }));
+
       const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls-v2', {
         body: {
           query: query.trim(),
-          locationRecalls: locationRecalls.length > 0 ? locationRecalls : undefined,
-          peopleRecalls: peopleRecalls.length > 0 ? peopleRecalls : undefined,
-          keywordRecalls: keywordRecalls.length > 0 ? keywordRecalls : undefined,
-          personInfo: personInfoData,
+          keywordRecalls: formattedRecalls.length > 0 ? formattedRecalls : undefined,
+          personInfo: entityResult.matchedPeople?.length > 0 ? {
+            detectedNames: entities.people,
+            matchedNames: entityResult.matchedPeople,
+          } : undefined,
         },
       });
 
@@ -791,19 +728,12 @@ export function useNotes() {
       if (searchError) {
         console.error('Error in AI answer generation:', searchError);
         
-        // Fallback: show combined results if available
-        const allRecallIds = [
-          ...locationRecalls.map(r => r.recall_id),
-          ...peopleRecalls.map(r => r.recall_id),
-          ...keywordRecalls.map(r => r.recall_id)
-        ];
-        const uniqueRecallIds = [...new Set(allRecallIds)];
-        
-        if (uniqueRecallIds.length > 0) {
+        // Fallback: show entity results if available
+        if (matchingRecallIds.length > 0) {
           const { data: recallsData } = await supabase
             .from('recalls')
             .select('*')
-            .in('id', uniqueRecallIds)
+            .in('id', matchingRecallIds)
             .eq('user_id', user.id);
 
           const notesWithImages = await loadImagesForRecalls(recallsData || []);
@@ -812,13 +742,10 @@ export function useNotes() {
           setSearchConfidence(undefined);
           setSearchStage('complete');
           
-          // Calculate and set search time
           const totalSearchTime = Date.now() - searchStartTime;
           setSearchTimeMs(totalSearchTime);
           setSearchTimings({
-            locationSearchMs: locationResult.searchTime,
-            peopleSearchMs: peopleResult.searchTime,
-            keywordSearchMs: keywordResult.searchTime,
+            entitySearchMs: entitySearchTime,
             aiAnswerMs: aiAnswerTime,
             totalMs: totalSearchTime,
           });
@@ -840,13 +767,10 @@ export function useNotes() {
         setSearchConfidence(undefined);
         setSearchStage('complete');
         
-        // Calculate and set search time
         const totalSearchTime = Date.now() - searchStartTime;
         setSearchTimeMs(totalSearchTime);
         setSearchTimings({
-          locationSearchMs: locationResult.searchTime,
-          peopleSearchMs: peopleResult.searchTime,
-          keywordSearchMs: keywordResult.searchTime,
+          entitySearchMs: entitySearchTime,
           aiAnswerMs: aiAnswerTime,
           totalMs: totalSearchTime,
         });
@@ -903,19 +827,15 @@ export function useNotes() {
       const totalSearchTime = Date.now() - searchStartTime;
       setSearchTimeMs(totalSearchTime);
       setSearchTimings({
-        locationSearchMs: locationResult.searchTime,
-        peopleSearchMs: peopleResult.searchTime,
-        keywordSearchMs: keywordResult.searchTime,
+        entitySearchMs: entitySearchTime,
         aiAnswerMs: aiAnswerTime,
         totalMs: totalSearchTime,
       });
       
-      console.log('=== PARALLEL SEARCH COMPLETE ===');
+      console.log('=== UNIFIED ENTITY SEARCH COMPLETE ===');
       console.log(`Total search time: ${totalSearchTime}ms`);
       console.log('Search timings:', {
-        location: locationResult.searchTime,
-        people: peopleResult.searchTime,
-        keywords: keywordResult.searchTime,
+        entitySearch: entitySearchTime,
         aiAnswer: aiAnswerTime,
         total: totalSearchTime,
       });
