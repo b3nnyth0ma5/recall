@@ -643,7 +643,7 @@ export function useNotes() {
       }
 
       console.log('[Entity Search] Results:', entityResult);
-      console.log('[Entity Search] Matching recalls:', entityResult.matchingRecallIds?.length || 0);
+      console.log('[Entity Search] Matching recalls:', entityResult.recalls?.length || 0);
       console.log('[Entity Search] Extracted entities:', entityResult.extractedEntities);
 
       // Update UI with extracted entities
@@ -701,20 +701,13 @@ export function useNotes() {
       
       const answerStart = Date.now();
       
-      // Format results for search-recalls-v2
-      const matchingRecallIds = entityResult.matchingRecallIds || [];
-      const formattedRecalls = matchingRecallIds.map((id: string) => ({
-        recall_id: id,
-        matchPercentage: 100,
-        tier: 'HIGH',
-        recall_data: { text: '', location: '', location_primary_type: '' },
-        images_data: []
-      }));
+      // Use the recalls array directly from entity search (already in Recall format)
+      const matchingRecalls = entityResult.recalls || [];
 
       const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls-v2', {
         body: {
           query: query.trim(),
-          keywordRecalls: formattedRecalls.length > 0 ? formattedRecalls : undefined,
+          keywordRecalls: matchingRecalls.length > 0 ? matchingRecalls : undefined,
           personInfo: entityResult.matchedPeople?.length > 0 ? {
             detectedNames: entities.people,
             matchedNames: entityResult.matchedPeople,
@@ -729,11 +722,12 @@ export function useNotes() {
         console.error('Error in AI answer generation:', searchError);
         
         // Fallback: show entity results if available
-        if (matchingRecallIds.length > 0) {
+        if (matchingRecalls.length > 0) {
+          const recallIds = matchingRecalls.map((r: any) => r.recall_id);
           const { data: recallsData } = await supabase
             .from('recalls')
             .select('*')
-            .in('id', matchingRecallIds)
+            .in('id', recallIds)
             .eq('user_id', user.id);
 
           const notesWithImages = await loadImagesForRecalls(recallsData || []);
