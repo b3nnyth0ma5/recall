@@ -1,14 +1,14 @@
 {
   "expo": {
     "name": "Recall",
-    "slug": "Recall",
+    "slug": "recall",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
+    "icon": "./assets/images/recall icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
+      "image": "./assets/images/recall icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#242424"
     },
@@ -47,7 +47,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
+        "foregroundImage": "./assets/images/recall icon.png",
         "backgroundColor": "#242424",
         "backgroundImage": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png"
       },
@@ -163,7 +163,7 @@
       ],
       "./app.plugin.js"
     ],
-    "scheme": "Recall",
+    "scheme": "recall",
     "experiments": {
       "typedRoutes": true
     },
