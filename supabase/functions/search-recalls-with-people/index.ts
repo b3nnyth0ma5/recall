@@ -64,11 +64,11 @@ Deno.serve(async (req) => {
     console.log('[People Search] ========================================');
     console.log('[People Search] Query:', query);
 
-    // Get OpenAI API key
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiApiKey) {
+    // Get Claude API key
+    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!claudeApiKey) {
       return new Response(
-        JSON.stringify({ error: 'OpenAI API key not configured' }),
+        JSON.stringify({ error: 'Claude API key not configured' }),
         {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -82,30 +82,26 @@ Deno.serve(async (req) => {
       // NER detection
       (async () => {
         try {
-          console.log('[People Search] Calling OpenAI NER API...');
+          console.log('[People Search] Calling Claude NER API...');
           const nerStartTime = Date.now();
           
-          const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          const nerResponse = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${openaiApiKey}`
+              'x-api-key': claudeApiKey,
+              'anthropic-version': '2023-06-01',
+              'content-type': 'application/json'
             },
             body: JSON.stringify({
-              model: 'gpt-4o-mini',
+              model: 'claude-haiku-4-5',
+              max_tokens: 200,
+              system: 'Extract person names as JSON object. Format: {"names": ["Name1", "Name2"]}. No explanation. Respond with valid JSON only.',
               messages: [
-                {
-                  role: 'system',
-                  content: 'Extract person names as JSON array. Format: {"names": ["Name1", "Name2"]}. No explanation.'
-                },
                 {
                   role: 'user',
                   content: `Extract person names from: "${query}"`
                 }
-              ],
-              temperature: 0.1,
-              max_tokens: 100, // Reduced for speed
-              response_format: { type: 'json_object' }
+              ]
             })
           });
 
@@ -118,7 +114,7 @@ Deno.serve(async (req) => {
           }
 
           const nerData = await nerResponse.json();
-          const nerContent = nerData.choices?.[0]?.message?.content;
+          const nerContent = nerData.content?.[0]?.text;
 
           if (nerContent) {
             const parsed = JSON.parse(nerContent);

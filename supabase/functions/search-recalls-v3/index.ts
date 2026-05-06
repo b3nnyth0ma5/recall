@@ -140,9 +140,9 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 /**
- * Extract entities (keywords, people, location) from query using OpenAI
+ * Extract entities (keywords, people, location) from query using Claude
  */
-async function extractEntities(query: string, openaiApiKey: string): Promise<ExtractedEntities> {
+async function extractEntities(query: string, claudeApiKey: string): Promise<ExtractedEntities> {
   console.log('[Entity Extraction] Starting extraction for query:', query);
   
   const systemPrompt = `You are an AI assistant that extracts entities from a user's search query.
@@ -179,34 +179,35 @@ User: "restaurants near Collingwood"
 Output: {"keywords": ["restaurants"], "people": [], "location": "Collingwood", "locationIntent": "near"}
 
 User: "coffee shops near me"
-Output: {"keywords": ["coffee shops"], "people": [], "location": "", "locationIntent": "near_me"}`;
+Output: {"keywords": ["coffee shops"], "people": [], "location": "", "locationIntent": "near_me"}
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+Respond with valid JSON only, no markdown.`;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${openaiApiKey}`
+      'x-api-key': claudeApiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'claude-haiku-4-5',
+      max_tokens: 500,
+      system: systemPrompt,
       messages: [
-        { role: 'system', content: systemPrompt },
         { role: 'user', content: query }
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.1,
-      max_tokens: 200
+      ]
     })
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('[Entity Extraction] OpenAI API error:', errorText);
+    console.error('[Entity Extraction] Claude API error:', errorText);
     throw new Error(`Failed to extract entities: ${errorText}`);
   }
 
   const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
+  const content = data.content?.[0]?.text;
 
   if (!content) {
     console.log('[Entity Extraction] No content returned');
@@ -385,18 +386,19 @@ Deno.serve(async (req) => {
     console.log('Search query:', query);
 
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
     const googleApiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
 
-    if (!openaiApiKey || !googleApiKey) {
+    if (!openaiApiKey || !claudeApiKey || !googleApiKey) {
       return new Response(JSON.stringify({ error: 'API keys not configured' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Step 1: Extract all entities in a single OpenAI call
+    // Step 1: Extract all entities in a single Claude call
     const entityExtractionStart = Date.now();
-    const entities = await extractEntities(query, openaiApiKey);
+    const entities = await extractEntities(query, claudeApiKey);
     const entityExtractionTime = Date.now() - entityExtractionStart;
     console.log(`[Timing] Entity extraction: ${entityExtractionTime}ms`);
 
@@ -639,7 +641,7 @@ Deno.serve(async (req) => {
       return dateB - dateA;
     });
 
-    // Step 8: Generate answer using OpenAI (replicating search-recalls-v2 logic)
+    // Step 8: Generate answer using Claude claude-opus-4-5 (replicating search-recalls-v2 logic)
     const answerStart = Date.now();
     
     let answer = null;
@@ -691,7 +693,7 @@ Deno.serve(async (req) => {
 
       const context = contextWithSources.map(c => c.text).join('\n');
 
-      const qaPrompt = `You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
+      const qaSystemPrompt = `You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
 
 CRITICAL RULES:
 - Prioritize your answer based on the recalls with the highest match percentages
@@ -707,38 +709,40 @@ MATCH INFORMATION:
 - Pay attention to match type indicators: [LOCATION], [PEOPLE], [KEYWORD]
 - Pay attention to keyword match counts - more matched keywords indicate better relevance
 
-Question: ${query}
-
-Available Recalls (sorted by highest match percentage first):
-${context}
-
 Provide your answer in JSON format with inline source references: {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
 Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John mentioned he'll bring the presentation SOURCE_2.", "confidence": 90, "sources": ["SOURCE_1", "SOURCE_2"]}
-If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.`;
+If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.
 
-      const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+Respond with valid JSON only, no markdown.`;
+
+      const qaUserMessage = `Question: ${query}
+
+Available Recalls (sorted by highest match percentage first):
+${context}`;
+
+      const qaResponse = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openaiApiKey}`
+          'x-api-key': claudeApiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'claude-opus-4-5',
+          max_tokens: 2048,
+          system: qaSystemPrompt,
           messages: [
             {
               role: 'user',
-              content: qaPrompt
+              content: qaUserMessage
             }
-          ],
-          temperature: 0.3,
-          max_tokens: 700,
-          response_format: { type: 'json_object' }
+          ]
         })
       });
 
       if (qaResponse.ok) {
         const qaData = await qaResponse.json();
-        const qaContent = qaData.choices?.[0]?.message?.content;
+        const qaContent = qaData.content?.[0]?.text;
 
         if (qaContent) {
           try {

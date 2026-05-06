@@ -56,57 +56,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
   const scrollViewRef = useRef<ScrollView>(null);
   const translateY = useSharedValue(0);
 
-  // Load chat history when modal opens
-  useEffect(() => {
-    if (visible && recall) {
-      loadChatHistory();
-    } else {
-      // Clear messages when modal closes
-      setMessages([]);
-      setInputText('');
-    }
-  }, [visible, recall]);
-
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    if (messages.length > 0) {
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  }, [messages]);
-
-  // Keyboard handling - same pattern as CombinedSearchAdd
-  useEffect(() => {
-    const keyboardWillShowListener = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (e) => {
-        console.log('Keyboard showing, height:', e.endCoordinates.height);
-        translateY.value = withTiming(-(e.endCoordinates.height - 10), { duration: 250 });
-      }
-    );
-
-    const keyboardWillHideListener = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => {
-        console.log('Keyboard hiding');
-        translateY.value = withTiming(0, { duration: 250 });
-      }
-    );
-
-    return () => {
-      keyboardWillShowListener.remove();
-      keyboardWillHideListener.remove();
-    };
-  }, [translateY]);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateY: translateY.value }],
-    };
-  });
-
-  const loadChatHistory = async () => {
+  const loadChatHistory = useCallback(async () => {
     if (!recall) {
       return;
     }
@@ -157,7 +107,57 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     } finally {
       setIsLoadingHistory(false);
     }
-  };
+  }, [recall]);
+
+  // Load chat history when modal opens
+  useEffect(() => {
+    if (visible && recall) {
+      loadChatHistory();
+    } else {
+      // Clear messages when modal closes
+      setMessages([]);
+      setInputText('');
+    }
+  }, [visible, recall, loadChatHistory]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [messages]);
+
+  // Keyboard handling - same pattern as CombinedSearchAdd
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        console.log('Keyboard showing, height:', e.endCoordinates.height);
+        translateY.value = withTiming(-(e.endCoordinates.height - 10), { duration: 250 });
+      }
+    );
+
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        console.log('Keyboard hiding');
+        translateY.value = withTiming(0, { duration: 250 });
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, [translateY]);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: translateY.value }],
+    };
+  });
 
   const handleCopyMessage = useCallback(async (content: string) => {
     console.log('User long-pressed message to copy');
@@ -228,7 +228,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
       }));
 
       // Fetch complete image data from database if images exist
-      let imageData: Array<{ id: string; ocr_text?: string; image_explanation?: string }> = [];
+      let imageData: { id: string; ocr_text?: string; image_explanation?: string }[] = [];
       
       if (recall.imageIds && recall.imageIds.length > 0) {
         console.log('Fetching image data for', recall.imageIds.length, 'images');

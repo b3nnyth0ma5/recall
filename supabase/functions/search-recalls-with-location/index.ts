@@ -64,9 +64,9 @@ function extractDistanceFromQuery(query: string): number | null {
 }
 
 /**
- * Use GPT-4o-mini to detect multiple location intents - OPTIMIZED
+ * Use Claude to detect multiple location intents - OPTIMIZED
  */
-async function detectMultipleLocationIntents(query: string, openaiApiKey: string) {
+async function detectMultipleLocationIntents(query: string, claudeApiKey: string) {
   try {
     console.log('Detecting multiple location intents...');
 
@@ -81,22 +81,24 @@ async function detectMultipleLocationIntents(query: string, openaiApiKey: string
 Extract ALL locations mentioned. Examples:
 - "restaurants in Melbourne and Sydney" → [{"hasLocationIntent": true, "intentType": "in", "location": "Melbourne", "confidence": 95}, {"hasLocationIntent": true, "intentType": "in", "location": "Sydney", "confidence": 95}]
 - "near Collingwood or Richmond" → [{"hasLocationIntent": true, "intentType": "near", "location": "Collingwood", "confidence": 90}, {"hasLocationIntent": true, "intentType": "near", "location": "Richmond", "confidence": 90}]
-- "near me" → [{"hasLocationIntent": true, "intentType": "near_me", "location": null, "confidence": 100}]`;
+- "near me" → [{"hasLocationIntent": true, "intentType": "near_me", "location": null, "confidence": 100}]
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+Respond with a valid JSON array only, no markdown.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiApiKey}`,
+        'x-api-key': claudeApiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'claude-haiku-4-5',
+        max_tokens: 300,
+        system: systemPrompt,
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Analyze: "${query}"` },
-        ],
-        temperature: 0.1,
-        max_tokens: 200, // Increased slightly for multiple locations
+          { role: 'user', content: `Analyze: "${query}"` }
+        ]
       }),
     });
 
@@ -105,7 +107,7 @@ Extract ALL locations mentioned. Examples:
     }
 
     const data = await response.json();
-    const content = data.choices[0]?.message?.content;
+    const content = data.content?.[0]?.text;
 
     if (!content) {
       return null;
@@ -312,10 +314,10 @@ Deno.serve(async (req) => {
     }
 
     // Get API keys
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
     const googleApiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
 
-    if (!openaiApiKey || !googleApiKey) {
+    if (!claudeApiKey || !googleApiKey) {
       return new Response(
         JSON.stringify({ error: 'API keys not configured' }),
         {
@@ -327,7 +329,7 @@ Deno.serve(async (req) => {
 
     // OPTIMIZATION: Run location intent detection and recall fetching in parallel
     const [locationIntents, recallsResult] = await Promise.all([
-      detectMultipleLocationIntents(query, openaiApiKey),
+      detectMultipleLocationIntents(query, claudeApiKey),
       supabase
         .from('recalls')
         .select('id, latitude, longitude, location, location_primary_type')

@@ -305,11 +305,11 @@ Deno.serve(async (req) => {
       console.log(`     Images: ${recall.images_data?.length || 0}`);
     });
 
-    // Get OpenAI API key
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiApiKey) {
-      console.error('OPENAI_API_KEY not set');
-      return new Response(JSON.stringify({ error: 'OpenAI API key not configured' }), {
+    // Get Claude API key
+    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!claudeApiKey) {
+      console.error('ANTHROPIC_API_KEY not set');
+      return new Response(JSON.stringify({ error: 'Claude API key not configured' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -371,15 +371,15 @@ Deno.serve(async (req) => {
 
     const context = contextWithSources.map(c => c.text).join('\n');
 
-    // Log the context being passed to OpenAI
-    console.log('=== CONTEXT BEING PASSED TO OPENAI ===');
+    // Log the context being passed to Claude
+    console.log('=== CONTEXT BEING PASSED TO CLAUDE ===');
     console.log(context);
     console.log('=== END OF CONTEXT ===');
 
-    // Generate answer using OpenAI with temperature 0.3 and max_tokens 700
-    console.log('Generating answer with OpenAI (temperature: 0.3, max_tokens: 700)...');
+    // Generate answer using Claude claude-opus-4-5
+    console.log('Generating answer with Claude claude-opus-4-5...');
     
-    const qaPrompt = `You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
+    const systemPrompt = `You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
 
 CRITICAL RULES:
 - Prioritize your answer based on the recalls with the highest match percentages
@@ -396,43 +396,41 @@ MATCH INFORMATION:
 - Pay attention to TIER markers: [HIGH], [MEDIUM], [LOW]
 - Pay attention to keyword match counts - more matched keywords indicate better relevance
 
-Question: ${query}
-
-Available Recalls (sorted by highest match percentage first):
-${context}
-
 Provide your answer in JSON format with inline source references: {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
 Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John mentioned he'll bring the presentation SOURCE_2.", "confidence": 90, "sources": ["SOURCE_1", "SOURCE_2"]}
-If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.`;
+If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.
 
-    console.log('Making request to OpenAI gpt-4o-mini...');
-    const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+Respond with valid JSON only, no markdown.`;
+
+    const userMessage = `Question: ${query}
+
+Available Recalls (sorted by highest match percentage first):
+${context}`;
+
+    console.log('Making request to Claude claude-opus-4-5...');
+    const qaResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiApiKey}`
+        'x-api-key': claudeApiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
       },
       body: JSON.stringify({
-        //model: 'gpt-4o-mini',
-        model: 'gpt-5-mini',
-
+        model: 'claude-opus-4-5',
+        max_tokens: 2048,
+        system: systemPrompt,
         messages: [
           {
             role: 'user',
-            content: qaPrompt
+            content: userMessage
           }
-        ],
-        //temperature: 0.3,
-        //max_tokens: 700,
-        reasoning_effort: 'minimal', // e.g., 'minimal', 'low', 'medium', 'high'
-        verbosity: 'low', // e.g., 'low', 'medium', 'high'
-        response_format: { type: 'json_object' }
+        ]
       })
     });
 
     if (!qaResponse.ok) {
       const errorText = await qaResponse.text();
-      console.error('OpenAI QA API error:', errorText);
+      console.error('Claude QA API error:', errorText);
       return new Response(JSON.stringify({ error: 'Failed to generate answer', details: errorText }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -440,7 +438,7 @@ If the recalls don't contain the requested information, respond with: {"answer":
     }
 
     const qaData = await qaResponse.json();
-    const qaContent = qaData.choices?.[0]?.message?.content;
+    const qaContent = qaData.content?.[0]?.text;
 
     let answer = null;
     let confidence = 0;

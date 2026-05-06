@@ -6,19 +6,19 @@ const corsHeaders = {
 };
 
 /**
- * Match Recollection Category Edge Function (Enhanced with OpenAI Analysis)
+ * Match Recollection Category Edge Function (Enhanced with Claude Analysis)
  * 
  * This function is triggered when a recall is created or updated.
  * It uses a two-step matching process similar to new-category-matching:
  * 1. Embedding-based similarity search (>= 0.20 threshold) to find candidate categories
- * 2. OpenAI API to identify which candidates are the closest matches
+ * 2. Claude API to identify which candidates are the closest matches
  * 
  * Process:
  * 1. Receives a recall ID (from database trigger or manual call)
  * 2. Fetches recall data including text, location, type, images (OCR + explanation), and persons
  * 3. Generates recall embedding if not exists
  * 4. Finds all categories with similarity >= 0.20 using embeddings (using category_name + category_search_description)
- * 5. Uses OpenAI to analyze and rank the candidate categories
+ * 5. Uses Claude to analyze and rank the candidate categories
  * 6. Updates recollections table with high-confidence matches (>= 60)
  */
 
@@ -119,7 +119,7 @@ function parseStoredEmbedding(storedEmbedding: any): number[] | null {
   return null;
 }
 
-// Helper function to sanitize and truncate text for OpenAI
+// Helper function to sanitize and truncate text for Claude
 function sanitizeText(text: string, maxLength: number = 500): string {
   if (!text) return '';
   
@@ -134,12 +134,13 @@ function sanitizeText(text: string, maxLength: number = 500): string {
   return sanitized;
 }
 
-// Helper function to match a recall against all categories using embeddings + OpenAI
+// Helper function to match a recall against all categories using embeddings + Claude
 async function matchRecallAgainstCategories(
   recallId: string,
   supabaseUrl: string,
   supabaseServiceKey: string,
   openaiApiKey: string,
+  claudeApiKey: string,
   corsHeaders: Record<string, string>,
   startTime: number
 ): Promise<Response> {
@@ -428,10 +429,10 @@ async function matchRecallAgainstCategories(
   // Sort by similarity (highest first)
   candidateCategories.sort((a, b) => b.similarity - a.similarity);
 
-  // Step 9: Use OpenAI to analyze and rank the candidate categories
-  console.log('Step 9: Using OpenAI to analyze and rank candidate categories...');
+  // Step 9: Use Claude to analyze and rank the candidate categories
+  console.log('Step 9: Using Claude to analyze and rank candidate categories...');
 
-  // Prepare recall context for OpenAI
+  // Prepare recall context for Claude
   let recallContext = `Text: ${sanitizeText(recallData.text || 'No text', 300)}`;
   
   if (recallData.location) {
@@ -462,7 +463,7 @@ async function matchRecallAgainstCategories(
     recallContext += `\nPeople: ${personNames.join(', ')}`;
   }
 
-  // Prepare category context for OpenAI
+  // Prepare category context for Claude
   const categoriesContext = candidateCategories.map((cat, idx) => {
     const categoryId = `CATEGORY_${idx + 1}`;
     const similarity = Math.round(cat.similarity * 100);
@@ -489,7 +490,9 @@ Your task is to:
 1. Analyze each category to determine if the recall truly belongs to it
 2. Assign a confidence score (0-100) for each category
 
-A recall should only match a category if it clearly relates to the category name and description (give more weight to the Category Description).`;
+A recall should only match a category if it clearly relates to the category name and description (give more weight to the Category Description).
+
+Respond with valid JSON only, no markdown.`;
 
   const userPrompt = `Recall:
 ${recallContext}
@@ -507,27 +510,26 @@ Analyze each category and provide your response in JSON format:
 
 Only include categories with confidence >= 55. If no categories meet this threshold, return an empty matches array.`;
 
-  const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+  const openaiResponse = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${openaiApiKey}`
+      'x-api-key': claudeApiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json'
     },
     body: JSON.stringify({
-        model: 'gpt-5-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        reasoning_effort: 'minimal',
-        verbosity: 'low',
-        response_format: { type: 'json_object' }
-      })
+      model: 'claude-opus-4-5',
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages: [
+        { role: 'user', content: userPrompt }
+      ]
+    })
   });
 
   if (!openaiResponse.ok) {
     const errorText = await openaiResponse.text();
-    console.error('OpenAI API error:', errorText);
+    console.error('Claude API error:', errorText);
     
     // Fallback: use all candidates with similarity-based scores
     console.log('Using fallback matching based on similarity scores');
@@ -551,7 +553,7 @@ Only include categories with confidence >= 55. If no categories meet this thresh
       recallId,
       matchCount: fallbackMatches.length,
       matches: fallbackMatches,
-      message: 'Used fallback matching due to OpenAI error',
+      message: 'Used fallback matching due to Claude error',
       processingTimeMs: processingTime
     }), {
       status: 200,
@@ -563,7 +565,7 @@ Only include categories with confidence >= 55. If no categories meet this thresh
   }
 
   const openaiData = await openaiResponse.json();
-  const openaiContent = openaiData.choices?.[0]?.message?.content;
+  const openaiContent = openaiData.content?.[0]?.text;
 
   let matches: Array<{ categoryId: string; confidence: number; reason: string }> = [];
 
@@ -571,10 +573,10 @@ Only include categories with confidence >= 55. If no categories meet this thresh
     try {
       const parsed = JSON.parse(openaiContent);
       matches = parsed.matches || [];
-      console.log(`OpenAI identified ${matches.length} high-confidence matches`);
+      console.log(`Claude identified ${matches.length} high-confidence matches`);
     } catch (parseError) {
-      console.error('Failed to parse OpenAI response:', parseError);
-      console.error('OpenAI response content:', openaiContent);
+      console.error('Failed to parse Claude response:', parseError);
+      console.error('Claude response content:', openaiContent);
       
       // Fallback: use all candidates with similarity-based scores
       matches = candidateCategories.map((cat, idx) => ({
@@ -711,8 +713,9 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
 
-    if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
+    if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey || !claudeApiKey) {
       console.error('Missing required environment variables');
       return new Response(JSON.stringify({
         error: 'Server configuration error'
@@ -762,6 +765,7 @@ Deno.serve(async (req) => {
       supabaseUrl,
       supabaseServiceKey,
       openaiApiKey,
+      claudeApiKey,
       corsHeaders,
       startTime
     );

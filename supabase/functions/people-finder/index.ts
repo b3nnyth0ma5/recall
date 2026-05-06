@@ -13,20 +13,7 @@ interface PeopleFinderRequest {
   image_explanation?: string;
 }
 
-interface OpenAIResponse {
-  choices: {
-    message: {
-      content: string;
-    };
-  }[];
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
-}
-
-interface OpenAIErrorResponse {
+interface ClaudeErrorResponse {
   error: {
     message: string;
     type: string;
@@ -39,14 +26,14 @@ interface OpenAIErrorResponse {
  * 
  * This function:
  * 1. Receives recall_id, user_id, text, and image_explanation
- * 2. Uses OpenAI NLP NER to detect names of people from the combined text
+ * 2. Uses Claude NLP NER to detect names of people from the combined text
  * 3. Eliminates duplicate names and capitalizes first letters
  * 4. Inserts/updates records in the "persons" table (unique constraint: user_id, person_name)
  * 5. Inserts/updates records in the "recall_people" table (unique constraint: user_id, recall_id, person_id)
  * 
  * Features:
  * - Runs asynchronously after ocr-image function completes
- * - Uses OpenAI GPT-4o-mini for cost-effective NER
+ * - Uses Claude claude-haiku-4-5 for cost-effective NER
  * - Proper name capitalization
  * - Handles duplicate names
  * - Upserts to avoid conflicts with unique constraints
@@ -97,7 +84,7 @@ Deno.serve(async (req) => {
     // Validate environment variables early
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
 
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error('Missing Supabase configuration');
@@ -110,10 +97,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!openaiApiKey) {
-      console.error('OPENAI_API_KEY not configured');
+    if (!claudeApiKey) {
+      console.error('ANTHROPIC_API_KEY not configured');
       return new Response(
-        JSON.stringify({ error: 'Server configuration error: OpenAI API key missing' }),
+        JSON.stringify({ error: 'Server configuration error: Claude API key missing' }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -177,18 +164,14 @@ Deno.serve(async (req) => {
     console.log('Combined text length:', combinedText.length);
     console.log('Text sources: recall text + ' + allImageExplanations.length + ' image explanations');
 
+    // Call Claude API for Named Entity Recognition (NER)
+    console.log('Calling Claude API for NER...');
+    console.log('Model: claude-haiku-4-5');
 
-
-    // Call OpenAI API for Named Entity Recognition (NER)
-    console.log('Calling OpenAI API for NER...');
-    console.log('Model: gpt-4o-mini');
-
-    const openaiRequestBody = {
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a Named Entity Recognition (NER) system specialized in extracting person names from text. 
+    const claudeRequestBody = {
+      model: 'claude-haiku-4-5',
+      max_tokens: 300,
+      system: `You are a Named Entity Recognition (NER) system specialized in extracting person names from text. 
 
 Your task:
 1. Extract ALL person names (first names, last names, or full names) from the provided text
@@ -207,39 +190,38 @@ Johnson
 
 Input: "The weather is nice today."
 Output:
-NO_NAMES_FOUND`
-        },
+NO_NAMES_FOUND`,
+      messages: [
         {
           role: 'user',
           content: combinedText
         }
-      ],
-      max_tokens: 300,
-      temperature: 0.1, // Very low temperature for consistent extraction
+      ]
     };
 
-    let openaiResponse;
+    let claudeResponse;
     let retryCount = 0;
     const maxRetries = 2;
 
     // Retry logic for transient failures
     while (retryCount <= maxRetries) {
       try {
-        openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openaiApiKey}`,
+            'x-api-key': claudeApiKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
           },
-          body: JSON.stringify(openaiRequestBody),
+          body: JSON.stringify(claudeRequestBody),
         });
 
-        if (openaiResponse.ok) {
+        if (claudeResponse.ok) {
           break; // Success, exit retry loop
         }
 
         // Handle rate limiting with exponential backoff
-        if (openaiResponse.status === 429 && retryCount < maxRetries) {
+        if (claudeResponse.status === 429 && retryCount < maxRetries) {
           const waitTime = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
           console.log(`Rate limited. Waiting ${waitTime}ms before retry ${retryCount + 1}/${maxRetries}`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -262,13 +244,13 @@ NO_NAMES_FOUND`
       }
     }
 
-    if (!openaiResponse || !openaiResponse.ok) {
-      const errorText = await openaiResponse?.text() || 'No response';
-      console.error('OpenAI API error response:', errorText);
+    if (!claudeResponse || !claudeResponse.ok) {
+      const errorText = await claudeResponse?.text() || 'No response';
+      console.error('Claude API error response:', errorText);
       
-      let errorMessage = 'OpenAI API request failed';
+      let errorMessage = 'Claude API request failed';
       try {
-        const errorJson = JSON.parse(errorText) as OpenAIErrorResponse;
+        const errorJson = JSON.parse(errorText) as ClaudeErrorResponse;
         errorMessage = errorJson.error?.message || errorMessage;
       } catch {
         errorMessage = errorText.substring(0, 200);
@@ -276,9 +258,9 @@ NO_NAMES_FOUND`
 
       return new Response(
         JSON.stringify({ 
-          error: 'OpenAI API request failed', 
+          error: 'Claude API request failed', 
           details: errorMessage,
-          status: openaiResponse?.status 
+          status: claudeResponse?.status 
         }),
         { 
           status: 500, 
@@ -287,12 +269,12 @@ NO_NAMES_FOUND`
       );
     }
 
-    const openaiData = await openaiResponse.json() as OpenAIResponse;
+    const openaiData = await claudeResponse.json();
     
-    if (!openaiData.choices || openaiData.choices.length === 0) {
-      console.error('No choices in OpenAI response');
+    if (!openaiData.content || openaiData.content.length === 0) {
+      console.error('No content in Claude response');
       return new Response(
-        JSON.stringify({ error: 'Invalid response from OpenAI API' }),
+        JSON.stringify({ error: 'Invalid response from Claude API' }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -300,13 +282,10 @@ NO_NAMES_FOUND`
       );
     }
 
-    const responseText = openaiData.choices[0]?.message?.content || '';
+    const responseText = openaiData.content?.[0]?.text || '';
     
-    console.log('OpenAI response received');
+    console.log('Claude response received');
     console.log('Response:', responseText);
-    if (openaiData.usage) {
-      console.log('Token usage:', JSON.stringify(openaiData.usage));
-    }
 
     // Parse and process names
     let names: string[] = [];
@@ -315,14 +294,14 @@ NO_NAMES_FOUND`
       // Split by newlines and filter empty lines
       const rawNames = responseText
         .split('\n')
-        .map(name => name.trim())
-        .filter(name => name.length > 0 && name !== 'NO_NAMES_FOUND');
+        .map((name: string) => name.trim())
+        .filter((name: string) => name.length > 0 && name !== 'NO_NAMES_FOUND');
 
       // Capitalize first letter of each word in each name and remove duplicates
-      const capitalizedNames = rawNames.map(name => {
+      const capitalizedNames = rawNames.map((name: string) => {
         return name
           .split(' ')
-          .map(word => {
+          .map((word: string) => {
             if (word.length === 0) return word;
             return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
           })
@@ -331,7 +310,7 @@ NO_NAMES_FOUND`
 
       // Remove duplicates (case-insensitive comparison)
       const uniqueNames = new Set<string>();
-      capitalizedNames.forEach(name => {
+      capitalizedNames.forEach((name: string) => {
         const normalized = name.toLowerCase();
         if (!Array.from(uniqueNames).some(existing => existing.toLowerCase() === normalized)) {
           uniqueNames.add(name);
@@ -405,7 +384,7 @@ NO_NAMES_FOUND`
           continue;
         }
 
-        console.log(`Recall-person link created for "${personName}"`);
+        console.log(`Recall-person link created for "${personName}"`, recallPerson?.id);
         processedNames.push(personName);
 
       } catch (error) {

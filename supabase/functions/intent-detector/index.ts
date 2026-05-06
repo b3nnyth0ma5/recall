@@ -71,18 +71,18 @@ Deno.serve(async (req) => {
 
     console.log('Analyzing text for intent:', text);
 
-    // Get OpenAI API key
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiApiKey) {
-      console.error('OPENAI_API_KEY not set');
-      return new Response(JSON.stringify({ error: 'OpenAI API key not configured' }), {
+    // Get Claude API key
+    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!claudeApiKey) {
+      console.error('ANTHROPIC_API_KEY not set');
+      return new Response(JSON.stringify({ error: 'Claude API key not configured' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Use OpenAI gpt-4o-mini to detect intent
-    console.log('Calling OpenAI gpt-4o-mini for intent detection...');
+    // Use Claude claude-haiku-4-5 to detect intent
+    console.log('Calling Claude claude-haiku-4-5 for intent detection...');
     
     const systemPrompt = `You are an intent classifier for a recall/memory app. Your job is to determine if the user wants to:
 1. CREATE a new recall/memory (storing information for later)
@@ -103,33 +103,29 @@ Respond ONLY with valid JSON in this exact format:
 
 Be decisive - only use "unknown" if truly ambiguous. Confidence should be 70+ for clear cases.`;
 
-    const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    const qaResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiApiKey}`
+        'x-api-key': claudeApiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'claude-haiku-4-5',
+        max_tokens: 100,
+        system: systemPrompt,
         messages: [
-          {
-            role: 'system',
-            content: systemPrompt
-          },
           {
             role: 'user',
             content: text
           }
-        ],
-        temperature: 0.2,
-        max_tokens: 100,
-        response_format: { type: 'json_object' }
+        ]
       })
     });
 
     if (!qaResponse.ok) {
       const errorText = await qaResponse.text();
-      console.error('OpenAI API error:', errorText);
+      console.error('Claude API error:', errorText);
       console.error('Response status:', qaResponse.status);
       return new Response(JSON.stringify({ error: 'Failed to detect intent', details: errorText }), {
         status: 500,
@@ -138,9 +134,9 @@ Be decisive - only use "unknown" if truly ambiguous. Confidence should be 70+ fo
     }
 
     const qaData = await qaResponse.json();
-    console.log('OpenAI response received:', JSON.stringify(qaData, null, 2));
+    console.log('Claude response received:', JSON.stringify(qaData, null, 2));
     
-    const qaContent = qaData.choices?.[0]?.message?.content;
+    const qaContent = qaData.content?.[0]?.text;
 
     let intent: 'create' | 'search' | 'unknown' = 'unknown';
     let confidence = 0;
@@ -154,7 +150,7 @@ Be decisive - only use "unknown" if truly ambiguous. Confidence should be 70+ fo
         console.log('Intent detected:', intent);
         console.log('Confidence:', confidence);
       } catch (parseError) {
-        console.error('Failed to parse OpenAI response:', parseError);
+        console.error('Failed to parse Claude response:', parseError);
         console.error('Raw content:', qaContent);
         // Default to unknown on parse error
         intent = 'unknown';

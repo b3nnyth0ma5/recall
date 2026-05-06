@@ -14,20 +14,7 @@ interface ImageRecord {
   cdn_url?: string;
 }
 
-interface OpenAIVisionResponse {
-  choices: {
-    message: {
-      content: string;
-    };
-  }[];
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
-}
-
-interface OpenAIErrorResponse {
+interface ClaudeErrorResponse {
   error: {
     message: string;
     type: string;
@@ -41,14 +28,13 @@ interface OpenAIErrorResponse {
  * This function:
  * 1. Receives an image record ID from a database webhook or manual trigger
  * 2. Fetches the image CDN URL from the recall_images table
- * 3. Sends the image to OpenAI's Vision API (gpt-4o-mini) for OCR and explanation
+ * 3. Sends the image to Claude's Vision API (claude-opus-4-5) for OCR and explanation
  * 4. Parses the response to extract OCR text and explanation separately
  * 5. Updates the database with the results
  * 6. Calls the embedding-image function to generate embeddings for the image
  * 
  * Features:
  * - Robust error handling with detailed logging
- * - Cost-optimized using gpt-4o-mini model
  * - Structured prompt for consistent response format
  * - Automatic retry logic for transient failures
  * - Comprehensive validation and sanitization
@@ -100,7 +86,7 @@ Deno.serve(async (req) => {
     // Validate environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
 
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error('Missing Supabase configuration');
@@ -113,10 +99,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!openaiApiKey) {
-      console.error('OPENAI_API_KEY not configured');
+    if (!claudeApiKey) {
+      console.error('ANTHROPIC_API_KEY not configured');
       return new Response(
-        JSON.stringify({ error: 'Server configuration error: OpenAI API key missing' }),
+        JSON.stringify({ error: 'Server configuration error: Claude API key missing' }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -185,69 +171,57 @@ Deno.serve(async (req) => {
     console.log('Using CDN URL for OCR processing:', imageData.cdn_url);
     const imageDataUrl = imageData.cdn_url;
 
-    // Call OpenAI Vision API with enhanced prompt
-    console.log('Calling OpenAI Vision API...');
-    console.log('Model: gpt-4o-mini');
-    console.log('Max tokens: 500');
+    // Call Claude Vision API with enhanced prompt
+    console.log('Calling Claude Vision API...');
+    console.log('Model: claude-opus-4-5');
+    console.log('Max tokens: 1024');
 
-    const openaiRequestBody = {
-      model: 'gpt-4o-mini',
+    const claudeRequestBody = {
+      model: 'claude-opus-4-5',
+      max_tokens: 1024,
       messages: [
         {
           role: 'user',
           content: [
             {
-              type: 'text',
-              text: `Analyze this image and provide two things:
-
-1. OCR TEXT: Extract ALL visible text from the image. If there is no text, write "No text detected."
-
-2. EXPLANATION: Describe what the image shows in under 70 words. Be concise and informative.
-
-Format your response EXACTLY like this:
-
-OCR TEXT:
-[extracted text or "No text detected."]
-
-EXPLANATION:
-[your description here]`
+              type: 'image',
+              source: {
+                type: 'url',
+                url: imageDataUrl
+              }
             },
             {
-              type: 'image_url',
-              image_url: {
-                url: imageDataUrl,
-                detail: 'high'
-              }
+              type: 'text',
+              text: `Analyze this image and provide two things:\n\n1. OCR TEXT: Extract ALL visible text from the image. If there is no text, write "No text detected."\n\n2. EXPLANATION: Describe what the image shows in under 70 words. Be concise and informative.\n\nFormat your response EXACTLY like this:\n\nOCR TEXT:\n[extracted text or "No text detected."]\n\nEXPLANATION:\n[your description here]`
             }
           ]
         }
-      ],
-      max_tokens: 500,
-      temperature: 0.3, // Lower temperature for more consistent results
+      ]
     };
 
-    let openaiResponse;
+    let claudeResponse;
     let retryCount = 0;
     const maxRetries = 2;
 
     // Retry logic for transient failures
     while (retryCount <= maxRetries) {
       try {
-        openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openaiApiKey}`,
+            'x-api-key': claudeApiKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
           },
-          body: JSON.stringify(openaiRequestBody),
+          body: JSON.stringify(claudeRequestBody),
         });
 
-        if (openaiResponse.ok) {
+        if (claudeResponse.ok) {
           break; // Success, exit retry loop
         }
 
         // Handle rate limiting with exponential backoff
-        if (openaiResponse.status === 429 && retryCount < maxRetries) {
+        if (claudeResponse.status === 429 && retryCount < maxRetries) {
           const waitTime = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
           console.log(`Rate limited. Waiting ${waitTime}ms before retry ${retryCount + 1}/${maxRetries}`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -270,13 +244,13 @@ EXPLANATION:
       }
     }
 
-    if (!openaiResponse || !openaiResponse.ok) {
-      const errorText = await openaiResponse?.text() || 'No response';
-      console.error('OpenAI API error response:', errorText);
+    if (!claudeResponse || !claudeResponse.ok) {
+      const errorText = await claudeResponse?.text() || 'No response';
+      console.error('Claude API error response:', errorText);
       
-      let errorMessage = 'OpenAI API request failed';
+      let errorMessage = 'Claude API request failed';
       try {
-        const errorJson = JSON.parse(errorText) as OpenAIErrorResponse;
+        const errorJson = JSON.parse(errorText) as ClaudeErrorResponse;
         errorMessage = errorJson.error?.message || errorMessage;
       } catch {
         // If parsing fails, use the raw error text
@@ -285,9 +259,9 @@ EXPLANATION:
 
       return new Response(
         JSON.stringify({ 
-          error: 'OpenAI API request failed', 
+          error: 'Claude API request failed', 
           details: errorMessage,
-          status: openaiResponse?.status 
+          status: claudeResponse?.status 
         }),
         { 
           status: 500, 
@@ -296,12 +270,12 @@ EXPLANATION:
       );
     }
 
-    const openaiData = await openaiResponse.json() as OpenAIVisionResponse;
+    const openaiData = await claudeResponse.json();
     
-    if (!openaiData.choices || openaiData.choices.length === 0) {
-      console.error('No choices in OpenAI response');
+    if (!openaiData.content || openaiData.content.length === 0) {
+      console.error('No content in Claude response');
       return new Response(
-        JSON.stringify({ error: 'Invalid response from OpenAI API' }),
+        JSON.stringify({ error: 'Invalid response from Claude API' }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -309,13 +283,10 @@ EXPLANATION:
       );
     }
 
-    const responseText = openaiData.choices[0]?.message?.content || '';
+    const responseText = openaiData.content?.[0]?.text || '';
     
-    console.log('OpenAI response received');
+    console.log('Claude response received');
     console.log('Response length:', responseText.length);
-    if (openaiData.usage) {
-      console.log('Token usage:', JSON.stringify(openaiData.usage));
-    }
 
     // Parse the response to extract OCR text and explanation
     let ocrText = '';
