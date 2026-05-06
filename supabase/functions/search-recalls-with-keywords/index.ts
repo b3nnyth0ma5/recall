@@ -37,22 +37,22 @@ function cleanRecallsFromQuery(query: string): string {
     .replace(/\brecalls?\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
-  
+
   console.log(`Cleaned query: "${query}" -> "${cleaned}"`);
   return cleaned;
 }
 
 /**
  * Calculate cosine similarity between two embeddings - INDUSTRY STANDARD
- * 
+ *
  * Cosine similarity formula:
  * similarity = (A · B) / (||A|| * ||B||)
- * 
+ *
  * Where:
  * - A · B is the dot product of vectors A and B
  * - ||A|| is the magnitude (Euclidean norm) of vector A
  * - ||B|| is the magnitude (Euclidean norm) of vector B
- * 
+ *
  * The result is a value between -1 and 1:
  * - 1 means vectors are identical in direction
  * - 0 means vectors are orthogonal (perpendicular)
@@ -103,10 +103,10 @@ function calculateCosineSimilarity(embedding1: number[], embedding2: any): numbe
   for (let i = 0; i < embedding1.length; i++) {
     const a = embedding1[i];
     const b = embedding2Array[i];
-    
+
     // Accumulate dot product
     dotProduct += a * b;
-    
+
     // Accumulate squared magnitudes
     magnitudeA += a * a;
     magnitudeB += b * b;
@@ -130,60 +130,51 @@ function calculateCosineSimilarity(embedding1: number[], embedding2: any): numbe
 }
 
 /**
- * Extract keywords from query using OpenAI NER
+ * Extract keywords from query using Claude NER (claude-haiku-4-5 — fastest model)
  */
-async function extractKeywords(query: string, openaiApiKey: string): Promise<string[]> {
-  console.log('Extracting keywords using OpenAI NER...');
-  
-  const nerPrompt = `Extract keywords from: "${query}". 
-  Don't include verbs, proper nouns, names of people, venues, suburbs or locations. Return comma-separated list only:`;
+async function extractKeywords(query: string, claudeApiKey: string): Promise<string[]> {
+  console.log('Extracting keywords using Claude NER (claude-haiku-4-5)...');
 
-  const nerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+  const nerPrompt = `Extract keywords from: "${query}". Don't include verbs, proper nouns, names of people, venues, suburbs or locations. Return comma-separated list only:`;
+
+  const nerResponse = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${openaiApiKey}`
+      'x-api-key': claudeApiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'Extract keywords as comma-separated list. No explanation.'
-        },
-        {
-          role: 'user',
-          content: nerPrompt
-        }
-      ],
-      temperature: 0.2,
-      max_tokens: 50
+      model: 'claude-haiku-4-5',
+      max_tokens: 50,
+      system: 'Extract keywords as comma-separated list. No explanation.',
+      messages: [{ role: 'user', content: nerPrompt }]
     })
   });
 
   if (!nerResponse.ok) {
     const errorText = await nerResponse.text();
-    console.error('OpenAI NER API error:', errorText);
+    console.error('Claude NER API error:', errorText);
     throw new Error(`Failed to extract keywords: ${errorText}`);
   }
 
   const nerData = await nerResponse.json();
-  const extractedKeywords = nerData.choices?.[0]?.message?.content?.trim() || query;
-  
+  const extractedKeywords = nerData.content?.[0]?.text?.trim() || query;
+
   // Split keywords by comma and clean them
   const keywords = extractedKeywords
     .split(',')
     .map((k: string) => k.trim())
     .filter((k: string) => k.length > 0)
     .slice(0, 10); // Limit to 10 keywords for performance
-  
+
   console.log('Extracted keywords:', keywords);
   return keywords;
 }
 
 /**
  * Generate embeddings for multiple keywords using OpenAI
- * 
+ *
  * This function generates embeddings the same way as embedding-recall and embedding-image:
  * 1. Uses text-embedding-3-small model
  * 2. Requests base64 encoding format
@@ -194,7 +185,7 @@ async function generateKeywordEmbeddings(keywords: string[], openaiApiKey: strin
   console.log(`Generating embeddings for ${keywords.length} keywords...`);
   console.log('Model: text-embedding-3-small');
   console.log('Encoding format: base64');
-  
+
   const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
     method: 'POST',
     headers: {
@@ -215,44 +206,44 @@ async function generateKeywordEmbeddings(keywords: string[], openaiApiKey: strin
   }
 
   const embeddingData = await embeddingResponse.json();
-  
+
   if (!embeddingData.data || embeddingData.data.length === 0) {
     console.error('No data in OpenAI embedding response');
     throw new Error('Invalid response from OpenAI API');
   }
 
   console.log(`Received ${embeddingData.data.length} embeddings from OpenAI`);
-  
+
   // Decode all embeddings from base64 (same process as embedding-recall and embedding-image)
   const embeddings: number[][] = embeddingData.data.map((item: any, index: number) => {
     const embeddingBase64 = item.embedding;
-    
+
     // Decode base64 to binary string
     const binaryString = atob(embeddingBase64);
-    
+
     // Convert binary string to Uint8Array
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
-    
+
     // Interpret bytes as Float32Array
     const float32Array = new Float32Array(bytes.buffer);
-    
+
     // Convert to regular array
     const embeddingArray = Array.from(float32Array);
-    
+
     console.log(`Decoded embedding ${index + 1}/${embeddingData.data.length}: length=${embeddingArray.length}`);
-    
+
     return embeddingArray;
   });
-  
+
   console.log(`Successfully generated and decoded ${embeddings.length} embeddings`);
-  
+
   if (embeddingData.usage) {
     console.log('Token usage:', JSON.stringify(embeddingData.usage));
   }
-  
+
   return embeddings;
 }
 
@@ -267,21 +258,21 @@ function calculateMultiKeywordMatch(
 ): { matchCount: number; bestSimilarity: number } {
   let matchCount = 0;
   let bestSimilarity = 0;
-  
+
   for (const keywordEmb of keywordEmbeddings) {
     const sim = calculateCosineSimilarity(keywordEmb, targetEmbedding);
-    
+
     // Count matches above threshold
     if (sim >= threshold) {
       matchCount++;
     }
-    
+
     // Track best similarity
     if (sim > bestSimilarity) {
       bestSimilarity = sim;
     }
   }
-  
+
   return { matchCount, bestSimilarity };
 }
 
@@ -355,7 +346,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get OpenAI API key
+    // Get Claude API key (for NER — fastest model: claude-haiku-4-5)
+    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!claudeApiKey) {
+      console.error('ANTHROPIC_API_KEY not set');
+      return new Response(JSON.stringify({ error: 'Anthropic API key not configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Get OpenAI API key (for embeddings only)
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
       console.error('OPENAI_API_KEY not set');
@@ -365,14 +366,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Step 1: Extract keywords first
+    // Step 1: Extract keywords using Claude (claude-haiku-4-5 — fastest model)
     console.log('Step 1: Extracting keywords...');
-    const keywords = await extractKeywords(cleanedQuery, openaiApiKey);
-    
-    // Step 2: Generate embeddings for each keyword
+    const keywords = await extractKeywords(cleanedQuery, claudeApiKey);
+
+    // Step 2: Generate embeddings for each keyword (OpenAI — unchanged)
     console.log('Step 2: Generating embeddings for each keyword...');
     const keywordEmbeddings = await generateKeywordEmbeddings(keywords, openaiApiKey);
-    
+
     // Step 3: Fetch recalls and images from database
     console.log('Step 3: Fetching recalls and images from database...');
     const recallsQuery = supabase
@@ -423,22 +424,22 @@ Deno.serve(async (req) => {
 
     // Calculate matches in single pass
     const recallMatches: RecallMatch[] = [];
-    
+
     for (const recall of allRecalls) {
       // Calculate text similarity using cosine similarity for each keyword with TEXT threshold
       const textMatch = calculateMultiKeywordMatch(keywordEmbeddings, recall.recall_embedding, TEXT_SIMILARITY_THRESHOLD);
-      
+
       // Calculate image similarities for each keyword with IMAGE threshold
       const recallImages = imagesByRecall.get(recall.id) || [];
       const imageSimilarities: number[] = [];
       const imagesData: RecallMatch['images_data'] = [];
       let totalImageKeywordMatches = 0;
-      
+
       for (const image of recallImages) {
         const imageMatch = calculateMultiKeywordMatch(keywordEmbeddings, image.recall_image_embedding, IMAGE_SIMILARITY_THRESHOLD);
         imageSimilarities.push(imageMatch.bestSimilarity);
         totalImageKeywordMatches += imageMatch.matchCount;
-        
+
         imagesData.push({
           id: image.id,
           ocr_text: image.ocr_text || '',
@@ -446,10 +447,10 @@ Deno.serve(async (req) => {
           similarity: imageMatch.bestSimilarity
         });
       }
-      
+
       // Total keyword matches across text and images
       const totalKeywordMatches = textMatch.matchCount + totalImageKeywordMatches;
-      
+
       // Only include recalls that meet their respective thresholds
       if (textMatch.bestSimilarity >= TEXT_SIMILARITY_THRESHOLD || imageSimilarities.some(sim => sim >= IMAGE_SIMILARITY_THRESHOLD)) {
         recallMatches.push({
