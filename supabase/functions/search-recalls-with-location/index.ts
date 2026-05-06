@@ -6,330 +6,133 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-/**
- * Calculate distance between two coordinates using Haversine formula - OPTIMIZED
- */
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Earth's radius in kilometers
+  const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/**
- * Calculate bounding box from center point and buffer distance - OPTIMIZED
- */
-function calculateBoundingBox(
-  centerLat: number,
-  centerLon: number,
-  bufferKm: number
-): { minLat: number; maxLat: number; minLon: number; maxLon: number } {
-  const R = 6371; // Earth's radius in kilometers
-  
-  // Calculate latitude bounds
-  const latDelta = (bufferKm / R) * (180 / Math.PI);
-  const minLat = centerLat - latDelta;
-  const maxLat = centerLat + latDelta;
-  
-  // Calculate longitude bounds (accounting for latitude)
-  const lonDelta = (bufferKm / R) * (180 / Math.PI) / Math.cos(centerLat * Math.PI / 180);
-  const minLon = centerLon - lonDelta;
-  const maxLon = centerLon + lonDelta;
-  
-  return { minLat, maxLat, minLon, maxLon };
+function calculateBoundingBox(lat: number, lon: number, km: number) {
+  const R = 6371;
+  const latDelta = (km / R) * (180 / Math.PI);
+  const lonDelta = latDelta / Math.cos((lat * Math.PI) / 180);
+  return { minLat: lat - latDelta, maxLat: lat + latDelta, minLon: lon - lonDelta, maxLon: lon + lonDelta };
 }
 
-/**
- * Extract distance from query - OPTIMIZED
- */
 function extractDistanceFromQuery(query: string): number | null {
-  const distancePattern = /(\d+(?:\.\d+)?)\s*km/i;
-  const match = query.match(distancePattern);
-  
-  if (match && match[1]) {
-    const distance = parseFloat(match[1]);
-    if (!isNaN(distance) && distance > 0) {
-      return distance;
-    }
-  }
-  
-  return null;
+  const m = query.match(/(\d+(?:\.\d+)?)\s*km/i);
+  return m ? parseFloat(m[1]) || null : null;
 }
 
-/**
- * Use Claude to detect multiple location intents - OPTIMIZED
- */
-async function detectMultipleLocationIntents(query: string, claudeApiKey: string) {
+async function detectLocationIntents(query: string, claudeApiKey: string) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': claudeApiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5',
+      max_tokens: 300,
+      system: `Detect ALL location intents. Return JSON array only:
+[{"hasLocationIntent":true/false,"intentType":"in"|"near"|"near_me"|null,"location":"name"|null,"confidence":0-100}]
+"in [loc]"=within area (500m), "near [loc]"=near place (1km), "near me"=user location (1km).
+Extract ALL locations. JSON array only, no markdown.`,
+      messages: [{ role: 'user', content: `Analyze: "${query}"` }]
+    })
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const text = data.content?.[0]?.text?.trim();
+  if (!text) return null;
   try {
-    console.log('Detecting multiple location intents...');
-
-    // Optimized prompt for faster processing with multiple location detection
-    const systemPrompt = `Detect ALL location intents in the query. Including names of cities, suburbs, venues and establishments. Return JSON array:
-[{"hasLocationIntent": true/false, "intentType": "in"|"near"|"near_me"|null, "location": "name"|null, "confidence": 0-100}]
-
-"in [location]" = within area (500m buffer)
-"near [location]" = near place (1km radius)
-"near me" = user location (1km radius)
-
-Extract ALL locations mentioned. Examples:
-- "restaurants in Melbourne and Sydney" → [{"hasLocationIntent": true, "intentType": "in", "location": "Melbourne", "confidence": 95}, {"hasLocationIntent": true, "intentType": "in", "location": "Sydney", "confidence": 95}]
-- "near Collingwood or Richmond" → [{"hasLocationIntent": true, "intentType": "near", "location": "Collingwood", "confidence": 90}, {"hasLocationIntent": true, "intentType": "near", "location": "Richmond", "confidence": 90}]
-- "near me" → [{"hasLocationIntent": true, "intentType": "near_me", "location": null, "confidence": 100}]
-
-Respond with a valid JSON array only, no markdown.`;
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': claudeApiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5',
-        max_tokens: 300,
-        system: systemPrompt,
-        messages: [
-          { role: 'user', content: `Analyze: "${query}"` }
-        ]
-      }),
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = await response.json();
-    const content = data.content?.[0]?.text;
-
-    if (!content) {
-      return null;
-    }
-
-    // Parse JSON response
-    let jsonContent = content.trim();
-    if (jsonContent.startsWith('```json')) {
-      jsonContent = jsonContent.replace(/^```json\n/, '').replace(/\n```$/, '');
-    } else if (jsonContent.startsWith('```')) {
-      jsonContent = jsonContent.replace(/^```\n/, '').replace(/\n```$/, '');
-    }
-
-    const results = JSON.parse(jsonContent);
-
-    // Filter out low confidence results
-    const validResults = Array.isArray(results) 
-      ? results.filter((r: any) => r.hasLocationIntent && r.confidence >= 70)
-      : [];
-
-    if (validResults.length === 0) {
-      return null;
-    }
-
-    return validResults;
-  } catch (error) {
-    console.error('Error detecting location intents:', error);
+    const results = JSON.parse(text);
+    const valid = Array.isArray(results) ? results.filter((r: any) => r.hasLocationIntent && r.confidence >= 70) : [];
+    return valid.length ? valid : null;
+  } catch {
     return null;
   }
 }
 
-/**
- * Search for a place using Google Places API - OPTIMIZED
- */
 async function searchGooglePlaces(locationQuery: string, googleApiKey: string, userLocation?: { latitude: number; longitude: number }) {
-  try {
-    console.log('Searching Google Places for:', locationQuery);
-
-    const baseUrl = 'https://places.googleapis.com/v1/places:searchText';
-
-    const requestBody: any = {
-      textQuery: locationQuery,
-      languageCode: 'en',
-      maxResultCount: 1,
-    };
-
-    // Add location bias if user location is provided
-    if (userLocation) {
-      requestBody.locationBias = {
-        circle: {
-          center: {
-            latitude: userLocation.latitude,
-            longitude: userLocation.longitude,
-          },
-          radius: 50000.0, // 50km bias
-        },
-      };
-    }
-
-    const response = await fetch(baseUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': googleApiKey,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.location',
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = await response.json();
-
-    if (!data.places || data.places.length === 0) {
-      return null;
-    }
-
-    const place = data.places[0];
-    return {
-      placeId: place.id,
-      displayName: place.displayName?.text || 'Unknown Place',
-      latitude: place.location?.latitude || 0,
-      longitude: place.location?.longitude || 0,
-    };
-  } catch (error) {
-    console.error('Error searching Google Places:', error);
-    return null;
+  const body: any = { textQuery: locationQuery, languageCode: 'en', maxResultCount: 1 };
+  if (userLocation) {
+    body.locationBias = { circle: { center: { latitude: userLocation.latitude, longitude: userLocation.longitude }, radius: 50000.0 } };
   }
+  const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': googleApiKey, 'X-Goog-FieldMask': 'places.id,places.displayName,places.location' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data.places?.length) return null;
+  const p = data.places[0];
+  return { placeId: p.id, displayName: p.displayName?.text || 'Unknown Place', latitude: p.location?.latitude || 0, longitude: p.location?.longitude || 0 };
 }
 
-/**
- * Filter recalls by location - OPTIMIZED for O(1) lookup
- */
-function filterRecallsByLocation(
-  recallsData: any[],
-  placeResult: any,
-  searchStrategy: string,
-  bufferKm: number
-): any[] {
-  let filteredRecalls: any[];
-
-  if (searchStrategy === 'bounding_box') {
-    const bbox = calculateBoundingBox(
-      placeResult.latitude,
-      placeResult.longitude,
-      bufferKm
-    );
-
-    // O(n) single pass with early filtering
-    filteredRecalls = recallsData
-      .filter((recall) => {
-        const lat = recall.latitude!;
-        const lon = recall.longitude!;
-        return (
-          lat >= bbox.minLat &&
-          lat <= bbox.maxLat &&
-          lon >= bbox.minLon &&
-          lon <= bbox.maxLon
-        );
-      })
-      .map((recall) => ({
-        ...recall,
-        distance: calculateDistance(
-          placeResult.latitude,
-          placeResult.longitude,
-          recall.latitude!,
-          recall.longitude!
-        )
-      }))
-      .sort((a, b) => a.distance - b.distance);
-  } else {
-    // O(n) single pass with distance calculation and filtering
-    filteredRecalls = recallsData
-      .map((recall) => ({
-        ...recall,
-        distance: calculateDistance(
-          placeResult.latitude,
-          placeResult.longitude,
-          recall.latitude!,
-          recall.longitude!
-        )
-      }))
-      .filter((recall) => recall.distance <= bufferKm)
+function filterRecallsByLocation(recalls: any[], place: any, strategy: string, bufferKm: number): any[] {
+  if (strategy === 'bounding_box') {
+    const bbox = calculateBoundingBox(place.latitude, place.longitude, bufferKm);
+    return recalls
+      .filter(r => r.latitude >= bbox.minLat && r.latitude <= bbox.maxLat && r.longitude >= bbox.minLon && r.longitude <= bbox.maxLon)
+      .map(r => ({ ...r, distance: calculateDistance(place.latitude, place.longitude, r.latitude, r.longitude) }))
       .sort((a, b) => a.distance - b.distance);
   }
-
-  return filteredRecalls;
+  return recalls
+    .map(r => ({ ...r, distance: calculateDistance(place.latitude, place.longitude, r.latitude, r.longitude) }))
+    .filter(r => r.distance <= bufferKm)
+    .sort((a, b) => a.distance - b.distance);
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders,
-    });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
 
   const startTime = Date.now();
-  console.log('=== search-recalls-with-location started ===');
+  console.log('=== search-recalls-with-location started ===', new Date().toISOString());
 
   try {
-    // Get the authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
 
-    // Verify the user's JWT token
     const token = authHeader.replace('Bearer ', '');
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(token);
-
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Parse request body
     const { query, userLocation } = await req.json();
-
-    if (!query || typeof query !== 'string' || query.trim().length === 0) {
+    if (!query || typeof query !== 'string' || !query.trim()) {
       return new Response(JSON.stringify({ error: 'Query parameter is required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Get API keys
+    console.log(`Query: "${query}"`);
+
     const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
     const googleApiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
-
     if (!claudeApiKey || !googleApiKey) {
-      return new Response(
-        JSON.stringify({ error: 'API keys not configured' }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return new Response(JSON.stringify({ error: 'API keys not configured' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    // OPTIMIZATION: Run location intent detection and recall fetching in parallel
+    // Location intent detection + DB fetch in parallel
     const [locationIntents, recallsResult] = await Promise.all([
-      detectMultipleLocationIntents(query, claudeApiKey),
+      detectLocationIntents(query, claudeApiKey),
       supabase
         .from('recalls')
         .select('id, latitude, longitude, location, location_primary_type')
@@ -338,202 +141,93 @@ Deno.serve(async (req) => {
         .not('longitude', 'is', null)
     ]);
 
-    // If no location intent detected, return early
-    if (!locationIntents || locationIntents.length === 0) {
-      return new Response(
-        JSON.stringify({
-          hasLocationIntent: false,
-          shouldUseRegularSearch: true,
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+    if (!locationIntents?.length) {
+      return new Response(JSON.stringify({ hasLocationIntent: false, shouldUseRegularSearch: true }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     if (recallsResult.error) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch recalls' }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return new Response(JSON.stringify({ error: 'Failed to fetch recalls' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    const recallsData = recallsResult.data || [];
-    console.log(`Processing ${locationIntents.length} location(s) for ${recallsData.length} recalls`);
+    const recallsData = recallsResult.data ?? [];
+    console.log(`Processing ${locationIntents.length} location(s) against ${recallsData.length} recalls`);
 
     // Process all locations in parallel
     const locationResults = await Promise.all(
-      locationIntents.map(async (locationIntent: any) => {
-        // Handle "near me" or "around me"
-        if (locationIntent.intentType === 'near_me') {
-          if (!userLocation || !userLocation.latitude || !userLocation.longitude) {
-            return {
-              hasLocationIntent: true,
-              locationResolved: false,
-              error: 'User location required for "near me" queries',
-            };
+      locationIntents.map(async (intent: any) => {
+        if (intent.intentType === 'near_me') {
+          if (!userLocation?.latitude || !userLocation?.longitude) {
+            return { hasLocationIntent: true, locationResolved: false, error: 'User location required' };
           }
-
-          const extractedDistance = extractDistanceFromQuery(query);
-          const radiusKm = extractedDistance !== null ? extractedDistance : 1;
-
-          // Filter recalls by proximity - OPTIMIZED single pass
-          const filteredRecalls = recallsData
-            .map((recall) => ({
-              ...recall,
-              distance: calculateDistance(
-                userLocation.latitude,
-                userLocation.longitude,
-                recall.latitude!,
-                recall.longitude!
-              )
-            }))
-            .filter((recall) => recall.distance <= radiusKm)
+          const radiusKm = extractDistanceFromQuery(query) ?? 1;
+          const filtered = recallsData
+            .map(r => ({ ...r, distance: calculateDistance(userLocation.latitude, userLocation.longitude, r.latitude!, r.longitude!) }))
+            .filter(r => r.distance <= radiusKm)
             .sort((a, b) => a.distance - b.distance);
-
-          const recallIds = filteredRecalls.map((r) => r.id);
-
           return {
-            hasLocationIntent: true,
-            locationResolved: true,
-            recallIds,
-            locationInfo: {
-              location: 'Your current location',
-              resolvedPlace: 'Your current location',
-              proximity: radiusKm,
-              intentType: 'near_me',
-              coordinates: {
-                latitude: userLocation.latitude,
-                longitude: userLocation.longitude,
-              },
-            },
+            hasLocationIntent: true, locationResolved: true,
+            recallIds: filtered.map(r => r.id),
+            locationInfo: { location: 'Your current location', resolvedPlace: 'Your current location', proximity: radiusKm, intentType: 'near_me', coordinates: { latitude: userLocation.latitude, longitude: userLocation.longitude } }
           };
         }
 
-        // Resolve location using Google Places API
-        const placeResult = await searchGooglePlaces(
-          locationIntent.location,
-          googleApiKey,
-          userLocation
-        );
+        const place = await searchGooglePlaces(intent.location, googleApiKey, userLocation);
+        if (!place) return { hasLocationIntent: true, locationResolved: false, location: intent.location };
 
-        if (!placeResult) {
-          return {
-            hasLocationIntent: true,
-            locationResolved: false,
-            location: locationIntent.location,
-          };
-        }
-
-        // Determine search strategy
-        const searchStrategy = locationIntent.intentType === 'in' ? 'bounding_box' : 'radius';
-        const bufferKm = locationIntent.intentType === 'in' ? 0.5 : 1;
-
-        // Filter recalls - OPTIMIZED
-        const filteredRecalls = filterRecallsByLocation(
-          recallsData,
-          placeResult,
-          searchStrategy,
-          bufferKm
-        );
-
-        const recallIds = filteredRecalls.map((r) => r.id);
+        const strategy = intent.intentType === 'in' ? 'bounding_box' : 'radius';
+        const bufferKm = intent.intentType === 'in' ? 0.5 : 1;
+        const filtered = filterRecallsByLocation(recallsData, place, strategy, bufferKm);
 
         return {
-          hasLocationIntent: true,
-          locationResolved: true,
-          recallIds,
-          locationInfo: {
-            location: locationIntent.location,
-            resolvedPlace: placeResult.displayName,
-            proximity: bufferKm,
-            intentType: locationIntent.intentType,
-            searchStrategy,
-            coordinates: {
-              latitude: placeResult.latitude,
-              longitude: placeResult.longitude,
-            },
-          },
+          hasLocationIntent: true, locationResolved: true,
+          recallIds: filtered.map(r => r.id),
+          locationInfo: { location: intent.location, resolvedPlace: place.displayName, proximity: bufferKm, intentType: intent.intentType, searchStrategy: strategy, coordinates: { latitude: place.latitude, longitude: place.longitude } }
         };
       })
     );
 
-    // Combine results from all locations
-    const resolvedLocations = locationResults.filter((r: any) => r.locationResolved);
-    
-    if (resolvedLocations.length === 0) {
-      return new Response(
-        JSON.stringify({
-          hasLocationIntent: true,
-          locationResolved: false,
-          shouldUseRegularSearch: true,
-          attemptedLocations: locationIntents.length,
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+    const resolved = locationResults.filter((r: any) => r.locationResolved);
+    if (!resolved.length) {
+      return new Response(JSON.stringify({
+        hasLocationIntent: true, locationResolved: false,
+        shouldUseRegularSearch: true, attemptedLocations: locationIntents.length
+      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Merge recall IDs from all locations (using Set for O(1) deduplication)
     const allRecallIds = new Set<string>();
-    resolvedLocations.forEach((result: any) => {
-      result.recallIds.forEach((id: string) => allRecallIds.add(id));
-    });
+    for (const r of resolved) for (const id of r.recallIds) allRecallIds.add(id);
 
-    const uniqueRecallIds = Array.from(allRecallIds);
+    const locationNames = resolved.map((r: any) => r.locationInfo.resolvedPlace).join(', ');
+    const primary = resolved[0].locationInfo;
 
-    // Create combined location info
-    const locationNames = resolvedLocations
-      .map((r: any) => r.locationInfo.resolvedPlace)
-      .join(', ');
+    const processingTime = Date.now() - startTime;
+    console.log(`Found ${allRecallIds.size} recalls across ${resolved.length} location(s) | ${processingTime}ms`);
 
-    const primaryLocation = resolvedLocations[0].locationInfo;
+    return new Response(JSON.stringify({
+      hasLocationIntent: true, locationResolved: true,
+      recallIds: Array.from(allRecallIds),
+      locationInfo: {
+        location: locationNames, resolvedPlace: locationNames,
+        proximity: primary.proximity, intentType: primary.intentType,
+        searchStrategy: primary.searchStrategy, coordinates: primary.coordinates,
+        multipleLocations: resolved.length > 1, locationCount: resolved.length,
+        locations: resolved.map((r: any) => r.locationInfo)
+      },
+      cleanedQuery: query,
+      processingTimeMs: processingTime
+    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    return new Response(
-      JSON.stringify({
-        hasLocationIntent: true,
-        locationResolved: true,
-        recallIds: uniqueRecallIds,
-        locationInfo: {
-          location: locationNames,
-          resolvedPlace: locationNames,
-          proximity: primaryLocation.proximity,
-          intentType: primaryLocation.intentType,
-          searchStrategy: primaryLocation.searchStrategy,
-          coordinates: primaryLocation.coordinates,
-          multipleLocations: resolvedLocations.length > 1,
-          locationCount: resolvedLocations.length,
-          locations: resolvedLocations.map((r: any) => r.locationInfo),
-        },
-        cleanedQuery: query,
-        processingTimeMs: Date.now() - startTime,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
   } catch (error) {
     const processingTime = Date.now() - startTime;
-    console.error('=== Error in search-recalls-with-location ===');
-    console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
-
-    return new Response(
-      JSON.stringify({
-        error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error',
-        processingTimeMs: processingTime,
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    console.error('Error in search-recalls-with-location:', error instanceof Error ? error.message : error);
+    return new Response(JSON.stringify({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      processingTimeMs: processingTime
+    }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

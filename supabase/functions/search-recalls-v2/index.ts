@@ -20,394 +20,249 @@ interface Recall {
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    console.log('Handling OPTIONS preflight request');
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders
-    });
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   const startTime = Date.now();
-  console.log('=== Search Recalls V2 Edge Function Started ===');
-  console.log('Timestamp:', new Date().toISOString());
+  console.log('=== search-recalls-v2 started ===', new Date().toISOString());
 
   try {
-    // Get the authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
 
-    // Verify the user's JWT token
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
     if (authError || !user) {
-      console.error('Authentication error:', authError);
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    console.log('Authenticated user:', user.id);
-
-    // Parse request body
     const { query, locationRecalls, peopleRecalls, keywordRecalls, personInfo } = await req.json();
-
     if (!query || typeof query !== 'string') {
       return new Response(JSON.stringify({ error: 'Query parameter is required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    console.log('Search query:', query);
-    console.log('Location recalls:', locationRecalls ? `${locationRecalls.length} recalls` : 'None');
-    console.log('People recalls:', peopleRecalls ? `${peopleRecalls.length} recalls` : 'None');
-    console.log('Keyword recalls:', keywordRecalls ? `${keywordRecalls.length} recalls` : 'None');
+    console.log(`Query: "${query}" | location=${locationRecalls?.length ?? 0} people=${peopleRecalls?.length ?? 0} keyword=${keywordRecalls?.length ?? 0}`);
 
-    // Collect all unique recall IDs that need to be fetched
+    // Build sets of IDs that need full data fetched
     const recallIdsToFetch = new Set<string>();
-    
-    // Keyword recalls already have full data
     const keywordRecallsMap = new Map<string, any>();
-    if (keywordRecalls && Array.isArray(keywordRecalls)) {
-      keywordRecalls.forEach((recall: any) => {
-        keywordRecallsMap.set(recall.recall_id, recall);
-      });
+
+    if (keywordRecalls?.length) {
+      for (const r of keywordRecalls) keywordRecallsMap.set(r.recall_id, r);
     }
-    
-    // Location recalls only have IDs - need to fetch
-    if (locationRecalls && Array.isArray(locationRecalls)) {
-      locationRecalls.forEach((recall: any) => {
-        if (recall.recall_id) {
-          recallIdsToFetch.add(recall.recall_id);
-        }
-      });
+    if (locationRecalls?.length) {
+      for (const r of locationRecalls) r.recall_id && recallIdsToFetch.add(r.recall_id);
     }
-    
-    // People recalls only have IDs - need to fetch
-    if (peopleRecalls && Array.isArray(peopleRecalls)) {
-      peopleRecalls.forEach((recall: any) => {
-        if (recall.recall_id) {
-          recallIdsToFetch.add(recall.recall_id);
-        }
-      });
+    if (peopleRecalls?.length) {
+      for (const r of peopleRecalls) r.recall_id && recallIdsToFetch.add(r.recall_id);
     }
 
-    console.log(`Need to fetch full data for ${recallIdsToFetch.size} recalls (location + people)`);
+    const allUniqueRecallIds = new Set<string>([...keywordRecallsMap.keys(), ...recallIdsToFetch]);
+    console.log(`Fetching data for ${recallIdsToFetch.size} recalls, images for ${allUniqueRecallIds.size} recalls`);
 
-    // Fetch full recall data for location and people recalls
-    let fetchedRecallsData: any[] = [];
-    if (recallIdsToFetch.size > 0) {
-      const { data: recallsData, error: recallsError } = await supabase
-        .from('recalls')
-        .select('id, text, location, location_primary_type, created_at')
-        .in('id', Array.from(recallIdsToFetch))
-        .eq('user_id', user.id);
-
-      if (recallsError) {
-        console.error('Error fetching recalls:', recallsError);
-      } else {
-        fetchedRecallsData = recallsData || [];
-        console.log(`Fetched full data for ${fetchedRecallsData.length} recalls`);
-      }
-    }
-
-    // Create a map of fetched recall data
-    const fetchedRecallsMap = new Map<string, any>();
-    fetchedRecallsData.forEach((recall: any) => {
-      fetchedRecallsMap.set(recall.id, {
-        text: recall.text || '',
-        location: recall.location || '',
-        location_primary_type: recall.location_primary_type || '',
-        created_at: recall.created_at
-      });
-    });
-
-    // Fetch ALL images for ALL unique recall IDs (keyword + location + people)
-    const allUniqueRecallIds = new Set<string>([
-      ...keywordRecallsMap.keys(),
-      ...recallIdsToFetch
+    // Fetch recall data and images in parallel
+    const [fetchedRecallsResult, allImagesResult] = await Promise.all([
+      recallIdsToFetch.size > 0
+        ? supabase
+            .from('recalls')
+            .select('id, text, location, location_primary_type, created_at')
+            .in('id', Array.from(recallIdsToFetch))
+            .eq('user_id', user.id)
+        : Promise.resolve({ data: [], error: null }),
+      allUniqueRecallIds.size > 0
+        ? supabase
+            .from('recall_images')
+            .select('id, recall_id, ocr_text, image_explanation')
+            .in('recall_id', Array.from(allUniqueRecallIds))
+            .eq('user_id', user.id)
+        : Promise.resolve({ data: [], error: null })
     ]);
 
-    console.log(`Fetching ALL images for ${allUniqueRecallIds.size} unique recalls...`);
+    if (fetchedRecallsResult.error) console.error('Error fetching recalls:', fetchedRecallsResult.error);
+    if (allImagesResult.error) console.error('Error fetching images:', allImagesResult.error);
 
-    let allImagesData: any[] = [];
-    if (allUniqueRecallIds.size > 0) {
-      const { data: imagesData, error: imagesError } = await supabase
-        .from('recall_images')
-        .select('id, recall_id, ocr_text, image_explanation')
-        .in('recall_id', Array.from(allUniqueRecallIds))
-        .eq('user_id', user.id);
-
-      if (imagesError) {
-        console.error('Error fetching images:', imagesError);
-      } else {
-        allImagesData = imagesData || [];
-        console.log(`Fetched ${allImagesData.length} total images for all recalls`);
-      }
+    // Build lookup maps
+    const fetchedRecallsMap = new Map<string, any>();
+    for (const r of (fetchedRecallsResult.data ?? [])) {
+      fetchedRecallsMap.set(r.id, {
+        text: r.text || '',
+        location: r.location || '',
+        location_primary_type: r.location_primary_type || '',
+        created_at: r.created_at
+      });
     }
 
-    // Group ALL images by recall_id
     const imagesByRecallId = new Map<string, any[]>();
-    allImagesData.forEach((image: any) => {
-      if (!imagesByRecallId.has(image.recall_id)) {
-        imagesByRecallId.set(image.recall_id, []);
-      }
-      imagesByRecallId.get(image.recall_id)!.push({
-        id: image.id,
-        ocr_text: image.ocr_text || '',
-        image_explanation: image.image_explanation || '',
-        similarity: 1.0 // Default similarity for non-matched images
+    for (const img of (allImagesResult.data ?? [])) {
+      if (!imagesByRecallId.has(img.recall_id)) imagesByRecallId.set(img.recall_id, []);
+      imagesByRecallId.get(img.recall_id)!.push({
+        id: img.id,
+        ocr_text: img.ocr_text || '',
+        image_explanation: img.image_explanation || '',
+        similarity: 1.0
       });
-    });
+    }
 
-    console.log(`Grouped images for ${imagesByRecallId.size} recalls`);
-
-    // Combine all recalls and deduplicate by recall_id
+    // Merge all recalls, deduplicating by recall_id
     const allRecallsMap = new Map<string, Recall>();
-    
-    // Add location recalls
-    if (locationRecalls && Array.isArray(locationRecalls)) {
-      locationRecalls.forEach((recall: any) => {
-        const recallData = fetchedRecallsMap.get(recall.recall_id);
-        const allImages = imagesByRecallId.get(recall.recall_id) || [];
-        
-        allRecallsMap.set(recall.recall_id, {
-          recall_id: recall.recall_id,
-          matchPercentage: recall.matchPercentage || 100,
+
+    if (locationRecalls?.length) {
+      for (const r of locationRecalls) {
+        allRecallsMap.set(r.recall_id, {
+          recall_id: r.recall_id,
+          matchPercentage: r.matchPercentage || 100,
           isLocationMatch: true,
           isPeopleMatch: false,
           isKeywordMatch: false,
-          recall_data: recallData || { text: '', location: '', location_primary_type: '', created_at: null },
-          images_data: allImages
+          recall_data: fetchedRecallsMap.get(r.recall_id) ?? { text: '', location: '', location_primary_type: '', created_at: null },
+          images_data: imagesByRecallId.get(r.recall_id) ?? []
         });
-      });
+      }
     }
-    
-    // Add people recalls
-    if (peopleRecalls && Array.isArray(peopleRecalls)) {
-      peopleRecalls.forEach((recall: any) => {
-        const recallData = fetchedRecallsMap.get(recall.recall_id);
-        const allImages = imagesByRecallId.get(recall.recall_id) || [];
-        
-        if (allRecallsMap.has(recall.recall_id)) {
-          const existing = allRecallsMap.get(recall.recall_id)!;
-          allRecallsMap.set(recall.recall_id, {
-            ...existing,
-            isPeopleMatch: true,
-            // Keep existing recall_data and images_data
-          });
+
+    if (peopleRecalls?.length) {
+      for (const r of peopleRecalls) {
+        const existing = allRecallsMap.get(r.recall_id);
+        if (existing) {
+          existing.isPeopleMatch = true;
         } else {
-          allRecallsMap.set(recall.recall_id, {
-            recall_id: recall.recall_id,
-            matchPercentage: recall.matchPercentage || 100,
+          allRecallsMap.set(r.recall_id, {
+            recall_id: r.recall_id,
+            matchPercentage: r.matchPercentage || 100,
             isLocationMatch: false,
             isPeopleMatch: true,
             isKeywordMatch: false,
-            recall_data: recallData || { text: '', location: '', location_primary_type: '', created_at: null },
-            images_data: allImages
+            recall_data: fetchedRecallsMap.get(r.recall_id) ?? { text: '', location: '', location_primary_type: '', created_at: null },
+            images_data: imagesByRecallId.get(r.recall_id) ?? []
           });
         }
-      });
+      }
     }
-    
-    // Add keyword recalls (these already have full data)
-    if (keywordRecalls && Array.isArray(keywordRecalls)) {
-      keywordRecalls.forEach((recall: any) => {
-        const allImages = imagesByRecallId.get(recall.recall_id) || [];
-        
-        if (allRecallsMap.has(recall.recall_id)) {
-          const existing = allRecallsMap.get(recall.recall_id)!;
-          allRecallsMap.set(recall.recall_id, {
-            ...existing,
-            isKeywordMatch: true,
-            keywordMatches: recall.keywordMatches,
-            totalKeywords: recall.totalKeywords,
-            // Update match percentage if keyword match is higher
-            matchPercentage: Math.max(existing.matchPercentage || 0, recall.matchPercentage || 0),
-            // Merge images_data, preferring keyword recall's similarity scores
-            images_data: allImages.map((img: any) => {
-              const keywordImg = recall.images_data?.find((ki: any) => ki.id === img.id);
-              return keywordImg || img;
-            })
-          });
+
+    if (keywordRecalls?.length) {
+      for (const r of keywordRecalls) {
+        const allImages = imagesByRecallId.get(r.recall_id) ?? [];
+        const mergedImages = allImages.map((img: any) => {
+          const ki = r.images_data?.find((k: any) => k.id === img.id);
+          return ki ?? img;
+        });
+        const existing = allRecallsMap.get(r.recall_id);
+        if (existing) {
+          existing.isKeywordMatch = true;
+          existing.keywordMatches = r.keywordMatches;
+          existing.totalKeywords = r.totalKeywords;
+          existing.matchPercentage = Math.max(existing.matchPercentage || 0, r.matchPercentage || 0);
+          existing.images_data = mergedImages;
         } else {
-          allRecallsMap.set(recall.recall_id, {
-            recall_id: recall.recall_id,
-            matchPercentage: recall.matchPercentage || 0,
+          allRecallsMap.set(r.recall_id, {
+            recall_id: r.recall_id,
+            matchPercentage: r.matchPercentage || 0,
             isLocationMatch: false,
             isPeopleMatch: false,
             isKeywordMatch: true,
-            keywordMatches: recall.keywordMatches,
-            totalKeywords: recall.totalKeywords,
-            recall_data: recall.recall_data || { text: '', location: '', location_primary_type: '', created_at: null },
-            images_data: allImages.map((img: any) => {
-              const keywordImg = recall.images_data?.find((ki: any) => ki.id === img.id);
-              return keywordImg || img;
-            })
+            keywordMatches: r.keywordMatches,
+            totalKeywords: r.totalKeywords,
+            recall_data: r.recall_data ?? { text: '', location: '', location_primary_type: '', created_at: null },
+            images_data: mergedImages
           });
         }
-      });
+      }
     }
 
     const allRecalls = Array.from(allRecallsMap.values());
-    console.log(`Combined ${allRecalls.length} unique recalls from all sources`);
+    console.log(`Combined ${allRecalls.length} unique recalls`);
 
     if (allRecalls.length === 0) {
-      console.log('No recalls to process');
       return new Response(JSON.stringify({
-        answer: null,
-        confidence: 0,
-        results: [],
+        answer: null, confidence: 0, results: [],
         processingTimeMs: Date.now() - startTime,
-        personInfo: personInfo || null,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+        personInfo: personInfo ?? null
+      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Sort recalls by match percentage (highest first)
-    console.log('Sorting recalls by match percentage (highest first)...');
+    // Sort by match % desc, then recency desc
     allRecalls.sort((a, b) => {
-      const matchA = a.matchPercentage || 0;
-      const matchB = b.matchPercentage || 0;
-      
-      if (matchA !== matchB) {
-        return matchB - matchA; // Higher match percentage first
-      }
-      
-      // If match percentages are equal, sort by recency
-      const dateA = a.recall_data?.created_at ? new Date(a.recall_data.created_at).getTime() : 0;
-      const dateB = b.recall_data?.created_at ? new Date(b.recall_data.created_at).getTime() : 0;
-      return dateB - dateA; // Most recent first
-    });
-    
-    console.log('Top 5 recalls after sorting:');
-    allRecalls.slice(0, 5).forEach((recall: Recall, idx: number) => {
-      console.log(`  ${idx + 1}. Match: ${Math.round(recall.matchPercentage || 0)}%, Created: ${recall.recall_data?.created_at || 'N/A'}`);
-      console.log(`     Text: "${(recall.recall_data?.text || '').substring(0, 50)}..."`);
-      console.log(`     Location: "${recall.recall_data?.location || 'N/A'}"`);
-      console.log(`     Location Type: "${recall.recall_data?.location_primary_type || 'N/A'}"`);
-      console.log(`     Images: ${recall.images_data?.length || 0}`);
+      const diff = (b.matchPercentage || 0) - (a.matchPercentage || 0);
+      if (diff !== 0) return diff;
+      const da = a.recall_data?.created_at ? new Date(a.recall_data.created_at).getTime() : 0;
+      const db = b.recall_data?.created_at ? new Date(b.recall_data.created_at).getTime() : 0;
+      return db - da;
     });
 
-    // Get Claude API key
+    console.log(`Top recall: ${Math.round(allRecalls[0]?.matchPercentage || 0)}% match`);
+
     const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!claudeApiKey) {
-      console.error('ANTHROPIC_API_KEY not set');
-      return new Response(JSON.stringify({ error: 'Claude API key not configured' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      return new Response(JSON.stringify({ error: 'Anthropic API key not configured' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Use the highest matching recalls for answering (prioritize top matches)
-    // Build comprehensive context including all images from highest matching recalls
-    console.log('Building context from highest matching recalls...');
-    
-    const contextWithSources = allRecalls.map((recall: Recall, idx: number) => {
+    // Build context — use array join instead of string concatenation
+    const contextParts: string[] = [];
+    const contextWithSources: Array<{ sourceId: string; recallId: string; matchPercentage: number; tier: string; isLocationMatch: boolean; isPeopleMatch: boolean; isKeywordMatch: boolean }> = [];
+
+    for (let idx = 0; idx < allRecalls.length; idx++) {
+      const recall = allRecalls[idx];
       const sourceId = `SOURCE_${idx + 1}`;
-      
-      // Build match type indicators
+
       const matchTypes: string[] = [];
       if (recall.isLocationMatch) matchTypes.push('LOCATION');
       if (recall.isPeopleMatch) matchTypes.push('PEOPLE');
       if (recall.isKeywordMatch) matchTypes.push('KEYWORD');
-      const matchTypeStr = matchTypes.length > 0 ? ` [${matchTypes.join(' + ')}]` : '';
-      
-      const tierMarker = recall.tier ? ` [${recall.tier} TIER]` : '';
-      const keywordMarker = recall.keywordMatches && recall.totalKeywords 
-        ? ` [${recall.keywordMatches}/${recall.totalKeywords} keywords matched]` 
-        : '';
-      
-      let contextText = `${sourceId} (${Math.round(recall.matchPercentage || 0)}% match${matchTypeStr}${tierMarker}${keywordMarker}):\n`;
-      contextText += `Text: ${recall.recall_data?.text || ''}\n`;
-      contextText += `Location: ${recall.recall_data?.location || ''}\n`;
-      contextText += `Location Type: ${recall.recall_data?.location_primary_type || ''}\n`;
-      
-      // Include ALL images with their information
-      if (recall.images_data && recall.images_data.length > 0) {
-        contextText += `Images (${recall.images_data.length}):\n`;
-        recall.images_data.forEach((img: any, imgIdx: number) => {
-          contextText += `  Image ${imgIdx + 1}`;
-          if (img.similarity && img.similarity < 1.0) {
-            contextText += ` (${Math.round(img.similarity * 100)}% match)`;
-          }
-          contextText += `:\n`;
-          if (img.image_explanation) {
-            contextText += `    Explanation: ${img.image_explanation}\n`;
-          }
-          if (img.ocr_text) {
-            contextText += `    OCR Text: ${img.ocr_text}\n`;
-          }
-        });
+
+      const parts: string[] = [
+        `${sourceId} (${Math.round(recall.matchPercentage || 0)}%${matchTypes.length ? ` [${matchTypes.join('+')}]` : ''}${recall.tier ? ` [${recall.tier}]` : ''}${recall.keywordMatches && recall.totalKeywords ? ` [${recall.keywordMatches}/${recall.totalKeywords} kw]` : ''}):`,
+        `Text: ${recall.recall_data?.text || ''}`,
+        `Location: ${recall.recall_data?.location || ''} (${recall.recall_data?.location_primary_type || ''})`
+      ];
+
+      if (recall.images_data?.length) {
+        for (let i = 0; i < recall.images_data.length; i++) {
+          const img = recall.images_data[i];
+          const simStr = img.similarity && img.similarity < 1.0 ? ` (${Math.round(img.similarity * 100)}%)` : '';
+          if (img.image_explanation) parts.push(`  Img${i + 1}${simStr} explanation: ${img.image_explanation}`);
+          if (img.ocr_text) parts.push(`  Img${i + 1}${simStr} ocr: ${img.ocr_text}`);
+        }
       }
-      
-      return {
-        sourceId,
-        recallId: recall.recall_id,
-        text: contextText,
+
+      contextParts.push(parts.join('\n'));
+      contextWithSources.push({
+        sourceId, recallId: recall.recall_id,
         matchPercentage: recall.matchPercentage || 0,
         tier: recall.tier || 'MEDIUM',
         isLocationMatch: recall.isLocationMatch || false,
         isPeopleMatch: recall.isPeopleMatch || false,
         isKeywordMatch: recall.isKeywordMatch || false
-      };
-    });
+      });
+    }
 
-    const context = contextWithSources.map(c => c.text).join('\n');
+    const context = contextParts.join('\n\n');
 
-    // Log the context being passed to Claude
-    console.log('=== CONTEXT BEING PASSED TO CLAUDE ===');
-    console.log(context);
-    console.log('=== END OF CONTEXT ===');
+    // claude-sonnet-4-5: ~3-5x faster than opus, near-identical accuracy for structured QA over provided context
+    const systemPrompt = `You are a search assistant answering questions from personal memory recalls. Answer based only on the provided recalls, prioritising highest match % first.
 
-    // Generate answer using Claude claude-opus-4-5
-    console.log('Generating answer with Claude claude-opus-4-5...');
-    
-    const systemPrompt = `You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
+Rules:
+- Cite sources inline as SOURCE_X immediately after relevant info
+- Use bullet points for lists
+- Return JSON only: {"answer": "text with SOURCE_X inline", "confidence": 0-100, "sources": ["SOURCE_1"]}
+- If insufficient info: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}`;
 
-CRITICAL RULES:
-- Prioritize your answer based on the recalls with the highest match percentages
-- Use bullet points when listing multiple items
-- Provide a confidence score (0-100) based on how well the recalls answer the question
-- Research the answer thoroughly based on the provided information
-- IMPORTANT: When referencing sources in your answer, use the format "SOURCE_X" (e.g., SOURCE_1, SOURCE_2) inline with the text
-- Place source references immediately after the relevant information, like: "The restaurant is located in Collingwood SOURCE_1."
-- You can reference the same source multiple times if needed
-- Don't include explanatory text about sources - just use SOURCE_X inline
-
-MATCH INFORMATION:
-- Pay attention to match type indicators: [LOCATION], [PEOPLE], [KEYWORD]
-- Pay attention to TIER markers: [HIGH], [MEDIUM], [LOW]
-- Pay attention to keyword match counts - more matched keywords indicate better relevance
-
-Provide your answer in JSON format with inline source references: {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
-Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John mentioned he'll bring the presentation SOURCE_2.", "confidence": 90, "sources": ["SOURCE_1", "SOURCE_2"]}
-If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.
-
-Respond with valid JSON only, no markdown.`;
-
-    const userMessage = `Question: ${query}
-
-Available Recalls (sorted by highest match percentage first):
-${context}`;
-
-    console.log('Making request to Claude claude-opus-4-5...');
+    console.log('Calling claude-sonnet-4-5 for QA...');
     const qaResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -416,24 +271,18 @@ ${context}`;
         'content-type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
-        max_tokens: 2048,
+        model: 'claude-sonnet-4-5',
+        max_tokens: 1024,
         system: systemPrompt,
-        messages: [
-          {
-            role: 'user',
-            content: userMessage
-          }
-        ]
+        messages: [{ role: 'user', content: `Question: ${query}\n\nRecalls (highest match first):\n${context}` }]
       })
     });
 
     if (!qaResponse.ok) {
       const errorText = await qaResponse.text();
-      console.error('Claude QA API error:', errorText);
+      console.error('Claude QA error:', errorText);
       return new Response(JSON.stringify({ error: 'Failed to generate answer', details: errorText }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
@@ -447,87 +296,55 @@ ${context}`;
     if (qaContent) {
       try {
         const parsed = JSON.parse(qaContent);
-        answer = parsed.answer || null;
-        confidence = parsed.confidence || 0;
-        sourcesUsed = parsed.sources || [];
-        console.log('Sources used by AI:', sourcesUsed);
-      } catch (parseError) {
-        console.error('Failed to parse QA response:', parseError);
+        answer = parsed.answer ?? null;
+        confidence = parsed.confidence ?? 0;
+        sourcesUsed = parsed.sources ?? [];
+      } catch {
         answer = qaContent;
         confidence = 50;
       }
     }
 
-    console.log('Answer generated:', answer ? 'Yes' : 'No');
-    console.log('Confidence:', confidence);
+    console.log(`Answer: ${answer ? 'yes' : 'no'} | Confidence: ${confidence} | Sources: ${sourcesUsed.length}`);
 
-    // Map source IDs back to recall IDs
     const sourceRecallIds = sourcesUsed
-      .map((sourceId: string) => {
-        const source = contextWithSources.find(c => c.sourceId === sourceId);
-        return source ? source.recallId : null;
-      })
-      .filter((id: string | null) => id !== null);
+      .map((sid: string) => contextWithSources.find(c => c.sourceId === sid)?.recallId ?? null)
+      .filter(Boolean) as string[];
 
-    console.log('Recall IDs used for answer:', sourceRecallIds);
-
-    // Return recalls in order of highest % match first (those used to answer the question)
-    // Used recalls come first (in order of match %), then unused recalls (in order of match %)
-    const usedRecalls = allRecalls.filter((recall: Recall) => sourceRecallIds.includes(recall.recall_id));
-    const unusedRecalls = allRecalls.filter((recall: Recall) => !sourceRecallIds.includes(recall.recall_id));
-    
-    // Sort used recalls by match percentage (highest first)
-    usedRecalls.sort((a, b) => (b.matchPercentage || 0) - (a.matchPercentage || 0));
-    
-    // Sort unused recalls by match percentage (highest first)
-    unusedRecalls.sort((a, b) => (b.matchPercentage || 0) - (a.matchPercentage || 0));
-    
+    const usedSet = new Set(sourceRecallIds);
+    const usedRecalls = allRecalls.filter(r => usedSet.has(r.recall_id)).sort((a, b) => (b.matchPercentage || 0) - (a.matchPercentage || 0));
+    const unusedRecalls = allRecalls.filter(r => !usedSet.has(r.recall_id)).sort((a, b) => (b.matchPercentage || 0) - (a.matchPercentage || 0));
     const orderedRecalls = [...usedRecalls, ...unusedRecalls];
 
-    console.log(`Ordered results: ${usedRecalls.length} used for answer (highest % match first), ${unusedRecalls.length} others (highest % match first)`);
-
-    // Convert to result format
-    const matchResults = orderedRecalls.map((recall: Recall) => ({
-      id: recall.recall_id,
-      matchPercentage: Math.round(recall.matchPercentage || 0),
-      usedForAnswer: sourceRecallIds.includes(recall.recall_id),
-      tier: recall.tier || 'MEDIUM',
-      keywordMatches: recall.keywordMatches || 0,
-      totalKeywords: recall.totalKeywords || 0,
-      isLocationMatch: recall.isLocationMatch || false,
-      isPeopleMatch: recall.isPeopleMatch || false,
-      isKeywordMatch: recall.isKeywordMatch || false
+    const matchResults = orderedRecalls.map((r: Recall) => ({
+      id: r.recall_id,
+      matchPercentage: Math.round(r.matchPercentage || 0),
+      usedForAnswer: usedSet.has(r.recall_id),
+      tier: r.tier || 'MEDIUM',
+      keywordMatches: r.keywordMatches || 0,
+      totalKeywords: r.totalKeywords || 0,
+      isLocationMatch: r.isLocationMatch || false,
+      isPeopleMatch: r.isPeopleMatch || false,
+      isKeywordMatch: r.isKeywordMatch || false
     }));
 
     const processingTime = Date.now() - startTime;
-    console.log('=== Search Recalls V2 completed successfully ===');
-    console.log('Total processing time:', processingTime, 'ms');
+    console.log(`=== search-recalls-v2 done in ${processingTime}ms ===`);
 
     return new Response(JSON.stringify({
-      answer,
-      confidence,
+      answer, confidence,
       results: matchResults,
       processingTimeMs: processingTime,
-      personInfo: personInfo || null,
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+      personInfo: personInfo ?? null
+    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
   } catch (error) {
     const processingTime = Date.now() - startTime;
-    console.error('=== Error in Search Recalls V2 Edge Function ===');
-    console.error('Error type:', error?.constructor?.name);
-    console.error('Error message:', error instanceof Error ? error.message : 'Unknown error');
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-    console.error('Processing time before error:', processingTime, 'ms');
-
+    console.error('Error in search-recalls-v2:', error instanceof Error ? error.message : error);
     return new Response(JSON.stringify({
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error',
       processingTimeMs: processingTime
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
