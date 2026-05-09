@@ -297,11 +297,12 @@ export function useNotes() {
     }
   }, [user, loadImagesForRecalls]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadNotes(1, false);
     setPage(1);
     setHasMore(true);
-  }, [user, loadNotes]);
+  }, [user]);
 
   const loadMoreNotes = useCallback(() => {
     if (!isLoadingMore && hasMore && !loading) {

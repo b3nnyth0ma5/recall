@@ -171,7 +171,6 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Create Your Own Category Button - Always First */}
         <Pressable
           onPress={handleCreatePress}
           style={[styles.categoryItem, styles.categoryItemFirst]}
@@ -191,7 +190,6 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
           </Text>
         </Pressable>
 
-        {/* User Categories - Most recent first (already sorted by created_at desc) */}
         {categories.map((category) => {
           const isSelected = selectedCategoryId === category.id;
           
