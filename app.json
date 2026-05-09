@@ -24,6 +24,7 @@
         ],
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to save and share images.",
         "NSCameraUsageDescription": "This app needs access to your camera to take photos for your recalls.",
+        "NSLocationWhenInUseUsageDescription": "Recall uses your location to tag memories with where they happened.",
         "UISupportsDocumentBrowser": true,
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true,
@@ -54,6 +55,11 @@
       "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "edgeToEdgeEnabled": false,
       "package": "com.b3nny1nc.recall",
+      "permissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ],
       "versionCode": 1,
       "intentFilters": [
         {
