@@ -13,7 +13,7 @@ interface PeopleFinderRequest {
   image_explanation?: string;
 }
 
-interface ClaudeErrorResponse {
+interface OpenAIErrorResponse {
   error: {
     message: string;
     type: string;
@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
     // Validate environment variables early
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
 
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error('Missing Supabase configuration');
@@ -97,10 +97,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!claudeApiKey) {
-      console.error('ANTHROPIC_API_KEY not configured');
+    if (!openaiApiKey) {
+      console.error('OPENAI_API_KEY not configured');
       return new Response(
-        JSON.stringify({ error: 'Server configuration error: Claude API key missing' }),
+        JSON.stringify({ error: 'Server configuration error: OpenAI API key missing' }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -164,14 +164,17 @@ Deno.serve(async (req) => {
     console.log('Combined text length:', combinedText.length);
     console.log('Text sources: recall text + ' + allImageExplanations.length + ' image explanations');
 
-    // Call Claude API for Named Entity Recognition (NER)
-    console.log('Calling Claude API for NER...');
-    console.log('Model: claude-haiku-4-5');
+    // Call OpenAI API for Named Entity Recognition (NER)
+    console.log('Calling OpenAI API for NER...');
+    console.log('Model: gpt-4o-mini');
 
-    const claudeRequestBody = {
-      model: 'claude-haiku-4-5',
+    const openaiRequestBody = {
+      model: 'gpt-4o-mini',
       max_tokens: 300,
-      system: `You are a Named Entity Recognition (NER) system specialized in extracting person names from text. 
+      messages: [
+        {
+          role: 'system',
+          content: `You are a Named Entity Recognition (NER) system specialized in extracting person names from text. 
 
 Your task:
 1. Extract ALL person names (first names, last names, or full names) from the provided text
@@ -190,8 +193,8 @@ Johnson
 
 Input: "The weather is nice today."
 Output:
-NO_NAMES_FOUND`,
-      messages: [
+NO_NAMES_FOUND`
+        },
         {
           role: 'user',
           content: combinedText
@@ -199,29 +202,28 @@ NO_NAMES_FOUND`,
       ]
     };
 
-    let claudeResponse;
+    let openaiResponse;
     let retryCount = 0;
     const maxRetries = 2;
 
     // Retry logic for transient failures
     while (retryCount <= maxRetries) {
       try {
-        claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+        openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
-            'x-api-key': claudeApiKey,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
+            'Authorization': `Bearer ${openaiApiKey}`,
+            'Content-Type': 'application/json',
           },
-          body: JSON.stringify(claudeRequestBody),
+          body: JSON.stringify(openaiRequestBody),
         });
 
-        if (claudeResponse.ok) {
+        if (openaiResponse.ok) {
           break; // Success, exit retry loop
         }
 
         // Handle rate limiting with exponential backoff
-        if (claudeResponse.status === 429 && retryCount < maxRetries) {
+        if (openaiResponse.status === 429 && retryCount < maxRetries) {
           const waitTime = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
           console.log(`Rate limited. Waiting ${waitTime}ms before retry ${retryCount + 1}/${maxRetries}`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -244,13 +246,13 @@ NO_NAMES_FOUND`,
       }
     }
 
-    if (!claudeResponse || !claudeResponse.ok) {
-      const errorText = await claudeResponse?.text() || 'No response';
-      console.error('Claude API error response:', errorText);
+    if (!openaiResponse || !openaiResponse.ok) {
+      const errorText = await openaiResponse?.text() || 'No response';
+      console.error('OpenAI API error response:', errorText);
       
-      let errorMessage = 'Claude API request failed';
+      let errorMessage = 'OpenAI API request failed';
       try {
-        const errorJson = JSON.parse(errorText) as ClaudeErrorResponse;
+        const errorJson = JSON.parse(errorText) as OpenAIErrorResponse;
         errorMessage = errorJson.error?.message || errorMessage;
       } catch {
         errorMessage = errorText.substring(0, 200);
@@ -258,9 +260,9 @@ NO_NAMES_FOUND`,
 
       return new Response(
         JSON.stringify({ 
-          error: 'Claude API request failed', 
+          error: 'OpenAI API request failed', 
           details: errorMessage,
-          status: claudeResponse?.status 
+          status: openaiResponse?.status 
         }),
         { 
           status: 500, 
@@ -269,12 +271,12 @@ NO_NAMES_FOUND`,
       );
     }
 
-    const openaiData = await claudeResponse.json();
+    const openaiData = await openaiResponse.json();
     
-    if (!openaiData.content || openaiData.content.length === 0) {
-      console.error('No content in Claude response');
+    if (!openaiData.choices || openaiData.choices.length === 0) {
+      console.error('No choices in OpenAI response');
       return new Response(
-        JSON.stringify({ error: 'Invalid response from Claude API' }),
+        JSON.stringify({ error: 'Invalid response from OpenAI API' }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -282,9 +284,9 @@ NO_NAMES_FOUND`,
       );
     }
 
-    const responseText = openaiData.content?.[0]?.text || '';
+    const responseText = openaiData.choices?.[0]?.message?.content || '';
     
-    console.log('Claude response received');
+    console.log('OpenAI response received');
     console.log('Response:', responseText);
 
     // Parse and process names

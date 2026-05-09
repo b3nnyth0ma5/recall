@@ -151,9 +151,8 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
 
-    if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey || !claudeApiKey) {
+    if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
       console.error('Missing required environment variables');
       return new Response(JSON.stringify({
         error: 'Server configuration error'
@@ -397,8 +396,8 @@ Deno.serve(async (req) => {
     // Sort by similarity (highest first)
     candidateRecalls.sort((a, b) => b.similarity - a.similarity);
 
-    // Step 6: Use Claude claude-opus-4-5 to analyze and rank the candidate recalls
-    console.log('Step 6: Using Claude claude-opus-4-5 to analyze and rank candidate recalls...');
+    // Step 6: Use OpenAI gpt-4o to analyze and rank the candidate recalls
+    console.log('Step 6: Using OpenAI gpt-4o to analyze and rank candidate recalls...');
 
     // Prepare context for Claude with recall information
     const recallsContext = candidateRecalls.map((recall, idx) => {
@@ -468,19 +467,18 @@ Analyze each recall and provide your response in JSON format:
 
 Only include recalls with confidence >= 55. If no recalls meet this threshold, return an empty matches array.`;
 
-    console.log('Making request to Claude claude-opus-4-5...');
-    const openaiResponse = await fetch('https://api.anthropic.com/v1/messages', {
+    console.log('Making request to OpenAI gpt-4o...');
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'x-api-key': claudeApiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'gpt-4o',
         max_tokens: 2048,
-        system: systemPrompt,
         messages: [
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ]
       })
@@ -488,7 +486,7 @@ Only include recalls with confidence >= 55. If no recalls meet this threshold, r
 
     if (!openaiResponse.ok) {
       const errorText = await openaiResponse.text();
-      console.error('Claude API error:', errorText);
+      console.error('OpenAI API error:', errorText);
       console.error('Response status:', openaiResponse.status);
       console.error('Response headers:', JSON.stringify(Object.fromEntries(openaiResponse.headers.entries())));
       return new Response(JSON.stringify({
@@ -504,8 +502,8 @@ Only include recalls with confidence >= 55. If no recalls meet this threshold, r
     }
 
     const openaiData = await openaiResponse.json();
-    console.log('Claude response received:', JSON.stringify(openaiData, null, 2));
-    const openaiContent = openaiData.content?.[0]?.text;
+    console.log('OpenAI response received:', JSON.stringify(openaiData, null, 2));
+    const openaiContent = openaiData.choices?.[0]?.message?.content;
 
     let matches: Array<{ recallId: string; confidence: number; reason: string }> = [];
 
@@ -513,10 +511,10 @@ Only include recalls with confidence >= 55. If no recalls meet this threshold, r
       try {
         const parsed = JSON.parse(openaiContent);
         matches = parsed.matches || [];
-        console.log(`Claude identified ${matches.length} high-confidence matches`);
+        console.log(`OpenAI identified ${matches.length} high-confidence matches`);
       } catch (parseError) {
-        console.error('Failed to parse Claude response:', parseError);
-        console.error('Claude response content:', openaiContent);
+        console.error('Failed to parse OpenAI response:', parseError);
+        console.error('OpenAI response content:', openaiContent);
         
         // Fallback: use all candidates with similarity-based scores
         matches = candidateRecalls.map((recall, idx) => ({

@@ -66,21 +66,23 @@ function calculateMultiKeywordMatch(
   return { matchCount, bestSimilarity };
 }
 
-async function extractKeywords(query: string, claudeApiKey: string): Promise<string[]> {
-  console.log('Extracting keywords (claude-haiku-4-5)...');
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+async function extractKeywords(query: string, openaiApiKey: string): Promise<string[]> {
+  console.log('Extracting keywords (gpt-4o-mini)...');
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: { 'x-api-key': claudeApiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    headers: { 'Authorization': `Bearer ${openaiApiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5',
+      model: 'gpt-4o-mini',
       max_tokens: 50,
-      system: 'Extract keywords as comma-separated list. No verbs, proper nouns, names, venues, suburbs or locations. No explanation.',
-      messages: [{ role: 'user', content: `Keywords from: "${query}"` }]
+      messages: [
+        { role: 'system', content: 'Extract keywords as comma-separated list. No verbs, proper nouns, names, venues, suburbs or locations. No explanation.' },
+        { role: 'user', content: `Keywords from: "${query}"` }
+      ]
     })
   });
-  if (!res.ok) throw new Error(`Claude NER error: ${await res.text()}`);
+  if (!res.ok) throw new Error(`OpenAI NER error: ${await res.text()}`);
   const data = await res.json();
-  const raw = data.content?.[0]?.text?.trim() || query;
+  const raw = data.choices?.[0]?.message?.content?.trim() || query;
   return raw.split(',').map((k: string) => k.trim()).filter((k: string) => k.length > 0).slice(0, 10);
 }
 
@@ -141,19 +143,18 @@ Deno.serve(async (req) => {
 
     console.log(`Query: "${cleanedQuery}"`);
 
-    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!claudeApiKey || !openaiApiKey) {
+    if (!openaiApiKey) {
       return new Response(JSON.stringify({ error: 'API keys not configured' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
     // Step 1: Extract keywords + fetch DB records in parallel
-    // DB fetch starts immediately while Claude extracts keywords
+    // DB fetch starts immediately while OpenAI extracts keywords
     console.log('Step 1: Extracting keywords + fetching DB in parallel...');
     const [keywords, recallsResult, imagesResult] = await Promise.all([
-      extractKeywords(cleanedQuery, claudeApiKey),
+      extractKeywords(cleanedQuery, openaiApiKey),
       supabase
         .from('recalls')
         .select('id, text, location, location_primary_type, recall_embedding')

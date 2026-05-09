@@ -140,7 +140,6 @@ async function matchRecallAgainstCategories(
   supabaseUrl: string,
   supabaseServiceKey: string,
   openaiApiKey: string,
-  claudeApiKey: string,
   corsHeaders: Record<string, string>,
   startTime: number
 ): Promise<Response> {
@@ -429,8 +428,8 @@ async function matchRecallAgainstCategories(
   // Sort by similarity (highest first)
   candidateCategories.sort((a, b) => b.similarity - a.similarity);
 
-  // Step 9: Use Claude to analyze and rank the candidate categories
-  console.log('Step 9: Using Claude to analyze and rank candidate categories...');
+  // Step 9: Use OpenAI to analyze and rank the candidate categories
+  console.log('Step 9: Using OpenAI to analyze and rank candidate categories...');
 
   // Prepare recall context for Claude
   let recallContext = `Text: ${sanitizeText(recallData.text || 'No text', 300)}`;
@@ -510,18 +509,17 @@ Analyze each category and provide your response in JSON format:
 
 Only include categories with confidence >= 55. If no categories meet this threshold, return an empty matches array.`;
 
-  const openaiResponse = await fetch('https://api.anthropic.com/v1/messages', {
+  const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'x-api-key': claudeApiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json'
+      'Authorization': `Bearer ${openaiApiKey}`,
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'claude-opus-4-5',
+      model: 'gpt-4o',
       max_tokens: 2048,
-      system: systemPrompt,
       messages: [
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ]
     })
@@ -529,7 +527,7 @@ Only include categories with confidence >= 55. If no categories meet this thresh
 
   if (!openaiResponse.ok) {
     const errorText = await openaiResponse.text();
-    console.error('Claude API error:', errorText);
+    console.error('OpenAI API error:', errorText);
     
     // Fallback: use all candidates with similarity-based scores
     console.log('Using fallback matching based on similarity scores');
@@ -565,7 +563,7 @@ Only include categories with confidence >= 55. If no categories meet this thresh
   }
 
   const openaiData = await openaiResponse.json();
-  const openaiContent = openaiData.content?.[0]?.text;
+  const openaiContent = openaiData.choices?.[0]?.message?.content;
 
   let matches: Array<{ categoryId: string; confidence: number; reason: string }> = [];
 
@@ -573,10 +571,10 @@ Only include categories with confidence >= 55. If no categories meet this thresh
     try {
       const parsed = JSON.parse(openaiContent);
       matches = parsed.matches || [];
-      console.log(`Claude identified ${matches.length} high-confidence matches`);
+      console.log(`OpenAI identified ${matches.length} high-confidence matches`);
     } catch (parseError) {
-      console.error('Failed to parse Claude response:', parseError);
-      console.error('Claude response content:', openaiContent);
+      console.error('Failed to parse OpenAI response:', parseError);
+      console.error('OpenAI response content:', openaiContent);
       
       // Fallback: use all candidates with similarity-based scores
       matches = candidateCategories.map((cat, idx) => ({
@@ -713,9 +711,8 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
 
-    if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey || !claudeApiKey) {
+    if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
       console.error('Missing required environment variables');
       return new Response(JSON.stringify({
         error: 'Server configuration error'
@@ -765,7 +762,6 @@ Deno.serve(async (req) => {
       supabaseUrl,
       supabaseServiceKey,
       openaiApiKey,
-      claudeApiKey,
       corsHeaders,
       startTime
     );

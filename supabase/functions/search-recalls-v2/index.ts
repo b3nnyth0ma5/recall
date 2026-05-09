@@ -205,9 +205,9 @@ Deno.serve(async (req) => {
 
     console.log(`Top recall: ${Math.round(allRecalls[0]?.matchPercentage || 0)}% match`);
 
-    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
-    if (!claudeApiKey) {
-      return new Response(JSON.stringify({ error: 'Anthropic API key not configured' }), {
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    if (!openaiApiKey) {
+      return new Response(JSON.stringify({ error: 'OpenAI API key not configured' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
@@ -253,7 +253,7 @@ Deno.serve(async (req) => {
 
     const context = contextParts.join('\n\n');
 
-    // claude-sonnet-4-5: ~3-5x faster than opus, near-identical accuracy for structured QA over provided context
+    // gpt-4o: near-identical accuracy for structured QA over provided context
     const systemPrompt = `You are a search assistant answering questions from personal memory recalls. Answer based only on the provided recalls, prioritising highest match % first.
 
 Rules:
@@ -262,32 +262,33 @@ Rules:
 - Return JSON only: {"answer": "text with SOURCE_X inline", "confidence": 0-100, "sources": ["SOURCE_1"]}
 - If insufficient info: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}`;
 
-    console.log('Calling claude-sonnet-4-5 for QA...');
-    const qaResponse = await fetch('https://api.anthropic.com/v1/messages', {
+    console.log('Calling gpt-4o for QA...');
+    const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'x-api-key': claudeApiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
+        model: 'gpt-4o',
         max_tokens: 1024,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: `Question: ${query}\n\nRecalls (highest match first):\n${context}` }]
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Question: ${query}\n\nRecalls (highest match first):\n${context}` }
+        ]
       })
     });
 
     if (!qaResponse.ok) {
       const errorText = await qaResponse.text();
-      console.error('Claude QA error:', errorText);
+      console.error('OpenAI QA error:', errorText);
       return new Response(JSON.stringify({ error: 'Failed to generate answer', details: errorText }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
     const qaData = await qaResponse.json();
-    const qaContent = qaData.content?.[0]?.text;
+    const qaContent = qaData.choices?.[0]?.message?.content;
 
     let answer = null;
     let confidence = 0;

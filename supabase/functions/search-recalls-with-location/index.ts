@@ -28,23 +28,25 @@ function extractDistanceFromQuery(query: string): number | null {
   return m ? parseFloat(m[1]) || null : null;
 }
 
-async function detectLocationIntents(query: string, claudeApiKey: string) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+async function detectLocationIntents(query: string, openaiApiKey: string) {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: { 'x-api-key': claudeApiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    headers: { 'Authorization': `Bearer ${openaiApiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5',
+      model: 'gpt-4o-mini',
       max_tokens: 300,
-      system: `Detect ALL location intents. Return JSON array only:
+      messages: [
+        { role: 'system', content: `Detect ALL location intents. Return JSON array only:
 [{"hasLocationIntent":true/false,"intentType":"in"|"near"|"near_me"|null,"location":"name"|null,"confidence":0-100}]
 "in [loc]"=within area (500m), "near [loc]"=near place (1km), "near me"=user location (1km).
-Extract ALL locations. JSON array only, no markdown.`,
-      messages: [{ role: 'user', content: `Analyze: "${query}"` }]
+Extract ALL locations. JSON array only, no markdown.` },
+        { role: 'user', content: `Analyze: "${query}"` }
+      ]
     })
   });
   if (!res.ok) return null;
   const data = await res.json();
-  const text = data.content?.[0]?.text?.trim();
+  const text = data.choices?.[0]?.message?.content?.trim();
   if (!text) return null;
   try {
     const results = JSON.parse(text);
@@ -122,9 +124,9 @@ Deno.serve(async (req) => {
 
     console.log(`Query: "${query}"`);
 
-    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     const googleApiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
-    if (!claudeApiKey || !googleApiKey) {
+    if (!openaiApiKey || !googleApiKey) {
       return new Response(JSON.stringify({ error: 'API keys not configured' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -132,7 +134,7 @@ Deno.serve(async (req) => {
 
     // Location intent detection + DB fetch in parallel
     const [locationIntents, recallsResult] = await Promise.all([
-      detectLocationIntents(query, claudeApiKey),
+      detectLocationIntents(query, openaiApiKey),
       supabase
         .from('recalls')
         .select('id, latitude, longitude, location, location_primary_type')

@@ -42,9 +42,9 @@ Deno.serve(async (req) => {
 
     console.log(`Query: "${query}"`);
 
-    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
-    if (!claudeApiKey) {
-      return new Response(JSON.stringify({ error: 'Anthropic API key not configured' }), {
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    if (!openaiApiKey) {
+      return new Response(JSON.stringify({ error: 'OpenAI API key not configured' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
@@ -53,19 +53,21 @@ Deno.serve(async (req) => {
     const [nerResult, personsResult] = await Promise.all([
       (async () => {
         try {
-          const res = await fetch('https://api.anthropic.com/v1/messages', {
+          const res = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
-            headers: { 'x-api-key': claudeApiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+            headers: { 'Authorization': `Bearer ${openaiApiKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              model: 'claude-haiku-4-5',
+              model: 'gpt-4o-mini',
               max_tokens: 200,
-              system: 'Extract person names as JSON. Format: {"names": ["Name1"]}. JSON only, no explanation.',
-              messages: [{ role: 'user', content: `Extract person names from: "${query}"` }]
+              messages: [
+                { role: 'system', content: 'Extract person names as JSON. Format: {"names": ["Name1"]}. JSON only, no explanation.' },
+                { role: 'user', content: `Extract person names from: "${query}"` }
+              ]
             })
           });
           if (!res.ok) return { names: [] };
           const data = await res.json();
-          const text = data.content?.[0]?.text;
+          const text = data.choices?.[0]?.message?.content;
           if (!text) return { names: [] };
           const parsed = JSON.parse(text);
           const names = parsed.names || parsed.persons || parsed.people || [];

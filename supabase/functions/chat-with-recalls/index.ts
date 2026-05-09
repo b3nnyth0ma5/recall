@@ -71,9 +71,9 @@ Deno.serve(async (req) => {
 
     console.log(`Recall: ${recall.id} | Question: "${user_question}" | History: ${chat_history.length} messages`);
 
-    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
-    if (!claudeApiKey) {
-      return new Response(JSON.stringify({ error: 'Anthropic API key not configured' }), {
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    if (!openaiApiKey) {
+      return new Response(JSON.stringify({ error: 'OpenAI API key not configured' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
@@ -110,40 +110,38 @@ Deno.serve(async (req) => {
 
     const systemPrompt = systemParts.join('\n');
 
-    // Build messages: history (user/assistant only) + new question
-    // Claude does not accept 'system' role in messages array
-    const messages: ChatMessage[] = [
+    // Build messages: system prompt + history (user/assistant only) + new question
+    const apiMessages: Array<{ role: string; content: string }> = [
+      { role: 'system', content: systemPrompt },
       ...chat_history.filter(m => m.role === 'user' || m.role === 'assistant'),
       { role: 'user', content: user_question.trim() }
     ];
 
-    console.log(`Calling claude-sonnet-4-5 with ${messages.length} messages...`);
+    console.log(`Calling gpt-4o with ${apiMessages.length} messages...`);
 
-    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'x-api-key': claudeApiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
+        model: 'gpt-4o',
         max_tokens: 1024,
-        system: systemPrompt,
-        messages
+        messages: apiMessages
       })
     });
 
-    if (!claudeResponse.ok) {
-      const errorText = await claudeResponse.text();
-      console.error('Claude API error:', errorText);
+    if (!openaiResponse.ok) {
+      const errorText = await openaiResponse.text();
+      console.error('OpenAI API error:', errorText);
       return new Response(JSON.stringify({ error: 'Failed to generate answer', details: errorText }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    const claudeData = await claudeResponse.json();
-    const chatAnswer = claudeData.content?.[0]?.text || '';
+    const openaiData = await openaiResponse.json();
+    const chatAnswer = openaiData.choices?.[0]?.message?.content || '';
 
     if (!chatAnswer) {
       return new Response(JSON.stringify({ error: 'Empty response from AI' }), {
