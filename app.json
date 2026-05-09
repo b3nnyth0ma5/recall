@@ -175,11 +175,8 @@
     },
     "extra": {
       "router": {},
-      "eas": {
-        "projectId": "bc7a42ca-60f4-4c04-9384-26857e2e6ccf"
-      }
+      "eas": {}
     }
   },
-  "owner": "b3nny1nc",
   "scheme": "Recall"
 }
