@@ -46,12 +46,16 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Threshold for dismissing the modal (swipe down distance)
 const DISMISS_THRESHOLD = 100;
+const MIN_SCALE = 1;
+const MAX_SCALE = 4;
 
 /**
  * Standalone full-screen image viewer component with integrated OCR functionality
  * 
  * Features:
  * - Full-screen image carousel with smooth scrolling
+ * - Pinch-to-zoom and pan per image slide
+ * - Double-tap to toggle zoom
  * - OCR button always visible and clickable on top of images
  * - Share image using native share functionality
  * - Swipe down to dismiss with improved gesture handling (no refresh on close)
@@ -61,6 +65,139 @@ const DISMISS_THRESHOLD = 100;
  * - Loads all images from imageIds when opened
  * - Skeleton placeholders instead of loading spinner
  */
+
+interface ZoomableImageProps {
+  imageUrl: string;
+  index: number;
+  isLoaded: boolean;
+  onLoad: (index: number) => void;
+  resetTrigger: number;
+}
+
+function ZoomableImage({ imageUrl, index, isLoaded, onLoad, resetTrigger }: ZoomableImageProps) {
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+
+  // Reset zoom when resetTrigger changes (i.e. when currentImageIndex changes)
+  useEffect(() => {
+    scale.value = withTiming(1, { duration: 200 });
+    savedScale.value = 1;
+    translateX.value = withTiming(0, { duration: 200 });
+    translateY.value = withTiming(0, { duration: 200 });
+    savedTranslateX.value = 0;
+    savedTranslateY.value = 0;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetTrigger]);
+
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((event) => {
+      const newScale = savedScale.value * event.scale;
+      scale.value = Math.min(Math.max(newScale, MIN_SCALE), MAX_SCALE);
+    })
+    .onEnd(() => {
+      savedScale.value = scale.value;
+      if (scale.value < MIN_SCALE) {
+        scale.value = withSpring(MIN_SCALE);
+        savedScale.value = MIN_SCALE;
+        translateX.value = withSpring(0);
+        translateY.value = withSpring(0);
+        savedTranslateX.value = 0;
+        savedTranslateY.value = 0;
+      }
+    });
+
+  const panGesture = Gesture.Pan()
+    .activeOffsetX([-5, 5])
+    .onStart(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    })
+    .onUpdate((event) => {
+      if (scale.value > 1) {
+        translateX.value = savedTranslateX.value + event.translationX;
+        translateY.value = savedTranslateY.value + event.translationY;
+      }
+    })
+    .onEnd(() => {
+      if (scale.value <= 1) {
+        translateX.value = withSpring(0);
+        translateY.value = withSpring(0);
+        savedTranslateX.value = 0;
+        savedTranslateY.value = 0;
+      }
+    })
+    .enabled(true);
+
+  const doubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd(() => {
+      if (scale.value > 1) {
+        scale.value = withSpring(1);
+        savedScale.value = 1;
+        translateX.value = withSpring(0);
+        translateY.value = withSpring(0);
+        savedTranslateX.value = 0;
+        savedTranslateY.value = 0;
+      } else {
+        scale.value = withSpring(2.5);
+        savedScale.value = 2.5;
+      }
+    });
+
+  const composedGesture = Gesture.Race(
+    doubleTapGesture,
+    Gesture.Simultaneous(pinchGesture, panGesture)
+  );
+
+  const animatedImageStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: scale.value },
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+    ],
+  }));
+
+  return (
+    <GestureDetector gesture={composedGesture}>
+      <View style={styles.imageWrapper}>
+        {imageUrl ? (
+          <>
+            {!isLoaded && (
+              <View style={styles.skeletonContainer}>
+                <SkeletonLoader
+                  width={SCREEN_WIDTH}
+                  height={SCREEN_HEIGHT}
+                  borderRadius={0}
+                  variant="wave"
+                />
+              </View>
+            )}
+            <Animated.Image
+              source={{ uri: imageUrl }}
+              style={[styles.image, animatedImageStyle]}
+              resizeMode="contain"
+              onLoad={() => onLoad(index)}
+            />
+          </>
+        ) : (
+          <View style={styles.skeletonContainer}>
+            <SkeletonLoader
+              width={SCREEN_WIDTH}
+              height={SCREEN_HEIGHT}
+              borderRadius={0}
+              variant="wave"
+            />
+          </View>
+        )}
+      </View>
+    </GestureDetector>
+  );
+}
+
 export function FullScreenImage({
   visible,
   images,
@@ -75,6 +212,8 @@ export function FullScreenImage({
   const [loadedImages, setLoadedImages] = useState<string[]>([]);
   const [isLoadingImages, setIsLoadingImages] = useState(false);
   const [imageLoadStates, setImageLoadStates] = useState<{ [key: number]: boolean }>({});
+  // resetTrigger increments whenever currentImageIndex changes to reset zoom in each slide
+  const [resetTrigger, setResetTrigger] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Animated values for swipe-to-dismiss gesture
@@ -136,6 +275,11 @@ export function FullScreenImage({
       }, 100);
     }
   }, [visible, initialIndex, images, imageIds, translateY, contextY]);
+
+  // Reset zoom on all slides when the active index changes
+  useEffect(() => {
+    setResetTrigger(prev => prev + 1);
+  }, [currentImageIndex]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
@@ -264,8 +408,9 @@ export function FullScreenImage({
     setImageLoadStates(prev => ({ ...prev, [index]: true }));
   };
 
-  // Improved Pan Gesture for swipe-to-dismiss with smoother animations
+  // Outer Pan Gesture for swipe-to-dismiss — only activates on clear vertical swipes
   const panGesture = Gesture.Pan()
+    .activeOffsetY([-10, 10])
     .onStart(() => {
       contextY.value = translateY.value;
     })
@@ -278,7 +423,7 @@ export function FullScreenImage({
         translateY.value = contextY.value + event.translationY * 0.3;
       }
     })
-    .onEnd((event) => {
+    .onEnd(() => {
       const shouldDismiss = translateY.value > DISMISS_THRESHOLD;
       
       if (shouldDismiss) {
@@ -316,7 +461,7 @@ export function FullScreenImage({
     );
     
     // Smooth scale down
-    const scale = interpolate(
+    const containerScale = interpolate(
       translateY.value,
       [0, SCREEN_HEIGHT],
       [1, 0.85],
@@ -326,7 +471,7 @@ export function FullScreenImage({
     return {
       transform: [
         { translateY: translateY.value },
-        { scale: scale },
+        { scale: containerScale },
       ],
       opacity: opacity,
     };
@@ -348,6 +493,8 @@ export function FullScreenImage({
 
   // Use loaded images or show loading state
   const displayImages = loadedImages.length > 0 ? loadedImages : images;
+
+  const counterText = `${currentImageIndex + 1} / ${displayImages.length}`;
 
   return (
     <Modal
@@ -387,37 +534,14 @@ export function FullScreenImage({
               style={styles.scrollView}
             >
               {displayImages.map((imageUrl, index) => (
-                <View key={`fullscreen-${index}`} style={styles.imageWrapper}>
-                  {imageUrl ? (
-                    <>
-                      {!imageLoadStates[index] && (
-                        <View style={styles.skeletonContainer}>
-                          <SkeletonLoader
-                            width={SCREEN_WIDTH}
-                            height={SCREEN_HEIGHT}
-                            borderRadius={0}
-                            variant="wave"
-                          />
-                        </View>
-                      )}
-                      <Image
-                        source={{ uri: imageUrl }}
-                        style={styles.image}
-                        resizeMode="contain"
-                        onLoad={() => handleImageLoad(index)}
-                      />
-                    </>
-                  ) : (
-                    <View style={styles.skeletonContainer}>
-                      <SkeletonLoader
-                        width={SCREEN_WIDTH}
-                        height={SCREEN_HEIGHT}
-                        borderRadius={0}
-                        variant="wave"
-                      />
-                    </View>
-                  )}
-                </View>
+                <ZoomableImage
+                  key={`fullscreen-${index}`}
+                  imageUrl={imageUrl}
+                  index={index}
+                  isLoaded={!!imageLoadStates[index]}
+                  onLoad={handleImageLoad}
+                  resetTrigger={currentImageIndex === index ? 0 : resetTrigger}
+                />
               ))}
             </ScrollView>
 
@@ -478,7 +602,7 @@ export function FullScreenImage({
             {displayImages.length > 1 && (
               <View style={styles.counterBadge}>
                 <Text style={styles.counterText}>
-                  {currentImageIndex + 1} / {displayImages.length}
+                  {counterText}
                 </Text>
               </View>
             )}
@@ -567,6 +691,7 @@ const styles = StyleSheet.create({
     height: SCREEN_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
   image: {
     width: SCREEN_WIDTH,

@@ -280,7 +280,7 @@ export default function MapViewScreen() {
 
     // Load Google Maps script
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48&libraries=places`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? ''}&libraries=places`;
     script.async = true;
     script.defer = true;
     script.onload = initializeMap;
