@@ -532,17 +532,35 @@ export default function SearchScreen() {
             </Pressable>
           ),
           headerRight: () => (
-            <Pressable 
-              onPress={toggleKeyboard} 
-              style={styles.headerButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <IconSymbol 
-                name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-                size={24} 
-                color={colors.text} 
-              />
-            </Pressable>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {shouldShowSearchTime && hasSearched && (
+                <Pressable
+                  onPress={() => {
+                    console.log('[SearchScreen] Map button pressed, navigating to map-view');
+                    router.push('/map-view?hasSearch=true');
+                  }}
+                  style={styles.headerButton}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <IconSymbol
+                    name="map.fill"
+                    size={24}
+                    color={colors.text}
+                  />
+                </Pressable>
+              )}
+              <Pressable 
+                onPress={toggleKeyboard} 
+                style={styles.headerButton}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol 
+                  name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+                  size={24} 
+                  color={colors.text} 
+                />
+              </Pressable>
+            </View>
           ),
         }}
       />

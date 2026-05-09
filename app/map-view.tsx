@@ -12,16 +12,48 @@ import {
   ScrollView,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import * as Haptics from 'expo-haptics';
 
+// Only import react-native-maps on native platforms
+let MapView: any = null;
+let Marker: any = null;
+let Callout: any = null;
+let PROVIDER_GOOGLE: any = null;
+
+if (Platform.OS !== 'web') {
+  const RNMaps = require('react-native-maps');
+  MapView = RNMaps.default;
+  Marker = RNMaps.Marker;
+  Callout = RNMaps.Callout;
+  PROVIDER_GOOGLE = RNMaps.PROVIDER_GOOGLE;
+}
+
+const DARK_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#242424' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#1A1A1A' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#B0B0B0' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#FFFFFF' }] },
+  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#B0B0B0' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#2A3A2A' }] },
+  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6B9A6B' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#3A3A3A' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#2A2A2A' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#4A4A4A' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#3A3A3A' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#1A2A3A' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4A6A8A' }] },
+];
+
 export default function MapViewScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { notes, searchQuery } = useNotes();
+  const insets = useSafeAreaInsets();
+  const { notes } = useNotes();
   const [loading, setLoading] = useState(true);
   const [mapNotes, setMapNotes] = useState<Note[]>([]);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
@@ -29,10 +61,8 @@ export default function MapViewScreen() {
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
-  // Determine if we're showing search results or all notes
   const hasSearchResults = params.hasSearch === 'true';
 
-  // Filter notes that have location data
   useEffect(() => {
     const notesWithLocation = notes.filter(
       note => note.latitude && note.longitude
@@ -41,18 +71,15 @@ export default function MapViewScreen() {
     setLoading(false);
   }, [notes]);
 
-  // Add markers to map
+  // ─── Web: Google Maps script injection ───────────────────────────────────────
+
   const addMarkers = useCallback((map: any) => {
     if (Platform.OS !== 'web' || !window.google) return;
 
-    // Clear existing markers
     markersRef.current.forEach(marker => marker.setMap(null));
     markersRef.current = [];
 
     const handleMarkerClick = (note: Note) => {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
       setSelectedNote(note);
       setShowPreview(true);
     };
@@ -60,7 +87,6 @@ export default function MapViewScreen() {
     mapNotes.forEach(note => {
       if (!note.latitude || !note.longitude) return;
 
-      // Create custom marker with preview
       const markerDiv = document.createElement('div');
       markerDiv.style.cssText = `
         width: 48px;
@@ -77,7 +103,6 @@ export default function MapViewScreen() {
         position: relative;
       `;
 
-      // Add preview content
       if (note.images && note.images.length > 0) {
         const img = document.createElement('img');
         img.src = note.images[0];
@@ -99,32 +124,28 @@ export default function MapViewScreen() {
         markerDiv.appendChild(textPreview);
       }
 
-      // Create custom overlay using a factory function instead of class
       const createCustomMarker = (position: any, div: any) => {
         const marker = new window.google.maps.OverlayView();
-        
-        marker.onAdd = function() {
+
+        marker.onAdd = function () {
           const panes = marker.getPanes();
           panes.overlayMouseTarget.appendChild(div);
-
-          // Add click listener
           div.addEventListener('click', () => {
             handleMarkerClick(note);
           });
         };
 
-        marker.draw = function() {
+        marker.draw = function () {
           const overlayProjection = marker.getProjection();
           const pos = overlayProjection.fromLatLngToDivPixel(position);
-          
           if (pos) {
-            div.style.left = (pos.x - 24) + 'px';
-            div.style.top = (pos.y - 24) + 'px';
+            div.style.left = pos.x - 24 + 'px';
+            div.style.top = pos.y - 24 + 'px';
             div.style.position = 'absolute';
           }
         };
 
-        marker.onRemove = function() {
+        marker.onRemove = function () {
           if (div.parentNode) {
             div.parentNode.removeChild(div);
           }
@@ -143,19 +164,16 @@ export default function MapViewScreen() {
     });
   }, [mapNotes]);
 
-  // Initialize Google Map
   const initializeMap = useCallback(() => {
     if (Platform.OS !== 'web' || !window.google) return;
 
     const mapElement = document.getElementById('google-map');
     if (!mapElement) return;
 
-    // Calculate center and zoom based on notes
-    let center = { lat: -37.8136, lng: 144.9631 }; // Default: Melbourne
-    let zoom = 12;
+    const center = { lat: -37.8136, lng: 144.9631 };
+    const zoom = 12;
 
     if (mapNotes.length > 0) {
-      // Calculate bounds to fit all markers
       const bounds = new window.google.maps.LatLngBounds();
       mapNotes.forEach(note => {
         if (note.latitude && note.longitude) {
@@ -163,109 +181,21 @@ export default function MapViewScreen() {
         }
       });
 
-      // Create map
       const map = new window.google.maps.Map(mapElement, {
         center: bounds.getCenter(),
         zoom: 12,
-        styles: [
-          {
-            elementType: 'geometry',
-            stylers: [{ color: '#242424' }],
-          },
-          {
-            elementType: 'labels.text.stroke',
-            stylers: [{ color: '#1A1A1A' }],
-          },
-          {
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#B0B0B0' }],
-          },
-          {
-            featureType: 'administrative.locality',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#FFFFFF' }],
-          },
-          {
-            featureType: 'poi',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#B0B0B0' }],
-          },
-          {
-            featureType: 'poi.park',
-            elementType: 'geometry',
-            stylers: [{ color: '#2A3A2A' }],
-          },
-          {
-            featureType: 'poi.park',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#6B9A6B' }],
-          },
-          {
-            featureType: 'road',
-            elementType: 'geometry',
-            stylers: [{ color: '#3A3A3A' }],
-          },
-          {
-            featureType: 'road',
-            elementType: 'geometry.stroke',
-            stylers: [{ color: '#2A2A2A' }],
-          },
-          {
-            featureType: 'road.highway',
-            elementType: 'geometry',
-            stylers: [{ color: '#4A4A4A' }],
-          },
-          {
-            featureType: 'road.highway',
-            elementType: 'geometry.stroke',
-            stylers: [{ color: '#3A3A3A' }],
-          },
-          {
-            featureType: 'water',
-            elementType: 'geometry',
-            stylers: [{ color: '#1A2A3A' }],
-          },
-          {
-            featureType: 'water',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#4A6A8A' }],
-          },
-        ],
+        styles: DARK_MAP_STYLE,
       });
 
       mapRef.current = map;
-
-      // Fit bounds after map is loaded
       map.fitBounds(bounds);
-
-      // Add markers
       addMarkers(map);
     } else {
-      // No notes with location, show default map
       const map = new window.google.maps.Map(mapElement, {
         center,
         zoom,
-        styles: [
-          {
-            elementType: 'geometry',
-            stylers: [{ color: '#242424' }],
-          },
-          {
-            elementType: 'labels.text.stroke',
-            stylers: [{ color: '#1A1A1A' }],
-          },
-          {
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#B0B0B0' }],
-          },
-          {
-            featureType: 'water',
-            elementType: 'geometry',
-            stylers: [{ color: '#1A2A3A' }],
-          },
-        ],
+        styles: DARK_MAP_STYLE,
       });
-
       mapRef.current = map;
     }
 
@@ -278,7 +208,6 @@ export default function MapViewScreen() {
       return;
     }
 
-    // Load Google Maps script
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? ''}&libraries=places`;
     script.async = true;
@@ -287,40 +216,85 @@ export default function MapViewScreen() {
     document.head.appendChild(script);
 
     return () => {
-      // Cleanup
       if (script.parentNode) {
         script.parentNode.removeChild(script);
       }
     };
   }, [initializeMap]);
 
-  // Re-add markers when mapNotes changes
   useEffect(() => {
     if (mapRef.current && Platform.OS === 'web') {
       addMarkers(mapRef.current);
     }
   }, [mapNotes, addMarkers]);
 
+  // ─── Shared handlers ─────────────────────────────────────────────────────────
+
   const handlePreviewPress = () => {
     if (selectedNote) {
+      console.log('[MapView] Opening note from preview:', selectedNote.id);
       setShowPreview(false);
       router.push(`/note-editor?id=${selectedNote.id}`);
     }
   };
 
   const handleBackToSearch = () => {
+    console.log('[MapView] Back to list pressed');
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     router.back();
   };
 
+  const handleCalloutPress = (note: Note) => {
+    console.log('[MapView] Callout tapped, opening note:', note.id);
+    router.push(`/note-editor?id=${note.id}`);
+  };
+
+  // ─── Native: fit map to markers ──────────────────────────────────────────────
+
+  const handleMapReady = useCallback(() => {
+    console.log('[MapView] Map ready, fitting to', mapNotes.length, 'coordinates');
+    if (!mapRef.current || mapNotes.length === 0) return;
+
+    const coordinates = mapNotes
+      .filter(n => n.latitude && n.longitude)
+      .map(n => ({ latitude: n.latitude as number, longitude: n.longitude as number }));
+
+    if (coordinates.length === 0) return;
+
+    if (coordinates.length === 1) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: coordinates[0].latitude,
+          longitude: coordinates[0].longitude,
+          latitudeDelta: 0.02,
+          longitudeDelta: 0.02,
+        },
+        500
+      );
+    } else {
+      mapRef.current.fitToCoordinates(coordinates, {
+        edgePadding: { top: 80, right: 50, bottom: 150, left: 50 },
+        animated: true,
+      });
+    }
+  }, [mapNotes]);
+
+  // ─── Derived values ───────────────────────────────────────────────────────────
+
+  const mapCountText = mapNotes.length === 1 ? '1 recall' : `${mapNotes.length} recalls`;
+  const fabBottom = insets.bottom + 24;
+  const headerTitle = hasSearchResults ? 'Search Results Map' : 'Recalls Map';
+
+  // ─── Render ───────────────────────────────────────────────────────────────────
+
   return (
     <View style={styles.container}>
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: hasSearchResults ? 'Search Results Map' : 'Recalls Map',
+          headerTitle: headerTitle,
           headerStyle: {
             backgroundColor: colors.background,
           },
@@ -334,6 +308,7 @@ export default function MapViewScreen() {
       />
 
       {Platform.OS === 'web' ? (
+        // ── Web implementation ──────────────────────────────────────────────────
         <React.Fragment>
           {loading ? (
             <View style={styles.loadingContainer}>
@@ -361,22 +336,18 @@ export default function MapViewScreen() {
                 }}
               />
 
-              {/* Info Badge */}
               <View style={styles.infoBadge}>
                 <IconSymbol name="map.fill" size={16} color={colors.primary} />
-                <Text style={styles.infoBadgeText}>
-                  {mapNotes.length} {mapNotes.length === 1 ? 'recall' : 'recalls'} on map
-                </Text>
+                <Text style={styles.infoBadgeText}>{mapCountText} on map</Text>
               </View>
 
-              {/* Back to Search List FAB */}
-              <Pressable onPress={handleBackToSearch} style={styles.fab}>
+              <Pressable onPress={handleBackToSearch} style={[styles.fab, { bottom: fabBottom }]}>
                 <IconSymbol name="list.bullet" size={24} color="#FFFFFF" />
               </Pressable>
             </React.Fragment>
           )}
 
-          {/* Note Preview Modal */}
+          {/* Note Preview Modal (web only) */}
           <Modal
             visible={showPreview}
             transparent={true}
@@ -443,10 +414,7 @@ export default function MapViewScreen() {
                       </Text>
                     </ScrollView>
 
-                    <Pressable
-                      onPress={handlePreviewPress}
-                      style={styles.openButton}
-                    >
+                    <Pressable onPress={handlePreviewPress} style={styles.openButton}>
                       <Text style={styles.openButtonText}>Open Recall</Text>
                       <IconSymbol name="arrow.right" size={20} color="#FFFFFF" />
                     </Pressable>
@@ -457,13 +425,77 @@ export default function MapViewScreen() {
           </Modal>
         </React.Fragment>
       ) : (
-        <View style={styles.notSupportedContainer}>
-          <IconSymbol name="map" size={80} color={colors.textTertiary} />
-          <Text style={styles.notSupportedTitle}>Map View coming soon...</Text>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Text style={styles.backButtonText}>Back to Search</Text>
-          </Pressable>
-        </View>
+        // ── Native implementation ───────────────────────────────────────────────
+        <React.Fragment>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Loading map...</Text>
+            </View>
+          ) : mapNotes.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <IconSymbol name="map" size={80} color={colors.textTertiary} />
+              <Text style={styles.emptyTitle}>No Locations Found</Text>
+              <Text style={styles.emptyText}>
+                {hasSearchResults
+                  ? 'No search results have location data'
+                  : 'Add location data to your recalls to see them on the map'}
+              </Text>
+            </View>
+          ) : (
+            <React.Fragment>
+              <MapView
+                ref={mapRef}
+                style={styles.map}
+                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                userInterfaceStyle="dark"
+                customMapStyle={Platform.OS === 'android' ? DARK_MAP_STYLE : undefined}
+                onMapReady={handleMapReady}
+                showsUserLocation={false}
+                showsMyLocationButton={false}
+              >
+                {mapNotes.map(note => {
+                  if (!note.latitude || !note.longitude) return null;
+                  const textPreview = note.text ? note.text.substring(0, 80) : '';
+                  const calloutText = textPreview + (note.text && note.text.length > 80 ? '…' : '');
+                  return (
+                    <Marker
+                      key={note.id}
+                      coordinate={{ latitude: note.latitude, longitude: note.longitude }}
+                      pinColor={colors.primary}
+                    >
+                      <Callout onPress={() => handleCalloutPress(note)}>
+                        <View style={styles.calloutContainer}>
+                          {calloutText.length > 0 && (
+                            <Text style={styles.calloutText}>{calloutText}</Text>
+                          )}
+                          {note.location ? (
+                            <Text style={styles.calloutLocation}>{note.location}</Text>
+                          ) : null}
+                          <Text style={styles.calloutTapHint}>Tap to open</Text>
+                        </View>
+                      </Callout>
+                    </Marker>
+                  );
+                })}
+              </MapView>
+
+              {/* Info Badge */}
+              <View style={styles.infoBadge}>
+                <IconSymbol name="map.fill" size={16} color={colors.primary} />
+                <Text style={styles.infoBadgeText}>{mapCountText} on map</Text>
+              </View>
+
+              {/* FAB — back to list */}
+              <Pressable
+                onPress={handleBackToSearch}
+                style={[styles.fab, { bottom: fabBottom }]}
+              >
+                <IconSymbol name="list.bullet" size={24} color="#FFFFFF" />
+              </Pressable>
+            </React.Fragment>
+          )}
+        </React.Fragment>
       )}
     </View>
   );
@@ -473,6 +505,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  map: {
+    flex: 1,
   },
   headerButton: {
     padding: 8,
@@ -517,7 +552,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.3)',
     elevation: 4,
   },
   infoBadgeText: {
@@ -527,7 +561,6 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    bottom: 24,
     right: 24,
     width: 60,
     height: 60,
@@ -535,8 +568,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: '0px 4px 16px rgba(255, 107, 122, 0.4)',
     elevation: 8,
+  },
+  calloutContainer: {
+    width: 200,
+    padding: 8,
+  },
+  calloutText: {
+    fontSize: 13,
+    color: '#1A1A1A',
+    marginBottom: 4,
+    lineHeight: 18,
+  },
+  calloutLocation: {
+    fontSize: 12,
+    color: '#555555',
+    marginBottom: 4,
+  },
+  calloutTapHint: {
+    fontSize: 11,
+    color: '#888888',
+    fontStyle: 'italic',
   },
   modalOverlay: {
     flex: 1,
@@ -612,38 +664,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   openButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  notSupportedContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  notSupportedTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  notSupportedText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
-  },
-  backButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-  },
-  backButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
