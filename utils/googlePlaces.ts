@@ -10,7 +10,7 @@
  * - Geocoding API
  */
 
-const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY!;
+const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || 'AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48';
 
 export interface PlaceResult {
   placeId: string;
@@ -492,5 +492,5 @@ export function extractShortLocationName(
  * Check if Google Places API key is configured
  */
 export function isGooglePlacesConfigured(): boolean {
-  return GOOGLE_PLACES_API_KEY !== 'YOUR_GOOGLE_PLACES_API_KEY' && GOOGLE_PLACES_API_KEY.length > 0;
+  return !!GOOGLE_PLACES_API_KEY && GOOGLE_PLACES_API_KEY !== 'YOUR_GOOGLE_PLACES_API_KEY' && GOOGLE_PLACES_API_KEY.length > 0;
 }
