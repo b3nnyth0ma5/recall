@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.Natively",
+      "bundleIdentifier": "com.b3nny1nc.recall",
       "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -33,7 +33,7 @@
               "natively",
               "recall"
             ],
-            "CFBundleURLName": "com.anonymous.Natively",
+            "CFBundleURLName": "com.b3nny1nc.recall",
             "CFBundleTypeRole": "Editor"
           }
         ]
@@ -41,7 +41,7 @@
       "buildNumber": "1.0.0",
       "entitlements": {
         "com.apple.security.application-groups": [
-          "group.com.anonymous.Natively"
+          "group.com.b3nny1nc.recall"
         ]
       }
     },
@@ -53,7 +53,7 @@
       },
       "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "edgeToEdgeEnabled": false,
-      "package": "com.anonymous.Natively",
+      "package": "com.b3nny1nc.recall",
       "versionCode": 1,
       "intentFilters": [
         {
@@ -149,11 +149,11 @@
             {
               "type": "share-extension",
               "name": "ShareExtension",
-              "bundleIdentifier": "com.anonymous.Natively.ShareExtension",
+              "bundleIdentifier": "com.b3nny1nc.recall.ShareExtension",
               "deploymentTarget": "15.1",
               "entitlements": {
                 "com.apple.security.application-groups": [
-                  "group.com.anonymous.Natively"
+                  "group.com.b3nny1nc.recall"
                 ]
               },
               "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png"

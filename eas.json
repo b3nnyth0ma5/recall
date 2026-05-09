@@ -38,6 +38,12 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId": "benny_thomas21@yahoo.co.in",
+        "ascAppId": "",
+        "appleTeamId": ""
+      }
+    }
   }
 }
