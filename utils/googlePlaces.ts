@@ -10,7 +10,7 @@
  * - Geocoding API
  */
 
-const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? '';
+const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || 'AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48';
 
 export interface PlaceResult {
   placeId: string;
