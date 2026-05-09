@@ -14,6 +14,8 @@ export default function ProfileScreen() {
   const router = useRouter();
   const [cacheStats, setCacheStats] = useState<any[]>([]);
   
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   // Password change state
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -72,6 +74,66 @@ export default function ProfileScreen() {
               console.error('Error signing out:', error);
               Alert.alert('Error', 'Failed to sign out');
             }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteAccount = () => {
+    console.log('[Profile] Delete account button pressed');
+    Alert.alert(
+      'Delete Account',
+      'This will permanently delete your account and all your recalls, photos, and data. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: async () => {
+            Alert.alert(
+              'Are you sure?',
+              'All your data will be permanently deleted. You cannot recover it.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Yes, Delete Everything',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      setDeleteLoading(true);
+                      console.log('[Profile] Initiating account deletion');
+                      const { data: { session } } = await supabase.auth.getSession();
+                      if (!session) {
+                        Alert.alert('Error', 'No active session found. Please sign in again.');
+                        return;
+                      }
+                      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+                      console.log('[Profile] Calling delete-account edge function');
+                      const response = await fetch(`${supabaseUrl}/functions/v1/delete-account`, {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${session.access_token}`,
+                          'Content-Type': 'application/json',
+                        },
+                      });
+                      const result = await response.json();
+                      if (!response.ok) {
+                        throw new Error(result.error || 'Failed to delete account');
+                      }
+                      console.log('[Profile] Account deleted successfully, signing out');
+                      await signOut();
+                      router.replace('/login');
+                    } catch (error) {
+                      console.error('[Profile] Delete account error:', error);
+                      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account. Please try again.');
+                    } finally {
+                      setDeleteLoading(false);
+                    }
+                  },
+                },
+              ]
+            );
           },
         },
       ]
@@ -530,6 +592,20 @@ export default function ProfileScreen() {
             <IconSymbol name="arrow.right.square" size={20} color={colors.error} />
             <Text style={styles.signOutText}>Sign Out</Text>
           </Pressable>
+
+          <Pressable
+            onPress={handleDeleteAccount}
+            disabled={deleteLoading}
+            style={[styles.deleteAccountButton, deleteLoading && styles.buttonDisabled]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {deleteLoading ? (
+              <ActivityIndicator size="small" color={colors.error} />
+            ) : (
+              <IconSymbol name="trash" size={20} color={colors.error} />
+            )}
+            <Text style={styles.deleteAccountText}>Delete Account</Text>
+          </Pressable>
         </View>
 
         {/* App Info */}
@@ -785,6 +861,23 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   signOutText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.error,
+  },
+  deleteAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.error,
+    marginTop: 12,
+  },
+  deleteAccountText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.error,
