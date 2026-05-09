@@ -74,6 +74,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [processingCount, setProcessingCount] = useState(0);
   const [saving, setSaving] = useState(false);
   const [loadingNote, setLoadingNote] = useState(false);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -527,7 +528,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
 
       if (!result.canceled && result.assets) {
         setLoading(true);
-        const newImages: ImageData[] = [];
+        setProcessingCount(result.assets.length);
 
         if (!location && result.assets.length > 0) {
           console.log('Attempting to extract location from first selected image...');
@@ -553,17 +554,18 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
           }
         }
 
-        for (const asset of result.assets) {
-          const converted = await convertImageToSuitableFormat(asset.uri);
-
-          newImages.push({
-            uri: converted.uri,
-            localUri: converted.uri,
-            contentType: converted.contentType,
-          });
-        }
+        console.log(`[NoteEditorSlideUp] Converting ${result.assets.length} images in parallel`);
+        const convertedAssets = await Promise.all(
+          result.assets.map(asset => convertImageToSuitableFormat(asset.uri))
+        );
+        const newImages: ImageData[] = convertedAssets.map(converted => ({
+          uri: converted.uri,
+          localUri: converted.uri,
+          contentType: converted.contentType,
+        }));
 
         setImages([...images, ...newImages]);
+        setProcessingCount(0);
         setLoading(false);
         
         if (Platform.OS !== 'web') {
@@ -1306,7 +1308,12 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       {loading ? (
-                        <ActivityIndicator size="small" color={colors.primary} />
+                        <View style={styles.loadingWithCount}>
+                          <ActivityIndicator size="small" color={colors.primary} />
+                          {processingCount > 1 && (
+                            <Text style={styles.processingCountText}>{processingCount}</Text>
+                          )}
+                        </View>
                       ) : (
                         <IconSymbol 
                           ios_icon_name="plus.circle.fill" 
@@ -1669,5 +1676,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     fontWeight: '600',
+  },
+  loadingWithCount: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  processingCountText: {
+    fontSize: 10,
+    color: colors.primary,
+    fontWeight: '700',
+    marginTop: 2,
   },
 });
