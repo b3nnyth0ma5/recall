@@ -8,7 +8,6 @@ import {
   Image,
   Dimensions,
   Modal,
-  ScrollView,
   NativeSyntheticEvent,
   NativeScrollEvent,
   Platform,
@@ -23,7 +22,7 @@ import Animated, {
   interpolate,
   Extrapolation,
 } from 'react-native-reanimated';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { IconSymbol } from './IconSymbol';
 import ImageOCRDisplay from './ImageOCRDisplay';
 import { colors } from '@/styles/commonStyles';
@@ -111,16 +110,21 @@ function ZoomableImage({ imageUrl, index, isLoaded, onLoad, resetTrigger }: Zoom
     });
 
   const panGesture = Gesture.Pan()
-    .activeOffsetX([-5, 5])
+    .manualActivation(true)
+    .onTouchesMove((_event, stateManager) => {
+      if (scale.value > 1) {
+        stateManager.activate();
+      } else {
+        stateManager.fail();
+      }
+    })
     .onStart(() => {
       savedTranslateX.value = translateX.value;
       savedTranslateY.value = translateY.value;
     })
     .onUpdate((event) => {
-      if (scale.value > 1) {
-        translateX.value = savedTranslateX.value + event.translationX;
-        translateY.value = savedTranslateY.value + event.translationY;
-      }
+      translateX.value = savedTranslateX.value + event.translationX;
+      translateY.value = savedTranslateY.value + event.translationY;
     })
     .onEnd(() => {
       if (scale.value <= 1) {
@@ -129,8 +133,7 @@ function ZoomableImage({ imageUrl, index, isLoaded, onLoad, resetTrigger }: Zoom
         savedTranslateX.value = 0;
         savedTranslateY.value = 0;
       }
-    })
-    .enabled(true);
+    });
 
   const doubleTapGesture = Gesture.Tap()
     .numberOfTaps(2)
@@ -214,7 +217,7 @@ export function FullScreenImage({
   const [imageLoadStates, setImageLoadStates] = useState<{ [key: number]: boolean }>({});
   // resetTrigger increments whenever currentImageIndex changes to reset zoom in each slide
   const [resetTrigger, setResetTrigger] = useState(0);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<React.ElementRef<typeof ScrollView>>(null);
 
   // Animated values for swipe-to-dismiss gesture
   const translateY = useSharedValue(0);
