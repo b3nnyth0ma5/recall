@@ -297,12 +297,14 @@ export function useNotes() {
     }
   }, [user, loadImagesForRecalls]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     loadNotes(1, false);
     setPage(1);
     setHasMore(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const loadMoreNotes = useCallback(() => {
     if (!isLoadingMore && hasMore && !loading) {
@@ -587,7 +589,7 @@ export function useNotes() {
       setSearchTimings({});
       
       // Save search history
-      await saveSearchHistory(user.id, query);
+      saveSearchHistory(user.id, query);
       
       // Get current session
       const { data: { session } } = await supabase.auth.getSession();
@@ -601,7 +603,7 @@ export function useNotes() {
       console.log('[useNotes] User location for search:', userLocation);
 
       // Add a small delay to ensure "resolving" stage is visible
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Step 1: Call the unified entity extraction function
       console.log('Step 1: Calling unified entity extraction...');
@@ -644,144 +646,57 @@ export function useNotes() {
       }
 
       console.log('[Entity Search] Results:', entityResult);
-      console.log('[Entity Search] Matching recalls:', entityResult.recalls?.length || 0);
-      console.log('[Entity Search] Extracted entities:', entityResult.extractedEntities);
+      console.log('[Entity Search] Matching recalls:', entityResult.results?.length || 0);
+      console.log('[Entity Search] Extracted keywords:', entityResult.extractedKeywords);
 
-      // Update UI with extracted entities
-      const entities = entityResult.extractedEntities || { people: [], keywords: [], locations: [] };
-      
-      // Set people info
-      if (entities.people.length > 0 && entityResult.matchedPeople?.length > 0) {
+      // Set people info from v3 response
+      if (entityResult.personInfo?.matchedNames?.length > 0) {
         setSearchStage('people');
         const personInfoData: PersonInfo = {
-          detectedNames: entities.people,
-          matchedNames: entityResult.matchedPeople,
+          detectedNames: entityResult.personInfo.detectedNames || [],
+          matchedNames: entityResult.personInfo.matchedNames,
         };
         setPersonInfo(personInfoData);
-        setSearchPersonNames(entityResult.matchedPeople);
-        await new Promise(resolve => setTimeout(resolve, 300));
+        setSearchPersonNames(entityResult.personInfo.matchedNames);
+        await new Promise(resolve => setTimeout(resolve, 100));
       } else {
         setPersonInfo(null);
         setSearchPersonNames(undefined);
       }
 
-      // Set keywords
-      if (entities.keywords.length > 0) {
+      // Set keywords from v3 response
+      if (entityResult.extractedKeywords?.length > 0) {
         setSearchStage('keywords');
-        setSearchExtractedKeywords(entities.keywords);
-        await new Promise(resolve => setTimeout(resolve, 300));
+        setSearchExtractedKeywords(entityResult.extractedKeywords);
+        await new Promise(resolve => setTimeout(resolve, 100));
       } else {
         setSearchExtractedKeywords(undefined);
       }
 
-      // Set location info
-      if (entities.locations.length > 0 && entityResult.resolvedLocations?.length > 0) {
+      // Set location info from v3 response
+      if (entityResult.locationInfo) {
         setSearchStage('resolving');
-        const locationNames = entityResult.resolvedLocations.map((loc: any) => loc.resolved).join(', ');
-        setSearchLocationName(locationNames);
-        
-        const locationInfoData = {
-          resolvedPlace: locationNames,
-          proximity: 1,
-          multipleLocations: entityResult.resolvedLocations.length > 1,
-          locationCount: entityResult.resolvedLocations.length,
-          locations: entityResult.resolvedLocations,
-        };
-        setLocationInfo(locationInfoData);
-        await new Promise(resolve => setTimeout(resolve, 300));
+        setSearchLocationName(entityResult.locationInfo.resolvedPlace);
+        setLocationInfo(entityResult.locationInfo);
+        await new Promise(resolve => setTimeout(resolve, 100));
       } else {
         setLocationInfo(null);
         setSearchLocationName(undefined);
       }
 
-      // Step 2: Use search-recalls-v2 with entity results
-      console.log('Step 2: Running AI answer generation with entity results...');
+      // Step 2: Use entity search results directly (v3 already generates the answer)
       setSearchStage('searching');
-      
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      const answerStart = Date.now();
-      
-      // Use the recalls array directly from entity search (already in Recall format)
-      const matchingRecalls = entityResult.recalls || [];
 
-      const { data: searchResults, error: searchError } = await supabase.functions.invoke('search-recalls-v2', {
-        body: {
-          query: query.trim(),
-          keywordRecalls: matchingRecalls.length > 0 ? matchingRecalls : undefined,
-          personInfo: entityResult.matchedPeople?.length > 0 ? {
-            detectedNames: entities.people,
-            matchedNames: entityResult.matchedPeople,
-          } : undefined,
-        },
-      });
+      const aiAnswerTime = 0;
 
-      const aiAnswerTime = Date.now() - answerStart;
-      console.log(`AI answer generation completed in ${aiAnswerTime}ms`);
+      const matchedRecallIds = entityResult.results?.map((r: any) => r.id) || [];
+      const answer = entityResult.answer || null;
+      const confidence = entityResult.confidence || 0;
 
-      if (searchError) {
-        console.error('Error in AI answer generation:', searchError);
-        
-        // Fallback: show entity results if available
-        if (matchingRecalls.length > 0) {
-          const recallIds = matchingRecalls.map((r: any) => r.recall_id);
-          const { data: recallsData } = await supabase
-            .from('recalls')
-            .select('*')
-            .in('id', recallIds)
-            .eq('user_id', user.id);
-
-          const notesWithImages = await loadImagesForRecalls(recallsData || []);
-          setNotes(notesWithImages);
-          setSearchAnswer(null);
-          setSearchConfidence(undefined);
-          setSearchStage('complete');
-          
-          const totalSearchTime = Date.now() - searchStartTime;
-          setSearchTimeMs(totalSearchTime);
-          setSearchTimings({
-            entitySearchMs: entitySearchTime,
-            aiAnswerMs: aiAnswerTime,
-            totalMs: totalSearchTime,
-          });
-          
-          return;
-        }
-        
-        // Fallback to basic search
-        const { data: recallsData } = await supabase
-          .from('recalls')
-          .select('*')
-          .eq('user_id', user.id)
-          .or(`text.ilike.%${query}%,location.ilike.%${query}%`)
-          .order('created_at', { ascending: false });
-
-        const notesWithImages = await loadImagesForRecalls(recallsData || []);
-        setNotes(notesWithImages);
-        setSearchAnswer(null);
-        setSearchConfidence(undefined);
-        setSearchStage('complete');
-        
-        const totalSearchTime = Date.now() - searchStartTime;
-        setSearchTimeMs(totalSearchTime);
-        setSearchTimings({
-          entitySearchMs: entitySearchTime,
-          aiAnswerMs: aiAnswerTime,
-          totalMs: totalSearchTime,
-        });
-        
-        return;
-      }
-
-      // Process V2 results
-      const matchedRecallIds = searchResults?.results?.map((r: any) => r.id) || [];
-      const answer = searchResults?.answer || null;
-      const confidence = searchResults?.confidence || 0;
-      
       console.log(`Found ${matchedRecallIds.length} AI-ranked results`);
       console.log('Answer:', answer);
       console.log('Confidence:', confidence);
-      
+
       if (matchedRecallIds.length > 0) {
         const { data: recallsData } = await supabase
           .from('recalls')
@@ -790,13 +705,10 @@ export function useNotes() {
           .eq('user_id', user.id);
 
         // Map recalls with match info
-        const orderedRecalls = searchResults.results
+        const orderedRecalls = (entityResult.results as any[])
           .map((matchInfo: any) => {
-            const recall = recallsData?.find(r => r.id === matchInfo.id);
-            if (!recall) {
-              return null;
-            }
-            
+            const recall = recallsData?.find((r: any) => r.id === matchInfo.id);
+            if (!recall) return null;
             return {
               ...recall,
               relevance_score: matchInfo.matchPercentage || 0,
@@ -806,7 +718,6 @@ export function useNotes() {
           .filter((recall: any) => recall !== null);
 
         const notesWithImages = await loadImagesForRecalls(orderedRecalls);
-        
         setNotes(notesWithImages);
         setSearchAnswer(answer);
         setSearchConfidence(confidence);
@@ -815,10 +726,9 @@ export function useNotes() {
         setSearchAnswer(answer);
         setSearchConfidence(confidence);
       }
-      
+
       setSearchStage('complete');
-      
-      // Calculate and set total search time
+
       const totalSearchTime = Date.now() - searchStartTime;
       setSearchTimeMs(totalSearchTime);
       setSearchTimings({
@@ -826,14 +736,9 @@ export function useNotes() {
         aiAnswerMs: aiAnswerTime,
         totalMs: totalSearchTime,
       });
-      
+
       console.log('=== UNIFIED ENTITY SEARCH COMPLETE ===');
       console.log(`Total search time: ${totalSearchTime}ms`);
-      console.log('Search timings:', {
-        entitySearch: entitySearchTime,
-        aiAnswer: aiAnswerTime,
-        total: totalSearchTime,
-      });
     } catch (error) {
       console.error('=== SEARCH EXCEPTION ===');
       console.error('Error searching recalls:', error);

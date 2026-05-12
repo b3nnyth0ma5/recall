@@ -140,11 +140,11 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 /**
- * Extract entities (keywords, people, location) from query using Claude
+ * Extract entities (keywords, people, location) from query using OpenAI
  */
-async function extractEntities(query: string, claudeApiKey: string): Promise<ExtractedEntities> {
+async function extractEntities(query: string, openaiApiKey: string): Promise<ExtractedEntities> {
   console.log('[Entity Extraction] Starting extraction for query:', query);
-  
+
   const systemPrompt = `You are an AI assistant that extracts entities from a user's search query.
 Identify and extract the following from the user's query:
 - Keywords: Important terms for searching recall content (exclude verbs, proper nouns, names of people, venues, suburbs or locations)
@@ -183,18 +183,17 @@ Output: {"keywords": ["coffee shops"], "people": [], "location": "", "locationIn
 
 Respond with valid JSON only, no markdown.`;
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'x-api-key': claudeApiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json'
+      'Authorization': `Bearer ${openaiApiKey}`,
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5',
+      model: 'gpt-4.1-mini',
       max_tokens: 500,
-      system: systemPrompt,
       messages: [
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: query }
       ]
     })
@@ -202,19 +201,20 @@ Respond with valid JSON only, no markdown.`;
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('[Entity Extraction] Claude API error:', errorText);
+    console.error('[Entity Extraction] OpenAI API error:', errorText);
     throw new Error(`Failed to extract entities: ${errorText}`);
   }
 
   const data = await response.json();
-  const content = data.content?.[0]?.text;
+  const content = data.choices?.[0]?.message?.content;
 
   if (!content) {
     console.log('[Entity Extraction] No content returned');
     return { keywords: [], people: [], location: '', locationIntent: null };
   }
 
-  const parsed = JSON.parse(content);
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  const parsed = JSON.parse(jsonMatch?.[0] ?? content);
   const result: ExtractedEntities = {
     keywords: parsed.keywords || [],
     people: parsed.people || [],
@@ -386,44 +386,33 @@ Deno.serve(async (req) => {
     console.log('Search query:', query);
 
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
     const googleApiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
 
-    if (!openaiApiKey || !claudeApiKey || !googleApiKey) {
+    if (!openaiApiKey || !googleApiKey) {
       return new Response(JSON.stringify({ error: 'API keys not configured' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Step 1: Extract all entities in a single Claude call
+    // Step 1: Extract all entities in a single OpenAI call
     const entityExtractionStart = Date.now();
-    const entities = await extractEntities(query, claudeApiKey);
+    const entities = await extractEntities(query, openaiApiKey);
     const entityExtractionTime = Date.now() - entityExtractionStart;
     console.log(`[Timing] Entity extraction: ${entityExtractionTime}ms`);
 
-    // Step 2: Generate embeddings for keywords (if any)
+    // Step 2: Fan out — embeddings, location, people lookup, and DB fetch in parallel
     const embeddingStart = Date.now();
-    const keywordEmbeddings = await generateKeywordEmbeddings(entities.keywords, openaiApiKey);
-    const embeddingTime = Date.now() - embeddingStart;
-    console.log(`[Timing] Keyword embeddings: ${embeddingTime}ms`);
 
-    // Step 3: Resolve location (if any)
-    let locationCoords: { latitude: number; longitude: number; displayName: string; proximity: number } | null = null;
-    const locationStart = Date.now();
-    
-    if (entities.location && entities.locationIntent) {
+    const resolveLocation = async (): Promise<{ latitude: number; longitude: number; displayName: string; proximity: number } | null> => {
+      if (!entities.location || !entities.locationIntent) return null;
       if (entities.locationIntent === 'near_me' && userLocation) {
-        locationCoords = {
-          latitude: userLocation.latitude,
-          longitude: userLocation.longitude,
-          displayName: 'Your current location',
-          proximity: 1
-        };
-      } else if (entities.location) {
+        return { latitude: userLocation.latitude, longitude: userLocation.longitude, displayName: 'Your current location', proximity: 1 };
+      }
+      if (entities.location) {
         const placeResult = await searchGooglePlaces(entities.location, googleApiKey, userLocation);
         if (placeResult) {
-          locationCoords = {
+          return {
             latitude: placeResult.latitude,
             longitude: placeResult.longitude,
             displayName: placeResult.displayName,
@@ -431,40 +420,40 @@ Deno.serve(async (req) => {
           };
         }
       }
-    }
-    
-    const locationTime = Date.now() - locationStart;
-    console.log(`[Timing] Location resolution: ${locationTime}ms`);
+      return null;
+    };
 
-    // Step 4: Find matching people (if any)
-    const peopleStart = Date.now();
-    let matchingPersonIds: string[] = [];
-    
-    if (entities.people.length > 0) {
+    const resolvePersonIds = async (): Promise<string[]> => {
+      if (entities.people.length === 0) return [];
       const { data: personsData, error: personsError } = await supabase
         .from('persons')
         .select('id, person_name')
         .eq('user_id', user.id);
-
-      if (!personsError && personsData) {
-        for (const detectedName of entities.people) {
-          const normalizedDetected = detectedName.toLowerCase().trim();
-          for (const person of personsData) {
-            const normalizedPerson = person.person_name.toLowerCase().trim();
-            if (normalizedPerson === normalizedDetected) {
-              matchingPersonIds.push(person.id);
-            }
+      if (personsError || !personsData) return [];
+      const ids: string[] = [];
+      for (const detectedName of entities.people) {
+        const normalizedDetected = detectedName.toLowerCase().trim();
+        for (const person of personsData) {
+          if (person.person_name.toLowerCase().trim() === normalizedDetected) {
+            ids.push(person.id);
           }
         }
       }
-    }
-    
-    const peopleTime = Date.now() - peopleStart;
-    console.log(`[Timing] People matching: ${peopleTime}ms`);
+      return ids;
+    };
 
-    // Step 5: Single database query to fetch all recalls and images
+    const [keywordEmbeddings, locationCoords, matchingPersonIds] = await Promise.all([
+      generateKeywordEmbeddings(entities.keywords, openaiApiKey),
+      resolveLocation(),
+      resolvePersonIds()
+    ]);
+
+    const embeddingTime = Date.now() - embeddingStart;
+    console.log(`[Timing] Embeddings + location + people (parallel): ${embeddingTime}ms`);
+
+    // Step 3: DB fetch — recall_people needs matchingPersonIds from above
     const dbQueryStart = Date.now();
-    
+
     const [recallsResult, imagesResult, recallPeopleResult] = await Promise.all([
       supabase
         .from('recalls')
@@ -720,33 +709,30 @@ Respond with valid JSON only, no markdown.`;
 Available Recalls (sorted by highest match percentage first):
 ${context}`;
 
-      const qaResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'x-api-key': claudeApiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json'
+          'Authorization': `Bearer ${openaiApiKey}`,
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'claude-opus-4-5',
+          model: 'gpt-4.1-mini',
           max_tokens: 2048,
-          system: qaSystemPrompt,
           messages: [
-            {
-              role: 'user',
-              content: qaUserMessage
-            }
+            { role: 'system', content: qaSystemPrompt },
+            { role: 'user', content: qaUserMessage }
           ]
         })
       });
 
       if (qaResponse.ok) {
         const qaData = await qaResponse.json();
-        const qaContent = qaData.content?.[0]?.text;
+        const qaContent = qaData.choices?.[0]?.message?.content;
 
         if (qaContent) {
           try {
-            const parsed = JSON.parse(qaContent);
+            const jsonMatch = qaContent.match(/\{[\s\S]*\}/);
+            const parsed = JSON.parse(jsonMatch?.[0] ?? qaContent);
             answer = parsed.answer || null;
             confidence = parsed.confidence || 0;
             sourcesUsed = parsed.sources || [];
@@ -813,9 +799,7 @@ ${context}`;
         extractedKeywords: entities.keywords,
         timings: {
           entityExtractionMs: entityExtractionTime,
-          embeddingMs: embeddingTime,
-          locationMs: locationTime,
-          peopleMs: peopleTime,
+          parallelSetupMs: embeddingTime,
           dbQueryMs: dbQueryTime,
           filteringMs: filteringTime,
           answerMs: answerTime,
@@ -851,9 +835,7 @@ ${context}`;
       extractedKeywords: entities.keywords,
       timings: {
         entityExtractionMs: entityExtractionTime,
-        embeddingMs: embeddingTime,
-        locationMs: locationTime,
-        peopleMs: peopleTime,
+        parallelSetupMs: embeddingTime,
         dbQueryMs: dbQueryTime,
         filteringMs: filteringTime,
         answerMs: 0,
