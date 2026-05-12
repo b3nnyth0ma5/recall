@@ -27,6 +27,7 @@ let Callout: any = null;
 let PROVIDER_GOOGLE: any = null;
 
 if (Platform.OS !== 'web') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const RNMaps = require('react-native-maps');
   MapView = RNMaps.default;
   Marker = RNMaps.Marker;
@@ -71,7 +72,15 @@ export default function MapViewScreen() {
     [idsParam]
   );
 
+  // Keep a ref to the latest mapNotes for use in handleMapReady (Bug 3)
+  const mapNotesRef = useRef<Note[]>([]);
+  useEffect(() => { mapNotesRef.current = mapNotes; }, [mapNotes]);
+
   useEffect(() => {
+    // search mode doesn't need user — run immediately
+    // browse-all mode: wait for auth to resolve, keep spinner visible
+    if (searchIds.length === 0 && !user?.id) return;
+
     async function loadNotes() {
       setLoading(true);
       if (searchIds.length > 0) {
@@ -85,38 +94,38 @@ export default function MapViewScreen() {
         if (error) {
           console.error('[MapView] Error fetching search recalls:', error);
         } else {
-          console.log('[MapView] Loaded', data?.length ?? 0, 'search recalls with location');
-          setMapNotes((data as Note[]) ?? []);
+          const valid = ((data ?? []) as any[]).filter(
+            (n) => n.latitude != null && n.longitude != null
+          ) as Note[];
+          console.log('[MapView] Loaded', valid.length, 'search recalls with location');
+          setMapNotes(valid);
         }
       } else {
-        if (!user?.id) {
-          console.log('[MapView] No user ID, skipping fetch');
-          setLoading(false);
-          return;
-        }
-        console.log('[MapView] Fetching all location recalls for user', user.id);
+        console.log('[MapView] Fetching all location recalls for user', user!.id);
         const { data, error } = await supabase
           .from('recalls')
           .select('id, text, latitude, longitude, location, created_at, images')
-          .eq('user_id', user.id)
+          .eq('user_id', user!.id)
           .not('latitude', 'is', null)
           .not('longitude', 'is', null)
           .order('created_at', { ascending: false });
         if (error) {
           console.error('[MapView] Error fetching all location recalls:', error);
         } else {
-          const notes = (data as Note[]) ?? [];
-          console.log('[MapView] Loaded', notes.length, 'total recalls with location');
-          setAllLocationNotes(notes);
-          setMapNotes(notes);
-          setVisibleNotes(notes);
+          const valid = ((data ?? []) as any[]).filter(
+            (n) => n.latitude != null && n.longitude != null
+          ) as Note[];
+          console.log('[MapView] Loaded', valid.length, 'total recalls with location');
+          setAllLocationNotes(valid);
+          setMapNotes(valid);
+          setVisibleNotes(valid);
         }
       }
       setLoading(false);
     }
     loadNotes();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id, searchIds]); // re-runs when auth resolves
 
   // ─── Browse-all: dynamic viewport filtering ──────────────────────────────────
 
@@ -321,10 +330,12 @@ export default function MapViewScreen() {
   // ─── Native: fit map to markers ──────────────────────────────────────────────
 
   const handleMapReady = useCallback(() => {
-    console.log('[MapView] Map ready, fitting to', mapNotes.length, 'coordinates');
-    if (!mapRef.current || mapNotes.length === 0) return;
+    if (!mapRef.current) return;
+    const notes = mapNotesRef.current;
+    console.log('[MapView] Map ready, fitting to', notes.length, 'coordinates');
+    if (notes.length === 0) return;
 
-    const coordinates = mapNotes
+    const coordinates = notes
       .filter(n => n.latitude && n.longitude)
       .map(n => ({ latitude: n.latitude as number, longitude: n.longitude as number }));
 
@@ -346,6 +357,34 @@ export default function MapViewScreen() {
         animated: true,
       });
     }
+  }, []); // reads from ref — no deps needed
+
+  // Secondary fit: handles the case where map was ready before data arrived
+  useEffect(() => {
+    if (!mapRef.current || mapNotes.length === 0 || Platform.OS === 'web') return;
+    const coordinates = mapNotes
+      .filter(n => n.latitude && n.longitude)
+      .map(n => ({ latitude: n.latitude as number, longitude: n.longitude as number }));
+    if (coordinates.length === 0) return;
+    setTimeout(() => {
+      if (!mapRef.current) return;
+      if (coordinates.length === 1) {
+        mapRef.current.animateToRegion(
+          {
+            latitude: coordinates[0].latitude,
+            longitude: coordinates[0].longitude,
+            latitudeDelta: 0.02,
+            longitudeDelta: 0.02,
+          },
+          500
+        );
+      } else {
+        mapRef.current.fitToCoordinates(coordinates, {
+          edgePadding: { top: 80, right: 50, bottom: 150, left: 50 },
+          animated: true,
+        });
+      }
+    }, 300);
   }, [mapNotes]);
 
   // ─── Derived values ───────────────────────────────────────────────────────────
