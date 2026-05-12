@@ -19,6 +19,7 @@ import { Note } from '@/types/Note';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import * as Location from 'expo-location';
 
 // Only import react-native-maps on native platforms
 let MapView: any = null;
@@ -72,9 +73,20 @@ export default function MapViewScreen() {
     [idsParam]
   );
 
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
   // Keep a ref to the latest mapNotes for use in handleMapReady (Bug 3)
   const mapNotesRef = useRef<Note[]>([]);
   useEffect(() => { mapNotesRef.current = mapNotes; }, [mapNotes]);
+
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return;
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+    })();
+  }, []);
 
   useEffect(() => {
     // search mode doesn't need user — run immediately
@@ -561,8 +573,18 @@ export default function MapViewScreen() {
                 customMapStyle={Platform.OS === 'android' ? DARK_MAP_STYLE : undefined}
                 onMapReady={handleMapReady}
                 onRegionChangeComplete={handleRegionChange}
-                showsUserLocation={false}
-                showsMyLocationButton={false}
+                showsUserLocation={true}
+                showsMyLocationButton={true}
+                initialRegion={
+                  searchIds.length === 0 && userLocation
+                    ? {
+                        latitude: userLocation.latitude,
+                        longitude: userLocation.longitude,
+                        latitudeDelta: 0.1,
+                        longitudeDelta: 0.1,
+                      }
+                    : undefined
+                }
               >
                 {displayNotes.map(note => {
                   if (!note.latitude || !note.longitude) return null;
