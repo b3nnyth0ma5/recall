@@ -423,26 +423,28 @@ Deno.serve(async (req) => {
       return null;
     };
 
-    const resolvePersonIds = async (): Promise<string[]> => {
-      if (entities.people.length === 0) return [];
+    const resolvePersonIds = async (): Promise<{ ids: string[]; matchedNames: string[] }> => {
+      if (entities.people.length === 0) return { ids: [], matchedNames: [] };
       const { data: personsData, error: personsError } = await supabase
         .from('persons')
         .select('id, person_name')
         .eq('user_id', user.id);
-      if (personsError || !personsData) return [];
+      if (personsError || !personsData) return { ids: [], matchedNames: [] };
       const ids: string[] = [];
+      const matchedNames: string[] = [];
       for (const detectedName of entities.people) {
         const normalizedDetected = detectedName.toLowerCase().trim();
         for (const person of personsData) {
           if (person.person_name.toLowerCase().trim() === normalizedDetected) {
             ids.push(person.id);
+            matchedNames.push(person.person_name);
           }
         }
       }
-      return ids;
+      return { ids, matchedNames };
     };
 
-    const [keywordEmbeddings, locationCoords, matchingPersonIds] = await Promise.all([
+    const [keywordEmbeddings, locationCoords, { ids: matchingPersonIds, matchedNames: matchedPersonNames }] = await Promise.all([
       generateKeywordEmbeddings(entities.keywords, openaiApiKey),
       resolveLocation(),
       resolvePersonIds()
@@ -794,7 +796,7 @@ ${context}`;
         } : null,
         personInfo: entities.people.length > 0 ? {
           detectedNames: entities.people,
-          matchedNames: entities.people
+          matchedNames: matchedPersonNames
         } : null,
         extractedKeywords: entities.keywords,
         timings: {
@@ -830,7 +832,7 @@ ${context}`;
       } : null,
       personInfo: entities.people.length > 0 ? {
         detectedNames: entities.people,
-        matchedNames: entities.people
+        matchedNames: matchedPersonNames
       } : null,
       extractedKeywords: entities.keywords,
       timings: {

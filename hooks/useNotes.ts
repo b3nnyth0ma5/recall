@@ -609,7 +609,7 @@ export function useNotes() {
       console.log('Step 1: Calling unified entity extraction...');
       const entitySearchStart = Date.now();
       
-      const { data: entityResult, error: entityError } = await supabase.functions.invoke('search-recalls-with-entities', {
+      const { data: entityResult, error: entityError } = await supabase.functions.invoke('search-recalls-v3', {
         body: { 
           query: query.trim(),
           userLocation: userLocation,
