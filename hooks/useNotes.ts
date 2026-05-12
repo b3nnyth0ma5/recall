@@ -687,7 +687,7 @@ export function useNotes() {
       // Step 2: Use entity search results directly (v3 already generates the answer)
       setSearchStage('searching');
 
-      const aiAnswerTime = 0;
+      const aiAnswerTime = entityResult.timings?.answerMs ?? 0;
 
       const matchedRecallIds = entityResult.results?.map((r: any) => r.id) || [];
       const answer = entityResult.answer || null;
