@@ -296,7 +296,8 @@ Rules:
 
     if (qaContent) {
       try {
-        const parsed = JSON.parse(qaContent);
+        const jsonMatch = qaContent.match(/\{[\s\S]*\}/);
+        const parsed = JSON.parse(jsonMatch?.[0] ?? qaContent);
         answer = parsed.answer ?? null;
         confidence = parsed.confidence ?? 0;
         sourcesUsed = parsed.sources ?? [];
