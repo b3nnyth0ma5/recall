@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,10 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { useNotes } from '@/hooks/useNotes';
 import { Note } from '@/types/Note';
 import * as Haptics from 'expo-haptics';
+import { supabase } from '@/utils/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Only import react-native-maps on native platforms
 let MapView: any = null;
@@ -53,23 +54,89 @@ export default function MapViewScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
-  const { notes } = useNotes();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [mapNotes, setMapNotes] = useState<Note[]>([]);
+  const [allLocationNotes, setAllLocationNotes] = useState<Note[]>([]);
+  const [visibleNotes, setVisibleNotes] = useState<Note[]>([]);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
   const hasSearchResults = params.hasSearch === 'true';
+  const idsParam = typeof params.ids === 'string' ? params.ids : '';
+  const searchIds = useMemo(
+    () => (idsParam ? idsParam.split(',').filter(Boolean) : []),
+    [idsParam]
+  );
 
   useEffect(() => {
-    const notesWithLocation = notes.filter(
-      note => note.latitude && note.longitude
+    async function loadNotes() {
+      setLoading(true);
+      if (searchIds.length > 0) {
+        console.log('[MapView] Fetching', searchIds.length, 'search result recalls by ID');
+        const { data, error } = await supabase
+          .from('recalls')
+          .select('id, text, latitude, longitude, location, created_at, images')
+          .in('id', searchIds)
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null);
+        if (error) {
+          console.error('[MapView] Error fetching search recalls:', error);
+        } else {
+          console.log('[MapView] Loaded', data?.length ?? 0, 'search recalls with location');
+          setMapNotes((data as Note[]) ?? []);
+        }
+      } else {
+        if (!user?.id) {
+          console.log('[MapView] No user ID, skipping fetch');
+          setLoading(false);
+          return;
+        }
+        console.log('[MapView] Fetching all location recalls for user', user.id);
+        const { data, error } = await supabase
+          .from('recalls')
+          .select('id, text, latitude, longitude, location, created_at, images')
+          .eq('user_id', user.id)
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null)
+          .order('created_at', { ascending: false });
+        if (error) {
+          console.error('[MapView] Error fetching all location recalls:', error);
+        } else {
+          const notes = (data as Note[]) ?? [];
+          console.log('[MapView] Loaded', notes.length, 'total recalls with location');
+          setAllLocationNotes(notes);
+          setMapNotes(notes);
+          setVisibleNotes(notes);
+        }
+      }
+      setLoading(false);
+    }
+    loadNotes();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── Browse-all: dynamic viewport filtering ──────────────────────────────────
+
+  const handleRegionChange = useCallback((region: any) => {
+    if (searchIds.length > 0) return; // search mode — no filtering
+    const { latitude, longitude, latitudeDelta, longitudeDelta } = region;
+    const minLat = latitude - latitudeDelta / 2;
+    const maxLat = latitude + latitudeDelta / 2;
+    const minLng = longitude - longitudeDelta / 2;
+    const maxLng = longitude + longitudeDelta / 2;
+    const visible = allLocationNotes.filter(
+      n =>
+        n.latitude! >= minLat &&
+        n.latitude! <= maxLat &&
+        n.longitude! >= minLng &&
+        n.longitude! <= maxLng
     );
-    setMapNotes(notesWithLocation);
-    setLoading(false);
-  }, [notes]);
+    console.log('[MapView] Region changed — visible pins:', visible.length, 'of', allLocationNotes.length);
+    setVisibleNotes(visible);
+  }, [allLocationNotes, searchIds]);
 
   // ─── Web: Google Maps script injection ───────────────────────────────────────
 
@@ -283,9 +350,12 @@ export default function MapViewScreen() {
 
   // ─── Derived values ───────────────────────────────────────────────────────────
 
-  const mapCountText = mapNotes.length === 1 ? '1 recall' : `${mapNotes.length} recalls`;
+  const mapCountText = searchIds.length > 0
+    ? `${mapNotes.length} of ${searchIds.length} recalls on map`
+    : `${visibleNotes.length} visible · ${allLocationNotes.length} total`;
   const fabBottom = insets.bottom + 24;
   const headerTitle = hasSearchResults ? 'Search Results Map' : 'Recalls Map';
+  const displayNotes = searchIds.length > 0 ? mapNotes : visibleNotes;
 
   // ─── Render ───────────────────────────────────────────────────────────────────
 
@@ -451,10 +521,11 @@ export default function MapViewScreen() {
                 userInterfaceStyle="dark"
                 customMapStyle={Platform.OS === 'android' ? DARK_MAP_STYLE : undefined}
                 onMapReady={handleMapReady}
+                onRegionChangeComplete={handleRegionChange}
                 showsUserLocation={false}
                 showsMyLocationButton={false}
               >
-                {mapNotes.map(note => {
+                {displayNotes.map(note => {
                   if (!note.latitude || !note.longitude) return null;
                   const textPreview = note.text ? note.text.substring(0, 80) : '';
                   const calloutText = textPreview + (note.text && note.text.length > 80 ? '…' : '');
