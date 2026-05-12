@@ -343,6 +343,7 @@ export default function MapViewScreen() {
 
   const handleMapReady = useCallback(() => {
     if (!mapRef.current) return;
+    if (searchIds.length === 0) return; // browse-all: initialRegion handles centering
     const notes = mapNotesRef.current;
     console.log('[MapView] Map ready, fitting to', notes.length, 'coordinates');
     if (notes.length === 0) return;
@@ -369,11 +370,12 @@ export default function MapViewScreen() {
         animated: true,
       });
     }
-  }, []); // reads from ref — no deps needed
+  }, [searchIds]); // searchIds guards browse-all mode
 
   // Secondary fit: handles the case where map was ready before data arrived
   useEffect(() => {
     if (!mapRef.current || mapNotes.length === 0 || Platform.OS === 'web') return;
+    if (searchIds.length === 0) return; // browse-all: don't override user-location initialRegion
     const coordinates = mapNotes
       .filter(n => n.latitude && n.longitude)
       .map(n => ({ latitude: n.latitude as number, longitude: n.longitude as number }));
@@ -397,7 +399,7 @@ export default function MapViewScreen() {
         });
       }
     }, 300);
-  }, [mapNotes]);
+  }, [mapNotes, searchIds.length]);
 
   // ─── Derived values ───────────────────────────────────────────────────────────
 
