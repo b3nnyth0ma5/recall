@@ -328,7 +328,7 @@ export function useNotes() {
     setPage(1);
     setHasMore(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user?.id]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   const loadMoreNotes = useCallback(() => {

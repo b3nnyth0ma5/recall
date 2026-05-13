@@ -231,7 +231,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   const renderTextWithLinks = (text: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = text.split(urlRegex);
+    const parts = text.split(urlRegex).filter(part => part !== '');
     
     return parts.map((part, index) => {
       if (part.match(urlRegex)) {
