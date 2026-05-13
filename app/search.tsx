@@ -813,22 +813,6 @@ export default function SearchScreen() {
         )}
       </ScrollView>
 
-      {/* Map FAB — always visible */}
-      <Pressable
-        onPress={() => {
-          if (hasSearched && filteredNotes.length > 0) {
-            const ids = filteredNotes.map(n => n.id).join(',');
-            console.log('[SearchScreen] Map FAB pressed — navigating with', filteredNotes.length, 'search result IDs');
-            router.push(`/map-view?hasSearch=true&ids=${ids}`);
-          } else {
-            console.log('[SearchScreen] Map FAB pressed — navigating to browse-all map');
-            router.push('/map-view');
-          }
-        }}
-        style={[styles.mapFab, { bottom: insets.bottom + 24 }]}
-      >
-        <IconSymbol name="map.fill" size={24} color="#FFFFFF" />
-      </Pressable>
     </View>
   );
 }
@@ -1143,19 +1127,5 @@ const styles = StyleSheet.create({
   searchingPlaceholder: {
     minHeight: 100,
   },
-  mapFab: {
-    position: 'absolute',
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
+
 });

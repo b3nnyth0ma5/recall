@@ -18,14 +18,8 @@
       "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "LSApplicationQueriesSchemes": [
-          "comgooglemaps",
-          "maps"
-        ],
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to save and share images.",
         "NSCameraUsageDescription": "This app needs access to your camera to take photos for your recalls.",
-        "NSLocationWhenInUseUsageDescription": "Recall uses your location to tag memories with where they happened.",
-        "GMSApiKey": "AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48",
         "UISupportsDocumentBrowser": true,
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true,
