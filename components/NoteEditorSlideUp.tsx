@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -20,6 +19,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
 import Animated, { 
   useSharedValue, 
@@ -36,10 +36,12 @@ import { Note, Person } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
 import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
-import { supabase, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding, triggerPeopleFinder } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding, triggerPeopleFinder } from '@/utils/supabase';
 import { processRecallUrls } from '@/utils/urlProcessor';
+import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
+import LocationSearchScreen from '@/app/location-search';
 
 interface ImageData {
   id?: string;
@@ -78,7 +80,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const [locationName, setLocationName] = useState<string>('');
   const [locationPrimaryType, setLocationPrimaryType] = useState<string>('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
@@ -92,6 +93,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
 
   const [loadedImageIndices, setLoadedImageIndices] = useState<Set<number>>(new Set());
   const [initialImageCount, setInitialImageCount] = useState(0);
+
+  const [showLocationSearch, setShowLocationSearch] = useState(false);
 
   const isEditing = !!noteId;
   
@@ -460,6 +463,30 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
         setLoading(true);
         const asset = result.assets[0];
         
+        if (!location) {
+          console.log('Attempting to extract location from captured photo...');
+          try {
+            const imageLocation = await extractLocationFromImage(asset);
+            
+            if (imageLocation.latitude && imageLocation.longitude) {
+              console.log('Location extracted from photo:', imageLocation);
+              setLocation({
+                latitude: imageLocation.latitude,
+                longitude: imageLocation.longitude,
+              });
+              
+              if (imageLocation.locationName) {
+                setLocationName(imageLocation.locationName);
+                console.log('Location name set from photo:', imageLocation.locationName);
+              }
+            } else {
+              console.log('No location data found in photo');
+            }
+          } catch (error) {
+            console.error('Error extracting location from photo:', error);
+          }
+        }
+        
         const converted = await convertImageToSuitableFormat(asset.uri);
         setImages([...images, {
           uri: converted.uri,
@@ -480,7 +507,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
       setLoading(false);
       Alert.alert('Error', 'Failed to take photo');
     }
-  }, [images]);
+  }, [images, location]);
 
   const pickImage = useCallback(async () => {
     try {
@@ -501,6 +528,30 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
       if (!result.canceled && result.assets) {
         setLoading(true);
         setProcessingCount(result.assets.length);
+
+        if (!location && result.assets.length > 0) {
+          console.log('Attempting to extract location from first selected image...');
+          try {
+            const imageLocation = await extractLocationFromImage(result.assets[0]);
+            
+            if (imageLocation.latitude && imageLocation.longitude) {
+              console.log('Location extracted from image:', imageLocation);
+              setLocation({
+                latitude: imageLocation.latitude,
+                longitude: imageLocation.longitude,
+              });
+              
+              if (imageLocation.locationName) {
+                setLocationName(imageLocation.locationName);
+                console.log('Location name set from image:', imageLocation.locationName);
+              }
+            } else {
+              console.log('No location data found in image');
+            }
+          } catch (error) {
+            console.error('Error extracting location from image:', error);
+          }
+        }
 
         console.log(`[NoteEditorSlideUp] Converting ${result.assets.length} images in parallel`);
         const convertedAssets = await Promise.all(
@@ -525,7 +576,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
       setLoading(false);
       Alert.alert('Error', 'Failed to pick image');
     }
-  }, [images]);
+  }, [images, location]);
 
   const handlePlusPress = () => {
     if (Platform.OS !== 'web') {
@@ -645,6 +696,30 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
       }
       return <Text key={index} style={styles.normalText}>{part}</Text>;
     });
+  };
+
+  const handleLocationPress = () => {
+    setShowLocationSearch(true);
+  };
+
+  const handleLocationSelected = (selectedLocation: {
+    latitude: number;
+    longitude: number;
+    name: string;
+    primaryType?: string;
+    displayName: string;
+    formattedAddress: string;
+  }) => {
+    console.log('[NoteEditorSlideUp] Location selected from modal:', selectedLocation);
+    
+    setLocation({
+      latitude: selectedLocation.latitude,
+      longitude: selectedLocation.longitude,
+    });
+    setLocationName(selectedLocation.name);
+    setLocationPrimaryType(selectedLocation.primaryType || '');
+    
+    setShowLocationSearch(false);
   };
 
   const handlePeopleChange = useCallback((newPeople: Person[]) => {
@@ -939,6 +1014,10 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     } else {
       textInputRef.current?.focus();
     }
+  };
+
+  const handleLocationSearch = () => {
+    setShowLocationSearch(true);
   };
 
   const handleImagePress = (index: number) => {
@@ -1246,7 +1325,11 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                   </View>
 
                   <View style={styles.toolbarCenter}>
-                    <View style={styles.locationPill}>
+                    <Pressable
+                      style={styles.locationPill}
+                      onPress={handleLocationSearch}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
                       <IconSymbol 
                         ios_icon_name="mappin.circle.fill" 
                         android_material_icon_name="location-on" 
@@ -1254,9 +1337,9 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                         color={colors.primary} 
                       />
                       <Text style={styles.locationPillText} numberOfLines={1}>
-                        {locationName || 'No Location'}
+                        {locationName || 'Add Location'}
                       </Text>
-                    </View>
+                    </Pressable>
                   </View>
 
                   {/* Keyboard icons - Right aligned (swapped from left) */}
@@ -1300,6 +1383,11 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
         </Animated.View>
       </Modal>
 
+      <LocationSearchScreen
+        visible={showLocationSearch}
+        onClose={() => setShowLocationSearch(false)}
+        onSelectLocation={handleLocationSelected}
+      />
     </>
   );
 }

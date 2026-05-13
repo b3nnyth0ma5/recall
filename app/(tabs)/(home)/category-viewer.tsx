@@ -51,6 +51,8 @@ export default function CategoryViewerScreen() {
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
+  // Ref so loadCategoryAndRecalls can call startMatchingPolling without a circular dep
+  const startMatchingPollingRef = useRef<() => void>(() => {});
 
   const ITEMS_PER_PAGE = 10;
 
@@ -236,50 +238,6 @@ export default function CategoryViewerScreen() {
     return processedNotes;
   }, [loadPeopleForRecalls]);
 
-  // Start polling to check if matching is complete
-  const startMatchingPolling = useCallback(() => {
-    console.log('[CategoryViewer] Starting matching polling...');
-    
-    // Clear any existing interval
-    if (matchingCheckIntervalRef.current) {
-      clearInterval(matchingCheckIntervalRef.current);
-    }
-    
-    // Poll every 3 seconds
-    matchingCheckIntervalRef.current = setInterval(async () => {
-      try {
-        console.log('[CategoryViewer] Checking if matching is complete...');
-        
-        const { data: categoryData, error: categoryError } = await supabase
-          .from('recollection_categories')
-          .select('is_matching')
-          .eq('id', id)
-          .single();
-        
-        if (categoryError) {
-          console.error('[CategoryViewer] Error checking matching status:', categoryError);
-          return;
-        }
-        
-        if (!categoryData.is_matching) {
-          console.log('[CategoryViewer] Matching complete! Reloading recalls...');
-          setIsMatching(false);
-          
-          // Stop polling
-          if (matchingCheckIntervalRef.current) {
-            clearInterval(matchingCheckIntervalRef.current);
-            matchingCheckIntervalRef.current = null;
-          }
-          
-          // Reload recalls
-          await loadCategoryAndRecalls(1, false);
-        }
-      } catch (error) {
-        console.error('[CategoryViewer] Error in matching polling:', error);
-      }
-    }, 1500);
-  }, [id, loadCategoryAndRecalls]);
-
   // Optimized category and recalls loading with pagination and cache usage
   const loadCategoryAndRecalls = useCallback(async (pageNum: number = 1, append: boolean = false) => {
     if (!id || !user) {
@@ -319,7 +277,7 @@ export default function CategoryViewerScreen() {
         
         // If category is still matching, start polling
         if (categoryData.is_matching) {
-          startMatchingPolling();
+          startMatchingPollingRef.current();
         }
       }
 
@@ -634,7 +592,54 @@ export default function CategoryViewerScreen() {
       setLoading(false);
       setIsLoadingMore(false);
     }
-  }, [id, user, router, getCachedNote, loadImagesForRecalls, startMatchingPolling, sortOrder]);
+  }, [id, user, router, getCachedNote, loadImagesForRecalls, sortOrder]);
+
+  // Start polling to check if matching is complete
+  const startMatchingPolling = useCallback(() => {
+    console.log('[CategoryViewer] Starting matching polling...');
+    
+    // Clear any existing interval
+    if (matchingCheckIntervalRef.current) {
+      clearInterval(matchingCheckIntervalRef.current);
+    }
+    
+    // Poll every 3 seconds
+    matchingCheckIntervalRef.current = setInterval(async () => {
+      try {
+        console.log('[CategoryViewer] Checking if matching is complete...');
+        
+        const { data: categoryData, error: categoryError } = await supabase
+          .from('recollection_categories')
+          .select('is_matching')
+          .eq('id', id)
+          .single();
+        
+        if (categoryError) {
+          console.error('[CategoryViewer] Error checking matching status:', categoryError);
+          return;
+        }
+        
+        if (!categoryData.is_matching) {
+          console.log('[CategoryViewer] Matching complete! Reloading recalls...');
+          setIsMatching(false);
+          
+          // Stop polling
+          if (matchingCheckIntervalRef.current) {
+            clearInterval(matchingCheckIntervalRef.current);
+            matchingCheckIntervalRef.current = null;
+          }
+          
+          // Reload recalls
+          await loadCategoryAndRecalls(1, false);
+        }
+      } catch (error) {
+        console.error('[CategoryViewer] Error in matching polling:', error);
+      }
+    }, 1500);
+  }, [id, loadCategoryAndRecalls]);
+
+  // Keep the ref in sync so loadCategoryAndRecalls can call it without a circular dep
+  startMatchingPollingRef.current = startMatchingPolling;
 
   useEffect(() => {
     console.log('[CategoryViewer] useEffect triggered - category:', id, 'sortOrder:', sortOrder);

@@ -1,4 +1,3 @@
-
 /**
  * Create Recall from Share Screen
  * 
@@ -141,6 +140,10 @@ export default function CreateRecallFromShareScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   }, [images, currentImageIndex]);
+
+  const handleAddLocation = () => {
+    router.push('/location-search?from=create-recall-from-share');
+  };
 
   const handleSave = async () => {
     if (!user) {
@@ -409,6 +412,30 @@ export default function CreateRecallFromShareScreen() {
             />
           </View>
 
+          {/* Location */}
+          <View style={styles.locationSection}>
+            <Pressable
+              style={styles.locationButton}
+              onPress={handleAddLocation}
+              disabled={isSaving}
+            >
+              <IconSymbol
+                ios_icon_name="location.fill"
+                android_material_icon_name="location-on"
+                size={20}
+                color={location ? colors.primary : colors.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.locationButtonText,
+                  location && styles.locationButtonTextActive,
+                ]}
+              >
+                {location ? location.name : 'Add Location'}
+              </Text>
+            </Pressable>
+          </View>
+
           {/* Info */}
           <View style={styles.infoSection}>
             <IconSymbol
@@ -548,6 +575,27 @@ const styles = StyleSheet.create({
     maxHeight: 300,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  locationSection: {
+    marginBottom: 16,
+  },
+  locationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 16,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  locationButtonText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  locationButtonTextActive: {
+    color: colors.primary,
+    fontWeight: '500',
   },
   infoSection: {
     flexDirection: 'row',

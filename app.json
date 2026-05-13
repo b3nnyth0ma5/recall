@@ -124,7 +124,7 @@
     },
     "updates": {
       "enabled": false,
-      "checkAutomatically": "never",
+      "checkAutomatically": "NEVER",
       "fallbackToCacheTimeout": 0
     },
     "plugins": [
