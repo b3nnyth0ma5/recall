@@ -21,7 +21,6 @@ import {
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
 import Animated, { 
   useSharedValue, 
@@ -39,7 +38,6 @@ import { FullScreenImage } from '@/components/FullScreenImage';
 import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding, triggerPeopleFinder } from '@/utils/supabase';
 import { processRecallUrls } from '@/utils/urlProcessor';
-import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
 
@@ -264,27 +262,6 @@ export default function NoteEditorScreen() {
         }
       }
 
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          const currentLocation = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          });
-          setLocation({
-            latitude: currentLocation.coords.latitude,
-            longitude: currentLocation.coords.longitude,
-          });
-
-          const locationName = await reverseGeocode(
-            currentLocation.coords.latitude,
-            currentLocation.coords.longitude
-          );
-          setLocationName(locationName);
-          console.log('Location obtained for shared content:', locationName);
-        }
-      } catch (error) {
-        console.error('Error getting location for shared content:', error);
-      }
     };
 
     loadSharedContent();
@@ -309,30 +286,6 @@ export default function NoteEditorScreen() {
         setLoading(true);
         const asset = result.assets[0];
         
-        if (!location) {
-          console.log('Attempting to extract location from captured photo...');
-          try {
-            const imageLocation = await extractLocationFromImage(asset);
-            
-            if (imageLocation.latitude && imageLocation.longitude) {
-              console.log('Location extracted from photo:', imageLocation);
-              setLocation({
-                latitude: imageLocation.latitude,
-                longitude: imageLocation.longitude,
-              });
-              
-              if (imageLocation.locationName) {
-                setLocationName(imageLocation.locationName);
-                console.log('Location name set from photo:', imageLocation.locationName);
-              }
-            } else {
-              console.log('No location data found in photo');
-            }
-          } catch (error) {
-            console.error('Error extracting location from photo:', error);
-          }
-        }
-        
         const converted = await convertImageToSuitableFormat(asset.uri);
         setImages([...images, {
           uri: converted.uri,
@@ -353,7 +306,7 @@ export default function NoteEditorScreen() {
       setLoading(false);
       Alert.alert('Error', 'Failed to take photo');
     }
-  }, [images, location]);
+  }, [images]);
 
   const pickImage = useCallback(async () => {
     try {
@@ -374,30 +327,6 @@ export default function NoteEditorScreen() {
       if (!result.canceled && result.assets) {
         setLoading(true);
         setProcessingCount(result.assets.length);
-
-        if (!location && result.assets.length > 0) {
-          console.log('Attempting to extract location from first selected image...');
-          try {
-            const imageLocation = await extractLocationFromImage(result.assets[0]);
-            
-            if (imageLocation.latitude && imageLocation.longitude) {
-              console.log('Location extracted from image:', imageLocation);
-              setLocation({
-                latitude: imageLocation.latitude,
-                longitude: imageLocation.longitude,
-              });
-              
-              if (imageLocation.locationName) {
-                setLocationName(imageLocation.locationName);
-                console.log('Location name set from image:', imageLocation.locationName);
-              }
-            } else {
-              console.log('No location data found in image');
-            }
-          } catch (error) {
-            console.error('Error extracting location from image:', error);
-          }
-        }
 
         console.log(`[NoteEditor] Converting ${result.assets.length} images in parallel`);
         const convertedAssets = await Promise.all(
@@ -422,7 +351,7 @@ export default function NoteEditorScreen() {
       setLoading(false);
       Alert.alert('Error', 'Failed to pick image');
     }
-  }, [images, location]);
+  }, [images]);
 
   const handlePlusPress = () => {
     if (Platform.OS !== 'web') {
@@ -460,15 +389,6 @@ export default function NoteEditorScreen() {
       }, 300);
     }
   }, [openCamera, isEditing, isSharedRecall, fromShare, cameraLaunched, takePhoto]);
-
-  useEffect(() => {
-    if (openLocation && !isEditing && !isSharedRecall && !fromShare) {
-      console.log('Auto-launching location search for new note');
-      setTimeout(() => {
-        router.push('/location-search');
-      }, 300);
-    }
-  }, [openLocation, isEditing, isSharedRecall, fromShare, router]);
 
   useEffect(() => {
     if (isSharedRecall && params.sharedText) {
@@ -755,18 +675,7 @@ export default function NoteEditorScreen() {
     loadNoteFromCacheOrDatabase();
   }, [params.id, isEditing, user, router, fromShare, getCachedNote]);
 
-  useEffect(() => {
-    if (!isEditing && !isSharedRecall && !openLocation && !fromShare) {
-      console.log('Requesting location for new note');
-      requestLocationPermission();
-    } else if (isSharedRecall) {
-      console.log('Skipping location request for shared recall');
-    } else if (openLocation) {
-      console.log('Skipping location request - will open location search');
-    } else if (fromShare) {
-      console.log('Skipping location request - from share intent');
-    }
-  }, [isEditing, isSharedRecall, openLocation, fromShare]);
+
 
   useEffect(() => {
     if (isSharedRecall) {
@@ -796,28 +705,6 @@ export default function NoteEditorScreen() {
       });
     }
   }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router, isSharedRecall]);
-
-  const requestLocationPermission = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const currentLocation = await Location.getCurrentPositionAsync({});
-        setLocation({
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
-        });
-
-        const locationName = await reverseGeocode(
-          currentLocation.coords.latitude,
-          currentLocation.coords.longitude
-        );
-        setLocationName(locationName);
-        console.log('Location obtained:', locationName);
-      }
-    } catch (error) {
-      console.error('Error getting location:', error);
-    }
-  };
 
   const convertImageToSuitableFormat = async (uri: string): Promise<{ uri: string; contentType: string }> => {
     try {
@@ -932,16 +819,6 @@ export default function NoteEditorScreen() {
       }
       return <Text key={index} style={styles.normalText}>{part}</Text>;
     });
-  };
-
-  const handleLocationPress = () => {
-    if (!location) {
-      console.log('No location available');
-      return;
-    }
-
-    console.log('Navigating to location search screen');
-    router.push('/location-search');
   };
 
   const handlePeopleChange = useCallback((newPeople: Person[]) => {
@@ -1213,10 +1090,6 @@ export default function NoteEditorScreen() {
     } else {
       textInputRef.current?.focus();
     }
-  };
-
-  const handleLocationSearch = () => {
-    router.push('/location-search');
   };
 
   const handleImagePress = (index: number) => {
@@ -1554,20 +1427,16 @@ export default function NoteEditorScreen() {
         </View>
 
         <View style={styles.toolbarCenter}>
-          <Pressable
-            style={styles.locationPill}
-            onPress={handleLocationSearch}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
+          <View style={styles.locationPill}>
             <IconSymbol 
               name="mappin.circle.fill" 
               size={16} 
               color={colors.primary} 
             />
             <Text style={styles.locationPillText} numberOfLines={1}>
-              {locationName || 'Add Location'}
+              {locationName || 'No Location'}
             </Text>
-          </Pressable>
+          </View>
         </View>
 
         {/* Keyboard icons - Right aligned (swapped from left) */}

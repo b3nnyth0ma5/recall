@@ -4,7 +4,6 @@ import { Note } from '@/types/Note';
 import { supabase, getImageDataUrl, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
-import * as Location from 'expo-location';
 
 export type SearchStage = 'idle' | 'resolving' | 'people' | 'keywords' | 'searching' | 'complete';
 
@@ -518,29 +517,6 @@ export function useNotes() {
     }
   }, [user]);
 
-  // Helper function to get user's current location
-  const getUserLocation = useCallback(async (): Promise<{ latitude: number; longitude: number } | null> => {
-    try {
-      console.log('[useNotes] Getting user location for search...');
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('[useNotes] Location permission not granted');
-        return null;
-      }
-
-      const currentPosition = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const { latitude, longitude } = currentPosition.coords;
-      
-      console.log('[useNotes] User location obtained:', { latitude, longitude });
-      return { latitude, longitude };
-    } catch (error) {
-      console.error('[useNotes] Error getting user location:', error);
-      return null;
-    }
-  }, []);
-
   const searchNotes = useCallback(async (query: string, useV2: boolean = false) => {
     if (!user) {
       console.error('No user logged in');
@@ -596,10 +572,6 @@ export function useNotes() {
         return;
       }
 
-      // Get user's current location for "near me" queries
-      const userLocation = await getUserLocation();
-      console.log('[useNotes] User location for search:', userLocation);
-
       // Add a small delay to ensure "resolving" stage is visible
       await new Promise(resolve => setTimeout(resolve, 300));
 
@@ -610,7 +582,6 @@ export function useNotes() {
       const { data: entityResult, error: entityError } = await supabase.functions.invoke('search-recalls-with-entities', {
         body: { 
           query: query.trim(),
-          userLocation: userLocation,
         },
       });
 
@@ -857,7 +828,7 @@ export function useNotes() {
         setSearchStage('idle');
       }, 1000);
     }
-  }, [refreshNotes, user, loadImagesForRecalls, getUserLocation]);
+  }, [refreshNotes, user, loadImagesForRecalls]);
 
   const getSearchHistory = useCallback(async () => {
     if (!user) {

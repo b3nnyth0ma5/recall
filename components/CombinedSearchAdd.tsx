@@ -20,7 +20,6 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import Animated, { 
   FadeIn, 
@@ -143,46 +142,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   });
 
   const getCurrentLocation = async () => {
-    try {
-      setIsRefreshingLocation(true);
-      console.log('[CombinedSearchAdd] Fetching current location...');
-      
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('Location permission not granted');
-        setIsRefreshingLocation(false);
-        return;
-      }
-
-      const currentPosition = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const { latitude, longitude } = currentPosition.coords;
-
-      console.log('[CombinedSearchAdd] GPS coordinates:', { latitude, longitude });
-
-      const { reverseGeocodeGoogle } = await import('@/utils/googlePlaces');
-      const locationName = await reverseGeocodeGoogle(latitude, longitude);
-
-      console.log('[CombinedSearchAdd] Resolved location name:', locationName);
-
-      const locationData = {
-        latitude,
-        longitude,
-        name: locationName,
-        primaryType: undefined,
-      };
-
-      setCurrentLocation(locationData);
-      setLocation(locationData);
-      lastLocationFetchRef.current = Date.now();
-      
-      console.log('[CombinedSearchAdd] Current location obtained:', locationData);
-    } catch (error) {
-      console.error('[CombinedSearchAdd] Error getting current location:', error);
-    } finally {
-      setIsRefreshingLocation(false);
-    }
+    // Location capture removed
   };
 
   useEffect(() => {
