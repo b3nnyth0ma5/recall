@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,24 +13,17 @@ import {
   Alert,
   TouchableWithoutFeedback,
   ActivityIndicator,
-  AppState,
-  AppStateStatus,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import Animated, { 
   FadeIn, 
-  SlideInDown, 
-  SlideOutDown,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-  withRepeat,
-  withSequence,
-  Easing,
 } from 'react-native-reanimated';
 import { supabase } from '@/utils/supabase';
 
@@ -51,64 +44,17 @@ interface ImageState {
 
 export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
   const router = useRouter();
-  const params = useLocalSearchParams();
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageState[]>([]);
-  const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string; primaryType?: string } | null>(null);
   const [showDrawer, setShowDrawer] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [savingStage, setSavingStage] = useState<string>('');
-  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number; name: string; primaryType?: string } | null>(null);
-  const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const translateY = useSharedValue(0);
-  const lastLocationFetchRef = useRef<number>(0);
-  const locationRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const processedParamsRef = useRef<string>('');
 
-  useEffect(() => {
-    getCurrentLocation();
-  }, []);
 
-  const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
-    if (nextAppState === 'active') {
-      console.log('[CombinedSearchAdd] App became active - refreshing location');
-      getCurrentLocation();
-    }
-  }, []);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
-    
-    return () => {
-      subscription.remove();
-    };
-  }, [handleAppStateChange]);
-
-  useEffect(() => {
-    if (locationRefreshIntervalRef.current) {
-      clearInterval(locationRefreshIntervalRef.current);
-    }
-
-    locationRefreshIntervalRef.current = setInterval(() => {
-      const timeSinceLastFetch = Date.now() - lastLocationFetchRef.current;
-      const fiveMinutes = 5 * 60 * 1000;
-      
-      if (timeSinceLastFetch > fiveMinutes) {
-        console.log('[CombinedSearchAdd] Auto-refreshing location after 5 minutes of inactivity');
-        getCurrentLocation();
-      }
-    }, 60000);
-
-    return () => {
-      if (locationRefreshIntervalRef.current) {
-        clearInterval(locationRefreshIntervalRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     const keyboardWillShowListener = Keyboard.addListener(
@@ -369,17 +315,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     }
   };
 
-  const handleLocationPress = () => {
-    setShowDrawer(false);
-    
-    setTimeout(() => {
-      try {
-        router.push('/location-search');
-      } catch (error) {
-        console.error('[CombinedSearchAdd] Error navigating to location search:', error);
-      }
-    }, 0);
-  };
+
 
   const handleCreateRecall = async () => {
     if (!text.trim() && images.length === 0) {
@@ -396,15 +332,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     try {
       setIsCreating(true);
       
-      const locationToSave = location || currentLocation;
-      
       const imageUris = images.map(img => img.uri);
       
       await onCreateRecall(
         {
           text: text.trim(),
           images: imageUris,
-          location: locationToSave || undefined,
         },
         (stage: string) => {
           setSavingStage(stage);
@@ -413,7 +346,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
       setText('');
       setImages([]);
-      setLocation(currentLocation);
       setSavingStage('');
     } catch (error) {
       console.error('Error creating recall:', error);
@@ -527,26 +459,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   />
                 </Pressable>
 
-                {/* Location Pill - Second */}
-                <Pressable
-                  style={styles.locationPillExtended}
-                  onPress={handleLocationPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol 
-                    name="mappin.circle.fill" 
-                    size={16} 
-                    color={colors.primary} 
-                  />
-                  {isRefreshingLocation ? (
-                    <ActivityIndicator size="small" color={colors.primary} style={styles.locationSpinner} />
-                  ) : (
-                    <Text style={styles.locationPillText} numberOfLines={1}>
-                      {location?.name || currentLocation?.name || 'Add Location'}
-                    </Text>
-                  )}
-                </Pressable>
-								
                 <View style={styles.iconSpacer} />
 
                 {/* Search Button - Third */}
@@ -716,31 +628,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  locationPillExtended: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: `${colors.primary}20`,
-    paddingVertical: 6,
-    paddingRight: 8,
-    paddingLeft: 8,
-    borderRadius: 16,
-    alignSelf: 'flex-start',
-    maxWidth: '60%',
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  locationPillText: {
-    fontSize: 13,
-    color: colors.primary,
-    maxWidth: '90%',
-    fontWeight: '600',
-  },
   iconSpacer: {
     flex: 1,
-  },
-  locationSpinner: {
-    marginLeft: 4,
   },
   searchButtonContainer: {
     padding: 0,

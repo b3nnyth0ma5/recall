@@ -13,9 +13,10 @@ import {
   Share,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
-import { useNotes } from '@/hooks/useNotes';
+import { useNotesContext } from '@/contexts/NotesContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { SearchHistory } from '@/types/Note';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -28,6 +29,7 @@ import Toast from 'react-native-toast-message';
 export default function SearchScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { 
     notes, 
@@ -44,7 +46,7 @@ export default function SearchScreen() {
     searchExtractedKeywords,
     searchTimeMs,
     searchTimings,
-  } = useNotes();
+  } = useNotesContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -532,17 +534,19 @@ export default function SearchScreen() {
             </Pressable>
           ),
           headerRight: () => (
-            <Pressable 
-              onPress={toggleKeyboard} 
-              style={styles.headerButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <IconSymbol 
-                name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-                size={24} 
-                color={colors.text} 
-              />
-            </Pressable>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Pressable 
+                onPress={toggleKeyboard} 
+                style={styles.headerButton}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol 
+                  name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
+                  size={24} 
+                  color={colors.text} 
+                />
+              </Pressable>
+            </View>
           ),
         }}
       />
@@ -808,6 +812,7 @@ export default function SearchScreen() {
           </View>
         )}
       </ScrollView>
+
     </View>
   );
 }
@@ -1122,4 +1127,5 @@ const styles = StyleSheet.create({
   searchingPlaceholder: {
     minHeight: 100,
   },
+
 });

@@ -31,12 +31,12 @@ import Animated, {
   FadeIn,
 } from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
-import { useNotes } from '@/hooks/useNotes';
+import { useNotesContext } from '@/contexts/NotesContext';
 import { Note, Person } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
 import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
-import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding, triggerPeopleFinder } from '@/utils/supabase';
+import { supabase, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding, triggerPeopleFinder } from '@/utils/supabase';
 import { processRecallUrls } from '@/utils/urlProcessor';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
@@ -61,7 +61,7 @@ export default function NoteEditorScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { user } = useAuth();
-  const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote, getCachedNote } = useNotes();
+  const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote, getCachedNote } = useNotesContext();
 
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageData[]>([]);

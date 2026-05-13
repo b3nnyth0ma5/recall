@@ -3,6 +3,7 @@ import { useEffect, useState, memo, useRef } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
+import { NotesProvider } from '@/contexts/NotesContext';
 import { PeopleGraphProvider, usePeopleGraph } from '@/contexts/PeopleGraphContext';
 import { PeopleGraph } from '@/components/PeopleGraph';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -159,7 +160,7 @@ function RootLayoutNav() {
     const inPasswordResetScreens = currentSegment === 'reset-password' || currentSegment === 'update-password';
     const inEmailConfirmedScreen = currentSegment === 'email-confirmed';
     const inShareScreen = currentSegment === 'create-recall-from-share';
-    const inOtherScreens = currentSegment === 'search' || currentSegment === 'location-search' || currentSegment === 'map-view' || currentSegment === 'shared-recall' || currentSegment === 'person-recalls' || currentSegment === 'people-word-cloud';
+    const inOtherScreens = currentSegment === 'search' || currentSegment === 'shared-recall' || currentSegment === 'person-recalls' || currentSegment === 'people-word-cloud';
 
     console.log('[Routing] Current state:', { 
       user: !!user, 
@@ -257,8 +258,6 @@ function RootLayoutNav() {
         <Stack.Screen name="email-confirmed" options={{ headerShown: false }} />
         <Stack.Screen name="note-editor" options={{ headerShown: false }} />
         <Stack.Screen name="search" options={{ headerShown: false }} />
-        <Stack.Screen name="location-search" options={{ headerShown: false }} />
-        <Stack.Screen name="map-view" options={{ headerShown: false }} />
         <Stack.Screen name="shared-recall" options={{ headerShown: false }} />
         <Stack.Screen name="person-recalls" options={{ headerShown: false }} />
         <Stack.Screen name="people-word-cloud" options={{ headerShown: false }} />
@@ -297,9 +296,11 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
         <WidgetProvider>
-          <PeopleGraphProvider>
-            <RootLayoutNav />
-          </PeopleGraphProvider>
+          <NotesProvider>
+            <PeopleGraphProvider>
+              <RootLayoutNav />
+            </PeopleGraphProvider>
+          </NotesProvider>
         </WidgetProvider>
       </AuthProvider>
     </GestureHandlerRootView>

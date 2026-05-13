@@ -270,7 +270,7 @@ Rules:
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-4.1-mini',
         max_tokens: 1024,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -296,7 +296,8 @@ Rules:
 
     if (qaContent) {
       try {
-        const parsed = JSON.parse(qaContent);
+        const jsonMatch = qaContent.match(/\{[\s\S]*\}/);
+        const parsed = JSON.parse(jsonMatch?.[0] ?? qaContent);
         answer = parsed.answer ?? null;
         confidence = parsed.confidence ?? 0;
         sourcesUsed = parsed.sources ?? [];

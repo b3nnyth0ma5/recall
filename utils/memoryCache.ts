@@ -43,10 +43,12 @@ export class MemoryCache<T> {
     };
     this.currentTotalCost = 0;
 
-    console.log(`[MemoryCache:${this.config.name}] Initialized with:`);
-    console.log(`  - Count Limit: ${this.config.countLimit} items`);
-    console.log(`  - Total Cost Limit: ${(this.config.totalCostLimit / 1024 / 1024).toFixed(2)} MB`);
-    console.log(`  - Eviction Policy: ${this.config.evictionPolicy}`);
+    if (__DEV__) {
+      console.log(`[MemoryCache:${this.config.name}] Initialized with:`);
+      console.log(`  - Count Limit: ${this.config.countLimit} items`);
+      console.log(`  - Total Cost Limit: ${(this.config.totalCostLimit / 1024 / 1024).toFixed(2)} MB`);
+      console.log(`  - Eviction Policy: ${this.config.evictionPolicy}`);
+    }
   }
 
   /**
@@ -77,9 +79,11 @@ export class MemoryCache<T> {
     this.cache.set(key, item);
     this.currentTotalCost += cost;
 
-    console.log(`[MemoryCache:${this.config.name}] SET "${key}" (cost: ${(cost / 1024).toFixed(2)} KB)`);
-    console.log(`  - Total items: ${this.cache.size}/${this.config.countLimit}`);
-    console.log(`  - Total cost: ${(this.currentTotalCost / 1024 / 1024).toFixed(2)} MB / ${(this.config.totalCostLimit / 1024 / 1024).toFixed(2)} MB`);
+    if (__DEV__) {
+      console.log(`[MemoryCache:${this.config.name}] SET "${key}" (cost: ${(cost / 1024).toFixed(2)} KB)`);
+      console.log(`  - Total items: ${this.cache.size}/${this.config.countLimit}`);
+      console.log(`  - Total cost: ${(this.currentTotalCost / 1024 / 1024).toFixed(2)} MB / ${(this.config.totalCostLimit / 1024 / 1024).toFixed(2)} MB`);
+    }
   }
 
   /**
@@ -91,7 +95,9 @@ export class MemoryCache<T> {
     const item = this.cache.get(key);
     
     if (!item) {
-      console.log(`[MemoryCache:${this.config.name}] MISS "${key}"`);
+      if (__DEV__) {
+        console.log(`[MemoryCache:${this.config.name}] MISS "${key}"`);
+      }
       return undefined;
     }
 
@@ -99,7 +105,9 @@ export class MemoryCache<T> {
     item.accessCount++;
     item.lastAccessed = Date.now();
 
-    console.log(`[MemoryCache:${this.config.name}] HIT "${key}" (accessed ${item.accessCount} times)`);
+    if (__DEV__) {
+      console.log(`[MemoryCache:${this.config.name}] HIT "${key}" (accessed ${item.accessCount} times)`);
+    }
     return item.value;
   }
 
@@ -123,9 +131,11 @@ export class MemoryCache<T> {
     this.cache.delete(key);
     this.currentTotalCost -= item.cost;
 
-    console.log(`[MemoryCache:${this.config.name}] REMOVE "${key}"`);
-    console.log(`  - Total items: ${this.cache.size}/${this.config.countLimit}`);
-    console.log(`  - Total cost: ${(this.currentTotalCost / 1024 / 1024).toFixed(2)} MB`);
+    if (__DEV__) {
+      console.log(`[MemoryCache:${this.config.name}] REMOVE "${key}"`);
+      console.log(`  - Total items: ${this.cache.size}/${this.config.countLimit}`);
+      console.log(`  - Total cost: ${(this.currentTotalCost / 1024 / 1024).toFixed(2)} MB`);
+    }
 
     return true;
   }
@@ -140,7 +150,9 @@ export class MemoryCache<T> {
     this.cache.clear();
     this.currentTotalCost = 0;
 
-    console.log(`[MemoryCache:${this.config.name}] CLEAR - Removed ${itemCount} items (${(totalCost / 1024 / 1024).toFixed(2)} MB)`);
+    if (__DEV__) {
+      console.log(`[MemoryCache:${this.config.name}] CLEAR - Removed ${itemCount} items (${(totalCost / 1024 / 1024).toFixed(2)} MB)`);
+    }
   }
 
   /**
@@ -215,7 +227,9 @@ export class MemoryCache<T> {
 
     if (keyToEvict) {
       const item = this.cache.get(keyToEvict)!;
-      console.log(`[MemoryCache:${this.config.name}] EVICT "${keyToEvict}" (${this.config.evictionPolicy.toUpperCase()}) - cost: ${(item.cost / 1024).toFixed(2)} KB`);
+      if (__DEV__) {
+        console.log(`[MemoryCache:${this.config.name}] EVICT "${keyToEvict}" (${this.config.evictionPolicy.toUpperCase()}) - cost: ${(item.cost / 1024).toFixed(2)} KB`);
+      }
       this.remove(keyToEvict);
     }
   }
@@ -407,33 +421,41 @@ export class CacheManager {
    * Clear all caches
    */
   static clearAll(): void {
-    console.log('[CacheManager] Clearing all caches...');
+    if (__DEV__) {
+      console.log('[CacheManager] Clearing all caches...');
+    }
     this.caches.forEach(cache => cache.clear());
-    console.log('[CacheManager] All caches cleared');
+    if (__DEV__) {
+      console.log('[CacheManager] All caches cleared');
+    }
   }
 
   /**
    * Log statistics for all caches
    */
   static logStats(): void {
-    console.log('[CacheManager] ===== CACHE STATISTICS =====');
-    
-    this.caches.forEach(cache => {
-      const stats = cache.getStats();
-      console.log(`\n${stats.itemCount > 0 ? '📦' : '📭'} Cache: ${(cache as any).config.name}`);
-      console.log(`  Items: ${stats.itemCount}/${stats.countLimit}`);
-      console.log(`  Memory: ${stats.totalCostMB.toFixed(2)} MB / ${stats.totalCostLimitMB.toFixed(2)} MB`);
-      console.log(`  Utilization: ${stats.utilizationPercent.toFixed(1)}%`);
-    });
-    
-    console.log('\n========================================');
+    if (__DEV__) {
+      console.log('[CacheManager] ===== CACHE STATISTICS =====');
+      
+      this.caches.forEach(cache => {
+        const stats = cache.getStats();
+        console.log(`\n${stats.itemCount > 0 ? '📦' : '📭'} Cache: ${(cache as any).config.name}`);
+        console.log(`  Items: ${stats.itemCount}/${stats.countLimit}`);
+        console.log(`  Memory: ${stats.totalCostMB.toFixed(2)} MB / ${stats.totalCostLimitMB.toFixed(2)} MB`);
+        console.log(`  Utilization: ${stats.utilizationPercent.toFixed(1)}%`);
+      });
+      
+      console.log('\n========================================');
+    }
   }
 
   /**
    * Handle memory warning (simulate iOS memory pressure)
    */
   static handleMemoryWarning(): void {
-    console.warn('[CacheManager] ⚠️ Memory warning received - clearing caches');
+    if (__DEV__) {
+      console.warn('[CacheManager] ⚠️ Memory warning received - clearing caches');
+    }
     this.clearAll();
   }
 }
