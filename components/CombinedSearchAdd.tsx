@@ -87,53 +87,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     };
   });
 
-  const getCurrentLocation = async () => {
-    // Location capture removed
-  };
-
-  useEffect(() => {
-    if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
-      const paramsKey = `${params.selectedLatitude}-${params.selectedLongitude}-${params.selectedLocationName}`;
-      
-      if (processedParamsRef.current === paramsKey) {
-        console.log('[CombinedSearchAdd] Already processed these params, skipping');
-        return;
-      }
-      
-      processedParamsRef.current = paramsKey;
-      
-      const selectedLocation = {
-        latitude: parseFloat(params.selectedLatitude as string),
-        longitude: parseFloat(params.selectedLongitude as string),
-        name: params.selectedLocationName as string,
-        primaryType: params.selectedPrimaryType ? (params.selectedPrimaryType as string) : undefined,
-      };
-      
-      console.log('[CombinedSearchAdd] Location selected from location-search:', selectedLocation);
-      setLocation(selectedLocation);
-      setShowDrawer(false);
-      
-      setTimeout(() => {
-        try {
-          console.log('[CombinedSearchAdd] Clearing location params');
-          router.setParams({
-            selectedLatitude: undefined,
-            selectedLongitude: undefined,
-            selectedLocationName: undefined,
-            selectedDisplayName: undefined,
-            selectedFullAddress: undefined,
-            selectedPrimaryType: undefined,
-          });
-          
-          setTimeout(() => {
-            processedParamsRef.current = '';
-          }, 1000);
-        } catch (error) {
-          console.error('[CombinedSearchAdd] Error clearing params:', error);
-        }
-      }, 0);
-    }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router]);
 
   const handlePlusPress = () => {
     if (Platform.OS !== 'web') {
