@@ -10,6 +10,7 @@ import {
   Modal,
   Image,
   ScrollView,
+  Animated,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,11 +21,13 @@ import * as Haptics from 'expo-haptics';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Location from 'expo-location';
+import { TimeAgo } from '@/components/TimeAgo';
+import { NoteCard } from '@/components/NoteCard';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // Only import react-native-maps on native platforms
 let MapView: any = null;
 let Marker: any = null;
-let Callout: any = null;
 let PROVIDER_GOOGLE: any = null;
 
 if (Platform.OS !== 'web') {
@@ -32,7 +35,6 @@ if (Platform.OS !== 'web') {
   const RNMaps = require('react-native-maps');
   MapView = RNMaps.default;
   Marker = RNMaps.Marker;
-  Callout = RNMaps.Callout;
   PROVIDER_GOOGLE = RNMaps.PROVIDER_GOOGLE;
 }
 
@@ -62,9 +64,13 @@ export default function MapViewScreen() {
   const [allLocationNotes, setAllLocationNotes] = useState<Note[]>([]);
   const [visibleNotes, setVisibleNotes] = useState<Note[]>([]);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+
+  // Bottom sheet animation state
+  const slideAnim = useRef(new Animated.Value(300)).current;
+  const [showBottomSheet, setShowBottomSheet] = useState(false);
+  const [fullRecallVisible, setFullRecallVisible] = useState(false);
 
   const hasSearchResults = params.hasSearch === 'true';
   const idsParam = typeof params.ids === 'string' ? params.ids : '';
@@ -159,6 +165,35 @@ export default function MapViewScreen() {
     setVisibleNotes(visible);
   }, [allLocationNotes, searchIds]);
 
+  // ─── Marker press handlers ────────────────────────────────────────────────────
+
+  const handleMarkerPress = useCallback((note: Note) => {
+    console.log('[MapView] Marker pressed, note id:', note.id);
+    setSelectedNote(note);
+    setShowBottomSheet(true);
+    Animated.spring(slideAnim, {
+      toValue: 0,
+      useNativeDriver: true,
+      tension: 65,
+      friction: 11,
+    }).start();
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  }, [slideAnim]);
+
+  const handleDismiss = useCallback(() => {
+    console.log('[MapView] Bottom sheet dismissed');
+    Animated.timing(slideAnim, {
+      toValue: 300,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowBottomSheet(false);
+      setSelectedNote(null);
+    });
+  }, [slideAnim]);
+
   // ─── Web: Google Maps script injection ───────────────────────────────────────
 
   const addMarkers = useCallback((map: any) => {
@@ -166,11 +201,6 @@ export default function MapViewScreen() {
 
     markersRef.current.forEach(marker => marker.setMap(null));
     markersRef.current = [];
-
-    const handleMarkerClick = (note: Note) => {
-      setSelectedNote(note);
-      setShowPreview(true);
-    };
 
     mapNotes.forEach(note => {
       if (!note.latitude || !note.longitude) return;
@@ -219,7 +249,7 @@ export default function MapViewScreen() {
           const panes = marker.getPanes();
           panes.overlayMouseTarget.appendChild(div);
           div.addEventListener('click', () => {
-            handleMarkerClick(note);
+            handleMarkerPress(note);
           });
         };
 
@@ -250,7 +280,7 @@ export default function MapViewScreen() {
       marker.setMap(map);
       markersRef.current.push(marker);
     });
-  }, [mapNotes]);
+  }, [mapNotes, handleMarkerPress]);
 
   const initializeMap = useCallback(() => {
     if (Platform.OS !== 'web' || !window.google) return;
@@ -318,25 +348,12 @@ export default function MapViewScreen() {
 
   // ─── Shared handlers ─────────────────────────────────────────────────────────
 
-  const handlePreviewPress = () => {
-    if (selectedNote) {
-      console.log('[MapView] Opening note from preview:', selectedNote.id);
-      setShowPreview(false);
-      router.push(`/note-editor?id=${selectedNote.id}`);
-    }
-  };
-
   const handleBackToSearch = () => {
     console.log('[MapView] Back to list pressed');
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     router.back();
-  };
-
-  const handleCalloutPress = (note: Note) => {
-    console.log('[MapView] Callout tapped, opening note:', note.id);
-    router.push(`/note-editor?id=${note.id}`);
   };
 
   // ─── Native: fit map to markers ──────────────────────────────────────────────
@@ -410,6 +427,16 @@ export default function MapViewScreen() {
   const headerTitle = hasSearchResults ? 'Search Results Map' : 'Recalls Map';
   const displayNotes = searchIds.length > 0 ? mapNotes : visibleNotes;
 
+  // ─── Derived display values ───────────────────────────────────────────────────
+
+  const sheetThumbInitials = selectedNote?.text
+    ? selectedNote.text.substring(0, 2).toUpperCase()
+    : '??';
+  const sheetTitle = selectedNote?.text
+    ? selectedNote.text.replace(/\n/g, ' ').substring(0, 60)
+    : 'Recall';
+  const sheetBody = selectedNote?.text ?? null;
+
   // ─── Render ───────────────────────────────────────────────────────────────────
 
   return (
@@ -469,83 +496,6 @@ export default function MapViewScreen() {
               </Pressable>
             </React.Fragment>
           )}
-
-          {/* Note Preview Modal (web only) */}
-          <Modal
-            visible={showPreview}
-            transparent={true}
-            animationType="slide"
-            onRequestClose={() => setShowPreview(false)}
-          >
-            <Pressable
-              style={styles.modalOverlay}
-              onPress={() => setShowPreview(false)}
-            >
-              <Pressable
-                style={styles.previewContainer}
-                onPress={(e) => e.stopPropagation()}
-              >
-                {selectedNote && (
-                  <React.Fragment>
-                    <View style={styles.previewHeader}>
-                      <Text style={styles.previewTitle}>Recall Preview</Text>
-                      <Pressable
-                        onPress={() => setShowPreview(false)}
-                        style={styles.closeButton}
-                      >
-                        <IconSymbol name="xmark" size={20} color={colors.text} />
-                      </Pressable>
-                    </View>
-
-                    <ScrollView style={styles.previewContent}>
-                      {selectedNote.images && selectedNote.images.length > 0 && (
-                        <View style={styles.previewImagesContainer}>
-                          <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            style={styles.previewImagesScroll}
-                          >
-                            {selectedNote.images.map((image, index) => (
-                              <Image
-                                key={index}
-                                source={{ uri: image }}
-                                style={styles.previewImage}
-                                resizeMode="cover"
-                              />
-                            ))}
-                          </ScrollView>
-                        </View>
-                      )}
-
-                      {selectedNote.text && (
-                        <Text style={styles.previewText}>{selectedNote.text}</Text>
-                      )}
-
-                      {selectedNote.location && (
-                        <View style={styles.previewLocationContainer}>
-                          <IconSymbol name="map.fill" size={16} color={colors.textSecondary} />
-                          <Text style={styles.previewLocation}>{selectedNote.location}</Text>
-                        </View>
-                      )}
-
-                      <Text style={styles.previewDate}>
-                        {new Date(selectedNote.created_at).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                        })}
-                      </Text>
-                    </ScrollView>
-
-                    <Pressable onPress={handlePreviewPress} style={styles.openButton}>
-                      <Text style={styles.openButtonText}>Open Recall</Text>
-                      <IconSymbol name="arrow.right" size={20} color="#FFFFFF" />
-                    </Pressable>
-                  </React.Fragment>
-                )}
-              </Pressable>
-            </Pressable>
-          </Modal>
         </React.Fragment>
       ) : (
         // ── Native implementation ───────────────────────────────────────────────
@@ -590,26 +540,13 @@ export default function MapViewScreen() {
               >
                 {displayNotes.map(note => {
                   if (!note.latitude || !note.longitude) return null;
-                  const textPreview = note.text ? note.text.substring(0, 80) : '';
-                  const calloutText = textPreview + (note.text && note.text.length > 80 ? '…' : '');
                   return (
                     <Marker
                       key={note.id}
-                      coordinate={{ latitude: note.latitude, longitude: note.longitude }}
+                      coordinate={{ latitude: note.latitude as number, longitude: note.longitude as number }}
                       pinColor={colors.primary}
-                    >
-                      <Callout onPress={() => handleCalloutPress(note)}>
-                        <View style={styles.calloutContainer}>
-                          {calloutText.length > 0 && (
-                            <Text style={styles.calloutText}>{calloutText}</Text>
-                          )}
-                          {note.location ? (
-                            <Text style={styles.calloutLocation}>{note.location}</Text>
-                          ) : null}
-                          <Text style={styles.calloutTapHint}>Tap to open</Text>
-                        </View>
-                      </Callout>
-                    </Marker>
+                      onPress={() => handleMarkerPress(note)}
+                    />
                   );
                 })}
               </MapView>
@@ -631,6 +568,125 @@ export default function MapViewScreen() {
           )}
         </React.Fragment>
       )}
+
+      {/* ── Pin preview bottom sheet ── */}
+      {showBottomSheet && selectedNote && (
+        <>
+          {/* Scrim — tap to dismiss */}
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={handleDismiss}
+          />
+          <Animated.View
+            style={[
+              styles.bottomSheet,
+              { paddingBottom: insets.bottom + 16 },
+              { transform: [{ translateY: slideAnim }] },
+            ]}
+          >
+            {/* Drag handle */}
+            <View style={styles.dragHandle} />
+
+            {/* Content row: thumbnail + meta */}
+            <View style={styles.sheetRow}>
+              {/* Thumbnail */}
+              {selectedNote.images && selectedNote.images.length > 0 ? (
+                <Image
+                  source={{ uri: selectedNote.images[0] }}
+                  style={styles.sheetThumb}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.sheetThumbFallback}>
+                  <Text style={styles.sheetThumbInitials}>
+                    {sheetThumbInitials}
+                  </Text>
+                </View>
+              )}
+
+              {/* Meta */}
+              <View style={styles.sheetMeta}>
+                <Text style={styles.sheetTitle} numberOfLines={1}>
+                  {sheetTitle}
+                </Text>
+                {selectedNote.location ? (
+                  <View style={styles.sheetMetaRow}>
+                    <IconSymbol name="location.fill" size={12} color={colors.primary} />
+                    <Text style={styles.sheetLocation} numberOfLines={1}>
+                      {selectedNote.location}
+                    </Text>
+                  </View>
+                ) : null}
+                <TimeAgo date={selectedNote.created_at} style={styles.sheetDate} />
+              </View>
+
+              {/* Dismiss X */}
+              <Pressable onPress={handleDismiss} style={styles.sheetDismiss} hitSlop={12}>
+                <IconSymbol name="xmark" size={16} color={colors.textTertiary} />
+              </Pressable>
+            </View>
+
+            {/* Body text preview */}
+            {sheetBody ? (
+              <Text style={styles.sheetBody} numberOfLines={2}>
+                {sheetBody}
+              </Text>
+            ) : null}
+
+            {/* CTA */}
+            <Pressable
+              style={styles.sheetButton}
+              onPress={() => {
+                console.log('[MapView] Open Recall pressed, note id:', selectedNote.id);
+                setFullRecallVisible(true);
+              }}
+            >
+              <Text style={styles.sheetButtonText}>Open Recall</Text>
+              <IconSymbol name="arrow.right" size={18} color="#FFFFFF" />
+            </Pressable>
+          </Animated.View>
+        </>
+      )}
+
+      {/* ── Full recall modal ── */}
+      <Modal
+        visible={fullRecallVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          console.log('[MapView] Full recall modal closed');
+          setFullRecallVisible(false);
+        }}
+      >
+        <View style={styles.fullRecallModal}>
+          {/* Header */}
+          <View style={styles.fullRecallHeader}>
+            <Text style={styles.fullRecallTitle}>Recall</Text>
+            <Pressable
+              onPress={() => {
+                console.log('[MapView] Full recall modal close button pressed');
+                setFullRecallVisible(false);
+              }}
+              style={styles.fullRecallClose}
+            >
+              <IconSymbol name="xmark.circle.fill" size={28} color={colors.textTertiary} />
+            </Pressable>
+          </View>
+          <ScrollView
+            style={styles.fullRecallScroll}
+            contentContainerStyle={styles.fullRecallContent}
+          >
+            {selectedNote && (
+              <GestureHandlerRootView>
+                <NoteCard
+                  note={selectedNote}
+                  onPress={() => {}}
+                />
+              </GestureHandlerRootView>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -704,102 +760,130 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     elevation: 8,
   },
-  calloutContainer: {
-    width: 200,
-    padding: 8,
+  bottomSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#2A2A2A',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 20,
   },
-  calloutText: {
-    fontSize: 13,
-    color: '#1A1A1A',
-    marginBottom: 4,
-    lineHeight: 18,
+  dragHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#555555',
+    alignSelf: 'center',
+    marginBottom: 16,
   },
-  calloutLocation: {
-    fontSize: 12,
-    color: '#555555',
-    marginBottom: 4,
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 10,
   },
-  calloutTapHint: {
-    fontSize: 11,
-    color: '#888888',
-    fontStyle: 'italic',
+  sheetThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: 10,
+    backgroundColor: '#1F1F1F',
   },
-  modalOverlay: {
+  sheetThumbFallback: {
+    width: 72,
+    height: 72,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 107, 122, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sheetThumbInitials: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FF6B7A',
+  },
+  sheetMeta: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'flex-end',
+    gap: 4,
   },
-  previewContainer: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '80%',
-    paddingBottom: 32,
-  },
-  previewHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  previewTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  closeButton: {
-    padding: 8,
-  },
-  previewContent: {
-    padding: 20,
-  },
-  previewImagesContainer: {
-    marginBottom: 16,
-  },
-  previewImagesScroll: {
-    flexDirection: 'row',
-  },
-  previewImage: {
-    width: 200,
-    height: 200,
-    borderRadius: 12,
-    marginRight: 12,
-  },
-  previewText: {
+  sheetTitle: {
     fontSize: 16,
-    lineHeight: 24,
-    color: colors.text,
-    marginBottom: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
-  previewLocationContainer: {
+  sheetMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    gap: 4,
   },
-  previewLocation: {
-    fontSize: 14,
-    color: colors.textSecondary,
+  sheetLocation: {
+    fontSize: 13,
+    color: '#B0B0B0',
+    flex: 1,
   },
-  previewDate: {
+  sheetDate: {
     fontSize: 12,
-    color: colors.textTertiary,
+    color: '#808080',
   },
-  openButton: {
+  sheetDismiss: {
+    padding: 4,
+    alignSelf: 'flex-start',
+  },
+  sheetBody: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#B0B0B0',
+    marginBottom: 16,
+  },
+  sheetButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: colors.primary,
-    marginHorizontal: 20,
-    paddingVertical: 16,
+    backgroundColor: '#FF6B7A',
+    paddingVertical: 14,
     borderRadius: 12,
+    marginBottom: 4,
   },
-  openButtonText: {
+  sheetButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  fullRecallModal: {
+    flex: 1,
+    backgroundColor: '#1A1A1A',
+  },
+  fullRecallHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#3A3A3A',
+  },
+  fullRecallTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  fullRecallClose: {
+    padding: 4,
+  },
+  fullRecallScroll: {
+    flex: 1,
+  },
+  fullRecallContent: {
+    padding: 16,
+    paddingBottom: 40,
   },
 });
