@@ -145,7 +145,8 @@
             "minSdkVersion": 21
           },
           "ios": {
-            "deploymentTarget": "15.1"
+            "deploymentTarget": "15.1",
+            "extraPodfileConfig": "installer.pods_project.build_configurations.each do |config|\n  config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']\n  config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_CFG_NO_COROUTINES=1'\nend"
           }
         }
       ],
