@@ -26,6 +26,7 @@ let Callout: any = null;
 let PROVIDER_GOOGLE: any = null;
 
 if (Platform.OS !== 'web') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const RNMaps = require('react-native-maps');
   MapView = RNMaps.default;
   Marker = RNMaps.Marker;
