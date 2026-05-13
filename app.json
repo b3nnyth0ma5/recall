@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -168,13 +168,7 @@
           ]
         }
       ],
-      "./app.plugin.js",
-      [
-        "react-native-maps",
-        {
-          "googleMapsApiKey": "AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48"
-        }
-      ]
+      "./app.plugin.js"
     ],
     "scheme": "recall",
     "experiments": {

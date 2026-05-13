@@ -5,7 +5,7 @@ import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
-import { useNotes } from '@/hooks/useNotes';
+import { useNotesContext } from '@/contexts/NotesContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
@@ -17,7 +17,7 @@ import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 import { ZeroState } from '@/components/ZeroState';
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote } = useNotes();
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote } = useNotesContext();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);

@@ -13,9 +13,10 @@ import {
   Share,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
-import { useNotes } from '@/hooks/useNotes';
+import { useNotesContext } from '@/contexts/NotesContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { SearchHistory } from '@/types/Note';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -28,6 +29,7 @@ import Toast from 'react-native-toast-message';
 export default function SearchScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { 
     notes, 
@@ -44,7 +46,7 @@ export default function SearchScreen() {
     searchExtractedKeywords,
     searchTimeMs,
     searchTimings,
-  } = useNotes();
+  } = useNotesContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -533,22 +535,6 @@ export default function SearchScreen() {
           ),
           headerRight: () => (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {shouldShowSearchTime && hasSearched && (
-                <Pressable
-                  onPress={() => {
-                    console.log('[SearchScreen] Map button pressed, navigating to map-view');
-                    router.push('/map-view?hasSearch=true');
-                  }}
-                  style={styles.headerButton}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol
-                    name="map.fill"
-                    size={24}
-                    color={colors.text}
-                  />
-                </Pressable>
-              )}
               <Pressable 
                 onPress={toggleKeyboard} 
                 style={styles.headerButton}
@@ -826,6 +812,23 @@ export default function SearchScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Map FAB — always visible */}
+      <Pressable
+        onPress={() => {
+          if (hasSearched && filteredNotes.length > 0) {
+            const ids = filteredNotes.map(n => n.id).join(',');
+            console.log('[SearchScreen] Map FAB pressed — navigating with', filteredNotes.length, 'search result IDs');
+            router.push(`/map-view?hasSearch=true&ids=${ids}`);
+          } else {
+            console.log('[SearchScreen] Map FAB pressed — navigating to browse-all map');
+            router.push('/map-view');
+          }
+        }}
+        style={[styles.mapFab, { bottom: insets.bottom + 24 }]}
+      >
+        <IconSymbol name="map.fill" size={24} color="#FFFFFF" />
+      </Pressable>
     </View>
   );
 }
@@ -1139,5 +1142,20 @@ const styles = StyleSheet.create({
   },
   searchingPlaceholder: {
     minHeight: 100,
+  },
+  mapFab: {
+    position: 'absolute',
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
 });

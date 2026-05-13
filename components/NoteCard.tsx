@@ -4,7 +4,9 @@ import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollVi
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
-import { FullScreenImage } from './FullScreenImage';
+const FullScreenImage = React.lazy(() =>
+  import('./FullScreenImage').then(m => ({ default: m.FullScreenImage }))
+);
 import { TimeAgo } from './TimeAgo';
 import { shareRecall } from '@/utils/shareRecall';
 import { getImageDataUrl } from '@/utils/supabase';
@@ -570,13 +572,15 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       </Pressable>
 
       {note.images && note.images.length > 0 && (
-        <FullScreenImage
-          visible={showFullScreenImage}
-          images={note.images}
-          imageIds={note.imageIds}
-          initialIndex={fullScreenImageIndex}
-          onClose={() => setShowFullScreenImage(false)}
-        />
+        <React.Suspense fallback={null}>
+          <FullScreenImage
+            visible={showFullScreenImage}
+            images={note.images}
+            imageIds={note.imageIds}
+            initialIndex={fullScreenImageIndex}
+            onClose={() => setShowFullScreenImage(false)}
+          />
+        </React.Suspense>
       )}
 
       <RecallChatModal

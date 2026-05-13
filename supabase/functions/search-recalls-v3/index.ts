@@ -28,6 +28,8 @@ interface RecallMatch {
     location: string;
     location_primary_type: string;
     created_at: string;
+    latitude: number | null;
+    longitude: number | null;
   };
   images_data: Array<{
     id: string;
@@ -604,7 +606,9 @@ Deno.serve(async (req) => {
             text: recall.text || '',
             location: recall.location || '',
             location_primary_type: recall.location_primary_type || '',
-            created_at: recall.created_at
+            created_at: recall.created_at,
+            latitude: recall.latitude ?? null,
+            longitude: recall.longitude ?? null,
           },
           images_data: imagesData,
           isLocationMatch,
@@ -763,6 +767,8 @@ ${context}`;
 
       const matchResults = orderedRecalls.map(recall => ({
         id: recall.recall_id,
+        latitude: recall.recall_data.latitude ?? null,
+        longitude: recall.recall_data.longitude ?? null,
         matchPercentage: Math.round(recall.text_similarity * 100),
         usedForAnswer: sourceRecallIds.includes(recall.recall_id),
         keywordMatches: recall.keyword_matches || 0,
