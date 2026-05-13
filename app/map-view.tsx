@@ -27,14 +27,13 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // ─── Leaflet HTML builder ─────────────────────────────────────────────────────
 
-if (Platform.OS !== 'web') {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const RNMaps = require('react-native-maps');
-  MapView = RNMaps.default;
-  Marker = RNMaps.Marker;
-  Callout = RNMaps.Callout;
-  PROVIDER_GOOGLE = RNMaps.PROVIDER_GOOGLE;
-}
+type MapNote = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  text: string;
+  imageUrl: string | null;
+};
 
 function buildMapHtml(
   notes: MapNote[],
