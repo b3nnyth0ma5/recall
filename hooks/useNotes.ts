@@ -8,6 +8,11 @@ import * as Location from 'expo-location';
 
 export type SearchStage = 'idle' | 'resolving' | 'people' | 'keywords' | 'searching' | 'complete';
 
+// Module-level location cache (outside the hook) — 5-minute TTL
+let cachedLocation: { latitude: number; longitude: number } | null = null;
+let locationCacheTime = 0;
+const LOCATION_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 export interface PersonInfo {
   detectedNames: string[];
   matchedNames: string[];
@@ -273,8 +278,29 @@ export function useNotes() {
         setHasMore(false);
       }
 
-      // Optimized image and people loading
-      const notesWithImagesAndPeople = await loadImagesForRecalls(recallsData);
+      // Split into cached (with images) and uncached
+      const cachedNotes: any[] = [];
+      const uncachedRecalls: any[] = [];
+
+      (recallsData || []).forEach((recall: any) => {
+        const cached = noteCache.get(recall.id);
+        if (cached && cached.images && cached.images.length > 0) {
+          cachedNotes.push(cached);
+        } else {
+          uncachedRecalls.push(recall);
+        }
+      });
+
+      const fetchedNotes = uncachedRecalls.length > 0
+        ? await loadImagesForRecalls(uncachedRecalls)
+        : [];
+
+      // Merge preserving original order from recallsData
+      const notesWithImagesAndPeople = (recallsData || []).map((recall: any) => {
+        return cachedNotes.find(n => n.id === recall.id)
+          || fetchedNotes.find(n => n.id === recall.id)
+          || recall;
+      });
 
       if (append) {
         // Prevent duplicates by filtering out notes that already exist
@@ -315,16 +341,23 @@ export function useNotes() {
   }, [page, hasMore, isLoadingMore, loading, loadNotes]);
 
   const refreshNotes = useCallback(async () => {
-    // Clear MemoryCache instances on refresh
-    console.log('[useNotes] Clearing all caches on refresh');
-    peopleCache.clear();
-    imageCache.clear();
-    noteCache.clear();
-    
+    if (__DEV__) {
+      console.log('[useNotes] Targeted cache invalidation on refresh');
+    }
+
+    // Only invalidate the first page of notes (most likely to have changed)
+    // rather than wiping the entire cache
+    const firstPageIds = notes.slice(0, ITEMS_PER_PAGE).map(n => n.id);
+    firstPageIds.forEach(id => {
+      noteCache.remove(id);
+      peopleCache.remove(id);
+      // Do NOT clear imageCache — CDN images don't change
+    });
+
     setPage(1);
     setHasMore(true);
     await loadNotes(1, false);
-  }, [loadNotes]);
+  }, [loadNotes, notes]);
 
   const refreshSingleNote = useCallback(async (noteId: string) => {
     if (!user) {
@@ -520,13 +553,20 @@ export function useNotes() {
     }
   }, [user]);
 
-  // Helper function to get user's current location
+  // Helper function to get user's current location (cached for 5 minutes)
   const getUserLocation = useCallback(async (): Promise<{ latitude: number; longitude: number } | null> => {
+    // Return cached location if fresh (within 5 minutes)
+    const now = Date.now();
+    if (cachedLocation && (now - locationCacheTime) < LOCATION_CACHE_TTL_MS) {
+      if (__DEV__) console.log('[useNotes] Returning cached location');
+      return cachedLocation;
+    }
+
     try {
-      console.log('[useNotes] Getting user location for search...');
+      if (__DEV__) console.log('[useNotes] Getting user location for search...');
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        console.log('[useNotes] Location permission not granted');
+        if (__DEV__) console.log('[useNotes] Location permission not granted');
         return null;
       }
 
@@ -534,9 +574,13 @@ export function useNotes() {
         accuracy: Location.Accuracy.Balanced,
       });
       const { latitude, longitude } = currentPosition.coords;
-      
-      console.log('[useNotes] User location obtained:', { latitude, longitude });
-      return { latitude, longitude };
+
+      // Cache the result
+      cachedLocation = { latitude, longitude };
+      locationCacheTime = now;
+
+      if (__DEV__) console.log('[useNotes] User location obtained and cached:', { latitude, longitude });
+      return cachedLocation;
     } catch (error) {
       console.error('[useNotes] Error getting user location:', error);
       return null;
@@ -698,16 +742,34 @@ export function useNotes() {
       console.log('Confidence:', confidence);
 
       if (matchedRecallIds.length > 0) {
-        const { data: recallsData } = await supabase
-          .from('recalls')
-          .select('*')
-          .in('id', matchedRecallIds)
-          .eq('user_id', user.id);
+        // Check noteCache first, only fetch uncached IDs from Supabase
+        const cachedRecalls: any[] = [];
+        const uncachedIds: string[] = [];
 
-        // Map recalls with match info
+        matchedRecallIds.forEach((id: string) => {
+          const cached = noteCache.get(id);
+          if (cached) {
+            cachedRecalls.push(cached);
+          } else {
+            uncachedIds.push(id);
+          }
+        });
+
+        let fetchedRecalls: any[] = [];
+        if (uncachedIds.length > 0) {
+          const { data: recallsData } = await supabase
+            .from('recalls')
+            .select('*')
+            .in('id', uncachedIds)
+            .eq('user_id', user.id);
+          fetchedRecalls = await loadImagesForRecalls(recallsData || []);
+        }
+
+        // Merge and order by matchedRecallIds order
+        const allRecalls = [...cachedRecalls, ...fetchedRecalls];
         const orderedRecalls = (entityResult.results as any[])
           .map((matchInfo: any) => {
-            const recall = recallsData?.find((r: any) => r.id === matchInfo.id);
+            const recall = allRecalls.find((r: any) => r.id === matchInfo.id);
             if (!recall) return null;
             return {
               ...recall,
@@ -717,7 +779,7 @@ export function useNotes() {
           })
           .filter((recall: any) => recall !== null);
 
-        const notesWithImages = await loadImagesForRecalls(orderedRecalls);
+        const notesWithImages = orderedRecalls;
         setNotes(notesWithImages);
         setSearchAnswer(answer);
         setSearchConfidence(confidence);

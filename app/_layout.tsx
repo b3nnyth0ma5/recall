@@ -3,6 +3,7 @@ import { useEffect, useState, memo, useRef } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
+import { NotesProvider } from '@/contexts/NotesContext';
 import { PeopleGraphProvider, usePeopleGraph } from '@/contexts/PeopleGraphContext';
 import { PeopleGraph } from '@/components/PeopleGraph';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -297,9 +298,11 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
         <WidgetProvider>
-          <PeopleGraphProvider>
-            <RootLayoutNav />
-          </PeopleGraphProvider>
+          <NotesProvider>
+            <PeopleGraphProvider>
+              <RootLayoutNav />
+            </PeopleGraphProvider>
+          </NotesProvider>
         </WidgetProvider>
       </AuthProvider>
     </GestureHandlerRootView>
