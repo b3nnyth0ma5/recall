@@ -50,10 +50,10 @@ export function useNotes() {
   const getCachedNote = useCallback((noteId: string): Note | null => {
     const cached = noteCache.get(noteId);
     if (cached) {
-      console.log(`[useNotes] Cache HIT for note ${noteId}`);
+      if (__DEV__) console.log(`[useNotes] Cache HIT for note ${noteId}`);
       return cached;
     }
-    console.log(`[useNotes] Cache MISS for note ${noteId}`);
+    if (__DEV__) console.log(`[useNotes] Cache MISS for note ${noteId}`);
     return null;
   }, []);
 
@@ -61,7 +61,7 @@ export function useNotes() {
   const updateNoteCache = useCallback((note: Note) => {
     const cost = CostCalculator.forNote(note);
     noteCache.set(note.id, note, cost);
-    console.log(`[useNotes] Updated cache for note ${note.id} (cost: ${(cost / 1024).toFixed(2)} KB)`);
+    if (__DEV__) console.log(`[useNotes] Updated cache for note ${note.id} (cost: ${(cost / 1024).toFixed(2)} KB)`);
   }, []);
 
   // Optimized helper function to load people for recalls in batch
@@ -86,7 +86,7 @@ export function useNotes() {
       
       if (uncachedIds.length === 0) {
         // All data is cached
-        console.log(`[useNotes] All people data cached for ${recallIds.length} recalls`);
+        if (__DEV__) console.log(`[useNotes] All people data cached for ${recallIds.length} recalls`);
         return result;
       }
 
@@ -127,7 +127,7 @@ export function useNotes() {
         result[id] = people;
       });
 
-      console.log(`Loaded people for ${Object.keys(peopleByRecallId).length} recalls (${uncachedIds.length} from DB, ${recallIds.length - uncachedIds.length} from cache)`);
+      if (__DEV__) console.log(`Loaded people for ${Object.keys(peopleByRecallId).length} recalls (${uncachedIds.length} from DB, ${recallIds.length - uncachedIds.length} from cache)`);
       return result;
     } catch (error) {
       console.error('Error loading people for recalls:', error);
@@ -248,7 +248,7 @@ export function useNotes() {
         setIsLoadingMore(true);
       }
       
-      console.log(`Loading notes page ${pageNum} from Supabase for user:`, user.id);
+      if (__DEV__) console.log(`Loading notes page ${pageNum} from Supabase for user:`, user.id);
       
       const from = (pageNum - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
@@ -307,14 +307,14 @@ export function useNotes() {
         setNotes(prevNotes => {
           const existingIds = new Set(prevNotes.map(note => note.id));
           const newUniqueNotes = notesWithImagesAndPeople.filter(note => !existingIds.has(note.id));
-          console.log(`Adding ${newUniqueNotes.length} new unique notes (filtered ${notesWithImagesAndPeople.length - newUniqueNotes.length} duplicates)`);
+          if (__DEV__) console.log(`Adding ${newUniqueNotes.length} new unique notes (filtered ${notesWithImagesAndPeople.length - newUniqueNotes.length} duplicates)`);
           return [...prevNotes, ...newUniqueNotes];
         });
       } else {
         setNotes(notesWithImagesAndPeople);
       }
       
-      console.log(`Loaded ${notesWithImagesAndPeople.length} notes for page ${pageNum}`);
+      if (__DEV__) console.log(`Loaded ${notesWithImagesAndPeople.length} notes for page ${pageNum}`);
     } catch (error) {
       console.error('Error loading notes:', error);
     } finally {
@@ -366,7 +366,7 @@ export function useNotes() {
     }
 
     try {
-      console.log('Refreshing single note:', noteId);
+      if (__DEV__) console.log('Refreshing single note:', noteId);
       
       const { data: recallData, error: recallError } = await supabase
         .from('recalls')
@@ -392,7 +392,7 @@ export function useNotes() {
         prevNotes.map(note => note.id === noteId ? updatedNote : note)
       );
       
-      console.log('Single note refreshed successfully');
+      if (__DEV__) console.log('Single note refreshed successfully');
     } catch (error) {
       console.error('Error refreshing single note:', error);
     }
@@ -405,7 +405,7 @@ export function useNotes() {
     }
 
     try {
-      console.log('Adding recall to Supabase with location_primary_type:', note.location_primary_type);
+      if (__DEV__) console.log('Adding recall to Supabase with location_primary_type:', note.location_primary_type);
       
       const { data: recallData, error: recallError } = await supabase
         .from('recalls')
@@ -425,7 +425,7 @@ export function useNotes() {
         throw recallError;
       }
 
-      console.log('Recall added successfully with location_primary_type:', recallData.location_primary_type);
+      if (__DEV__) console.log('Recall added successfully with location_primary_type:', recallData.location_primary_type);
       
       await refreshNotes();
       return recallData.id;
@@ -442,7 +442,7 @@ export function useNotes() {
     }
 
     try {
-      console.log('Updating recall in Supabase with location_primary_type:', updates.location_primary_type);
+      if (__DEV__) console.log('Updating recall in Supabase with location_primary_type:', updates.location_primary_type);
       
       const { error: recallError } = await supabase
         .from('recalls')
@@ -462,7 +462,7 @@ export function useNotes() {
         throw recallError;
       }
 
-      console.log('Recall updated successfully with location_primary_type');
+      if (__DEV__) console.log('Recall updated successfully with location_primary_type');
       
       // Clear cache for this note
       noteCache.remove(noteId);
@@ -482,23 +482,23 @@ export function useNotes() {
     }
 
     try {
-      console.log('[useNotes] ===== OPTIMIZED DELETION STARTED =====');
-      console.log('[useNotes] Deleting recall:', noteId);
+      if (__DEV__) console.log('[useNotes] ===== OPTIMIZED DELETION STARTED =====');
+      if (__DEV__) console.log('[useNotes] Deleting recall:', noteId);
       
       // Clear caches for this recall immediately
       peopleCache.remove(noteId);
       noteCache.remove(noteId);
-      console.log('[useNotes] Caches invalidated for recall:', noteId);
+      if (__DEV__) console.log('[useNotes] Caches invalidated for recall:', noteId);
       
       // Remove from UI immediately (optimistic update)
       setNotes(prevNotes => prevNotes.filter(note => note.id !== noteId));
-      console.log('[useNotes] Recall removed from UI (optimistic update)');
+      if (__DEV__) console.log('[useNotes] Recall removed from UI (optimistic update)');
       
       // Perform actual deletion ASYNCHRONOUSLY (fire and forget)
-      console.log('[useNotes] Starting async deletion process...');
+      if (__DEV__) console.log('[useNotes] Starting async deletion process...');
       (async () => {
         try {
-          console.log('[useNotes] [ASYNC] Getting images for recall:', noteId);
+          if (__DEV__) console.log('[useNotes] [ASYNC] Getting images for recall:', noteId);
           
           // Get all images for this recall
           const { data: imagesData } = await supabase
@@ -508,7 +508,7 @@ export function useNotes() {
 
           // Delete images from CDN and clear image cache
           if (imagesData && imagesData.length > 0) {
-            console.log(`[useNotes] [ASYNC] Deleting ${imagesData.length} images for recall ${noteId}`);
+            if (__DEV__) console.log(`[useNotes] [ASYNC] Deleting ${imagesData.length} images for recall ${noteId}`);
             
             for (const img of imagesData) {
               // Clear image cache
@@ -516,17 +516,17 @@ export function useNotes() {
               
               // Delete from CDN if URL exists
               if (img.cdn_url) {
-                console.log(`[useNotes] [ASYNC] Deleting image from CDN:`, img.cdn_url);
+                if (__DEV__) console.log(`[useNotes] [ASYNC] Deleting image from CDN:`, img.cdn_url);
                 const { deleteImageFromCloudflare } = await import('@/utils/cloudflareCDN');
                 await deleteImageFromCloudflare(img.cdn_url);
               }
             }
             
-            console.log(`[useNotes] [ASYNC] All ${imagesData.length} images deleted and caches cleared`);
+            if (__DEV__) console.log(`[useNotes] [ASYNC] All ${imagesData.length} images deleted and caches cleared`);
           }
 
           // Delete the recall itself (cascading will handle recall_images, recall_people, etc.)
-          console.log('[useNotes] [ASYNC] Deleting recall from database:', noteId);
+          if (__DEV__) console.log('[useNotes] [ASYNC] Deleting recall from database:', noteId);
           const { error } = await supabase
             .from('recalls')
             .delete()
@@ -536,17 +536,17 @@ export function useNotes() {
           if (error) {
             console.error('[useNotes] [ASYNC] Error deleting recall:', error);
           } else {
-            console.log('[useNotes] [ASYNC] Recall deleted successfully from database');
-            console.log('[useNotes] [ASYNC] Cascading deletions (recall_images, recall_people, etc.) handled by database');
+            if (__DEV__) console.log('[useNotes] [ASYNC] Recall deleted successfully from database');
+            if (__DEV__) console.log('[useNotes] [ASYNC] Cascading deletions (recall_images, recall_people, etc.) handled by database');
           }
           
-          console.log('[useNotes] ===== OPTIMIZED DELETION COMPLETE =====');
+          if (__DEV__) console.log('[useNotes] ===== OPTIMIZED DELETION COMPLETE =====');
         } catch (asyncError) {
           console.error('[useNotes] [ASYNC] Exception during async deletion:', asyncError);
         }
       })();
       
-      console.log('[useNotes] Deletion initiated asynchronously, returning control to caller');
+      if (__DEV__) console.log('[useNotes] Deletion initiated asynchronously, returning control to caller');
     } catch (error) {
       console.error('[useNotes] Error initiating recall deletion:', error);
       throw error;
@@ -614,12 +614,12 @@ export function useNotes() {
     
     try {
       const searchStartTime = Date.now();
-      console.log('=== STARTING UNIFIED ENTITY SEARCH ===');
-      console.log('Search query:', query);
+      if (__DEV__) console.log('=== STARTING UNIFIED ENTITY SEARCH ===');
+      if (__DEV__) console.log('Search query:', query);
       setLoading(true);
       
       // Clear previous search results when starting a new search
-      console.log('[useNotes] Clearing previous search results');
+      if (__DEV__) console.log('[useNotes] Clearing previous search results');
       setNotes([]); // Clear existing recalls immediately
       setSearchAnswer(null);
       setSearchConfidence(undefined);
@@ -644,13 +644,13 @@ export function useNotes() {
 
       // Get user's current location for "near me" queries
       const userLocation = await getUserLocation();
-      console.log('[useNotes] User location for search:', userLocation);
+      if (__DEV__) console.log('[useNotes] User location for search:', userLocation);
 
       // Add a small delay to ensure "resolving" stage is visible
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Step 1: Call the unified entity extraction function
-      console.log('Step 1: Calling unified entity extraction...');
+      if (__DEV__) console.log('Step 1: Calling unified entity extraction...');
       const entitySearchStart = Date.now();
       
       const { data: entityResult, error: entityError } = await supabase.functions.invoke('search-recalls-v3', {
@@ -661,7 +661,7 @@ export function useNotes() {
       });
 
       const entitySearchTime = Date.now() - entitySearchStart;
-      console.log(`[TIMING] Entity search completed in ${entitySearchTime}ms`);
+      if (__DEV__) console.log(`[TIMING] Entity search completed in ${entitySearchTime}ms`);
 
       if (entityError || !entityResult) {
         console.error('Error in entity extraction:', entityError);
@@ -689,9 +689,9 @@ export function useNotes() {
         return;
       }
 
-      console.log('[Entity Search] Results:', entityResult);
-      console.log('[Entity Search] Matching recalls:', entityResult.results?.length || 0);
-      console.log('[Entity Search] Extracted keywords:', entityResult.extractedKeywords);
+      if (__DEV__) console.log('[Entity Search] Results:', entityResult);
+      if (__DEV__) console.log('[Entity Search] Matching recalls:', entityResult.results?.length || 0);
+      if (__DEV__) console.log('[Entity Search] Extracted keywords:', entityResult.extractedKeywords);
 
       // Set people info from v3 response
       if (entityResult.personInfo?.matchedNames?.length > 0) {
@@ -737,9 +737,9 @@ export function useNotes() {
       const answer = entityResult.answer || null;
       const confidence = entityResult.confidence || 0;
 
-      console.log(`Found ${matchedRecallIds.length} AI-ranked results`);
-      console.log('Answer:', answer);
-      console.log('Confidence:', confidence);
+      if (__DEV__) console.log(`Found ${matchedRecallIds.length} AI-ranked results`);
+      if (__DEV__) console.log('Answer:', answer);
+      if (__DEV__) console.log('Confidence:', confidence);
 
       if (matchedRecallIds.length > 0) {
         // Check noteCache first, only fetch uncached IDs from Supabase
@@ -799,8 +799,8 @@ export function useNotes() {
         totalMs: totalSearchTime,
       });
 
-      console.log('=== UNIFIED ENTITY SEARCH COMPLETE ===');
-      console.log(`Total search time: ${totalSearchTime}ms`);
+      if (__DEV__) console.log('=== UNIFIED ENTITY SEARCH COMPLETE ===');
+      if (__DEV__) console.log(`Total search time: ${totalSearchTime}ms`);
     } catch (error) {
       console.error('=== SEARCH EXCEPTION ===');
       console.error('Error searching recalls:', error);
@@ -832,7 +832,7 @@ export function useNotes() {
     }
 
     try {
-      console.log('[useNotes] Fetching search history for user:', user.id);
+      if (__DEV__) console.log('[useNotes] Fetching search history for user:', user.id);
       
       const { data, error } = await supabase
         .from('search_history')
@@ -846,7 +846,7 @@ export function useNotes() {
         return [];
       }
 
-      console.log(`[useNotes] Loaded ${data?.length || 0} search history items`);
+      if (__DEV__) console.log(`[useNotes] Loaded ${data?.length || 0} search history items`);
       return data || [];
     } catch (error) {
       console.error('Error loading search history:', error);

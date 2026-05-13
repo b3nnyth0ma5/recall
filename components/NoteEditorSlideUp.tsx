@@ -32,7 +32,7 @@ import Animated, {
   SlideInDown,
 } from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
-import { useNotes } from '@/hooks/useNotes';
+import { useNotesContext } from '@/contexts/NotesContext';
 import { Note, Person } from '@/types/Note';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
@@ -69,7 +69,7 @@ interface NoteEditorSlideUpProps {
 
 export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEditorSlideUpProps) {
   const { user } = useAuth();
-  const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote, getCachedNote } = useNotes();
+  const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote, getCachedNote } = useNotesContext();
 
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageData[]>([]);
