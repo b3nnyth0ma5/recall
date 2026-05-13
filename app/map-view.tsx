@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { Note } from '@/types/Note';
@@ -25,34 +26,149 @@ import { TimeAgo } from '@/components/TimeAgo';
 import { NoteCard } from '@/components/NoteCard';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-// Only import react-native-maps on native platforms
-let MapView: any = null;
-let Marker: any = null;
-let PROVIDER_GOOGLE: any = null;
+// ─── Leaflet HTML builder ─────────────────────────────────────────────────────
 
-if (Platform.OS !== 'web') {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const RNMaps = require('react-native-maps');
-  MapView = RNMaps.default;
-  Marker = RNMaps.Marker;
-  PROVIDER_GOOGLE = RNMaps.PROVIDER_GOOGLE;
+interface MapNote {
+  id: string;
+  latitude: number;
+  longitude: number;
+  text: string;
+  imageUrl: string | null;
 }
 
-const DARK_MAP_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#242424' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#1A1A1A' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#B0B0B0' }] },
-  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#FFFFFF' }] },
-  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#B0B0B0' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#2A3A2A' }] },
-  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6B9A6B' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#3A3A3A' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#2A2A2A' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#4A4A4A' }] },
-  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#3A3A3A' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#1A2A3A' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4A6A8A' }] },
-];
+function buildMapHtml(
+  notes: MapNote[],
+  userLocation: { latitude: number; longitude: number } | null
+): string {
+  const notesJson = JSON.stringify(notes);
+  const centerLat = userLocation ? userLocation.latitude : 20;
+  const centerLng = userLocation ? userLocation.longitude : 0;
+  const initialZoom = userLocation ? 13 : 2;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1A1A1A; }
+    #map { height: 100vh; width: 100vw; }
+    .recall-pin {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #FF6B7A;
+      border: 3px solid #FFFFFF;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      overflow: hidden;
+      position: relative;
+    }
+    .recall-pin img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .recall-pin .pin-text {
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: bold;
+      text-align: center;
+      line-height: 1;
+    }
+    .user-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #4A90E2;
+      border: 3px solid #FFFFFF;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    var map = L.map('map', { zoomControl: true }).setView([${centerLat}, ${centerLng}], ${initialZoom});
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap &copy; CARTO'
+    }).addTo(map);
+
+    var notesData = ${notesJson};
+
+    notesData.forEach(function(note) {
+      var html;
+      if (note.imageUrl) {
+        html = '<div class="recall-pin"><img src="' + note.imageUrl + '" /></div>';
+      } else {
+        var initials = note.text ? note.text.substring(0, 2) : '??';
+        html = '<div class="recall-pin"><span class="pin-text">' + initials + '</span></div>';
+      }
+
+      var icon = L.divIcon({
+        html: html,
+        className: '',
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+        popupAnchor: [0, -24]
+      });
+
+      var marker = L.marker([note.latitude, note.longitude], { icon: icon }).addTo(map);
+      marker.on('click', function() {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'markerPress', noteId: note.id }));
+        }
+      });
+    });
+
+    // Viewport change reporting
+    map.on('moveend', function() {
+      var b = map.getBounds();
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'boundsChange',
+          bounds: {
+            minLat: b.getSouth(),
+            maxLat: b.getNorth(),
+            minLng: b.getWest(),
+            maxLng: b.getEast()
+          }
+        }));
+      }
+    });
+
+    // fitToMarkers: called from React Native after data loads in search mode
+    window.fitToMarkers = function() {
+      if (notesData.length === 0) return;
+      var latlngs = notesData.map(function(n) { return [n.latitude, n.longitude]; });
+      var bounds = L.latLngBounds(latlngs);
+      map.fitBounds(bounds, { padding: [80, 50] });
+    };
+
+    // User location blue dot
+    map.locate({ watch: false, setView: false });
+    map.on('locationfound', function(e) {
+      var dotIcon = L.divIcon({
+        html: '<div class="user-dot"></div>',
+        className: '',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+      });
+      L.marker(e.latlng, { icon: dotIcon }).addTo(map);
+    });
+  </script>
+</body>
+</html>`;
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function MapViewScreen() {
   const router = useRouter();
@@ -64,8 +180,7 @@ export default function MapViewScreen() {
   const [allLocationNotes, setAllLocationNotes] = useState<Note[]>([]);
   const [visibleNotes, setVisibleNotes] = useState<Note[]>([]);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
-  const mapRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
+  const webViewRef = useRef<WebView>(null);
 
   // Bottom sheet animation state
   const slideAnim = useRef(new Animated.Value(300)).current;
@@ -81,10 +196,6 @@ export default function MapViewScreen() {
 
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
-  // Keep a ref to the latest mapNotes for use in handleMapReady (Bug 3)
-  const mapNotesRef = useRef<Note[]>([]);
-  useEffect(() => { mapNotesRef.current = mapNotes; }, [mapNotes]);
-
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -95,14 +206,12 @@ export default function MapViewScreen() {
   }, []);
 
   useEffect(() => {
-    // search mode doesn't need user — run immediately
-    // browse-all mode: wait for auth to resolve, keep spinner visible
     if (searchIds.length === 0 && !user?.id) return;
 
     async function loadNotes() {
       setLoading(true);
       if (searchIds.length > 0) {
-        console.log('[MapView] Fetching', searchIds.length, 'search result recalls by ID');
+        if (__DEV__) console.log('[MapView] Fetching', searchIds.length, 'search result recalls by ID');
         const { data, error } = await supabase
           .from('recalls')
           .select('id, text, latitude, longitude, location, created_at, images')
@@ -115,11 +224,11 @@ export default function MapViewScreen() {
           const valid = ((data ?? []) as any[]).filter(
             (n) => n.latitude != null && n.longitude != null
           ) as Note[];
-          console.log('[MapView] Loaded', valid.length, 'search recalls with location');
+          if (__DEV__) console.log('[MapView] Loaded', valid.length, 'search recalls with location');
           setMapNotes(valid);
         }
       } else {
-        console.log('[MapView] Fetching all location recalls for user', user!.id);
+        if (__DEV__) console.log('[MapView] Fetching all location recalls for user', user!.id);
         const { data, error } = await supabase
           .from('recalls')
           .select('id, text, latitude, longitude, location, created_at, images')
@@ -133,7 +242,7 @@ export default function MapViewScreen() {
           const valid = ((data ?? []) as any[]).filter(
             (n) => n.latitude != null && n.longitude != null
           ) as Note[];
-          console.log('[MapView] Loaded', valid.length, 'total recalls with location');
+          if (__DEV__) console.log('[MapView] Loaded', valid.length, 'total recalls with location');
           setAllLocationNotes(valid);
           setMapNotes(valid);
           setVisibleNotes(valid);
@@ -143,32 +252,52 @@ export default function MapViewScreen() {
     }
     loadNotes();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, searchIds]); // re-runs when auth resolves
+  }, [user?.id, searchIds]);
 
-  // ─── Browse-all: dynamic viewport filtering ──────────────────────────────────
+  // After search-mode data loads, fit the map to all markers
+  useEffect(() => {
+    if (searchIds.length === 0 || mapNotes.length === 0) return;
+    const timer = setTimeout(() => {
+      if (__DEV__) console.log('[MapView] Injecting fitToMarkers for', mapNotes.length, 'search pins');
+      webViewRef.current?.injectJavaScript('window.fitToMarkers(); true;');
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [mapNotes, searchIds]);
 
-  const handleRegionChange = useCallback((region: any) => {
-    if (searchIds.length > 0) return; // search mode — no filtering
-    const { latitude, longitude, latitudeDelta, longitudeDelta } = region;
-    const minLat = latitude - latitudeDelta / 2;
-    const maxLat = latitude + latitudeDelta / 2;
-    const minLng = longitude - longitudeDelta / 2;
-    const maxLng = longitude + longitudeDelta / 2;
-    const visible = allLocationNotes.filter(
-      n =>
-        n.latitude! >= minLat &&
-        n.latitude! <= maxLat &&
-        n.longitude! >= minLng &&
-        n.longitude! <= maxLng
-    );
-    console.log('[MapView] Region changed — visible pins:', visible.length, 'of', allLocationNotes.length);
-    setVisibleNotes(visible);
-  }, [allLocationNotes, searchIds]);
+  // ─── WebView message handler ──────────────────────────────────────────────
 
-  // ─── Marker press handlers ────────────────────────────────────────────────────
+  const handleWebViewMessage = useCallback((event: any) => {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data);
+      if (msg.type === 'markerPress') {
+        const note = mapNotes.find(n => n.id === msg.noteId);
+        if (note) {
+          if (__DEV__) console.log('[MapView] Marker pressed via WebView, note id:', note.id);
+          handleMarkerPress(note);
+        }
+      } else if (msg.type === 'boundsChange') {
+        if (searchIds.length > 0) return; // search mode — no filtering
+        const { minLat, maxLat, minLng, maxLng } = msg.bounds;
+        const visible = allLocationNotes.filter(
+          n =>
+            n.latitude! >= minLat &&
+            n.latitude! <= maxLat &&
+            n.longitude! >= minLng &&
+            n.longitude! <= maxLng
+        );
+        if (__DEV__) console.log('[MapView] Bounds changed — visible pins:', visible.length, 'of', allLocationNotes.length);
+        setVisibleNotes(visible);
+      }
+    } catch (e) {
+      console.error('[MapView] Failed to parse WebView message:', e);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapNotes, allLocationNotes, searchIds]);
+
+  // ─── Marker press / bottom sheet ─────────────────────────────────────────
 
   const handleMarkerPress = useCallback((note: Note) => {
-    console.log('[MapView] Marker pressed, note id:', note.id);
+    if (__DEV__) console.log('[MapView] Marker pressed, note id:', note.id);
     setSelectedNote(note);
     setShowBottomSheet(true);
     Animated.spring(slideAnim, {
@@ -183,7 +312,7 @@ export default function MapViewScreen() {
   }, [slideAnim]);
 
   const handleDismiss = useCallback(() => {
-    console.log('[MapView] Bottom sheet dismissed');
+    if (__DEV__) console.log('[MapView] Bottom sheet dismissed');
     Animated.timing(slideAnim, {
       toValue: 300,
       duration: 220,
@@ -194,240 +323,21 @@ export default function MapViewScreen() {
     });
   }, [slideAnim]);
 
-  // ─── Web: Google Maps script injection ───────────────────────────────────────
-
-  const addMarkers = useCallback((map: any) => {
-    if (Platform.OS !== 'web' || !window.google) return;
-
-    markersRef.current.forEach(marker => marker.setMap(null));
-    markersRef.current = [];
-
-    mapNotes.forEach(note => {
-      if (!note.latitude || !note.longitude) return;
-
-      const markerDiv = document.createElement('div');
-      markerDiv.style.cssText = `
-        width: 48px;
-        height: 48px;
-        background: ${colors.primary};
-        border: 3px solid #FFFFFF;
-        border-radius: 24px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3);
-        overflow: hidden;
-        position: relative;
-      `;
-
-      if (note.images && note.images.length > 0) {
-        const img = document.createElement('img');
-        img.src = note.images[0];
-        img.style.cssText = `
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        `;
-        markerDiv.appendChild(img);
-      } else if (note.text) {
-        const textPreview = document.createElement('div');
-        textPreview.textContent = note.text.substring(0, 2);
-        textPreview.style.cssText = `
-          color: #FFFFFF;
-          font-size: 14px;
-          font-weight: bold;
-          text-align: center;
-        `;
-        markerDiv.appendChild(textPreview);
-      }
-
-      const createCustomMarker = (position: any, div: any) => {
-        const marker = new window.google.maps.OverlayView();
-
-        marker.onAdd = function () {
-          const panes = marker.getPanes();
-          panes.overlayMouseTarget.appendChild(div);
-          div.addEventListener('click', () => {
-            handleMarkerPress(note);
-          });
-        };
-
-        marker.draw = function () {
-          const overlayProjection = marker.getProjection();
-          const pos = overlayProjection.fromLatLngToDivPixel(position);
-          if (pos) {
-            div.style.left = pos.x - 24 + 'px';
-            div.style.top = pos.y - 24 + 'px';
-            div.style.position = 'absolute';
-          }
-        };
-
-        marker.onRemove = function () {
-          if (div.parentNode) {
-            div.parentNode.removeChild(div);
-          }
-        };
-
-        return marker;
-      };
-
-      const marker = createCustomMarker(
-        { lat: note.latitude, lng: note.longitude },
-        markerDiv
-      );
-
-      marker.setMap(map);
-      markersRef.current.push(marker);
-    });
-  }, [mapNotes, handleMarkerPress]);
-
-  const initializeMap = useCallback(() => {
-    if (Platform.OS !== 'web' || !window.google) return;
-
-    const mapElement = document.getElementById('google-map');
-    if (!mapElement) return;
-
-    const center = { lat: -37.8136, lng: 144.9631 };
-    const zoom = 12;
-
-    if (mapNotes.length > 0) {
-      const bounds = new window.google.maps.LatLngBounds();
-      mapNotes.forEach(note => {
-        if (note.latitude && note.longitude) {
-          bounds.extend({ lat: note.latitude, lng: note.longitude });
-        }
-      });
-
-      const map = new window.google.maps.Map(mapElement, {
-        center: bounds.getCenter(),
-        zoom: 12,
-        styles: DARK_MAP_STYLE,
-      });
-
-      mapRef.current = map;
-      map.fitBounds(bounds);
-      addMarkers(map);
-    } else {
-      const map = new window.google.maps.Map(mapElement, {
-        center,
-        zoom,
-        styles: DARK_MAP_STYLE,
-      });
-      mapRef.current = map;
-    }
-
-    setLoading(false);
-  }, [mapNotes, addMarkers]);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web') {
-      setLoading(false);
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? ''}&libraries=places`;
-    script.async = true;
-    script.defer = true;
-    script.onload = initializeMap;
-    document.head.appendChild(script);
-
-    return () => {
-      if (script.parentNode) {
-        script.parentNode.removeChild(script);
-      }
-    };
-  }, [initializeMap]);
-
-  useEffect(() => {
-    if (mapRef.current && Platform.OS === 'web') {
-      addMarkers(mapRef.current);
-    }
-  }, [mapNotes, addMarkers]);
-
-  // ─── Shared handlers ─────────────────────────────────────────────────────────
-
   const handleBackToSearch = () => {
-    console.log('[MapView] Back to list pressed');
+    if (__DEV__) console.log('[MapView] Back to list pressed');
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     router.back();
   };
 
-  // ─── Native: fit map to markers ──────────────────────────────────────────────
-
-  const handleMapReady = useCallback(() => {
-    if (!mapRef.current) return;
-    if (searchIds.length === 0) return; // browse-all: initialRegion handles centering
-    const notes = mapNotesRef.current;
-    console.log('[MapView] Map ready, fitting to', notes.length, 'coordinates');
-    if (notes.length === 0) return;
-
-    const coordinates = notes
-      .filter(n => n.latitude && n.longitude)
-      .map(n => ({ latitude: n.latitude as number, longitude: n.longitude as number }));
-
-    if (coordinates.length === 0) return;
-
-    if (coordinates.length === 1) {
-      mapRef.current.animateToRegion(
-        {
-          latitude: coordinates[0].latitude,
-          longitude: coordinates[0].longitude,
-          latitudeDelta: 0.02,
-          longitudeDelta: 0.02,
-        },
-        500
-      );
-    } else {
-      mapRef.current.fitToCoordinates(coordinates, {
-        edgePadding: { top: 80, right: 50, bottom: 150, left: 50 },
-        animated: true,
-      });
-    }
-  }, [searchIds]); // searchIds guards browse-all mode
-
-  // Secondary fit: handles the case where map was ready before data arrived
-  useEffect(() => {
-    if (!mapRef.current || mapNotes.length === 0 || Platform.OS === 'web') return;
-    if (searchIds.length === 0) return; // browse-all: don't override user-location initialRegion
-    const coordinates = mapNotes
-      .filter(n => n.latitude && n.longitude)
-      .map(n => ({ latitude: n.latitude as number, longitude: n.longitude as number }));
-    if (coordinates.length === 0) return;
-    setTimeout(() => {
-      if (!mapRef.current) return;
-      if (coordinates.length === 1) {
-        mapRef.current.animateToRegion(
-          {
-            latitude: coordinates[0].latitude,
-            longitude: coordinates[0].longitude,
-            latitudeDelta: 0.02,
-            longitudeDelta: 0.02,
-          },
-          500
-        );
-      } else {
-        mapRef.current.fitToCoordinates(coordinates, {
-          edgePadding: { top: 80, right: 50, bottom: 150, left: 50 },
-          animated: true,
-        });
-      }
-    }, 300);
-  }, [mapNotes, searchIds.length]);
-
-  // ─── Derived values ───────────────────────────────────────────────────────────
+  // ─── Derived values ───────────────────────────────────────────────────────
 
   const mapCountText = searchIds.length > 0
     ? `${mapNotes.length} of ${searchIds.length} recalls on map`
     : `${visibleNotes.length} visible · ${allLocationNotes.length} total`;
   const fabBottom = insets.bottom + 24;
   const headerTitle = hasSearchResults ? 'Search Results Map' : 'Recalls Map';
-  const displayNotes = searchIds.length > 0 ? mapNotes : visibleNotes;
-
-  // ─── Derived display values ───────────────────────────────────────────────────
 
   const sheetThumbInitials = selectedNote?.text
     ? selectedNote.text.substring(0, 2).toUpperCase()
@@ -437,7 +347,22 @@ export default function MapViewScreen() {
     : 'Recall';
   const sheetBody = selectedNote?.text ?? null;
 
-  // ─── Render ───────────────────────────────────────────────────────────────────
+  // ─── Build Leaflet HTML ───────────────────────────────────────────────────
+
+  const mapHtml = useMemo(() => {
+    const notes: MapNote[] = mapNotes
+      .filter(n => n.latitude != null && n.longitude != null)
+      .map(n => ({
+        id: n.id,
+        latitude: n.latitude as number,
+        longitude: n.longitude as number,
+        text: n.text ? n.text.substring(0, 2) : '??',
+        imageUrl: n.images && n.images.length > 0 ? n.images[0] : null,
+      }));
+    return buildMapHtml(notes, userLocation);
+  }, [mapNotes, userLocation]);
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <View style={styles.container}>
@@ -457,116 +382,49 @@ export default function MapViewScreen() {
         }}
       />
 
-      {Platform.OS === 'web' ? (
-        // ── Web implementation ──────────────────────────────────────────────────
-        <React.Fragment>
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>Loading map...</Text>
-            </View>
-          ) : mapNotes.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <IconSymbol name="map" size={80} color={colors.textTertiary} />
-              <Text style={styles.emptyTitle}>No Locations Found</Text>
-              <Text style={styles.emptyText}>
-                {hasSearchResults
-                  ? 'No search results have location data'
-                  : 'Add location data to your recalls to see them on the map'}
-              </Text>
-            </View>
-          ) : (
-            <React.Fragment>
-              <div
-                id="google-map"
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  backgroundColor: colors.background,
-                }}
-              />
-
-              <View style={styles.infoBadge}>
-                <IconSymbol name="map.fill" size={16} color={colors.primary} />
-                <Text style={styles.infoBadgeText}>{mapCountText} on map</Text>
-              </View>
-
-              <Pressable onPress={handleBackToSearch} style={[styles.fab, { bottom: fabBottom }]}>
-                <IconSymbol name="list.bullet" size={24} color="#FFFFFF" />
-              </Pressable>
-            </React.Fragment>
-          )}
-        </React.Fragment>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading map...</Text>
+        </View>
+      ) : mapNotes.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <IconSymbol name="map" size={80} color={colors.textTertiary} />
+          <Text style={styles.emptyTitle}>No Locations Found</Text>
+          <Text style={styles.emptyText}>
+            {hasSearchResults
+              ? 'No search results have location data'
+              : 'Add location data to your recalls to see them on the map'}
+          </Text>
+        </View>
       ) : (
-        // ── Native implementation ───────────────────────────────────────────────
-        <React.Fragment>
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>Loading map...</Text>
-            </View>
-          ) : mapNotes.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <IconSymbol name="map" size={80} color={colors.textTertiary} />
-              <Text style={styles.emptyTitle}>No Locations Found</Text>
-              <Text style={styles.emptyText}>
-                {hasSearchResults
-                  ? 'No search results have location data'
-                  : 'Add location data to your recalls to see them on the map'}
-              </Text>
-            </View>
-          ) : (
-            <React.Fragment>
-              <MapView
-                ref={mapRef}
-                style={styles.map}
-                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-                userInterfaceStyle="dark"
-                customMapStyle={Platform.OS === 'android' ? DARK_MAP_STYLE : undefined}
-                onMapReady={handleMapReady}
-                onRegionChangeComplete={handleRegionChange}
-                showsUserLocation={true}
-                showsMyLocationButton={true}
-                initialRegion={
-                  searchIds.length === 0 && userLocation
-                    ? {
-                        latitude: userLocation.latitude,
-                        longitude: userLocation.longitude,
-                        latitudeDelta: 0.1,
-                        longitudeDelta: 0.1,
-                      }
-                    : undefined
-                }
-              >
-                {displayNotes.map(note => {
-                  if (!note.latitude || !note.longitude) return null;
-                  return (
-                    <Marker
-                      key={note.id}
-                      coordinate={{ latitude: note.latitude as number, longitude: note.longitude as number }}
-                      pinColor={colors.primary}
-                      onPress={() => handleMarkerPress(note)}
-                    />
-                  );
-                })}
-              </MapView>
+        <>
+          <WebView
+            ref={webViewRef}
+            originWhitelist={['*']}
+            source={{ html: mapHtml }}
+            style={styles.map}
+            onMessage={handleWebViewMessage}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            geolocationEnabled={true}
+            startInLoadingState={false}
+          />
 
-              {/* Info Badge */}
-              <View style={styles.infoBadge}>
-                <IconSymbol name="map.fill" size={16} color={colors.primary} />
-                <Text style={styles.infoBadgeText}>{mapCountText} on map</Text>
-              </View>
+          {/* Info Badge */}
+          <View style={styles.infoBadge}>
+            <IconSymbol name="map.fill" size={16} color={colors.primary} />
+            <Text style={styles.infoBadgeText}>{mapCountText}</Text>
+          </View>
 
-              {/* FAB — back to list */}
-              <Pressable
-                onPress={handleBackToSearch}
-                style={[styles.fab, { bottom: fabBottom }]}
-              >
-                <IconSymbol name="list.bullet" size={24} color="#FFFFFF" />
-              </Pressable>
-            </React.Fragment>
-          )}
-        </React.Fragment>
+          {/* FAB — back to list */}
+          <Pressable
+            onPress={handleBackToSearch}
+            style={[styles.fab, { bottom: fabBottom }]}
+          >
+            <IconSymbol name="list.bullet" size={24} color="#FFFFFF" />
+          </Pressable>
+        </>
       )}
 
       {/* ── Pin preview bottom sheet ── */}
@@ -637,7 +495,7 @@ export default function MapViewScreen() {
             <Pressable
               style={styles.sheetButton}
               onPress={() => {
-                console.log('[MapView] Open Recall pressed, note id:', selectedNote.id);
+                if (__DEV__) console.log('[MapView] Open Recall pressed, note id:', selectedNote.id);
                 setFullRecallVisible(true);
               }}
             >
@@ -654,7 +512,7 @@ export default function MapViewScreen() {
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={() => {
-          console.log('[MapView] Full recall modal closed');
+          if (__DEV__) console.log('[MapView] Full recall modal closed');
           setFullRecallVisible(false);
         }}
       >
@@ -664,7 +522,7 @@ export default function MapViewScreen() {
             <Text style={styles.fullRecallTitle}>Recall</Text>
             <Pressable
               onPress={() => {
-                console.log('[MapView] Full recall modal close button pressed');
+                if (__DEV__) console.log('[MapView] Full recall modal close button pressed');
                 setFullRecallVisible(false);
               }}
               style={styles.fullRecallClose}
