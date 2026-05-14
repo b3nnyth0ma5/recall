@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Keyboard,
   Linking,
+  Animated,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { colors } from '@/styles/commonStyles';
@@ -20,16 +21,6 @@ import { Note } from '@/types/Note';
 import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
-import Animated, { 
-  FadeIn, 
-  SlideInDown,
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withSequence,
-  withTiming,
-  Easing,
-} from 'react-native-reanimated';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -54,7 +45,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
-  const translateY = useSharedValue(0);
+  const translateY = useRef(new Animated.Value(0)).current;
 
   const loadChatHistory = useCallback(async () => {
     if (!recall) {
@@ -135,7 +126,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
         console.log('Keyboard showing, height:', e.endCoordinates.height);
-        translateY.value = withTiming(-(e.endCoordinates.height - 10), { duration: 250 });
+        Animated.timing(translateY, { toValue: -(e.endCoordinates.height - 10), duration: 250, useNativeDriver: true }).start();
       }
     );
 
@@ -143,7 +134,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
         console.log('Keyboard hiding');
-        translateY.value = withTiming(0, { duration: 250 });
+        Animated.timing(translateY, { toValue: 0, duration: 250, useNativeDriver: true }).start();
       }
     );
 
@@ -152,12 +143,6 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
       keyboardWillHideListener.remove();
     };
   }, [translateY]);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateY: translateY.value }],
-    };
-  });
 
   const handleCopyMessage = useCallback(async (content: string) => {
     console.log('User long-pressed message to copy');
@@ -372,123 +357,109 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
 
   const renderMessage = (message: ChatMessage) => {
     const isUser = message.role === 'user';
-    
     return (
-      <Animated.View
-        key={message.id}
-        entering={FadeIn.duration(300)}
-        style={[
-          styles.messageContainer,
-          isUser ? styles.userMessageContainer : styles.assistantMessageContainer,
-        ]}
-      >
-        {/* Avatar */}
-        <View style={styles.avatarContainer}>
-          {isUser ? (
-            <View style={styles.userAvatar}>
-              <IconSymbol 
-                name="person" 
-                size={20} 
-                color={colors.text} 
-              />
-            </View>
-          ) : (
-            <View style={styles.assistantAvatar}>
-              <IconSymbol 
-                name="sparkles" 
-                size={20} 
-                color={colors.background} 
-              />
-            </View>
-          )}
-        </View>
-
-        {/* Message Bubble - Text with selectable prop for native text selection */}
+      <FadeInView key={message.id}>
         <View
           style={[
-            styles.messageBubble,
-            isUser ? styles.userBubble : styles.assistantBubble,
+            styles.messageContainer,
+            isUser ? styles.userMessageContainer : styles.assistantMessageContainer,
           ]}
         >
-          <Text 
-            style={styles.messageText}
-            selectable={true}
-            onLongPress={() => handleCopyMessage(message.content)}
+          <View style={styles.avatarContainer}>
+            {isUser ? (
+              <View style={styles.userAvatar}>
+                <IconSymbol name="person" size={20} color={colors.text} />
+              </View>
+            ) : (
+              <View style={styles.assistantAvatar}>
+                <IconSymbol name="sparkles" size={20} color={colors.background} />
+              </View>
+            )}
+          </View>
+          <View
+            style={[
+              styles.messageBubble,
+              isUser ? styles.userBubble : styles.assistantBubble,
+            ]}
           >
-            {renderMessageContent(message.content)}
-          </Text>
+            <Text
+              style={styles.messageText}
+              selectable={true}
+              onLongPress={() => handleCopyMessage(message.content)}
+            >
+              {renderMessageContent(message.content)}
+            </Text>
+          </View>
         </View>
-      </Animated.View>
+      </FadeInView>
     );
   };
 
+  const FadeInView: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const opacity = useRef(new Animated.Value(0)).current;
+    useEffect(() => {
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }, [opacity]);
+    return <Animated.View style={{ opacity }}>{children}</Animated.View>;
+  };
+
   const TypingIndicator = () => {
-    const dot1Opacity = useSharedValue(0.3);
-    const dot2Opacity = useSharedValue(0.3);
-    const dot3Opacity = useSharedValue(0.3);
+    const dot1Opacity = useRef(new Animated.Value(0.3)).current;
+    const dot2Opacity = useRef(new Animated.Value(0.3)).current;
+    const dot3Opacity = useRef(new Animated.Value(0.3)).current;
+    const containerOpacity = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
-      dot1Opacity.value = withRepeat(
-        withSequence(
-          withTiming(1, { duration: 400, easing: Easing.ease }),
-          withTiming(0.3, { duration: 400, easing: Easing.ease })
-        ),
-        -1,
-        false
-      );
+      // Fade in container
+      Animated.timing(containerOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
 
-      dot2Opacity.value = withRepeat(
-        withSequence(
-          withTiming(0.3, { duration: 200 }),
-          withTiming(1, { duration: 400, easing: Easing.ease }),
-          withTiming(0.3, { duration: 400, easing: Easing.ease })
-        ),
-        -1,
-        false
-      );
+      // Pulsing dots with staggered delay
+      const makePulse = (value: Animated.Value, delay: number) =>
+        Animated.loop(
+          Animated.sequence([
+            Animated.delay(delay),
+            Animated.timing(value, { toValue: 1, duration: 400, useNativeDriver: true }),
+            Animated.timing(value, { toValue: 0.3, duration: 400, useNativeDriver: true }),
+          ])
+        );
 
-      dot3Opacity.value = withRepeat(
-        withSequence(
-          withTiming(0.3, { duration: 400 }),
-          withTiming(1, { duration: 400, easing: Easing.ease }),
-          withTiming(0.3, { duration: 400, easing: Easing.ease })
-        ),
-        -1,
-        false
-      );
-    }, [dot1Opacity, dot2Opacity, dot3Opacity]);
+      const anim1 = makePulse(dot1Opacity, 0);
+      const anim2 = makePulse(dot2Opacity, 200);
+      const anim3 = makePulse(dot3Opacity, 400);
 
-    const dot1Style = useAnimatedStyle(() => ({
-      opacity: dot1Opacity.value,
-    }));
+      anim1.start();
+      anim2.start();
+      anim3.start();
 
-    const dot2Style = useAnimatedStyle(() => ({
-      opacity: dot2Opacity.value,
-    }));
-
-    const dot3Style = useAnimatedStyle(() => ({
-      opacity: dot3Opacity.value,
-    }));
+      return () => {
+        anim1.stop();
+        anim2.stop();
+        anim3.stop();
+      };
+    }, [dot1Opacity, dot2Opacity, dot3Opacity, containerOpacity]);
 
     return (
       <Animated.View
-        entering={FadeIn.duration(300)}
-        style={[styles.messageContainer, styles.assistantMessageContainer]}
+        style={[styles.messageContainer, styles.assistantMessageContainer, { opacity: containerOpacity }]}
       >
         <View style={styles.avatarContainer}>
           <View style={styles.assistantAvatar}>
-            <IconSymbol 
-              name="sparkles" 
-              size={20} 
-              color={colors.background} 
-            />
+            <IconSymbol name="sparkles" size={20} color={colors.background} />
           </View>
         </View>
         <View style={[styles.messageBubble, styles.assistantBubble, styles.typingBubble]}>
           <View style={styles.typingIndicator}>
-            <Animated.View style={[styles.typingDot, dot1Style]} />
-            <Animated.View style={[styles.typingDot, dot2Style]} />
-            <Animated.View style={[styles.typingDot, dot3Style]} />
+            <Animated.View style={[styles.typingDot, { opacity: dot1Opacity }]} />
+            <Animated.View style={[styles.typingDot, { opacity: dot2Opacity }]} />
+            <Animated.View style={[styles.typingDot, { opacity: dot3Opacity }]} />
           </View>
         </View>
       </Animated.View>
@@ -506,7 +477,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     >
       <Pressable style={styles.backdrop} onPress={handleBackdropPress}>
         <Pressable style={styles.modalContainer} onPress={(e) => e.stopPropagation()}>
-          <Animated.View entering={SlideInDown.duration(300)} style={[styles.modalContent, animatedStyle]}>
+          <Animated.View style={[styles.modalContent, { transform: [{ translateY }] }]}>
             {/* Header */}
             <View style={styles.header}>
               <View style={styles.headerLeft}>
