@@ -1,10 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
+import Constants from 'expo-constants';
 
 // Initialize constants at module scope
-const supabaseUrl = 'https://cesmsdnblkdjkskmiqib.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4';
+const supabaseUrl = (Constants.expoConfig?.extra?.supabaseUrl as string) ?? '';
+const supabaseAnonKey = (Constants.expoConfig?.extra?.supabaseAnonKey as string) ?? '';
 
 // Create and export supabase client at module scope with improved error handling
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {

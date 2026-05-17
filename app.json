@@ -20,6 +20,8 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to save and share images.",
         "NSCameraUsageDescription": "This app needs access to your camera to take photos for your recalls.",
+        "NSLocationWhenInUseUsageDescription": "Recall uses your location to tag memories with where they happened.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Recall uses your location to tag memories with where they happened.",
         "UISupportsDocumentBrowser": true,
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true,
@@ -169,6 +171,8 @@
       "typedRoutes": true
     },
     "extra": {
+      "supabaseUrl": "https://cesmsdnblkdjkskmiqib.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4",
       "router": {},
       "eas": {}
     }
