@@ -80,7 +80,7 @@ export default function ProfileScreen() {
               [
                 { text: 'Cancel', style: 'cancel' },
                 {
-                  text: 'Yes, Delete Everything',
+                  text: 'Delete Account',
                   style: 'destructive',
                   onPress: async () => {
                     try {
