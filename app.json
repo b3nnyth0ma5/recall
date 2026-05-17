@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -48,7 +48,7 @@
         "backgroundImage": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png"
       },
       "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
-      "edgeToEdgeEnabled": false,
+      "edgeToEdgeEnabled": true,
       "package": "com.b3nny1nc.recall",
       "permissions": [
         "android.permission.READ_MEDIA_IMAGES",
