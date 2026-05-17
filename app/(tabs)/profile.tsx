@@ -1,18 +1,16 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform, TextInput, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
-import { CacheManager } from '@/utils/memoryCache';
 import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
-  const [cacheStats, setCacheStats] = useState<any[]>([]);
   
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -22,21 +20,6 @@ export default function ProfileScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
-
-  // Load cache statistics
-  useEffect(() => {
-    const loadCacheStats = () => {
-      const stats = CacheManager.getAllStats();
-      setCacheStats(stats);
-    };
-
-    loadCacheStats();
-    
-    // Refresh stats every 5 seconds
-    const interval = setInterval(loadCacheStats, 5000);
-    
-    return () => clearInterval(interval);
-  }, []);
 
   const handleBackPress = () => {
     if (Platform.OS !== 'web') {
@@ -216,81 +199,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleClearCache = () => {
-    Alert.alert(
-      'Clear Cache',
-      'This will clear all cached data. The app will reload data from the server as needed.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Clear',
-          style: 'destructive',
-          onPress: () => {
-            CacheManager.clearAll();
-            
-            // Haptic feedback
-            if (Platform.OS !== 'web') {
-              try {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              } catch (error) {
-                console.error('Error triggering haptic feedback:', error);
-              }
-            }
-            
-            Alert.alert('Success', 'Cache cleared successfully');
-            
-            // Reload stats
-            const stats = CacheManager.getAllStats();
-            setCacheStats(stats);
-          },
-        },
-      ]
-    );
-  };
-
-  const handleLogCacheStats = () => {
-    CacheManager.logStats();
-    
-    // Haptic feedback
-    if (Platform.OS !== 'web') {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
-    
-    Alert.alert('Cache Stats', 'Check the console for detailed cache statistics');
-  };
-
-  const getCacheIcon = (cacheName: string) => {
-    switch (cacheName) {
-      case 'ImageCache':
-        return 'photo';
-      case 'NoteCache':
-        return 'doc.text';
-      case 'CategoryCache':
-        return 'folder';
-      case 'PeopleCache':
-        return 'person.2';
-      default:
-        return 'square.stack.3d.up';
-    }
-  };
-
-  const getCacheColor = (utilizationPercent: number) => {
-    if (utilizationPercent < 50) {
-      return '#4CAF50'; // Green
-    } else if (utilizationPercent < 80) {
-      return '#FF9800'; // Orange
-    } else {
-      return '#F44336'; // Red
-    }
-  };
-
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -446,135 +354,6 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
           )}
-        </View>
-
-        {/* Cache Statistics Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <IconSymbol name="square.stack.3d.up" size={24} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Memory Cache (iOS NSCache-style)</Text>
-          </View>
-          
-          <Text style={styles.sectionDescription}>
-            Intelligent memory management with automatic eviction based on cost and usage patterns
-          </Text>
-
-          {cacheStats.map((stats, index) => {
-            const cacheName = ['ImageCache', 'NoteCache', 'CategoryCache', 'PeopleCache'][index];
-            const utilizationColor = getCacheColor(stats.utilizationPercent);
-            
-            return (
-              <View key={index} style={styles.cacheCard}>
-                <View style={styles.cacheHeader}>
-                  <View style={styles.cacheHeaderLeft}>
-                    <IconSymbol 
-                      name={getCacheIcon(cacheName)} 
-                      size={20} 
-                      color={colors.primary} 
-                    />
-                    <Text style={styles.cacheName}>{cacheName}</Text>
-                  </View>
-                  <View style={[styles.utilizationBadge, { backgroundColor: `${utilizationColor}20` }]}>
-                    <Text style={[styles.utilizationText, { color: utilizationColor }]}>
-                      {stats.utilizationPercent.toFixed(0)}%
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.cacheStats}>
-                  <View style={styles.cacheStatRow}>
-                    <Text style={styles.cacheStatLabel}>Items:</Text>
-                    <Text style={styles.cacheStatValue}>
-                      {stats.itemCount} / {stats.countLimit}
-                    </Text>
-                  </View>
-                  <View style={styles.cacheStatRow}>
-                    <Text style={styles.cacheStatLabel}>Memory:</Text>
-                    <Text style={styles.cacheStatValue}>
-                      {stats.totalCostMB.toFixed(2)} MB / {stats.totalCostLimitMB.toFixed(2)} MB
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Progress Bar */}
-                <View style={styles.progressBarContainer}>
-                  <View 
-                    style={[
-                      styles.progressBar, 
-                      { 
-                        width: `${Math.min(stats.utilizationPercent, 100)}%`,
-                        backgroundColor: utilizationColor,
-                      }
-                    ]} 
-                  />
-                </View>
-              </View>
-            );
-          })}
-
-          <View style={styles.cacheActions}>
-            <Pressable 
-              onPress={handleClearCache} 
-              style={styles.cacheActionButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <IconSymbol name="trash" size={18} color={colors.error} />
-              <Text style={[styles.cacheActionText, { color: colors.error }]}>Clear Cache</Text>
-            </Pressable>
-
-            <Pressable 
-              onPress={handleLogCacheStats} 
-              style={styles.cacheActionButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <IconSymbol name="doc.text" size={18} color={colors.primary} />
-              <Text style={styles.cacheActionText}>Log Stats</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        {/* Admin Tools Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <IconSymbol name="wrench.and.screwdriver" size={24} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Admin Tools</Text>
-          </View>
-
-          <Pressable 
-            onPress={() => router.push('/admin-regenerate-embeddings')} 
-            style={styles.adminButton}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <View style={styles.adminButtonLeft}>
-              <IconSymbol name="arrow.triangle.2.circlepath" size={20} color={colors.primary} />
-              <Text style={styles.adminButtonText}>Regenerate Embeddings</Text>
-            </View>
-            <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
-          </Pressable>
-
-          <Pressable 
-            onPress={() => router.push('/admin-process-images')} 
-            style={styles.adminButton}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <View style={styles.adminButtonLeft}>
-              <IconSymbol name="photo" size={20} color={colors.primary} />
-              <Text style={styles.adminButtonText}>Process Images</Text>
-            </View>
-            <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
-          </Pressable>
-
-          <Pressable 
-            onPress={() => router.push('/admin-embed-images')} 
-            style={styles.adminButton}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <View style={styles.adminButtonLeft}>
-              <IconSymbol name="photo.stack" size={20} color={colors.primary} />
-              <Text style={styles.adminButtonText}>Embed Null Images</Text>
-            </View>
-            <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
-          </Pressable>
         </View>
 
         {/* Account Section */}
@@ -742,112 +521,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
-  },
-  cacheCard: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cacheHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  cacheHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  cacheName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  utilizationBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  utilizationText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  cacheStats: {
-    gap: 8,
-    marginBottom: 12,
-  },
-  cacheStatRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cacheStatLabel: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  cacheStatValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  progressBarContainer: {
-    height: 6,
-    backgroundColor: colors.border,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  cacheActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  cacheActionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cacheActionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  adminButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 12,
-  },
-  adminButtonLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  adminButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
   },
   signOutButton: {
     flexDirection: 'row',
