@@ -17,7 +17,7 @@ import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 
 // App Group identifier - must match the one in app.json
-const APP_GROUP_IDENTIFIER = 'group.com.anonymous.Natively';
+const APP_GROUP_IDENTIFIER = 'group.com.b3nny1nc.recall';
 
 // Shared container path
 const SHARED_CONTAINER_PATH = Platform.OS === 'ios' 

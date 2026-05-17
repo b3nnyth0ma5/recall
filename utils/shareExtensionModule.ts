@@ -10,21 +10,29 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import type { SharedData } from '@/types/ShareExtension';
 
-const APP_GROUP_ID = 'group.com.anonymous.Natively';
+const APP_GROUP_ID = 'group.com.b3nny1nc.recall';
 const SHARED_DATA_FILE = 'shared-data.json';
 
 /**
- * Get the shared container URL for iOS
+ * Get the shared container URL for iOS (sync stub — always returns null).
+ * Use getSharedContainerURLAsync for the real path.
  */
 export function getSharedContainerURL(): string | null {
-  if (Platform.OS !== 'ios') {
+  if (Platform.OS !== 'ios') return null;
+  // Returns null synchronously — callers should use getSharedContainerURLAsync instead
+  return null;
+}
+
+export async function getSharedContainerURLAsync(): Promise<string | null> {
+  if (Platform.OS !== 'ios') return null;
+  try {
+    const { getAppGroupContainerPath } = await import('../modules/AppGroupModule');
+    const path = await getAppGroupContainerPath();
+    if (path) return path.endsWith('/') ? path : `${path}/`;
+    return null;
+  } catch {
     return null;
   }
-
-  // On iOS, the shared container is at a specific path
-  // This is a simplified version - in production, you'd use a native module
-  // For now, we'll use FileSystem.documentDirectory as a fallback
-  return FileSystem.documentDirectory;
 }
 
 /**
@@ -35,7 +43,7 @@ export async function getSharedData(): Promise<SharedData | null> {
     console.log('[ShareExtensionModule] Getting shared data...');
 
     if (Platform.OS === 'ios') {
-      const containerURL = getSharedContainerURL();
+      const containerURL = await getSharedContainerURLAsync();
       if (!containerURL) {
         console.log('[ShareExtensionModule] No shared container URL available');
         return null;
@@ -87,7 +95,7 @@ export async function clearSharedData(): Promise<boolean> {
     console.log('[ShareExtensionModule] Clearing shared data...');
 
     if (Platform.OS === 'ios') {
-      const containerURL = getSharedContainerURL();
+      const containerURL = await getSharedContainerURLAsync();
       if (!containerURL) {
         console.log('[ShareExtensionModule] No shared container URL available');
         return false;
@@ -179,7 +187,7 @@ export async function getShareExtensionStatus(): Promise<{
       };
     }
 
-    const containerURL = getSharedContainerURL();
+    const containerURL = await getSharedContainerURLAsync();
     if (!containerURL) {
       return {
         available: false,

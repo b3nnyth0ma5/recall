@@ -52,6 +52,13 @@ export default function CreateRecallFromShareScreen() {
     primaryType?: string;
   } | null>(null);
   const [isLoadingShareData, setIsLoadingShareData] = useState(true);
+  const [isScrapingUrl, setIsScrapingUrl] = useState(false);
+  const [scrapedMetadata, setScrapedMetadata] = useState<{
+    title?: string;
+    description?: string;
+    imageUrl?: string;
+    siteName?: string;
+  } | null>(null);
 
   // Load initial share data
   useEffect(() => {
@@ -93,6 +100,72 @@ export default function CreateRecallFromShareScreen() {
 
     loadShareData();
   }, []);
+
+  // Auto-scrape metadata when only a URL is received
+  useEffect(() => {
+    const scrapeIfUrlOnly = async () => {
+      if (urls.length === 0 || images.length > 0) return;
+      // Only scrape if we have a URL but no images and minimal text
+      const hasOnlyUrl = !text.trim() || urls.some(u => text.trim() === u);
+      if (!hasOnlyUrl) return;
+
+      try {
+        console.log('[CreateRecallFromShare] Scraping URL metadata for:', urls[0]);
+        setIsScrapingUrl(true);
+        const { data, error } = await supabase.functions.invoke('scrape-url-metadata', {
+          body: { url: urls[0] },
+        });
+        if (!error && data) {
+          console.log('[CreateRecallFromShare] Scraped metadata:', data);
+          setScrapedMetadata(data);
+          // Pre-populate text with title + description if text is empty/just the URL
+          const parts = [data.title, data.description].filter(Boolean);
+          if (parts.length > 0) {
+            setText(prev => {
+              const isJustUrl = !prev.trim() || urls.some(u => prev.trim() === u);
+              return isJustUrl ? `${parts.join('\n\n')}\n\n${urls[0]}` : prev;
+            });
+          }
+          // Add preview image if available
+          if (data.imageUrl) {
+            setImages([data.imageUrl]);
+          }
+        }
+      } catch (err) {
+        console.log('[CreateRecallFromShare] URL scraping failed (non-fatal):', err);
+      } finally {
+        setIsScrapingUrl(false);
+      }
+    };
+
+    scrapeIfUrlOnly();
+  }, [urls, images.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-extract location from shared images
+  useEffect(() => {
+    const extractLocation = async () => {
+      if (images.length === 0 || location) return;
+      try {
+        const { extractLocationFromImage } = await import('@/utils/imageLocationExtractor');
+        for (const imagePath of images) {
+          const loc = await extractLocationFromImage(imagePath);
+          if (loc) {
+            console.log('[CreateRecallFromShare] Extracted EXIF location:', loc);
+            setLocation({
+              latitude: loc.latitude,
+              longitude: loc.longitude,
+              name: loc.name || `${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)}`,
+            });
+            break;
+          }
+        }
+      } catch (err) {
+        console.log('[CreateRecallFromShare] EXIF location extraction failed (non-fatal):', err);
+      }
+    };
+
+    extractLocation();
+  }, [images]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for share intents while screen is active
   useEffect(() => {
@@ -398,6 +471,32 @@ export default function CreateRecallFromShareScreen() {
             </View>
           )}
 
+          {/* URL chip */}
+          {urls.length > 0 && (
+            <View style={styles.urlChip}>
+              <IconSymbol
+                ios_icon_name="link"
+                android_material_icon_name="link"
+                size={14}
+                color={colors.textTertiary}
+              />
+              <Text style={styles.urlChipText} numberOfLines={1}>
+                {urls[0].replace(/^https?:\/\//, '').split('/')[0]}
+              </Text>
+              {scrapedMetadata?.siteName && (
+                <Text style={styles.urlSiteName}>{scrapedMetadata.siteName}</Text>
+              )}
+            </View>
+          )}
+
+          {/* URL scraping loading banner */}
+          {isScrapingUrl && (
+            <View style={styles.scrapingBanner}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.scrapingText}>Fetching content from link...</Text>
+            </View>
+          )}
+
           {/* Text Input */}
           <View style={styles.textSection}>
             <TextInput
@@ -629,5 +728,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     fontWeight: '600',
+  },
+  scrapingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    backgroundColor: colors.cardDark,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  scrapingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  urlChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: colors.cardDark,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  urlChipText: {
+    fontSize: 13,
+    color: colors.textTertiary,
+    maxWidth: 200,
+  },
+  urlSiteName: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
 });
