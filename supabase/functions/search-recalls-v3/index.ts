@@ -43,85 +43,38 @@ interface RecallMatch {
 }
 
 /**
- * Calculate cosine similarity between two embeddings
+ * Generate a single query embedding from a search text using OpenAI
  */
-function calculateCosineSimilarity(embedding1: number[], embedding2: any): number {
-  if (!embedding1 || !Array.isArray(embedding1) || embedding1.length === 0) {
-    return 0;
+async function generateQueryEmbedding(text: string, openaiApiKey: string): Promise<number[]> {
+  const response = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${openaiApiKey}`
+    },
+    body: JSON.stringify({
+      model: 'text-embedding-3-small',
+      input: text,
+      encoding_format: 'base64'
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to generate query embedding: ${errorText}`);
   }
 
-  if (!embedding2) {
-    return 0;
+  const data = await response.json();
+  const embeddingBase64 = data.data?.[0]?.embedding;
+  if (!embeddingBase64) throw new Error('No embedding returned');
+
+  const binaryString = atob(embeddingBase64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
   }
-
-  let embedding2Array = embedding2;
-
-  if (typeof embedding2 === 'string') {
-    try {
-      const cleanStr = embedding2.replace(/[\[\]]/g, '');
-      embedding2Array = cleanStr.split(',').map((s: string) => parseFloat(s.trim()));
-    } catch (e) {
-      console.error('Failed to parse embedding2 string:', e);
-      return 0;
-    }
-  }
-
-  if (!Array.isArray(embedding2Array) || embedding2Array.length === 0) {
-    return 0;
-  }
-
-  if (embedding2Array.length !== embedding1.length) {
-    return 0;
-  }
-
-  let dotProduct = 0;
-  let magnitudeA = 0;
-  let magnitudeB = 0;
-
-  for (let i = 0; i < embedding1.length; i++) {
-    const a = embedding1[i];
-    const b = embedding2Array[i];
-    
-    dotProduct += a * b;
-    magnitudeA += a * a;
-    magnitudeB += b * b;
-  }
-
-  const normA = Math.sqrt(magnitudeA);
-  const normB = Math.sqrt(magnitudeB);
-
-  if (normA === 0 || normB === 0) {
-    return 0;
-  }
-
-  const similarity = dotProduct / (normA * normB);
-  return Math.max(-1, Math.min(1, similarity));
-}
-
-/**
- * Calculate multi-keyword match score
- */
-function calculateMultiKeywordMatch(
-  keywordEmbeddings: number[][],
-  targetEmbedding: any,
-  threshold: number
-): { matchCount: number; bestSimilarity: number } {
-  let matchCount = 0;
-  let bestSimilarity = 0;
-  
-  for (const keywordEmb of keywordEmbeddings) {
-    const sim = calculateCosineSimilarity(keywordEmb, targetEmbedding);
-    
-    if (sim >= threshold) {
-      matchCount++;
-    }
-    
-    if (sim > bestSimilarity) {
-      bestSimilarity = sim;
-    }
-  }
-  
-  return { matchCount, bestSimilarity };
+  const float32Array = new Float32Array(bytes.buffer);
+  return Array.from(float32Array);
 }
 
 /**
@@ -226,56 +179,6 @@ Respond with valid JSON only, no markdown.`;
 
   console.log('[Entity Extraction] Extracted entities:', result);
   return result;
-}
-
-/**
- * Generate embeddings for keywords using OpenAI
- */
-async function generateKeywordEmbeddings(keywords: string[], openaiApiKey: string): Promise<number[][]> {
-  if (keywords.length === 0) {
-    return [];
-  }
-
-  console.log(`[Embeddings] Generating embeddings for ${keywords.length} keywords...`);
-  
-  const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${openaiApiKey}`
-    },
-    body: JSON.stringify({
-      model: 'text-embedding-3-small',
-      input: keywords,
-      encoding_format: 'base64'
-    })
-  });
-
-  if (!embeddingResponse.ok) {
-    const errorText = await embeddingResponse.text();
-    console.error('[Embeddings] OpenAI embedding API error:', errorText);
-    throw new Error(`Failed to generate embeddings: ${errorText}`);
-  }
-
-  const embeddingData = await embeddingResponse.json();
-  
-  if (!embeddingData.data || embeddingData.data.length === 0) {
-    throw new Error('Invalid response from OpenAI API');
-  }
-
-  const embeddings: number[][] = embeddingData.data.map((item: any) => {
-    const embeddingBase64 = item.embedding;
-    const binaryString = atob(embeddingBase64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    const float32Array = new Float32Array(bytes.buffer);
-    return Array.from(float32Array);
-  });
-  
-  console.log(`[Embeddings] Successfully generated ${embeddings.length} embeddings`);
-  return embeddings;
 }
 
 /**
@@ -403,7 +306,7 @@ Deno.serve(async (req) => {
     const entityExtractionTime = Date.now() - entityExtractionStart;
     console.log(`[Timing] Entity extraction: ${entityExtractionTime}ms`);
 
-    // Step 2: Fan out — embeddings, location, people lookup, and DB fetch in parallel
+    // Step 2: Generate single query embedding + location + people lookup in parallel
     const embeddingStart = Date.now();
 
     const resolveLocation = async (): Promise<{ latitude: number; longitude: number; displayName: string; proximity: number } | null> => {
@@ -446,29 +349,39 @@ Deno.serve(async (req) => {
       return { ids, matchedNames };
     };
 
-    const [keywordEmbeddings, locationCoords, { ids: matchingPersonIds, matchedNames: matchedPersonNames }] = await Promise.all([
-      generateKeywordEmbeddings(entities.keywords, openaiApiKey),
+    // Build a rich search text combining query + extracted keywords for better embedding
+    const searchText = entities.keywords.length > 0
+      ? `${query} ${entities.keywords.join(' ')}`
+      : query;
+
+    const [queryEmbedding, locationCoords, { ids: matchingPersonIds, matchedNames: matchedPersonNames }] = await Promise.all([
+      generateQueryEmbedding(searchText, openaiApiKey),
       resolveLocation(),
       resolvePersonIds()
     ]);
 
     const embeddingTime = Date.now() - embeddingStart;
-    console.log(`[Timing] Embeddings + location + people (parallel): ${embeddingTime}ms`);
+    console.log(`[Timing] Query embedding + location + people (parallel): ${embeddingTime}ms`);
 
-    // Step 3: DB fetch — recall_people needs matchingPersonIds from above
+    // Step 3: Call pgvector RPC functions for similarity search in the database
     const dbQueryStart = Date.now();
 
+    // Convert embedding array to pgvector string format
+    const embeddingStr = `[${queryEmbedding.join(',')}]`;
+
     const [recallsResult, imagesResult, recallPeopleResult] = await Promise.all([
-      supabase
-        .from('recalls')
-        .select('id, text, location, location_primary_type, recall_embedding, latitude, longitude, created_at')
-        .eq('user_id', user.id)
-        .not('recall_embedding', 'is', null),
-      supabase
-        .from('recall_images')
-        .select('id, recall_id, ocr_text, image_explanation, recall_image_embedding')
-        .eq('user_id', user.id)
-        .not('recall_image_embedding', 'is', null),
+      supabase.rpc('match_recalls', {
+        query_embedding: embeddingStr,
+        match_threshold: 0.6,
+        match_count: 50,
+        user_id_filter: user.id
+      }),
+      supabase.rpc('match_recall_images', {
+        query_embedding: embeddingStr,
+        match_threshold: 0.0,
+        match_count: 100,
+        user_id_filter: user.id
+      }),
       matchingPersonIds.length > 0
         ? supabase
             .from('recall_people')
@@ -479,7 +392,7 @@ Deno.serve(async (req) => {
     ]);
 
     if (recallsResult.error) {
-      console.error('Error fetching recalls:', recallsResult.error);
+      console.error('Error fetching recalls via RPC:', recallsResult.error);
       return new Response(JSON.stringify({ error: 'Failed to fetch recalls' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -487,24 +400,24 @@ Deno.serve(async (req) => {
     }
 
     if (imagesResult.error) {
-      console.error('Error fetching images:', imagesResult.error);
+      console.error('Error fetching images via RPC:', imagesResult.error);
       return new Response(JSON.stringify({ error: 'Failed to fetch images' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
+    const dbQueryTime = Date.now() - dbQueryStart;
+    console.log(`[Timing] Database vector search (RPC): ${dbQueryTime}ms`);
+    console.log(`Found ${(recallsResult.data || []).length} recall matches and ${(imagesResult.data || []).length} image matches from DB`);
+
+    // Step 4: Filter and score recalls
+    const filteringStart = Date.now();
+
     const allRecalls = recallsResult.data || [];
     const allImages = imagesResult.data || [];
     const recallPeopleData = recallPeopleResult.data || [];
-    
-    const dbQueryTime = Date.now() - dbQueryStart;
-    console.log(`[Timing] Database query: ${dbQueryTime}ms`);
-    console.log(`Found ${allRecalls.length} recalls and ${allImages.length} images`);
 
-    // Step 6: Filter and score recalls
-    const filteringStart = Date.now();
-    
     // Group images by recall_id
     const imagesByRecall = new Map<string, typeof allImages>();
     for (const image of allImages) {
@@ -513,6 +426,30 @@ Deno.serve(async (req) => {
       }
       imagesByRecall.get(image.recall_id)!.push(image);
     }
+
+    // Also collect recall IDs that matched via images (even if recall itself didn't hit threshold)
+    const imageRecallIds = new Set<string>(allImages.map((img: any) => img.recall_id));
+
+    // Fetch full data for recalls that matched via images but not via text
+    const imageOnlyRecallIds = [...imageRecallIds].filter(
+      id => !allRecalls.some((r: any) => r.id === id)
+    );
+
+    let imageOnlyRecalls: any[] = [];
+    if (imageOnlyRecallIds.length > 0) {
+      const { data } = await supabase
+        .from('recalls')
+        .select('id, text, location, location_primary_type, latitude, longitude, created_at')
+        .in('id', imageOnlyRecallIds)
+        .eq('user_id', user.id);
+      imageOnlyRecalls = data || [];
+    }
+
+    // Combine all candidate recalls
+    const allCandidates = [
+      ...allRecalls.map((r: any) => ({ ...r, textSimilarity: 1 - (r.distance ?? 1) })),
+      ...imageOnlyRecalls.map((r: any) => ({ ...r, textSimilarity: 0 }))
+    ];
 
     // Group recall_people by recall_id
     const peopleByRecall = new Map<string, Set<string>>();
@@ -524,12 +461,12 @@ Deno.serve(async (req) => {
     }
 
     const recallMatches: RecallMatch[] = [];
-    
-    for (const recall of allRecalls) {
+
+    for (const recall of allCandidates) {
       let isLocationMatch = false;
       let isPeopleMatch = false;
-      let isKeywordMatch = false;
-      
+      const isKeywordMatch = recall.textSimilarity >= TEXT_SIMILARITY_THRESHOLD;
+
       // Check location match
       if (locationCoords && recall.latitude && recall.longitude) {
         const distance = calculateDistance(
@@ -540,7 +477,7 @@ Deno.serve(async (req) => {
         );
         isLocationMatch = distance <= locationCoords.proximity;
       }
-      
+
       // Check people match
       if (matchingPersonIds.length > 0) {
         const recallPeople = peopleByRecall.get(recall.id);
@@ -553,55 +490,25 @@ Deno.serve(async (req) => {
           }
         }
       }
-      
-      // Check keyword match (if keywords exist)
-      let textMatch = { matchCount: 0, bestSimilarity: 0 };
-      let totalImageKeywordMatches = 0;
-      const imageSimilarities: number[] = [];
-      const imagesData: RecallMatch['images_data'] = [];
-      
-      if (keywordEmbeddings.length > 0) {
-        textMatch = calculateMultiKeywordMatch(keywordEmbeddings, recall.recall_embedding, TEXT_SIMILARITY_THRESHOLD);
-        
-        const recallImages = imagesByRecall.get(recall.id) || [];
-        for (const image of recallImages) {
-          const imageMatch = calculateMultiKeywordMatch(keywordEmbeddings, image.recall_image_embedding, IMAGE_SIMILARITY_THRESHOLD);
-          imageSimilarities.push(imageMatch.bestSimilarity);
-          totalImageKeywordMatches += imageMatch.matchCount;
-          
-          imagesData.push({
-            id: image.id,
-            ocr_text: image.ocr_text || '',
-            image_explanation: image.image_explanation || '',
-            similarity: imageMatch.bestSimilarity
-          });
-        }
-        
-        isKeywordMatch = textMatch.bestSimilarity >= TEXT_SIMILARITY_THRESHOLD || 
-                        imageSimilarities.some(sim => sim >= IMAGE_SIMILARITY_THRESHOLD);
-      } else {
-        // If no keywords, include all images
-        const recallImages = imagesByRecall.get(recall.id) || [];
-        for (const image of recallImages) {
-          imagesData.push({
-            id: image.id,
-            ocr_text: image.ocr_text || '',
-            image_explanation: image.image_explanation || '',
-            similarity: 1.0
-          });
-        }
-      }
-      
-      // Include recall if it matches any criteria
-      if (isLocationMatch || isPeopleMatch || isKeywordMatch || 
+
+      const recallImages = imagesByRecall.get(recall.id) || [];
+      const imageSimilarities = recallImages.map((img: any) => 1 - (img.distance ?? 1));
+      const imagesData: RecallMatch['images_data'] = recallImages.map((img: any) => ({
+        id: img.id,
+        ocr_text: img.ocr_text || '',
+        image_explanation: img.image_explanation || '',
+        similarity: 1 - (img.distance ?? 1)
+      }));
+
+      const hasImageMatch = imageSimilarities.some(sim => sim >= IMAGE_SIMILARITY_THRESHOLD);
+
+      if (isLocationMatch || isPeopleMatch || isKeywordMatch || hasImageMatch ||
           (entities.keywords.length === 0 && entities.people.length === 0 && !locationCoords)) {
-        const totalKeywordMatches = textMatch.matchCount + totalImageKeywordMatches;
-        
         recallMatches.push({
           recall_id: recall.id,
-          text_similarity: textMatch.bestSimilarity,
+          text_similarity: recall.textSimilarity,
           image_similarities: imageSimilarities,
-          keyword_matches: totalKeywordMatches,
+          keyword_matches: isKeywordMatch ? 1 : 0,
           recall_data: {
             text: recall.text || '',
             location: recall.location || '',
@@ -617,51 +524,51 @@ Deno.serve(async (req) => {
         });
       }
     }
-    
+
     const filteringTime = Date.now() - filteringStart;
     console.log(`[Timing] Filtering and scoring: ${filteringTime}ms`);
     console.log(`Found ${recallMatches.length} matching recalls`);
 
-    // Step 7: Sort recalls by match quality
+    // Step 5: Sort recalls by match quality
     recallMatches.sort((a, b) => {
       const scoreA = (a.text_similarity * 100) + (a.isLocationMatch ? 50 : 0) + (a.isPeopleMatch ? 50 : 0);
       const scoreB = (b.text_similarity * 100) + (b.isLocationMatch ? 50 : 0) + (b.isPeopleMatch ? 50 : 0);
-      
+
       if (scoreA !== scoreB) {
         return scoreB - scoreA;
       }
-      
+
       const dateA = new Date(a.recall_data.created_at).getTime();
       const dateB = new Date(b.recall_data.created_at).getTime();
       return dateB - dateA;
     });
 
-    // Step 8: Generate answer using Claude claude-opus-4-5 (replicating search-recalls-v2 logic)
+    // Step 6: Generate answer using OpenAI
     const answerStart = Date.now();
-    
+
     let answer = null;
     let confidence = 0;
     let sourcesUsed: string[] = [];
-    
+
     if (recallMatches.length > 0) {
       const contextWithSources = recallMatches.map((recall, idx) => {
         const sourceId = `SOURCE_${idx + 1}`;
-        
+
         const matchTypes: string[] = [];
         if (recall.isLocationMatch) matchTypes.push('LOCATION');
         if (recall.isPeopleMatch) matchTypes.push('PEOPLE');
         if (recall.isKeywordMatch) matchTypes.push('KEYWORD');
         const matchTypeStr = matchTypes.length > 0 ? ` [${matchTypes.join(' + ')}]` : '';
-        
+
         const keywordMarker = recall.keyword_matches && entities.keywords.length > 0
-          ? ` [${recall.keyword_matches}/${entities.keywords.length} keywords matched]` 
+          ? ` [${recall.keyword_matches}/${entities.keywords.length} keywords matched]`
           : '';
-        
+
         let contextText = `${sourceId} (${Math.round(recall.text_similarity * 100)}% match${matchTypeStr}${keywordMarker}):\n`;
         contextText += `Text: ${recall.recall_data.text}\n`;
         contextText += `Location: ${recall.recall_data.location}\n`;
         contextText += `Location Type: ${recall.recall_data.location_primary_type}\n`;
-        
+
         if (recall.images_data && recall.images_data.length > 0) {
           contextText += `Images (${recall.images_data.length}):\n`;
           recall.images_data.forEach((img, imgIdx) => {
@@ -678,7 +585,7 @@ Deno.serve(async (req) => {
             }
           });
         }
-        
+
         return {
           sourceId,
           recallId: recall.recall_id,
@@ -759,10 +666,10 @@ ${context}`;
 
       const usedRecalls = recallMatches.filter(recall => sourceRecallIds.includes(recall.recall_id));
       const unusedRecalls = recallMatches.filter(recall => !sourceRecallIds.includes(recall.recall_id));
-      
+
       usedRecalls.sort((a, b) => (b.text_similarity * 100) - (a.text_similarity * 100));
       unusedRecalls.sort((a, b) => (b.text_similarity * 100) - (a.text_similarity * 100));
-      
+
       const orderedRecalls = [...usedRecalls, ...unusedRecalls];
 
       const matchResults = orderedRecalls.map(recall => ({
