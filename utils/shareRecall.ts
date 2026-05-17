@@ -4,6 +4,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Linking from 'expo-linking';
 import Toast from 'react-native-toast-message';
 import { Note } from '@/types/Note';
+import { supabase } from '@/utils/supabase';
 
 // Conditionally import react-native-share only for native platforms
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -65,18 +66,49 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
 
     // If there are images, download them and share with the message
     if (recall.images && recall.images.length > 0 && Platform.OS !== 'web' && Share) {
-      console.log(`Starting download process for ${recall.images.length} image(s)`);
+      console.log(`Starting download process for ${recall.images?.length ?? 0} image(s)`);
       
       try {
+        // Pre-resolve any missing image URLs (images beyond index 1 may be empty strings
+        // due to lazy-loading optimisation in loadImagesForRecalls)
+        const resolvedImages = [...(recall.images ?? [])];
+
+        const missingIndices: number[] = [];
+        resolvedImages.forEach((url, index) => {
+          if (!url && recall.imageIds?.[index]) {
+            missingIndices.push(index);
+          }
+        });
+
+        if (missingIndices.length > 0) {
+          console.log(`Pre-resolving ${missingIndices.length} missing image URL(s) from Supabase`);
+          const missingIds = missingIndices.map(i => recall.imageIds![i]);
+          const { data: imageData } = await supabase
+            .from('recall_images')
+            .select('id, cdn_url')
+            .in('id', missingIds);
+
+          if (imageData) {
+            const urlById = new Map(imageData.map((img: { id: string; cdn_url: string }) => [img.id, img.cdn_url]));
+            missingIndices.forEach(index => {
+              const id = recall.imageIds![index];
+              const url = urlById.get(id);
+              if (url) resolvedImages[index] = url;
+            });
+          }
+        }
+
+        console.log(`Starting download process for ${resolvedImages.length} image(s)`);
+
         // Download all images to temporary locations
-        const downloadPromises = recall.images.map(async (imageUrl, index) => {
+        const downloadPromises = resolvedImages.map(async (imageUrl, index) => {
           const fileExtension = imageUrl.includes('.png') ? 'png' : 'jpg';
           const timestamp = Date.now();
           const randomSuffix = Math.random().toString(36).substring(7);
           const fileName = `share_recall_${recall.id}_${index}_${timestamp}_${randomSuffix}.${fileExtension}`;
           const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
           
-          console.log(`[Image ${index + 1}/${recall.images!.length}] Starting download`);
+          console.log(`[Image ${index + 1}/${resolvedImages.length}] Starting download`);
           console.log(`[Image ${index + 1}] Source URL:`, imageUrl);
           console.log(`[Image ${index + 1}] Target path:`, fileUri);
           
@@ -126,7 +158,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
         // Filter out failed downloads
         const validUris = downloadResults.filter((uri): uri is string => uri !== null);
         
-        console.log(`Download summary: ${validUris.length} successful out of ${recall.images.length} total`);
+        console.log(`Download summary: ${validUris.length} successful out of ${resolvedImages.length} total`);
         console.log('Valid URIs:', validUris);
         
         // If we successfully downloaded at least one image, share them using react-native-share
