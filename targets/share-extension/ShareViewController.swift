@@ -138,19 +138,7 @@ class ShareViewController: UIViewController {
 
     private func openMainApp() {
         guard let url = URL(string: appURLScheme) else { return }
-
-        var responder: UIResponder? = self
-        while responder != nil {
-            if let application = responder as? UIApplication {
-                application.open(url, options: [:], completionHandler: nil)
-                return
-            }
-            responder = responder?.next
-        }
-
-        // Fallback for newer iOS versions
-        let selector = NSSelectorFromString("openURL:")
-        UIApplication.shared.perform(selector, with: url)
+        extensionContext?.open(url, completionHandler: nil)
     }
 
     private func completeRequest() {

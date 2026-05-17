@@ -26,39 +26,14 @@
 		<key>NSExtensionAttributes</key>
 		<dict>
 			<key>NSExtensionActivationRule</key>
-			<dict>
-				<!-- Support text content -->
-				<key>NSExtensionActivationSupportsText</key>
-				<true/>
-				<!-- Support URLs from web browsers and other apps -->
-				<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
-				<integer>10</integer>
-				<!-- Support web pages from Safari -->
-				<key>NSExtensionActivationSupportsWebPageWithMaxCount</key>
-				<integer>10</integer>
-				<!-- Support images (JPEG, PNG, HEIC, etc.) -->
-				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
-				<integer>10</integer>
-				<!-- Support videos (MP4, MOV, etc.) -->
-				<key>NSExtensionActivationSupportsMovieWithMaxCount</key>
-				<integer>10</integer>
-				<!-- Support files (PDFs, documents, etc.) -->
-				<key>NSExtensionActivationSupportsFileWithMaxCount</key>
-				<integer>10</integer>
-				<!-- Require at least one item to be shared -->
-				<key>NSExtensionActivationSupportsAttachmentsWithMinCount</key>
-				<integer>1</integer>
-				<!-- Allow up to 10 items to be shared at once -->
-				<key>NSExtensionActivationSupportsAttachmentsWithMaxCount</key>
-				<integer>10</integer>
-			</dict>
+			<string>TRUEPREDICATE</string>
 		</dict>
 		<!-- Extension point identifier for share services -->
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.share-services</string>
 		<!-- Principal class that handles the share extension -->
 		<key>NSExtensionPrincipalClass</key>
-		<string>ShareViewController</string>
+		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
 	</dict>
 </dict>
 </plist>
