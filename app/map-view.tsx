@@ -59,7 +59,7 @@ function buildMapHtml(
       height: 40px;
       border-radius: 50%;
       background: #FF6B7A;
-      border: 3px solid #FFFFFF;
+      border: 1px solid #FFFFFF;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -95,7 +95,7 @@ function buildMapHtml(
   <script>
     var map = L.map('map', { zoomControl: true }).setView([${centerLat}, ${centerLng}], ${initialZoom});
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap &copy; CARTO'
     }).addTo(map);
