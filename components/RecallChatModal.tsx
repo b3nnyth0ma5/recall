@@ -35,6 +35,77 @@ interface RecallChatModalProps {
   onClose: () => void;
 }
 
+const FadeInView: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const opacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(opacity, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [opacity]);
+  return <Animated.View style={{ opacity }}>{children}</Animated.View>;
+};
+
+const TypingIndicator = () => {
+  const dot1Opacity = useRef(new Animated.Value(0.3)).current;
+  const dot2Opacity = useRef(new Animated.Value(0.3)).current;
+  const dot3Opacity = useRef(new Animated.Value(0.3)).current;
+  const containerOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Fade in container
+    Animated.timing(containerOpacity, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+
+    // Pulsing dots with staggered delay
+    const makePulse = (value: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(value, { toValue: 1, duration: 400, useNativeDriver: true }),
+          Animated.timing(value, { toValue: 0.3, duration: 400, useNativeDriver: true }),
+        ])
+      );
+
+    const anim1 = makePulse(dot1Opacity, 0);
+    const anim2 = makePulse(dot2Opacity, 200);
+    const anim3 = makePulse(dot3Opacity, 400);
+
+    anim1.start();
+    anim2.start();
+    anim3.start();
+
+    return () => {
+      anim1.stop();
+      anim2.stop();
+      anim3.stop();
+    };
+  }, [dot1Opacity, dot2Opacity, dot3Opacity, containerOpacity]);
+
+  return (
+    <Animated.View
+      style={[styles.messageContainer, styles.assistantMessageContainer, { opacity: containerOpacity }]}
+    >
+      <View style={styles.avatarContainer}>
+        <View style={styles.assistantAvatar}>
+          <IconSymbol name="sparkles" size={20} color={colors.background} />
+        </View>
+      </View>
+      <View style={[styles.messageBubble, styles.assistantBubble, styles.typingBubble]}>
+        <View style={styles.typingIndicator}>
+          <Animated.View style={[styles.typingDot, { opacity: dot1Opacity }]} />
+          <Animated.View style={[styles.typingDot, { opacity: dot2Opacity }]} />
+          <Animated.View style={[styles.typingDot, { opacity: dot3Opacity }]} />
+        </View>
+      </View>
+    </Animated.View>
+  );
+};
+
 export const RecallChatModal: React.FC<RecallChatModalProps> = ({
   visible,
   recall,
@@ -395,77 +466,6 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     );
   };
 
-  const FadeInView: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const opacity = useRef(new Animated.Value(0)).current;
-    useEffect(() => {
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    }, [opacity]);
-    return <Animated.View style={{ opacity }}>{children}</Animated.View>;
-  };
-
-  const TypingIndicator = () => {
-    const dot1Opacity = useRef(new Animated.Value(0.3)).current;
-    const dot2Opacity = useRef(new Animated.Value(0.3)).current;
-    const dot3Opacity = useRef(new Animated.Value(0.3)).current;
-    const containerOpacity = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-      // Fade in container
-      Animated.timing(containerOpacity, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-
-      // Pulsing dots with staggered delay
-      const makePulse = (value: Animated.Value, delay: number) =>
-        Animated.loop(
-          Animated.sequence([
-            Animated.delay(delay),
-            Animated.timing(value, { toValue: 1, duration: 400, useNativeDriver: true }),
-            Animated.timing(value, { toValue: 0.3, duration: 400, useNativeDriver: true }),
-          ])
-        );
-
-      const anim1 = makePulse(dot1Opacity, 0);
-      const anim2 = makePulse(dot2Opacity, 200);
-      const anim3 = makePulse(dot3Opacity, 400);
-
-      anim1.start();
-      anim2.start();
-      anim3.start();
-
-      return () => {
-        anim1.stop();
-        anim2.stop();
-        anim3.stop();
-      };
-    }, [dot1Opacity, dot2Opacity, dot3Opacity, containerOpacity]);
-
-    return (
-      <Animated.View
-        style={[styles.messageContainer, styles.assistantMessageContainer, { opacity: containerOpacity }]}
-      >
-        <View style={styles.avatarContainer}>
-          <View style={styles.assistantAvatar}>
-            <IconSymbol name="sparkles" size={20} color={colors.background} />
-          </View>
-        </View>
-        <View style={[styles.messageBubble, styles.assistantBubble, styles.typingBubble]}>
-          <View style={styles.typingIndicator}>
-            <Animated.View style={[styles.typingDot, { opacity: dot1Opacity }]} />
-            <Animated.View style={[styles.typingDot, { opacity: dot2Opacity }]} />
-            <Animated.View style={[styles.typingDot, { opacity: dot3Opacity }]} />
-          </View>
-        </View>
-      </Animated.View>
-    );
-  };
-
   const canSend = inputText.trim().length > 0 && !isLoading;
 
   return (
@@ -557,7 +557,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                 enablesReturnKeyAutomatically={true}
               />
               <Pressable
-                onPress={handleSendMessage}
+                onPressIn={handleSendMessage}
                 disabled={!canSend}
                 style={[
                   styles.sendButton,
