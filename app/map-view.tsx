@@ -35,15 +35,7 @@ type MapNote = {
   imageUrl: string | null;
 };
 
-function buildMapHtml(
-  notes: MapNote[],
-  userLocation: { latitude: number; longitude: number } | null
-): string {
-  const notesJson = JSON.stringify(notes);
-  const centerLat = userLocation ? userLocation.latitude : 20;
-  const centerLng = userLocation ? userLocation.longitude : 0;
-  const initialZoom = userLocation ? 13 : 2;
-
+function buildMapHtml(): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -94,45 +86,60 @@ function buildMapHtml(
   <div id="map"></div>
   <script>
     var map = L.map('map', {
-  zoomControl: false,
-  dragging: true,        // false = locked, no panning
-  scrollWheelZoom: true, // false = disable scroll zoom
-  doubleClickZoom: true, // false = disable double-tap zoom
-  minZoom: 2,            // how far out user can zoom
-  maxZoom: 19,           // how far in user can zoom
-}).setView([${centerLat}, ${centerLng}], ${initialZoom});
+      zoomControl: false,
+      dragging: true,
+      scrollWheelZoom: true,
+      doubleClickZoom: true,
+      minZoom: 2,
+      maxZoom: 19,
+    }).setView([20, 0], 2);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap &copy; CARTO'
     }).addTo(map);
 
-    var notesData = ${notesJson};
+    var recallMarkers = [];
+    var userDotMarker = null;
 
-    notesData.forEach(function(note) {
-      var html;
-      if (note.imageUrl) {
-        html = '<div class="recall-pin"><img src="' + note.imageUrl + '" /></div>';
-      } else {
-        var initials = note.text ? note.text.substring(0, 2) : '??';
-        html = '<div class="recall-pin"><span class="pin-text">' + initials + '</span></div>';
-      }
+    // Called after data loads to render all pins
+    window.updateMarkers = function(notesData) {
+      recallMarkers.forEach(function(m) { map.removeLayer(m); });
+      recallMarkers = [];
 
-      var icon = L.divIcon({
-        html: html,
-        className: '',
-        iconSize: [40, 40],
-        iconAnchor: [20, 20],
-        popupAnchor: [0, -24]
-      });
-
-      var marker = L.marker([note.latitude, note.longitude], { icon: icon }).addTo(map);
-      marker.on('click', function() {
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'markerPress', noteId: note.id }));
+      notesData.forEach(function(note) {
+        var html;
+        if (note.imageUrl) {
+          html = '<div class="recall-pin"><img src="' + note.imageUrl + '" /></div>';
+        } else {
+          var initials = note.text ? note.text.substring(0, 2) : '??';
+          html = '<div class="recall-pin"><span class="pin-text">' + initials + '</span></div>';
         }
+        var icon = L.divIcon({ html: html, className: '', iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -24] });
+        var marker = L.marker([note.latitude, note.longitude], { icon: icon }).addTo(map);
+        marker.on('click', function() {
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'markerPress', noteId: note.id }));
+          }
+        });
+        recallMarkers.push(marker);
       });
-    });
+    };
+
+    // Called when user location is known
+    window.updateUserLocation = function(lat, lng) {
+      if (userDotMarker) { map.removeLayer(userDotMarker); }
+      var dotIcon = L.divIcon({ html: '<div class="user-dot"></div>', className: '', iconSize: [16, 16], iconAnchor: [8, 8] });
+      userDotMarker = L.marker([lat, lng], { icon: dotIcon }).addTo(map);
+    };
+
+    // fitToMarkers: called from React Native after data loads in search mode
+    window.fitToMarkers = function() {
+      if (recallMarkers.length === 0) return;
+      var latlngs = recallMarkers.map(function(m) { return m.getLatLng(); });
+      var bounds = L.latLngBounds(latlngs);
+      map.fitBounds(bounds, { padding: [80, 50] });
+    };
 
     // Viewport change reporting
     map.on('moveend', function() {
@@ -148,26 +155,6 @@ function buildMapHtml(
           }
         }));
       }
-    });
-
-    // fitToMarkers: called from React Native after data loads in search mode
-    window.fitToMarkers = function() {
-      if (notesData.length === 0) return;
-      var latlngs = notesData.map(function(n) { return [n.latitude, n.longitude]; });
-      var bounds = L.latLngBounds(latlngs);
-      map.fitBounds(bounds, { padding: [80, 50] });
-    };
-
-    // User location blue dot
-    map.locate({ watch: false, setView: false });
-    map.on('locationfound', function(e) {
-      var dotIcon = L.divIcon({
-        html: '<div class="user-dot"></div>',
-        className: '',
-        iconSize: [16, 16],
-        iconAnchor: [8, 8]
-      });
-      L.marker(e.latlng, { icon: dotIcon }).addTo(map);
     });
   </script>
 </body>
@@ -187,6 +174,8 @@ export default function MapViewScreen() {
   const [visibleNotes, setVisibleNotes] = useState<Note[]>([]);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const webViewRef = useRef<WebView>(null);
+  const [webViewReady, setWebViewReady] = useState(false);
+  const pendingMapData = useRef<MapNote[] | null>(null);
 
   // Bottom sheet animation state
   const slideAnim = useRef(new Animated.Value(300)).current;
@@ -211,52 +200,65 @@ export default function MapViewScreen() {
     })();
   }, []);
 
+  // Inject user location dot whenever location resolves and WebView is ready
+  useEffect(() => {
+    if (!userLocation || !webViewReady) return;
+    if (__DEV__) console.log('[MapView] Injecting user location into WebView', userLocation);
+    webViewRef.current?.injectJavaScript(
+      `window.updateUserLocation(${userLocation.latitude}, ${userLocation.longitude}); true;`
+    );
+  }, [userLocation, webViewReady]);
+
   useEffect(() => {
     if (searchIds.length === 0 && !user?.id) return;
 
     async function loadNotes() {
       setLoading(true);
+
+      const injectMarkers = (notesWithImages: Note[]) => {
+        const mapData: MapNote[] = notesWithImages.map(n => ({
+          id: n.id,
+          latitude: n.latitude as number,
+          longitude: n.longitude as number,
+          text: n.text ? n.text.substring(0, 2) : '??',
+          imageUrl: n.images && n.images.length > 0 ? n.images[0] : null,
+        }));
+        if (webViewRef.current && webViewReady) {
+          if (__DEV__) console.log('[MapView] Injecting', mapData.length, 'markers into WebView');
+          webViewRef.current.injectJavaScript(`window.updateMarkers(${JSON.stringify(mapData)}); true;`);
+        } else {
+          if (__DEV__) console.log('[MapView] WebView not ready, queuing', mapData.length, 'markers');
+          pendingMapData.current = mapData;
+        }
+      };
+
       if (searchIds.length > 0) {
-        if (__DEV__) console.log('[MapView] Fetching', searchIds.length, 'search result recalls by ID');
+        if (__DEV__) console.log('[MapView] Fetching', searchIds.length, 'search result recalls by ID (joined)');
         const { data, error } = await supabase
           .from('recalls')
-          .select('id, text, latitude, longitude, location, created_at')
+          .select('id, text, latitude, longitude, location, created_at, recall_images(cdn_url)')
           .in('id', searchIds)
           .not('latitude', 'is', null)
           .not('longitude', 'is', null);
         if (error) {
           console.error('[MapView] Error fetching search recalls:', error);
         } else {
-          const valid = ((data ?? []) as any[]).filter(
-            (n) => n.latitude != null && n.longitude != null
-          ) as Note[];
-          if (__DEV__) console.log('[MapView] Loaded', valid.length, 'search recalls with location');
-
-          const recallIds = valid.map(n => n.id);
-          const { data: imagesData } = await supabase
-            .from('recall_images')
-            .select('recall_id, cdn_url')
-            .in('recall_id', recallIds);
-          console.log('[MapView] Fetched images for search recalls, count:', (imagesData ?? []).length);
-
-          const imageMap = new Map<string, string>();
-          (imagesData ?? []).forEach((img: any) => {
-            if (!imageMap.has(img.recall_id) && img.cdn_url) {
-              imageMap.set(img.recall_id, img.cdn_url);
-            }
-          });
-
-          const notesWithImages = valid.map(n => ({
-            ...n,
-            images: imageMap.has(n.id) ? [imageMap.get(n.id)!] : [],
-          }));
-          setMapNotes(notesWithImages as Note[]);
+          const notesWithImages = ((data ?? []) as any[])
+            .filter(n => n.latitude != null && n.longitude != null)
+            .map(n => {
+              const imageUrl = (n.recall_images?.[0] as any)?.cdn_url ?? null;
+              const images = imageUrl ? [imageUrl] : [];
+              return { ...n, images } as Note;
+            });
+          if (__DEV__) console.log('[MapView] Loaded', notesWithImages.length, 'search recalls with location');
+          setMapNotes(notesWithImages);
+          injectMarkers(notesWithImages);
         }
       } else {
-        if (__DEV__) console.log('[MapView] Fetching all location recalls for user', user!.id);
+        if (__DEV__) console.log('[MapView] Fetching all location recalls for user', user!.id, '(joined)');
         const { data, error } = await supabase
           .from('recalls')
-          .select('id, text, latitude, longitude, location, created_at')
+          .select('id, text, latitude, longitude, location, created_at, recall_images(cdn_url)')
           .eq('user_id', user!.id)
           .not('latitude', 'is', null)
           .not('longitude', 'is', null)
@@ -264,32 +266,18 @@ export default function MapViewScreen() {
         if (error) {
           console.error('[MapView] Error fetching all location recalls:', error);
         } else {
-          const valid = ((data ?? []) as any[]).filter(
-            (n) => n.latitude != null && n.longitude != null
-          ) as Note[];
-          if (__DEV__) console.log('[MapView] Loaded', valid.length, 'total recalls with location');
-
-          const recallIds = valid.map(n => n.id);
-          const { data: imagesData } = await supabase
-            .from('recall_images')
-            .select('recall_id, cdn_url')
-            .in('recall_id', recallIds);
-          console.log('[MapView] Fetched images for browse recalls, count:', (imagesData ?? []).length);
-
-          const imageMap = new Map<string, string>();
-          (imagesData ?? []).forEach((img: any) => {
-            if (!imageMap.has(img.recall_id) && img.cdn_url) {
-              imageMap.set(img.recall_id, img.cdn_url);
-            }
-          });
-
-          const notesWithImages = valid.map(n => ({
-            ...n,
-            images: imageMap.has(n.id) ? [imageMap.get(n.id)!] : [],
-          }));
-          setAllLocationNotes(notesWithImages as Note[]);
-          setMapNotes(notesWithImages as Note[]);
-          setVisibleNotes(notesWithImages as Note[]);
+          const notesWithImages = ((data ?? []) as any[])
+            .filter(n => n.latitude != null && n.longitude != null)
+            .map(n => {
+              const imageUrl = (n.recall_images?.[0] as any)?.cdn_url ?? null;
+              const images = imageUrl ? [imageUrl] : [];
+              return { ...n, images } as Note;
+            });
+          if (__DEV__) console.log('[MapView] Loaded', notesWithImages.length, 'total recalls with location');
+          setAllLocationNotes(notesWithImages);
+          setMapNotes(notesWithImages);
+          setVisibleNotes(notesWithImages);
+          injectMarkers(notesWithImages);
         }
       }
       setLoading(false);
@@ -300,13 +288,25 @@ export default function MapViewScreen() {
 
   // After search-mode data loads, fit the map to all markers
   useEffect(() => {
-    if (searchIds.length === 0 || mapNotes.length === 0) return;
+    if (searchIds.length === 0 || mapNotes.length === 0 || !webViewReady) return;
     const timer = setTimeout(() => {
       if (__DEV__) console.log('[MapView] Injecting fitToMarkers for', mapNotes.length, 'search pins');
       webViewRef.current?.injectJavaScript('window.fitToMarkers(); true;');
     }, 500);
     return () => clearTimeout(timer);
-  }, [mapNotes, searchIds]);
+  }, [mapNotes, searchIds, webViewReady]);
+
+  // When WebView becomes ready, flush any pending marker data
+  const handleWebViewLoad = useCallback(() => {
+    if (__DEV__) console.log('[MapView] WebView loaded and ready');
+    setWebViewReady(true);
+    if (pendingMapData.current) {
+      const mapData = pendingMapData.current;
+      pendingMapData.current = null;
+      if (__DEV__) console.log('[MapView] Flushing', mapData.length, 'pending markers into WebView');
+      webViewRef.current?.injectJavaScript(`window.updateMarkers(${JSON.stringify(mapData)}); true;`);
+    }
+  }, []);
 
   // ─── WebView message handler ──────────────────────────────────────────────
 
@@ -391,20 +391,9 @@ export default function MapViewScreen() {
     : 'Recall';
   const sheetBody = selectedNote?.text ?? null;
 
-  // ─── Build Leaflet HTML ───────────────────────────────────────────────────
+  // ─── Build Leaflet HTML — static shell, built once ───────────────────────
 
-  const mapHtml = useMemo(() => {
-    const notes: MapNote[] = mapNotes
-      .filter(n => n.latitude != null && n.longitude != null)
-      .map(n => ({
-        id: n.id,
-        latitude: n.latitude as number,
-        longitude: n.longitude as number,
-        text: n.text ? n.text.substring(0, 2) : '??',
-        imageUrl: n.images && n.images.length > 0 ? n.images[0] : null,
-      }));
-    return buildMapHtml(notes, userLocation);
-  }, [mapNotes, userLocation]);
+  const mapHtml = useMemo(() => buildMapHtml(), []);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -449,6 +438,7 @@ export default function MapViewScreen() {
             source={{ html: mapHtml }}
             style={styles.map}
             onMessage={handleWebViewMessage}
+            onLoad={handleWebViewLoad}
             javaScriptEnabled={true}
             domStorageEnabled={true}
             geolocationEnabled={true}
