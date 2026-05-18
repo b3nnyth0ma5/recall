@@ -93,7 +93,14 @@ function buildMapHtml(
 <body>
   <div id="map"></div>
   <script>
-    var map = L.map('map', { zoomControl: false }).setView([${centerLat}, ${centerLng}], ${initialZoom});
+    var map = L.map('map', {
+  zoomControl: false,
+  dragging: true,        // false = locked, no panning
+  scrollWheelZoom: true, // false = disable scroll zoom
+  doubleClickZoom: true, // false = disable double-tap zoom
+  minZoom: 2,            // how far out user can zoom
+  maxZoom: 19,           // how far in user can zoom
+}).setView([${centerLat}, ${centerLng}], ${initialZoom});
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
