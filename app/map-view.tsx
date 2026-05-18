@@ -213,7 +213,7 @@ export default function MapViewScreen() {
         if (__DEV__) console.log('[MapView] Fetching', searchIds.length, 'search result recalls by ID');
         const { data, error } = await supabase
           .from('recalls')
-          .select('id, text, latitude, longitude, location, created_at, images')
+          .select('id, text, latitude, longitude, location, created_at')
           .in('id', searchIds)
           .not('latitude', 'is', null)
           .not('longitude', 'is', null);
@@ -224,13 +224,32 @@ export default function MapViewScreen() {
             (n) => n.latitude != null && n.longitude != null
           ) as Note[];
           if (__DEV__) console.log('[MapView] Loaded', valid.length, 'search recalls with location');
-          setMapNotes(valid);
+
+          const recallIds = valid.map(n => n.id);
+          const { data: imagesData } = await supabase
+            .from('recall_images')
+            .select('recall_id, cdn_url')
+            .in('recall_id', recallIds);
+          console.log('[MapView] Fetched images for search recalls, count:', (imagesData ?? []).length);
+
+          const imageMap = new Map<string, string>();
+          (imagesData ?? []).forEach((img: any) => {
+            if (!imageMap.has(img.recall_id) && img.cdn_url) {
+              imageMap.set(img.recall_id, img.cdn_url);
+            }
+          });
+
+          const notesWithImages = valid.map(n => ({
+            ...n,
+            images: imageMap.has(n.id) ? [imageMap.get(n.id)!] : [],
+          }));
+          setMapNotes(notesWithImages as Note[]);
         }
       } else {
         if (__DEV__) console.log('[MapView] Fetching all location recalls for user', user!.id);
         const { data, error } = await supabase
           .from('recalls')
-          .select('id, text, latitude, longitude, location, created_at, images')
+          .select('id, text, latitude, longitude, location, created_at')
           .eq('user_id', user!.id)
           .not('latitude', 'is', null)
           .not('longitude', 'is', null)
@@ -242,9 +261,28 @@ export default function MapViewScreen() {
             (n) => n.latitude != null && n.longitude != null
           ) as Note[];
           if (__DEV__) console.log('[MapView] Loaded', valid.length, 'total recalls with location');
-          setAllLocationNotes(valid);
-          setMapNotes(valid);
-          setVisibleNotes(valid);
+
+          const recallIds = valid.map(n => n.id);
+          const { data: imagesData } = await supabase
+            .from('recall_images')
+            .select('recall_id, cdn_url')
+            .in('recall_id', recallIds);
+          console.log('[MapView] Fetched images for browse recalls, count:', (imagesData ?? []).length);
+
+          const imageMap = new Map<string, string>();
+          (imagesData ?? []).forEach((img: any) => {
+            if (!imageMap.has(img.recall_id) && img.cdn_url) {
+              imageMap.set(img.recall_id, img.cdn_url);
+            }
+          });
+
+          const notesWithImages = valid.map(n => ({
+            ...n,
+            images: imageMap.has(n.id) ? [imageMap.get(n.id)!] : [],
+          }));
+          setAllLocationNotes(notesWithImages as Note[]);
+          setMapNotes(notesWithImages as Note[]);
+          setVisibleNotes(notesWithImages as Note[]);
         }
       }
       setLoading(false);
