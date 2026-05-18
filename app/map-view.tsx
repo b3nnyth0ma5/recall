@@ -93,7 +93,7 @@ function buildMapHtml(
 <body>
   <div id="map"></div>
   <script>
-    var map = L.map('map', { zoomControl: true }).setView([${centerLat}, ${centerLng}], ${initialZoom});
+    var map = L.map('map', { zoomControl: false }).setView([${centerLat}, ${centerLng}], ${initialZoom});
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
