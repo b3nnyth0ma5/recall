@@ -277,9 +277,6 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (platform === 'web' && moduleName === 'react-native-maps') {
     return { type: 'empty' };
   }
-  if ((platform === 'ios' || platform === 'android') && moduleName === '@opentelemetry/api') {
-    return { type: 'empty' };
-  }
   return context.resolveRequest(context, moduleName, platform);
 };
 
