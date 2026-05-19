@@ -39,18 +39,6 @@
       }
     }
   },
-  "credentials": {
-    "ios": {
-      "targets": {
-        "Recall": {
-          "bundleIdentifier": "com.b3nny1nc.recall"
-        },
-        "ShareExtension": {
-          "bundleIdentifier": "com.b3nny1nc.recall.ShareExtension"
-        }
-      }
-    }
-  },
   "submit": {
     "production": {
       "ios": {
