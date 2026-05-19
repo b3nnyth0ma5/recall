@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
+import Constants from 'expo-constants';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
@@ -91,7 +92,7 @@ export default function ProfileScreen() {
                         Alert.alert('Error', 'No active session found. Please sign in again.');
                         return;
                       }
-                      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+                      const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl as string;
                       console.log('[Profile] Calling delete-account edge function');
                       const response = await fetch(`${supabaseUrl}/functions/v1/delete-account`, {
                         method: 'POST',
