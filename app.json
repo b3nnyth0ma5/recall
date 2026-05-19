@@ -139,6 +139,12 @@
       "fallbackToCacheTimeout": 0
     },
     "plugins": [
+      [
+        "react-native-maps",
+        {
+          "useGoogleMapsOnIOS": true
+        }
+      ],
       "expo-font",
       "expo-router",
       "expo-web-browser",
