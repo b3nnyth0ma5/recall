@@ -15,9 +15,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.b3nny1nc.recall",
-      "config": {
-        "googleMapsApiKey": "AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48"
-      },
       "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -62,11 +59,6 @@
         "android.permission.ACCESS_COARSE_LOCATION"
       ],
       "versionCode": 1,
-      "config": {
-        "googleMaps": {
-          "apiKey": "AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48"
-        }
-      },
       "intentFilters": [
         {
           "action": "android.intent.action.VIEW",
@@ -139,12 +131,6 @@
       "fallbackToCacheTimeout": 0
     },
     "plugins": [
-      [
-        "react-native-maps",
-        {
-          "useGoogleMapsOnIOS": true
-        }
-      ],
       "expo-font",
       "expo-router",
       "expo-web-browser",

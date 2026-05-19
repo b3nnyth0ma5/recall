@@ -5,7 +5,6 @@
   },
   "build": {
     "development": {
-      "cache": { "disabled": true },
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
@@ -18,7 +17,6 @@
       }
     },
     "preview": {
-      "cache": { "disabled": true },
       "distribution": "internal",
       "ios": {
         "simulator": false,
@@ -30,7 +28,6 @@
       }
     },
     "production": {
-      "cache": { "disabled": true },
       "autoIncrement": true,
       "ios": {
         "simulator": false,
