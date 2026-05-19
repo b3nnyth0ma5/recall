@@ -14,6 +14,7 @@ module.exports = function (api) {
   return {
     presets: ["babel-preset-expo"],
     plugins: [
+      './babel-plugins/strip-otel-dynamic-import.js',
       [
         "module-resolver",
         {
