@@ -6,7 +6,7 @@ import { NotesProvider } from '@/contexts/NotesContext';
 import { PeopleGraphProvider, usePeopleGraph } from '@/contexts/PeopleGraphContext';
 import { PeopleGraph } from '@/components/PeopleGraph';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StyleSheet, View, Platform } from 'react-native';
+import { StyleSheet, View, Platform, Linking } from 'react-native';
 import { supabase } from '@/utils/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { hasPendingShareData } from '@/utils/nativeShareReceiver';
@@ -91,6 +91,41 @@ function RootLayoutNav() {
       checkForShareData();
     }
   }, [loading, user, router]);
+
+  // Handle Siri Shortcuts / NSUserActivity launch
+  useEffect(() => {
+    if (!user || loading) return;
+
+    const handleSiriUrl = (url: string) => {
+      try {
+        console.log('[Siri] Handling URL:', url);
+        const parsed = new URL(url);
+        if (parsed.hostname === 'search' || parsed.pathname === '/search') {
+          const q = parsed.searchParams.get('q');
+          const autoSearch = parsed.searchParams.get('autoSearch');
+          if (q && autoSearch === 'true') {
+            console.log('[Siri] Navigating to search with query:', q);
+            router.push(`/search?q=${encodeURIComponent(q)}&autoSearch=true`);
+          }
+        }
+      } catch (e) {
+        // ignore malformed URLs
+      }
+    };
+
+    // Handle URL if app was opened from cold start by Siri
+    Linking.getInitialURL().then((url) => {
+      if (url) handleSiriUrl(url);
+    });
+
+    // Handle URL if app was already open and Siri brought it to foreground
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      console.log('[Siri] Received URL event:', url);
+      handleSiriUrl(url);
+    });
+
+    return () => subscription.remove();
+  }, [user, loading, router]);
 
   // Check if user needs onboarding
   useEffect(() => {

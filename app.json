@@ -35,7 +35,8 @@
             "CFBundleURLName": "com.b3nny1nc.recall",
             "CFBundleTypeRole": "Editor"
           }
-        ]
+        ],
+        "NSUserActivityTypes": ["com.b3nny1nc.recall.search"]
       },
       "buildNumber": "1.0.0",
       "entitlements": {

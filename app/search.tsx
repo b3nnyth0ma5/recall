@@ -24,6 +24,7 @@ import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
 import { MarkdownAnswer } from '@/components/MarkdownAnswer';
 import Toast from 'react-native-toast-message';
+import { donateSearch } from '@/modules/SiriShortcutsModule';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -114,6 +115,7 @@ export default function SearchScreen() {
       setIsProgressExpanded(true);
       
       hasAutoSearchedRef.current = true;
+      donateSearch(decodedQuery);
       
       searchNotes(decodedQuery, true).finally(() => {
         setIsSearching(false);
@@ -160,6 +162,7 @@ export default function SearchScreen() {
       setIsAnswerExpanded(false);
       setIsSearching(true);
       setIsProgressExpanded(true);
+      donateSearch(searchQuery.trim());
       
       searchNotes(searchQuery, true).finally(() => {
         setIsSearching(false);
