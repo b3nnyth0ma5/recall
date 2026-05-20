@@ -70,8 +70,8 @@ const withNativeModules = (config) => {
       const fileRefSection = xcodeProject.pbxFileReferenceSection();
       const alreadyAdded = fileRefSection && Object.values(fileRefSection).some(
         (ref) => ref && typeof ref === 'object' && ref.path &&
-          (ref.path === filename ||
-           ref.path === `"${filename}"` ||
+          (ref.path === `../modules/${filename}` ||
+           ref.path === `"../modules/${filename}"` ||
            String(ref.path).replace(/"/g, '').endsWith(filename))
       );
 
@@ -82,7 +82,7 @@ const withNativeModules = (config) => {
 
       // Use addSourceFile with an explicit group key so it goes through addFile()
       // rather than addPluginFile() (which requires a Plugins group to exist).
-      const filePath = path.join('modules', filename);
+      const filePath = path.join('..', 'modules', filename);
       const file = xcodeProject.addSourceFile(filePath, { target: targetUuid }, mainGroupKey);
 
       if (file) {
