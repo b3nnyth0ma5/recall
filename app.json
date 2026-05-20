@@ -36,7 +36,9 @@
             "CFBundleTypeRole": "Editor"
           }
         ],
-        "NSUserActivityTypes": ["com.b3nny1nc.recall.search"]
+        "NSUserActivityTypes": [
+          "com.b3nny1nc.recall.search"
+        ]
       },
       "buildNumber": "1.0.0",
       "entitlements": {
@@ -177,7 +179,23 @@
       "supabaseUrl": "https://cesmsdnblkdjkskmiqib.supabase.co",
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4",
       "router": {},
-      "eas": {}
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "bundleIdentifier": "com.b3nny1nc.recall.ShareExtension",
+                  "targetName": "ShareExtension",
+                  "entitlements": {
+                    "com.apple.security.application-groups": ["group.com.b3nny1nc.recall"]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
     }
   },
   "scheme": "Recall"
