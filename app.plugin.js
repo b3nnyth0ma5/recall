@@ -1,20 +1,13 @@
-const { createRunOncePlugin, withPodfile } = require('@expo/config-plugins');
+const { createRunOncePlugin, withPodfile, withXcodeProject } = require('@expo/config-plugins');
+const path = require('path');
 
 /**
  * Expo Config Plugin for Recall App
  *
- * Injects the FOLLY_CFG_NO_COROUTINES=1 compiler flag into the existing
- * post_install block of the generated Podfile.
- *
- * This fixes the iOS build error:
- *   folly/coro/Coroutine.h file not found
- * which occurs with react-native-reanimated + React Native 0.81 because
- * the bundled RCT-Folly headers reference coroutine headers that are not
- * included in the vendored folly distribution.
- *
- * IMPORTANT: Injects INSIDE the existing post_install block — CocoaPods
- * only allows one post_install hook per Podfile.
+ * 1. Injects FOLLY_CFG_NO_COROUTINES=1 compiler flag (fixes folly/coro/Coroutine.h build error)
+ * 2. Adds AppGroupModule.swift and SiriShortcutsModule.swift to the Xcode project compile sources
  */
+
 const withFollyNoCoroutines = (config) => {
   return withPodfile(config, (config) => {
     const contents = config.modResults.contents;
@@ -46,8 +39,67 @@ const withFollyNoCoroutines = (config) => {
   });
 };
 
+const withNativeModules = (config) => {
+  return withXcodeProject(config, (config) => {
+    const xcodeProject = config.modResults;
+    const swiftFiles = ['AppGroupModule.swift', 'SiriShortcutsModule.swift'];
+
+    // Find the main app group key to add files into (the group named after the app slug)
+    // Fall back to any top-level group that isn't Products/Frameworks/Plugins
+    const appName = config.modRequest.projectName || 'recall';
+    let mainGroupKey = xcodeProject.findPBXGroupKey({ name: appName });
+    if (!mainGroupKey) {
+      // Try common fallback names
+      mainGroupKey = xcodeProject.findPBXGroupKey({ name: 'recall' });
+    }
+    if (!mainGroupKey) {
+      // Last resort: use the root project's main group
+      const rootProject = xcodeProject.getFirstProject();
+      mainGroupKey = rootProject && rootProject.firstProject && rootProject.firstProject.mainGroup;
+    }
+
+    if (!mainGroupKey) {
+      console.warn('[withNativeModules] Could not find main group key — skipping Swift file injection');
+      return config;
+    }
+
+    const targetUuid = xcodeProject.getFirstTarget().uuid;
+
+    swiftFiles.forEach((filename) => {
+      // Idempotency: check if already present in PBXFileReference section
+      const fileRefSection = xcodeProject.pbxFileReferenceSection();
+      const alreadyAdded = fileRefSection && Object.values(fileRefSection).some(
+        (ref) => ref && typeof ref === 'object' && ref.path &&
+          (ref.path === filename ||
+           ref.path === `"${filename}"` ||
+           String(ref.path).replace(/"/g, '').endsWith(filename))
+      );
+
+      if (alreadyAdded) {
+        console.log(`[withNativeModules] ${filename} already in Xcode project, skipping`);
+        return;
+      }
+
+      // Use addSourceFile with an explicit group key so it goes through addFile()
+      // rather than addPluginFile() (which requires a Plugins group to exist).
+      const filePath = path.join('modules', filename);
+      const file = xcodeProject.addSourceFile(filePath, { target: targetUuid }, mainGroupKey);
+
+      if (file) {
+        console.log(`[withNativeModules] Added ${filename} to Xcode compile sources`);
+      } else {
+        console.warn(`[withNativeModules] Failed to add ${filename} to Xcode project`);
+      }
+    });
+
+    return config;
+  });
+};
+
 const withRecallConfig = (config) => {
-  return withFollyNoCoroutines(config);
+  config = withFollyNoCoroutines(config);
+  config = withNativeModules(config);
+  return config;
 };
 
 module.exports = createRunOncePlugin(withRecallConfig, 'withRecallConfig', '1.0.0');
