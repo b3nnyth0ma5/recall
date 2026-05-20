@@ -42,7 +42,8 @@
       "entitlements": {
         "com.apple.security.application-groups": [
           "group.com.b3nny1nc.recall"
-        ]
+        ],
+        "com.apple.developer.siri": true
       }
     },
     "android": {
