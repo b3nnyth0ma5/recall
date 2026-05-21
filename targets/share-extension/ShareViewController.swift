@@ -24,7 +24,7 @@ class ShareViewController: UIViewController {
         var urls: [String] = []
         var imagePaths: [String] = []
 
-        let group = DispatchGroup()
+        let outerGroup = DispatchGroup()
 
         for item in extensionItems {
             guard let attachments = item.attachments else { continue }
@@ -38,11 +38,14 @@ class ShareViewController: UIViewController {
             }
 
             for provider in attachments {
+                // Check ALL types independently — do NOT use else if
+                // A single provider can conform to multiple types simultaneously
+
                 // Handle images
                 if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-                    group.enter()
+                    outerGroup.enter()
                     provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil) { [weak self] item, error in
-                        defer { group.leave() }
+                        defer { outerGroup.leave() }
                         guard let self = self, error == nil else { return }
 
                         var imageData: Data?
@@ -64,37 +67,47 @@ class ShareViewController: UIViewController {
                         }
                     }
                 }
-                // Handle URLs
-                else if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
-                    group.enter()
+
+                // Handle typed URLs (UTType.url)
+                if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+                    outerGroup.enter()
                     provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { item, error in
-                        defer { group.leave() }
+                        defer { outerGroup.leave() }
                         guard error == nil else { return }
                         if let url = item as? URL {
-                            urls.append(url.absoluteString)
+                            let urlString = url.absoluteString
+                            // Only add if not already captured and not a file:// URL (those are images/files, not web links)
+                            if !urls.contains(urlString) && !urlString.hasPrefix("file://") {
+                                urls.append(urlString)
+                            }
                         }
                     }
                 }
+
                 // Handle plain text
-                else if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
-                    group.enter()
+                if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                    outerGroup.enter()
                     provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { item, error in
-                        defer { group.leave() }
+                        defer { outerGroup.leave() }
                         guard error == nil else { return }
                         if let text = item as? String, !text.isEmpty {
                             texts.append(text)
                         }
                     }
                 }
-                // Handle web URLs (from Safari, Instagram link copy, etc.)
-                else if provider.hasItemConformingToTypeIdentifier("public.url") {
-                    group.enter()
+
+                // Handle public.url (Safari, Chrome, Instagram link shares)
+                if provider.hasItemConformingToTypeIdentifier("public.url") &&
+                   !provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+                    // Only load as public.url if UTType.url wasn't already handled above
+                    // to avoid duplicate entries
+                    outerGroup.enter()
                     provider.loadItem(forTypeIdentifier: "public.url", options: nil) { item, error in
-                        defer { group.leave() }
+                        defer { outerGroup.leave() }
                         guard error == nil else { return }
                         if let url = item as? URL {
                             let urlString = url.absoluteString
-                            if !urls.contains(urlString) {
+                            if !urls.contains(urlString) && !urlString.hasPrefix("file://") {
                                 urls.append(urlString)
                             }
                         }
@@ -103,7 +116,7 @@ class ShareViewController: UIViewController {
             }
         }
 
-        group.notify(queue: .main) { [weak self] in
+        outerGroup.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
 
             let sharedData: [String: Any] = [

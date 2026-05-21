@@ -83,10 +83,7 @@ export default function CreateRecallFromShareScreen() {
           }
           if (shareData.urls && shareData.urls.length > 0) {
             setUrls(shareData.urls);
-            // If we have URLs but no text, add them to the text
-            if (!shareData.text) {
-              setText(shareData.urls.join('\n'));
-            }
+            // Do NOT pre-populate text with raw URLs — let the scraper populate it
           }
         } else {
           console.log('[CreateRecallFromShare] No initial share data found');
@@ -104,10 +101,10 @@ export default function CreateRecallFromShareScreen() {
   // Auto-scrape metadata when only a URL is received
   useEffect(() => {
     const scrapeIfUrlOnly = async () => {
-      if (urls.length === 0 || images.length > 0) return;
-      // Only scrape if we have a URL but no images and minimal text
-      const hasOnlyUrl = !text.trim() || urls.some(u => text.trim() === u);
-      if (!hasOnlyUrl) return;
+      if (urls.length === 0) return;
+      // Only scrape if text is empty or contains only raw URLs (no user-written content)
+      const hasUserText = text.trim() && !urls.some(u => text.trim() === u);
+      if (hasUserText) return;
 
       try {
         console.log('[CreateRecallFromShare] Scraping URL metadata for:', urls[0]);
@@ -118,16 +115,16 @@ export default function CreateRecallFromShareScreen() {
         if (!error && data) {
           console.log('[CreateRecallFromShare] Scraped metadata:', data);
           setScrapedMetadata(data);
-          // Pre-populate text with title + description if text is empty/just the URL
+          // Pre-populate text with title + description only (URL is shown in chip, not duplicated in text)
           const parts = [data.title, data.description].filter(Boolean);
           if (parts.length > 0) {
             setText(prev => {
-              const isJustUrl = !prev.trim() || urls.some(u => prev.trim() === u);
-              return isJustUrl ? `${parts.join('\n\n')}\n\n${urls[0]}` : prev;
+              const isEmptyOrJustUrl = !prev.trim() || urls.some(u => prev.trim() === u);
+              return isEmptyOrJustUrl ? parts.join('\n\n') : prev;
             });
           }
-          // Add preview image if available
-          if (data.imageUrl) {
+          // Add preview image only if no real images are present (avoid overwriting user images)
+          if (data.imageUrl && images.length === 0) {
             setImages([data.imageUrl]);
           }
         }
@@ -139,7 +136,7 @@ export default function CreateRecallFromShareScreen() {
     };
 
     scrapeIfUrlOnly();
-  }, [urls, images.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [urls]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-extract location from shared images
   useEffect(() => {
@@ -186,9 +183,7 @@ export default function CreateRecallFromShareScreen() {
       }
       if (shareData.urls && shareData.urls.length > 0) {
         setUrls(shareData.urls);
-        if (!shareData.text) {
-          setText(shareData.urls.join('\n'));
-        }
+        // Do NOT pre-populate text with raw URLs — let the scraper populate it
       }
     });
 
@@ -237,12 +232,21 @@ export default function CreateRecallFromShareScreen() {
       console.log('[CreateRecallFromShare] Text length:', text.length);
       console.log('[CreateRecallFromShare] Number of images:', images.length);
       console.log('[CreateRecallFromShare] Has location:', !!location);
+      console.log('[CreateRecallFromShare] URLs to persist:', urls);
+
+      // Build final text: append any URLs not already present in the text
+      const missingUrls = urls.filter(u => !text.includes(u));
+      const finalText = missingUrls.length > 0
+        ? [text.trim(), ...missingUrls].filter(Boolean).join('\n\n')
+        : text.trim();
+
+      console.log('[CreateRecallFromShare] Final text length:', finalText.length);
 
       // Create the recall
       const { data: recallData, error: recallError } = await supabase
         .from('recalls')
         .insert({
-          text: text.trim(),
+          text: finalText,
           user_id: user.id,
           latitude: location?.latitude,
           longitude: location?.longitude,
@@ -393,7 +397,7 @@ export default function CreateRecallFromShareScreen() {
           <Pressable
             onPress={handleSave}
             style={[styles.headerButton, styles.saveButton]}
-            disabled={isSaving || (!text.trim() && images.length === 0)}
+            disabled={isSaving || (!text.trim() && images.length === 0 && urls.length === 0)}
           >
             {isSaving ? (
               <ActivityIndicator size="small" color={colors.text} />
@@ -401,7 +405,7 @@ export default function CreateRecallFromShareScreen() {
               <Text
                 style={[
                   styles.saveButtonText,
-                  (!text.trim() && images.length === 0) && styles.saveButtonTextDisabled,
+                  (!text.trim() && images.length === 0 && urls.length === 0) && styles.saveButtonTextDisabled,
                 ]}
               >
                 Save
@@ -471,21 +475,25 @@ export default function CreateRecallFromShareScreen() {
             </View>
           )}
 
-          {/* URL chip */}
+          {/* URL chips — one per URL */}
           {urls.length > 0 && (
-            <View style={styles.urlChip}>
-              <IconSymbol
-                ios_icon_name="link"
-                android_material_icon_name="link"
-                size={14}
-                color={colors.textTertiary}
-              />
-              <Text style={styles.urlChipText} numberOfLines={1}>
-                {urls[0].replace(/^https?:\/\//, '').split('/')[0]}
-              </Text>
-              {scrapedMetadata?.siteName && (
-                <Text style={styles.urlSiteName}>{scrapedMetadata.siteName}</Text>
-              )}
+            <View style={styles.urlChipsContainer}>
+              {urls.map((url, index) => (
+                <View key={index} style={styles.urlChip}>
+                  <IconSymbol
+                    ios_icon_name="link"
+                    android_material_icon_name="link"
+                    size={14}
+                    color={colors.textTertiary}
+                  />
+                  <Text style={styles.urlChipText} numberOfLines={1}>
+                    {url.replace(/^https?:\/\//, '').split('/')[0]}
+                  </Text>
+                  {index === 0 && scrapedMetadata?.siteName && (
+                    <Text style={styles.urlSiteName}>{scrapedMetadata.siteName}</Text>
+                  )}
+                </View>
+              ))}
             </View>
           )}
 
@@ -742,6 +750,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
   },
+  urlChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
   urlChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -751,7 +765,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardDark,
     borderRadius: 20,
     alignSelf: 'flex-start',
-    marginBottom: 12,
   },
   urlChipText: {
     fontSize: 13,
