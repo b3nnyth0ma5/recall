@@ -68,7 +68,6 @@ export default function CreateRecallFromShareScreen() {
   const params = useLocalSearchParams();
 
   const [text, setText] = useState('');
-  const [sharedText, setSharedText] = useState<string | undefined>(undefined);
   const [images, setImages] = useState<string[]>([]);
   const [urls, setUrls] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -136,9 +135,9 @@ export default function CreateRecallFromShareScreen() {
             urlCount: shareData.urls?.length || 0,
           });
 
-          // Store shared text separately — note field stays empty for user input
+          // Pre-populate note field with shared text so user can see and edit it
           if (shareData.text) {
-            setSharedText(shareData.text);
+            setText(shareData.text);
           }
           if (shareData.images && shareData.images.length > 0) {
             setImages(shareData.images);
@@ -328,7 +327,7 @@ export default function CreateRecallFromShareScreen() {
       return;
     }
 
-    if (!text.trim() && !sharedText?.trim() && images.length === 0 && urls.length === 0) {
+    if (!text.trim() && images.length === 0 && urls.length === 0) {
       Alert.alert('Error', 'Please add some content before saving');
       return;
     }
@@ -343,10 +342,9 @@ export default function CreateRecallFromShareScreen() {
       console.log('[CreateRecallFromShare] Has location:', !!location);
       console.log('[CreateRecallFromShare] URLs to persist:', urls);
 
-      // Build final text: user note + shared text + scraped title/description + URLs
+      // Build final text: note (includes shared text) + scraped title/description + URLs
       const parts: string[] = [];
       if (text.trim()) parts.push(text.trim());
-      if (sharedText?.trim()) parts.push(sharedText.trim());
       const metaParts = [scrapedMetadata?.title, scrapedMetadata?.description].filter(Boolean);
       if (metaParts.length > 0) parts.push(metaParts.join('\n'));
       if (urls.length > 0) parts.push(urls.join('\n'));
@@ -665,7 +663,7 @@ export default function CreateRecallFromShareScreen() {
                         color={colors.textTertiary}
                       />
                       <Text style={styles.domainChipText} numberOfLines={1}>
-                        {getDomain(urls[0])}
+                        {urls[0]}
                       </Text>
                     </View>
                   )}
@@ -725,7 +723,7 @@ export default function CreateRecallFromShareScreen() {
           </View>
 
           {/* ── Empty state fallback ── */}
-          {!isLoadingShareData && images.length === 0 && urls.length === 0 && !sharedText && (
+          {!isLoadingShareData && images.length === 0 && urls.length === 0 && !text && (
             <View style={styles.emptyState}>
               <IconSymbol
                 ios_icon_name="exclamationmark.circle"
@@ -977,8 +975,8 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     color: colors.text,
-    minHeight: 100,
-    maxHeight: 300,
+    minHeight: 120,
+    maxHeight: 400,
     borderWidth: 1,
     borderColor: colors.border,
   },
