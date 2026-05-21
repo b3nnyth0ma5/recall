@@ -811,12 +811,9 @@ class ShareViewController: UIViewController {
     private func insertRecall(text: String, urls: [String], imagePaths: [String], userId: String, accessToken: String) {
         guard let url = URL(string: "\(supabaseURL)/rest/v1/recalls") else { return }
 
-        let now = ISO8601DateFormatter().string(from: Date())
         let body: [String: Any] = [
             "text": text,
             "user_id": userId,
-            "created_at": now,
-            "updated_at": now,
         ]
 
         var request = URLRequest(url: url)
@@ -844,12 +841,12 @@ class ShareViewController: UIViewController {
                     self.showSuccessAndDismiss()
                 } else {
                     let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                    print("[ShareViewController] Insert failed — status: \(statusCode), error: \(String(describing: error))")
-                    // Fall back to App Group write
-                    let noteText = self.noteTextView.text ?? ""
-                    let combined = [noteText, text].filter { !$0.isEmpty }.joined(separator: "\n\n")
-                    self.saveSharedData(["text": combined, "urls": self.parsedURLs, "images": self.parsedImagePaths, "timestamp": Date().timeIntervalSince1970])
-                    self.showSuccessAndDismiss()
+                    var responseBody = ""
+                    if let data = data, let bodyStr = String(data: data, encoding: .utf8) {
+                        responseBody = bodyStr
+                    }
+                    print("[ShareViewController] Insert failed — status: \(statusCode), error: \(String(describing: error)), body: \(responseBody)")
+                    self.showErrorState(statusCode: statusCode)
                 }
             }
         }.resume()
@@ -863,6 +860,36 @@ class ShareViewController: UIViewController {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+        }
+    }
+
+    private func showErrorState(statusCode: Int) {
+        saveSpinner.stopAnimating()
+
+        let message: String
+        if statusCode == 401 {
+            message = "Session expired — open Recall to refresh"
+        } else if statusCode == 0 {
+            message = "No internet connection"
+        } else {
+            message = "Failed to save (error \(statusCode))"
+        }
+
+        // Re-enable save button with error label
+        saveButton.setTitle(message, for: .normal)
+        saveButton.backgroundColor = UIColor(hex: "#FF4444")
+        saveButton.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        saveButton.alpha = 1.0
+        saveButton.isEnabled = true
+
+        // After 3 seconds, restore the save button to its original state
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            guard let self = self else { return }
+            self.saveButton.setTitle("Save to Recall", for: .normal)
+            self.saveButton.backgroundColor = self.colorPrimary
+            self.saveButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+            self.saveButton.isEnabled = true
+            self.saveButton.alpha = 1.0
         }
     }
 
