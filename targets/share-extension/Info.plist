@@ -41,10 +41,8 @@
 				<integer>1</integer>
 			</dict>
 		</dict>
-		<!-- Extension point identifier for share services -->
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.share-services</string>
-		<!-- Principal class that handles the share extension -->
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
 	</dict>
