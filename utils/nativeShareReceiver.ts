@@ -5,7 +5,7 @@
  * Unified interface for receiving share intents from both iOS and Android
  */
 
-import { Platform, Linking, AppState, AppStateStatus } from 'react-native';
+import { Platform, Linking, AppState, AppStateStatus } from 'react-native'; // Linking kept for listenForShareIntents deep link listener
 import type { ReceivedShareData, ShareIntentCallback, ShareIntentCleanup } from '@/types/ShareExtension';
 import { getSharedData, clearSharedData, copySharedImages } from './shareExtensionModule';
 
@@ -131,51 +131,60 @@ async function handleDeepLink(url: string) {
 }
 
 /**
- * Get initial share data when app launches
+ * Get initial share data when app launches.
+ * Reads the App Group container directly — no URL check needed because
+ * +native-intent.tsx intercepts the deep link before getInitialURL() can see it.
  */
 export async function getInitialShareData(): Promise<ReceivedShareData | null> {
   try {
     console.log('[NativeShareReceiver] Getting initial share data...');
 
-    // Check for initial URL
-    const initialUrl = await Linking.getInitialURL();
-    if (initialUrl) {
-      console.log('[NativeShareReceiver] Initial URL:', initialUrl);
+    if (Platform.OS !== 'ios') {
+      console.log('[NativeShareReceiver] Non-iOS platform, skipping App Group read');
+      return null;
+    }
 
-      if (initialUrl.includes('share-intent') || initialUrl.includes('share')) {
-        if (Platform.OS === 'ios') {
-          const sharedData = await getSharedData();
-          if (sharedData) {
-            // Copy images
-            let copiedImages: string[] = [];
-            if (sharedData.images && sharedData.images.length > 0) {
-              copiedImages = await copySharedImages(sharedData.images);
-            }
+    const sharedData = await getSharedData();
+    if (!sharedData) {
+      console.log('[NativeShareReceiver] No shared data found in App Group container');
+      return null;
+    }
 
-            // Extract URLs from text
-            let extractedUrls: string[] = [];
-            if (sharedData.text) {
-              extractedUrls = extractURLsFromText(sharedData.text);
-            }
+    console.log('[NativeShareReceiver] Found shared data in App Group:', {
+      hasText: !!sharedData.text,
+      urlCount: sharedData.urls?.length || 0,
+      imageCount: sharedData.images?.length || 0,
+    });
 
-            const allUrls = [...(sharedData.urls || []), ...extractedUrls];
+    // Copy images from shared container
+    let copiedImages: string[] = [];
+    if (sharedData.images && sharedData.images.length > 0) {
+      console.log('[NativeShareReceiver] Copying', sharedData.images.length, 'shared images...');
+      copiedImages = await copySharedImages(sharedData.images);
+      console.log('[NativeShareReceiver] Copied', copiedImages.length, 'images');
+    }
 
-            // Clear shared data
-            await clearSharedData();
-
-            return {
-              text: sharedData.text,
-              images: copiedImages,
-              urls: allUrls.length > 0 ? allUrls : undefined,
-              videos: sharedData.videos,
-              files: sharedData.files,
-            };
-          }
-        }
+    // Extract URLs from text
+    let extractedUrls: string[] = [];
+    if (sharedData.text) {
+      extractedUrls = extractURLsFromText(sharedData.text);
+      if (extractedUrls.length > 0) {
+        console.log('[NativeShareReceiver] Extracted', extractedUrls.length, 'URLs from text');
       }
     }
 
-    return null;
+    const allUrls = [...(sharedData.urls || []), ...extractedUrls];
+
+    await clearSharedData();
+    console.log('[NativeShareReceiver] Shared data cleared from App Group');
+
+    return {
+      text: sharedData.text,
+      images: copiedImages,
+      urls: allUrls.length > 0 ? allUrls : undefined,
+      videos: sharedData.videos,
+      files: sharedData.files,
+    };
   } catch (error) {
     console.error('[NativeShareReceiver] Error getting initial share data:', error);
     return null;

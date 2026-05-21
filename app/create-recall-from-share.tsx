@@ -68,6 +68,7 @@ export default function CreateRecallFromShareScreen() {
   const params = useLocalSearchParams();
 
   const [text, setText] = useState('');
+  const [sharedText, setSharedText] = useState<string | undefined>(undefined);
   const [images, setImages] = useState<string[]>([]);
   const [urls, setUrls] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -97,7 +98,37 @@ export default function CreateRecallFromShareScreen() {
         console.log('[CreateRecallFromShare] Loading initial share data...');
         setIsLoadingShareData(true);
 
-        const shareData = await getInitialShareData();
+        let shareData = await getInitialShareData();
+
+        if (!shareData) {
+          // Direct fallback: read App Group container without URL dependency
+          console.log('[CreateRecallFromShare] getInitialShareData returned null, trying direct App Group read...');
+          const { getSharedData: getRaw, copySharedImages: copyRaw, clearSharedData: clearRaw } = await import('@/utils/shareExtensionModule');
+          const raw = await getRaw();
+          if (raw) {
+            console.log('[CreateRecallFromShare] Direct App Group read succeeded:', {
+              hasText: !!raw.text,
+              imageCount: raw.images?.length || 0,
+              urlCount: raw.urls?.length || 0,
+            });
+            let copiedImages: string[] = [];
+            if (raw.images && raw.images.length > 0) {
+              copiedImages = await copyRaw(raw.images);
+            }
+            const urlRegex = /(https?:\/\/[^\s]+)/g;
+            const extractedUrls: string[] = raw.text ? (raw.text.match(urlRegex) || []) : [];
+            const allUrls = [...(raw.urls || []), ...extractedUrls];
+            await clearRaw();
+            shareData = {
+              text: raw.text,
+              images: copiedImages,
+              urls: allUrls.length > 0 ? allUrls : undefined,
+              videos: raw.videos,
+              files: raw.files,
+            };
+          }
+        }
+
         if (shareData) {
           console.log('[CreateRecallFromShare] Received share data:', {
             hasText: !!shareData.text,
@@ -105,8 +136,9 @@ export default function CreateRecallFromShareScreen() {
             urlCount: shareData.urls?.length || 0,
           });
 
+          // Store shared text separately — note field stays empty for user input
           if (shareData.text) {
-            setText(shareData.text);
+            setSharedText(shareData.text);
           }
           if (shareData.images && shareData.images.length > 0) {
             setImages(shareData.images);
@@ -296,7 +328,7 @@ export default function CreateRecallFromShareScreen() {
       return;
     }
 
-    if (!text.trim() && images.length === 0 && urls.length === 0) {
+    if (!text.trim() && !sharedText?.trim() && images.length === 0 && urls.length === 0) {
       Alert.alert('Error', 'Please add some content before saving');
       return;
     }
@@ -311,9 +343,10 @@ export default function CreateRecallFromShareScreen() {
       console.log('[CreateRecallFromShare] Has location:', !!location);
       console.log('[CreateRecallFromShare] URLs to persist:', urls);
 
-      // Build final text: user note + scraped title/description + URLs
+      // Build final text: user note + shared text + scraped title/description + URLs
       const parts: string[] = [];
       if (text.trim()) parts.push(text.trim());
+      if (sharedText?.trim()) parts.push(sharedText.trim());
       const metaParts = [scrapedMetadata?.title, scrapedMetadata?.description].filter(Boolean);
       if (metaParts.length > 0) parts.push(metaParts.join('\n'));
       if (urls.length > 0) parts.push(urls.join('\n'));
@@ -414,7 +447,6 @@ export default function CreateRecallFromShareScreen() {
 
   // ── derived state ─────────────────────────────────────────────────────────
 
-  const hasContent = text.trim().length > 0 || images.length > 0 || urls.length > 0;
   const hasUrlAndImages = urls.length > 0 && images.length > 0;
   const showFromSection = urls.length > 0 || images.length > 0;
 
@@ -424,7 +456,7 @@ export default function CreateRecallFromShareScreen() {
     : location
     ? location.name
     : 'Add Location';
-  const locationColor = location ? colors.primary : colors.textSecondary;
+  const locationColor = location ? colors.primary : '#FFFFFF';
 
   // ── loading state ─────────────────────────────────────────────────────────
 
@@ -457,7 +489,7 @@ export default function CreateRecallFromShareScreen() {
               ios_icon_name="xmark"
               android_material_icon_name="close"
               size={20}
-              color={colors.text}
+              color="#FFFFFF"
             />
           </Pressable>
 
@@ -465,13 +497,13 @@ export default function CreateRecallFromShareScreen() {
 
           <Pressable
             onPress={handleSave}
-            style={[styles.savePill, !hasContent && styles.savePillDisabled]}
-            disabled={isSaving || !hasContent}
+            style={styles.savePill}
+            disabled={isSaving}
           >
             {isSaving ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={[styles.savePillText, !hasContent && styles.savePillTextDisabled]}>
+              <Text style={styles.savePillText}>
                 Save
               </Text>
             )}
@@ -691,6 +723,19 @@ export default function CreateRecallFromShareScreen() {
               )}
             </Pressable>
           </View>
+
+          {/* ── Empty state fallback ── */}
+          {!isLoadingShareData && images.length === 0 && urls.length === 0 && !sharedText && (
+            <View style={styles.emptyState}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.circle"
+                android_material_icon_name="error"
+                size={32}
+                color={colors.textTertiary}
+              />
+              <Text style={styles.emptyStateText}>No content received — try sharing again</Text>
+            </View>
+          )}
         </ScrollView>
 
         {/* ── Saving overlay ── */}
@@ -760,16 +805,10 @@ const styles = StyleSheet.create({
     minWidth: 60,
     alignItems: 'center',
   },
-  savePillDisabled: {
-    backgroundColor: colors.cardDark,
-  },
   savePillText: {
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
-  },
-  savePillTextDisabled: {
-    color: colors.textTertiary,
   },
 
   // Scroll
@@ -998,5 +1037,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     fontWeight: '600',
+  },
+
+  // Empty state
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 32,
+  },
+  emptyStateText: {
+    fontSize: 15,
+    color: colors.textTertiary,
+    textAlign: 'center',
   },
 });
