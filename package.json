@@ -109,6 +109,5 @@
     "overrides": {
       "@supabase/supabase-js": "2.105.0"
     }
-  },
-  "packageManager": "pnpm@9.15.4"
+  }
 }
