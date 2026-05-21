@@ -1,6 +1,17 @@
-import { NativeModules, Platform } from 'react-native';
+import { requireNativeModule } from 'expo-modules-core';
+import { Platform } from 'react-native';
 
-const { AppGroupModule } = NativeModules;
+let _module: any = null;
+
+function getNativeModule() {
+  if (_module) return _module;
+  try {
+    _module = requireNativeModule('AppGroupModule');
+  } catch {
+    _module = null;
+  }
+  return _module;
+}
 
 /**
  * Get the real App Group container path on iOS.
@@ -8,9 +19,10 @@ const { AppGroupModule } = NativeModules;
  */
 export async function getAppGroupContainerPath(): Promise<string | null> {
   if (Platform.OS !== 'ios') return null;
-  if (!AppGroupModule) return null;
+  const mod = getNativeModule();
+  if (!mod) return null;
   try {
-    return await AppGroupModule.getContainerPath('group.com.b3nny1nc.recall');
+    return await mod.getContainerPath('group.com.b3nny1nc.recall');
   } catch {
     return null;
   }

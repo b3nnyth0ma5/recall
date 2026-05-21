@@ -13,6 +13,7 @@ let shareIntentListeners: ShareIntentCallback[] = [];
 let linkingListener: any = null;
 let appStateListener: any = null;
 let isProcessingShare = false;
+let readLock: Promise<void> | null = null;
 
 /**
  * Extract URLs from text content
@@ -58,6 +59,15 @@ async function processSharedData(data: ReceivedShareData) {
  * Check for shared data from iOS Share Extension
  */
 async function checkForIOSSharedData() {
+  if (readLock) {
+    console.log('[NativeShareReceiver] Read lock active, waiting for concurrent read to finish...');
+    await readLock;
+    return; // data was already consumed by the concurrent call
+  }
+
+  let resolve!: () => void;
+  readLock = new Promise(r => { resolve = r; });
+
   try {
     console.log('[NativeShareReceiver] Checking for iOS shared data...');
 
@@ -107,6 +117,9 @@ async function checkForIOSSharedData() {
     console.log('[NativeShareReceiver] Shared data cleared');
   } catch (error) {
     console.error('[NativeShareReceiver] Error checking for iOS shared data:', error);
+  } finally {
+    readLock = null;
+    resolve();
   }
 }
 
@@ -136,6 +149,11 @@ async function handleDeepLink(url: string) {
  * +native-intent.tsx intercepts the deep link before getInitialURL() can see it.
  */
 export async function getInitialShareData(): Promise<ReceivedShareData | null> {
+  if (readLock) {
+    console.log('[NativeShareReceiver] Read lock active, waiting before reading initial share data...');
+    await readLock;
+  }
+
   try {
     console.log('[NativeShareReceiver] Getting initial share data...');
 
