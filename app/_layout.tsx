@@ -70,41 +70,36 @@ function RootLayoutNav() {
   // Use refs to track navigation state and prevent infinite loops
   const hasInitializedRef = useRef(false);
   const lastRouteRef = useRef<string>('');
+  // Track share intent that arrived before auth was ready
+  const pendingShareIntentRef = useRef(false);
 
-  // Check for pending share data on app launch
+  // Unified URL handler: share-intent + Siri
   useEffect(() => {
-    const checkForShareData = async () => {
-      try {
-        console.log('[App Layout] Checking for pending share data...');
-        const hasPending = await hasPendingShareData();
-        
-        if (hasPending && user) {
-          console.log('[App Layout] Found pending share data, navigating to create-recall-from-share');
+    if (loading) return;
+
+    const handleIncomingUrl = (url: string) => {
+      console.log('[URLHandler] Received URL:', url);
+
+      if (url.includes('share-intent')) {
+        console.log('[URLHandler] Share intent URL detected');
+        if (user) {
+          console.log('[URLHandler] User authenticated, navigating to create-recall-from-share');
           router.replace('/create-recall-from-share');
+        } else {
+          console.log('[URLHandler] User not authenticated, storing pending share intent');
+          pendingShareIntentRef.current = true;
         }
-      } catch (error) {
-        console.error('[App Layout] Error checking for share data:', error);
+        return;
       }
-    };
 
-    if (!loading && user) {
-      checkForShareData();
-    }
-  }, [loading, user, router]);
-
-  // Handle Siri Shortcuts / NSUserActivity launch
-  useEffect(() => {
-    if (!user || loading) return;
-
-    const handleSiriUrl = (url: string) => {
+      // Siri / NSUserActivity search URLs
       try {
-        console.log('[Siri] Handling URL:', url);
         const parsed = new URL(url);
         if (parsed.hostname === 'search' || parsed.pathname === '/search') {
           const q = parsed.searchParams.get('q');
           const autoSearch = parsed.searchParams.get('autoSearch');
-          if (q && autoSearch === 'true') {
-            console.log('[Siri] Navigating to search with query:', q);
+          if (q && autoSearch === 'true' && user) {
+            console.log('[URLHandler] Siri search URL, navigating to search with query:', q);
             router.push(`/search?q=${encodeURIComponent(q)}&autoSearch=true`);
           }
         }
@@ -113,19 +108,49 @@ function RootLayoutNav() {
       }
     };
 
-    // Handle URL if app was opened from cold start by Siri
+    // Check initial URL (cold start)
     Linking.getInitialURL().then((url) => {
-      if (url) handleSiriUrl(url);
+      if (url) {
+        console.log('[URLHandler] Initial URL on cold start:', url);
+        handleIncomingUrl(url);
+      }
     });
 
-    // Handle URL if app was already open and Siri brought it to foreground
+    // Also check App Group container for share data written by the extension
+    const checkForShareData = async () => {
+      try {
+        console.log('[URLHandler] Checking App Group for pending share data...');
+        const hasPending = await hasPendingShareData();
+        if (hasPending && user) {
+          console.log('[URLHandler] Found pending share data in App Group, navigating to create-recall-from-share');
+          router.replace('/create-recall-from-share');
+        }
+      } catch (error) {
+        console.error('[URLHandler] Error checking App Group share data:', error);
+      }
+    };
+
+    if (user) {
+      checkForShareData();
+    }
+
+    // Foreground URL events
     const subscription = Linking.addEventListener('url', ({ url }) => {
-      console.log('[Siri] Received URL event:', url);
-      handleSiriUrl(url);
+      console.log('[URLHandler] Foreground URL event:', url);
+      handleIncomingUrl(url);
     });
 
     return () => subscription.remove();
-  }, [user, loading, router]);
+  }, [loading, user, router]);
+
+  // When user becomes available, flush any pending share intent
+  useEffect(() => {
+    if (user && pendingShareIntentRef.current) {
+      console.log('[URLHandler] User now authenticated, flushing pending share intent');
+      pendingShareIntentRef.current = false;
+      router.replace('/create-recall-from-share');
+    }
+  }, [user, router]);
 
   // Check if user needs onboarding
   useEffect(() => {
