@@ -44,6 +44,7 @@ export async function getSharedData(): Promise<SharedData | null> {
 
     if (Platform.OS === 'ios') {
       const containerURL = await getSharedContainerURLAsync();
+      console.log('[ShareExtensionModule] Container URL:', containerURL);
       if (!containerURL) {
         console.log('[ShareExtensionModule] No shared container URL available');
         return null;
