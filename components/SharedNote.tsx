@@ -34,7 +34,7 @@ export function generateSharedNoteHTML(props: SharedNoteProps): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta property="og:title" content="Shared Note from Natively">
+  <meta property="og:title" content="Shared Note from Recall">
   <meta property="og:description" content="${escapedText.substring(0, 200)}">
   ${imageUrl ? `<meta property="og:image" content="${imageUrl}">` : ''}
   <meta property="og:type" content="article">
@@ -194,7 +194,7 @@ export function generateSharedNoteHTML(props: SharedNoteProps): string {
   <div class="shared-note">
     <div class="note-header">
       <h1>📝 Shared Note</h1>
-      <p>Someone shared this with you on Natively</p>
+      <p>Someone shared this with you on Recall</p>
     </div>
     
     ${imageUrl ? `
@@ -216,10 +216,10 @@ export function generateSharedNoteHTML(props: SharedNoteProps): string {
     
     <div class="note-cta">
       <a href="${deepLinkUrl}" class="open-app-button">
-        Open in Natively App
+        Open in Recall
       </a>
       <p class="app-info">
-        Tap to view this note in the Natively app
+        Tap to view this note in the Recall app
       </p>
     </div>
   </div>

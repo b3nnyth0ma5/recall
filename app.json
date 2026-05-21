@@ -30,7 +30,6 @@
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
-              "natively",
               "recall"
             ],
             "CFBundleURLName": "com.b3nny1nc.recall",
@@ -72,9 +71,6 @@
             "android.intent.category.BROWSABLE"
           ],
           "data": [
-            {
-              "scheme": "natively"
-            },
             {
               "scheme": "recall"
             }
