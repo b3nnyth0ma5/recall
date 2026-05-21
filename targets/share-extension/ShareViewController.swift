@@ -716,7 +716,9 @@ class ShareViewController: UIViewController {
     }
 
     private func refreshAccessToken(refreshToken: String, completion: @escaping (String?) -> Void) {
-        guard let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=refresh_token") else {
+        let urlString = "\(supabaseURL)/auth/v1/token?grant_type=refresh_token"
+        guard let url = URL(string: urlString) else {
+            print("[ShareViewController] refreshAccessToken — invalid URL")
             completion(nil)
             return
         }
@@ -726,11 +728,24 @@ class ShareViewController: UIViewController {
         request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
         let body = ["refresh_token": refreshToken]
         guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
+            print("[ShareViewController] refreshAccessToken — failed to serialize body")
             completion(nil)
             return
         }
         request.httpBody = httpBody
-        URLSession.shared.dataTask(with: request) { data, response, _ in
+
+        print("[ShareViewController] POST \(urlString) [refresh token request — token redacted]")
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let bodyStr: String
+            if let data = data, let str = String(data: data, encoding: .utf8) {
+                bodyStr = str.count > 500 ? String(str.prefix(500)) + "…" : str
+            } else {
+                bodyStr = "<no body>"
+            }
+            print("[ShareViewController] refreshAccessToken response — status: \(statusCode), error: \(String(describing: error?.localizedDescription)), body: \(bodyStr)")
+
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let newAccessToken = json["access_token"] as? String else {
@@ -801,23 +816,30 @@ class ShareViewController: UIViewController {
         saveButton.setTitle("", for: .normal)
         saveSpinner.startAnimating()
 
+        // THE PRIMARY BUG FIX: if there is no auth token, show an error — never show success
         guard let auth = loadAuthToken() else {
-            print("[ShareViewController] No auth token found — falling back to App Group write")
-            let noteText = noteTextView.text ?? ""
-            let sharedText = parsedTexts.joined(separator: "\n\n")
-            let combined = [noteText, sharedText].filter { !$0.isEmpty }.joined(separator: "\n\n")
-            saveSharedData(["text": combined, "urls": parsedURLs, "images": parsedImagePaths, "timestamp": Date().timeIntervalSince1970])
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                self?.showSuccessAndDismiss()
+            print("[ShareViewController] No auth token found in App Group — cannot save")
+            writeRecoveryPayloadToAppGroup()
+            DispatchQueue.main.async { [weak self] in
+                self?.showErrorState(message: "Open Recall app to sign in")
             }
             return
         }
 
-        // Always attempt to refresh the token first to ensure it's valid
+        // Attempt to refresh the token first to ensure it's valid
         refreshAccessToken(refreshToken: auth.refreshToken) { [weak self] freshToken in
             guard let self = self else { return }
-            let accessToken = freshToken ?? auth.accessToken
-            print("[ShareViewController] Using \(freshToken != nil ? "refreshed" : "stored") access token")
+
+            // If refresh failed, we'll try the stored token once.
+            // If that also fails with 401/403, showErrorState will be called from insertRecall.
+            let accessToken: String
+            if let fresh = freshToken {
+                print("[ShareViewController] Using refreshed access token")
+                accessToken = fresh
+            } else {
+                print("[ShareViewController] Token refresh failed — attempting insert with stored access token")
+                accessToken = auth.accessToken
+            }
 
             let noteText = self.noteTextView.text ?? ""
             var parts: [String] = []
@@ -833,7 +855,7 @@ class ShareViewController: UIViewController {
             if !nonURLTexts.isEmpty { parts.append(nonURLTexts.joined(separator: "\n\n")) }
             let finalText = parts.joined(separator: "\n\n")
 
-            print("[ShareViewController] Inserting recall directly to Supabase — userId: \(auth.userId), textLength: \(finalText.count)")
+            print("[ShareViewController] Inserting recall — userId: \(auth.userId), textLength: \(finalText.count), tokenSource: \(freshToken != nil ? "refreshed" : "stored")")
             self.insertRecall(text: finalText, urls: self.parsedURLs, imagePaths: self.parsedImagePaths, userId: auth.userId, accessToken: accessToken)
         }
     }
@@ -849,7 +871,15 @@ class ShareViewController: UIViewController {
     // MARK: - Supabase Insert
 
     private func insertRecall(text: String, urls: [String], imagePaths: [String], userId: String, accessToken: String) {
-        guard let url = URL(string: "\(supabaseURL)/rest/v1/recalls") else { return }
+        let urlString = "\(supabaseURL)/rest/v1/recalls"
+        guard let url = URL(string: urlString) else {
+            print("[ShareViewController] insertRecall — invalid URL")
+            writeRecoveryPayloadToAppGroup()
+            DispatchQueue.main.async { [weak self] in
+                self?.showErrorState(message: "Save unconfirmed — try again")
+            }
+            return
+        }
 
         let body: [String: Any] = [
             "text": text,
@@ -862,36 +892,97 @@ class ShareViewController: UIViewController {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+        // Use return=representation so PostgREST returns the inserted row with its id
+        request.setValue("return=representation", forHTTPHeaderField: "Prefer")
 
-        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return }
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
+            print("[ShareViewController] insertRecall — failed to serialize body")
+            writeRecoveryPayloadToAppGroup()
+            DispatchQueue.main.async { [weak self] in
+                self?.showErrorState(message: "Save unconfirmed — try again")
+            }
+            return
+        }
         request.httpBody = httpBody
 
-        // Write images to App Group for main app to upload later
-        if !imagePaths.isEmpty {
-            saveSharedData(["text": "", "urls": [], "images": imagePaths, "timestamp": Date().timeIntervalSince1970])
-        }
+        print("[ShareViewController] POST \(urlString) — userId: \(userId), textLength: \(text.count) [token redacted]")
 
-        print("[ShareViewController] POST \(supabaseURL)/rest/v1/recalls")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let bodyStr: String
+            if let data = data, let str = String(data: data, encoding: .utf8) {
+                bodyStr = str.count > 500 ? String(str.prefix(500)) + "…" : str
+            } else {
+                bodyStr = "<no body>"
+            }
+            print("[ShareViewController] insertRecall response — status: \(statusCode), error: \(String(describing: error?.localizedDescription)), body: \(bodyStr)")
+
             DispatchQueue.main.async {
-                guard let self = self else { return }
-                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 201 {
-                    print("[ShareViewController] Recall inserted successfully")
-                    self.showSuccessAndDismiss()
-                } else {
-                    let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                    var responseBody = ""
-                    if let data = data, let bodyStr = String(data: data, encoding: .utf8) {
-                        responseBody = bodyStr
-                    }
-                    print("[ShareViewController] Insert failed — status: \(statusCode), error: \(String(describing: error)), body: \(responseBody)")
-                    self.showErrorState(statusCode: statusCode)
+                // Network error (no response at all)
+                if error != nil && statusCode == 0 {
+                    self.writeRecoveryPayloadToAppGroup()
+                    self.showErrorState(message: "No internet — try again")
+                    return
                 }
+
+                // Auth failures
+                if statusCode == 401 || statusCode == 403 {
+                    self.writeRecoveryPayloadToAppGroup()
+                    self.showErrorState(message: "Session expired — open Recall")
+                    return
+                }
+
+                // Other 4xx
+                if statusCode >= 400 && statusCode < 500 {
+                    print("[ShareViewController] Insert 4xx error — PostgREST body: \(bodyStr)")
+                    self.writeRecoveryPayloadToAppGroup()
+                    self.showErrorState(message: "Couldn't save (HTTP \(statusCode))")
+                    return
+                }
+
+                // 5xx
+                if statusCode >= 500 {
+                    self.writeRecoveryPayloadToAppGroup()
+                    self.showErrorState(message: "Server error — try again")
+                    return
+                }
+
+                // Must be 2xx — now verify the response body contains the inserted row with an id
+                guard statusCode >= 200 && statusCode < 300 else {
+                    self.writeRecoveryPayloadToAppGroup()
+                    self.showErrorState(message: "Save unconfirmed — try again")
+                    return
+                }
+
+                guard let data = data,
+                      let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                      let firstRow = jsonArray.first,
+                      let rowId = firstRow["id"] as? String,
+                      !rowId.isEmpty else {
+                    print("[ShareViewController] Insert returned 2xx but response body missing id — body: \(bodyStr)")
+                    self.writeRecoveryPayloadToAppGroup()
+                    self.showErrorState(message: "Save unconfirmed — try again")
+                    return
+                }
+
+                // Confirmed: row was created in Supabase
+                print("[ShareViewController] Recall inserted id=\(rowId)")
+
+                // Write image paths to App Group for main app to upload later (images only, not a recovery payload)
+                if !imagePaths.isEmpty {
+                    self.saveSharedData(["text": "", "urls": [], "images": imagePaths, "timestamp": Date().timeIntervalSince1970])
+                }
+
+                self.showSuccessAndDismiss()
             }
         }.resume()
     }
 
+    // MARK: - Success / Error UI
+
+    /// The ONLY place showSuccessAndDismiss() is called — inside the confirmed-insert branch of insertRecall.
     private func showSuccessAndDismiss() {
         saveSpinner.stopAnimating()
         saveButton.setTitle("✓  Saved", for: .normal)
@@ -903,24 +994,15 @@ class ShareViewController: UIViewController {
         }
     }
 
-    private func showErrorState(statusCode: Int) {
+    private func showErrorState(message: String) {
         saveSpinner.stopAnimating()
-
-        let message: String
-        if statusCode == 401 {
-            message = "Session expired — open Recall to refresh"
-        } else if statusCode == 0 {
-            message = "No internet connection"
-        } else {
-            message = "Failed to save (error \(statusCode))"
-        }
-
-        // Re-enable save button with error label
         saveButton.setTitle(message, for: .normal)
         saveButton.backgroundColor = UIColor(hex: "#FF4444")
         saveButton.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
         saveButton.alpha = 1.0
         saveButton.isEnabled = true
+
+        print("[ShareViewController] Showing error state: \"\(message)\"")
 
         // After 3 seconds, restore the save button to its original state
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
@@ -931,6 +1013,29 @@ class ShareViewController: UIViewController {
             self.saveButton.isEnabled = true
             self.saveButton.alpha = 1.0
         }
+    }
+
+    // MARK: - App Group Recovery Payload
+
+    /// Writes the current unsaved content to the App Group so the main app can recover it.
+    /// Called from every error path. NEVER called on the success path.
+    private func writeRecoveryPayloadToAppGroup() {
+        let noteText = noteTextView?.text ?? ""
+        let sharedText = parsedTexts.joined(separator: "\n\n")
+        let combined = [noteText, sharedText].filter { !$0.isEmpty }.joined(separator: "\n\n")
+
+        var payload: [String: Any] = [
+            "text": combined,
+            "urls": parsedURLs,
+            "images": parsedImagePaths,
+            "timestamp": Date().timeIntervalSince1970,
+        ]
+        if let title = scrapedTitle { payload["scrapedTitle"] = title }
+        if let description = scrapedDescription { payload["scrapedDescription"] = description }
+        if let imageURL = scrapedImageURL { payload["scrapedImageURL"] = imageURL }
+
+        print("[ShareViewController] Writing recovery payload to App Group (fallback — insert did NOT succeed)")
+        saveSharedData(payload)
     }
 
     // MARK: - Parse shared items
@@ -1052,7 +1157,7 @@ class ShareViewController: UIViewController {
         }
     }
 
-    // MARK: - Save to App Group (fallback)
+    // MARK: - Save to App Group
 
     private func saveSharedData(_ data: [String: Any]) {
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {

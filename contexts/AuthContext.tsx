@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/utils/supabase';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -85,9 +85,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       writeTokenToAppGroup(newSession);
     });
 
+    // Refresh the App Group token whenever the app comes to the foreground.
+    // This ensures the share extension always has the freshest token even if
+    // Supabase silently refreshed it while the app was backgrounded.
+    const appStateSubscription = AppState.addEventListener('change', async (nextState) => {
+      if (nextState === 'active') {
+        console.log('[AuthContext] App foregrounded — refreshing App Group auth token');
+        try {
+          const { data: { session: currentSession } } = await supabase.auth.getSession();
+          await writeTokenToAppGroup(currentSession);
+        } catch (e) {
+          // non-fatal
+        }
+      }
+    });
+
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      appStateSubscription.remove();
     };
   }, []);
 
