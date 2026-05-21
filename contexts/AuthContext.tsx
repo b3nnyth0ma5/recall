@@ -26,8 +26,9 @@ async function writeTokenToAppGroup(newSession: Session | null) {
       console.log('[AuthContext] Writing auth token to App Group for share extension');
       await FileSystem.writeAsStringAsync(tokenPath, JSON.stringify({
         access_token: newSession.access_token,
+        refresh_token: newSession.refresh_token,
         user_id: newSession.user.id,
-        expires_at: newSession.expires_at,
+        expires_at: newSession.expires_at ?? 0,
       }));
     } else {
       console.log('[AuthContext] Clearing auth token from App Group (sign out)');

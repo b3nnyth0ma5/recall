@@ -703,20 +703,53 @@ class ShareViewController: UIViewController {
 
     // MARK: - Auth Token
 
-    private func loadAuthToken() -> (accessToken: String, userId: String)? {
+    private func loadAuthToken() -> (accessToken: String, refreshToken: String, userId: String)? {
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else { return nil }
         let tokenURL = containerURL.appendingPathComponent("auth-token.json")
         guard let data = try? Data(contentsOf: tokenURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let token = json["access_token"] as? String,
+              let refreshToken = json["refresh_token"] as? String,
               let userId = json["user_id"] as? String else { return nil }
-        if let expiresAt = json["expires_at"] as? Double {
-            if Date().timeIntervalSince1970 > expiresAt {
-                print("[ShareViewController] Auth token expired")
-                return nil
-            }
+        // Don't check expiry here — we'll refresh if needed
+        return (token, refreshToken, userId)
+    }
+
+    private func refreshAccessToken(refreshToken: String, completion: @escaping (String?) -> Void) {
+        guard let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=refresh_token") else {
+            completion(nil)
+            return
         }
-        return (token, userId)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        let body = ["refresh_token": refreshToken]
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
+            completion(nil)
+            return
+        }
+        request.httpBody = httpBody
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let newAccessToken = json["access_token"] as? String else {
+                completion(nil)
+                return
+            }
+            // Persist the new tokens back to App Group
+            if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: self.appGroupID) {
+                let tokenURL = containerURL.appendingPathComponent("auth-token.json")
+                var updatedJson = json
+                if let userId = (try? JSONSerialization.jsonObject(with: (try? Data(contentsOf: tokenURL)) ?? Data()) as? [String: Any])?["user_id"] as? String {
+                    updatedJson["user_id"] = userId
+                }
+                if let updatedData = try? JSONSerialization.data(withJSONObject: updatedJson) {
+                    try? updatedData.write(to: tokenURL)
+                }
+            }
+            completion(newAccessToken)
+        }.resume()
     }
 
     // MARK: - Animation
@@ -780,22 +813,29 @@ class ShareViewController: UIViewController {
             return
         }
 
-        let noteText = noteTextView.text ?? ""
-        var parts: [String] = []
-        if !noteText.trimmingCharacters(in: .whitespaces).isEmpty {
-            parts.append(noteText.trimmingCharacters(in: .whitespaces))
-        }
-        var metaParts: [String] = []
-        if let t = scrapedTitle, !t.isEmpty { metaParts.append(t) }
-        if let d = scrapedDescription, !d.isEmpty { metaParts.append(d) }
-        if !metaParts.isEmpty { parts.append(metaParts.joined(separator: "\n")) }
-        if !parsedURLs.isEmpty { parts.append(parsedURLs.joined(separator: "\n")) }
-        let nonURLTexts = parsedTexts.filter { !$0.hasPrefix("http") }
-        if !nonURLTexts.isEmpty { parts.append(nonURLTexts.joined(separator: "\n\n")) }
-        let finalText = parts.joined(separator: "\n\n")
+        // Always attempt to refresh the token first to ensure it's valid
+        refreshAccessToken(refreshToken: auth.refreshToken) { [weak self] freshToken in
+            guard let self = self else { return }
+            let accessToken = freshToken ?? auth.accessToken
+            print("[ShareViewController] Using \(freshToken != nil ? "refreshed" : "stored") access token")
 
-        print("[ShareViewController] Inserting recall directly to Supabase — userId: \(auth.userId), textLength: \(finalText.count)")
-        insertRecall(text: finalText, urls: parsedURLs, imagePaths: parsedImagePaths, userId: auth.userId, accessToken: auth.accessToken)
+            let noteText = self.noteTextView.text ?? ""
+            var parts: [String] = []
+            if !noteText.trimmingCharacters(in: .whitespaces).isEmpty {
+                parts.append(noteText.trimmingCharacters(in: .whitespaces))
+            }
+            var metaParts: [String] = []
+            if let t = self.scrapedTitle, !t.isEmpty { metaParts.append(t) }
+            if let d = self.scrapedDescription, !d.isEmpty { metaParts.append(d) }
+            if !metaParts.isEmpty { parts.append(metaParts.joined(separator: "\n")) }
+            if !self.parsedURLs.isEmpty { parts.append(self.parsedURLs.joined(separator: "\n")) }
+            let nonURLTexts = self.parsedTexts.filter { !$0.hasPrefix("http") }
+            if !nonURLTexts.isEmpty { parts.append(nonURLTexts.joined(separator: "\n\n")) }
+            let finalText = parts.joined(separator: "\n\n")
+
+            print("[ShareViewController] Inserting recall directly to Supabase — userId: \(auth.userId), textLength: \(finalText.count)")
+            self.insertRecall(text: finalText, urls: self.parsedURLs, imagePaths: self.parsedImagePaths, userId: auth.userId, accessToken: accessToken)
+        }
     }
 
     @objc private func handleCancel() {
