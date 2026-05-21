@@ -138,7 +138,14 @@ class ShareViewController: UIViewController {
 
     private func openMainApp() {
         guard let url = URL(string: appURLScheme) else { return }
-        extensionContext?.open(url, completionHandler: nil)
+        var responder: UIResponder? = self
+        while responder != nil {
+            if let application = responder as? UIApplication {
+                application.open(url, options: [:], completionHandler: nil)
+                return
+            }
+            responder = responder?.next
+        }
     }
 
     private func completeRequest() {
