@@ -107,7 +107,7 @@ async function saveSharedData(data: SharedData): Promise<void> {
  */
 async function openMainApp(): Promise<void> {
   try {
-    const deepLink = 'natively://share-intent';
+    const deepLink = 'recall://share-intent';
     console.log('[ShareExtension] Opening main app with deep link:', deepLink);
     
     // This will be handled by the native Share Extension
