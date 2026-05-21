@@ -6,6 +6,8 @@ import UniformTypeIdentifiers
 class ShareViewController: UIViewController {
 
     private let appGroupID = "group.com.b3nny1nc.recall"
+    private let supabaseURL = "https://cesmsdnblkdjkskmiqib.supabase.co"
+    private let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4"
 
     // MARK: - Colors
     private let colorBackground   = UIColor(hex: "#1A1A1A")
@@ -22,6 +24,12 @@ class ShareViewController: UIViewController {
     private var parsedImagePaths: [String] = []
     private var firstImageData: Data?
 
+    // MARK: - Scraped metadata
+    private var scrapedTitle: String?
+    private var scrapedDescription: String?
+    private var scrapedImageURL: String?
+    private var isScraping = false
+
     // MARK: - UI
     private var sheetView: UIView!
     private var blurView: UIVisualEffectView!
@@ -32,6 +40,10 @@ class ShareViewController: UIViewController {
     private var previewImageView: UIImageView!
     private var previewFilenameLabel: UILabel!
     private var previewTextLabel: UILabel!
+    private var previewHeroImageView: UIImageView!
+    private var previewHeroHeightConstraint: NSLayoutConstraint!
+    private var previewSpinner: UIActivityIndicatorView!
+    private var previewLoadingLabel: UILabel!
     private var noteTextView: UITextView!
     private var notePlaceholderLabel: UILabel!
     private var saveButton: UIButton!
@@ -288,6 +300,18 @@ class ShareViewController: UIViewController {
     }
 
     private func buildPreviewCardContent() {
+        // Hero image (hidden by default, shown when og:image is available)
+        previewHeroImageView = UIImageView()
+        previewHeroImageView.translatesAutoresizingMaskIntoConstraints = false
+        previewHeroImageView.contentMode = .scaleAspectFill
+        previewHeroImageView.clipsToBounds = true
+        previewHeroImageView.layer.cornerRadius = 12
+        previewHeroImageView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        previewHeroImageView.isHidden = true
+        previewCard.addSubview(previewHeroImageView)
+
+        previewHeroHeightConstraint = previewHeroImageView.heightAnchor.constraint(equalToConstant: 180)
+
         // URL row
         let urlRow = UIView()
         urlRow.translatesAutoresizingMaskIntoConstraints = false
@@ -312,7 +336,7 @@ class ShareViewController: UIViewController {
         previewURLLabel.numberOfLines = 2
         previewCard.addSubview(previewURLLabel)
 
-        // Image row (hidden by default)
+        // Image row (hidden by default, for image shares)
         previewImageView = UIImageView()
         previewImageView.translatesAutoresizingMaskIntoConstraints = false
         previewImageView.contentMode = .scaleAspectFill
@@ -338,8 +362,30 @@ class ShareViewController: UIViewController {
         previewTextLabel.isHidden = true
         previewCard.addSubview(previewTextLabel)
 
+        // Scraping spinner + label (hidden by default)
+        previewSpinner = UIActivityIndicatorView(style: .medium)
+        previewSpinner.translatesAutoresizingMaskIntoConstraints = false
+        previewSpinner.color = UIColor(hex: "#808080")
+        previewSpinner.hidesWhenStopped = true
+        previewCard.addSubview(previewSpinner)
+
+        previewLoadingLabel = UILabel()
+        previewLoadingLabel.translatesAutoresizingMaskIntoConstraints = false
+        previewLoadingLabel.text = "Loading preview..."
+        previewLoadingLabel.font = UIFont.systemFont(ofSize: 13)
+        previewLoadingLabel.textColor = colorTextTertiary
+        previewLoadingLabel.isHidden = true
+        previewCard.addSubview(previewLoadingLabel)
+
         NSLayoutConstraint.activate([
-            urlRow.topAnchor.constraint(equalTo: previewCard.topAnchor, constant: 12),
+            // Hero image at top of card
+            previewHeroImageView.topAnchor.constraint(equalTo: previewCard.topAnchor),
+            previewHeroImageView.leadingAnchor.constraint(equalTo: previewCard.leadingAnchor),
+            previewHeroImageView.trailingAnchor.constraint(equalTo: previewCard.trailingAnchor),
+            previewHeroHeightConstraint,
+
+            // URL row — below hero image when visible, else at top
+            urlRow.topAnchor.constraint(equalTo: previewHeroImageView.bottomAnchor, constant: 12),
             urlRow.leadingAnchor.constraint(equalTo: previewCard.leadingAnchor, constant: 12),
             urlRow.trailingAnchor.constraint(equalTo: previewCard.trailingAnchor, constant: -12),
             urlRow.heightAnchor.constraint(equalToConstant: 20),
@@ -358,7 +404,7 @@ class ShareViewController: UIViewController {
             previewURLLabel.trailingAnchor.constraint(equalTo: previewCard.trailingAnchor, constant: -12),
             previewURLLabel.bottomAnchor.constraint(equalTo: previewCard.bottomAnchor, constant: -12),
 
-            // Image layout
+            // Image layout (for image shares)
             previewImageView.topAnchor.constraint(equalTo: previewCard.topAnchor, constant: 12),
             previewImageView.leadingAnchor.constraint(equalTo: previewCard.leadingAnchor, constant: 12),
             previewImageView.widthAnchor.constraint(equalToConstant: 60),
@@ -374,7 +420,19 @@ class ShareViewController: UIViewController {
             previewTextLabel.leadingAnchor.constraint(equalTo: previewCard.leadingAnchor, constant: 12),
             previewTextLabel.trailingAnchor.constraint(equalTo: previewCard.trailingAnchor, constant: -12),
             previewTextLabel.bottomAnchor.constraint(equalTo: previewCard.bottomAnchor, constant: -12),
+
+            // Scraping state
+            previewSpinner.leadingAnchor.constraint(equalTo: previewCard.leadingAnchor, constant: 12),
+            previewSpinner.centerYAnchor.constraint(equalTo: previewLoadingLabel.centerYAnchor),
+
+            previewLoadingLabel.topAnchor.constraint(equalTo: previewCard.topAnchor, constant: 14),
+            previewLoadingLabel.leadingAnchor.constraint(equalTo: previewSpinner.trailingAnchor, constant: 8),
+            previewLoadingLabel.trailingAnchor.constraint(equalTo: previewCard.trailingAnchor, constant: -12),
+            previewLoadingLabel.bottomAnchor.constraint(equalTo: previewCard.bottomAnchor, constant: -14),
         ])
+
+        // Hero image starts with zero height (hidden)
+        previewHeroHeightConstraint.isActive = false
     }
 
     private func makeCard() -> UIView {
@@ -394,8 +452,9 @@ class ShareViewController: UIViewController {
             // Image share mode
             showImagePreview(imageData: imgData)
         } else if !parsedURLs.isEmpty {
-            // URL mode
+            // URL mode — show basic preview immediately, then scrape in parallel
             showURLPreview(urlString: parsedURLs[0])
+            scrapeURLMetadata(urlString: parsedURLs[0])
         } else if !parsedTexts.isEmpty {
             // Text-only mode
             showTextPreview(text: parsedTexts[0])
@@ -418,24 +477,32 @@ class ShareViewController: UIViewController {
         previewURLLabel.text = urlString
 
         // Ensure URL mode views visible, others hidden
+        previewHeroImageView.isHidden = true
+        previewHeroHeightConstraint.isActive = false
         previewIconView.isHidden = false
         previewDomainLabel.isHidden = false
         previewURLLabel.isHidden = false
         previewImageView.isHidden = true
         previewFilenameLabel.isHidden = true
         previewTextLabel.isHidden = true
+        previewSpinner.stopAnimating()
+        previewLoadingLabel.isHidden = true
     }
 
     private func showImagePreview(imageData: Data) {
         previewImageView.image = UIImage(data: imageData)
         previewFilenameLabel.text = "Shared image"
 
+        previewHeroImageView.isHidden = true
+        previewHeroHeightConstraint.isActive = false
         previewImageView.isHidden = false
         previewFilenameLabel.isHidden = false
         previewIconView.isHidden = true
         previewDomainLabel.isHidden = true
         previewURLLabel.isHidden = true
         previewTextLabel.isHidden = true
+        previewSpinner.stopAnimating()
+        previewLoadingLabel.isHidden = true
     }
 
     private func showTextPreview(text: String) {
@@ -445,12 +512,211 @@ class ShareViewController: UIViewController {
         let truncated = text.count > 80 ? String(text.prefix(80)) + "…" : text
         previewURLLabel.text = truncated
 
+        previewHeroImageView.isHidden = true
+        previewHeroHeightConstraint.isActive = false
         previewIconView.isHidden = false
         previewDomainLabel.isHidden = false
         previewURLLabel.isHidden = false
         previewImageView.isHidden = true
         previewFilenameLabel.isHidden = true
         previewTextLabel.isHidden = true
+        previewSpinner.stopAnimating()
+        previewLoadingLabel.isHidden = true
+    }
+
+    // MARK: - Scraping state
+
+    private func showScrapingState() {
+        previewHeroImageView.isHidden = true
+        previewHeroHeightConstraint.isActive = false
+        previewIconView.isHidden = true
+        previewDomainLabel.isHidden = true
+        previewURLLabel.isHidden = true
+        previewImageView.isHidden = true
+        previewFilenameLabel.isHidden = true
+        previewTextLabel.isHidden = true
+        previewLoadingLabel.isHidden = false
+        previewSpinner.startAnimating()
+    }
+
+    private func showRichPreview(urlString: String, title: String?, description: String?, siteName: String?, imageURLString: String?) {
+        // Update domain/site name row
+        let iconConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        previewIconView.image = UIImage(systemName: "link", withConfiguration: iconConfig)
+        previewIconView.tintColor = colorTextTertiary
+
+        if let site = siteName, !site.isEmpty {
+            previewDomainLabel.text = site
+        } else if let url = URL(string: urlString), let host = url.host {
+            let domain = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+            previewDomainLabel.text = domain
+        } else {
+            previewDomainLabel.text = urlString
+        }
+
+        // Build rich text content in previewURLLabel
+        if let t = title, !t.isEmpty {
+            // Show title as primary text (white, semibold) and description below
+            let titleAttr = NSMutableAttributedString(string: t, attributes: [
+                .font: UIFont.systemFont(ofSize: 15, weight: .semibold),
+                .foregroundColor: colorTextPrimary
+            ])
+            if let d = description, !d.isEmpty {
+                let truncatedDesc = d.count > 120 ? String(d.prefix(120)) + "…" : d
+                let descAttr = NSAttributedString(string: "\n" + truncatedDesc, attributes: [
+                    .font: UIFont.systemFont(ofSize: 13),
+                    .foregroundColor: colorTextSecondary
+                ])
+                titleAttr.append(descAttr)
+            }
+            previewURLLabel.attributedText = titleAttr
+            previewURLLabel.numberOfLines = 4
+        } else {
+            previewURLLabel.text = urlString
+            previewURLLabel.numberOfLines = 2
+        }
+
+        // Show/hide spinner
+        previewSpinner.stopAnimating()
+        previewLoadingLabel.isHidden = true
+
+        // Show text rows
+        previewIconView.isHidden = false
+        previewDomainLabel.isHidden = false
+        previewURLLabel.isHidden = false
+        previewImageView.isHidden = true
+        previewFilenameLabel.isHidden = true
+        previewTextLabel.isHidden = true
+
+        // Load hero image if available
+        if let imgURLString = imageURLString, let imgURL = URL(string: imgURLString) {
+            URLSession.shared.dataTask(with: imgURL) { [weak self] data, _, _ in
+                guard let self = self, let data = data, let image = UIImage(data: data) else { return }
+                DispatchQueue.main.async {
+                    self.previewHeroImageView.image = image
+                    self.previewHeroImageView.isHidden = false
+                    self.previewHeroHeightConstraint.isActive = true
+                    UIView.animate(withDuration: 0.25) {
+                        self.previewCard.layoutIfNeeded()
+                    }
+                }
+            }.resume()
+        } else {
+            previewHeroImageView.isHidden = true
+            previewHeroHeightConstraint.isActive = false
+        }
+    }
+
+    // MARK: - URL Scraping
+
+    private func scrapeURLMetadata(urlString: String) {
+        isScraping = true
+        DispatchQueue.main.async { self.showScrapingState() }
+
+        guard let url = URL(string: urlString) else {
+            isScraping = false
+            DispatchQueue.main.async { self.showURLPreview(urlString: urlString) }
+            return
+        }
+
+        var request = URLRequest(url: url, timeoutInterval: 8)
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            self.isScraping = false
+
+            guard let data = data, error == nil,
+                  let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
+                DispatchQueue.main.async { self.showURLPreview(urlString: urlString) }
+                return
+            }
+
+            let title = self.extractMetaTag(html: html, property: "og:title")
+                ?? self.extractMetaTag(html: html, property: "twitter:title")
+                ?? self.extractHTMLTitle(html: html)
+            let description = self.extractMetaTag(html: html, property: "og:description")
+                ?? self.extractMetaTag(html: html, property: "twitter:description")
+                ?? self.extractMetaTag(html: html, name: "description")
+            let imageURLString = self.extractMetaTag(html: html, property: "og:image")
+                ?? self.extractMetaTag(html: html, property: "twitter:image")
+            let siteName = self.extractMetaTag(html: html, property: "og:site_name")
+
+            self.scrapedTitle = title
+            self.scrapedDescription = description
+            self.scrapedImageURL = imageURLString
+
+            print("[ShareViewController] Scraped metadata — title: \(title ?? "nil"), siteName: \(siteName ?? "nil"), hasImage: \(imageURLString != nil)")
+
+            DispatchQueue.main.async {
+                self.showRichPreview(
+                    urlString: urlString,
+                    title: title,
+                    description: description,
+                    siteName: siteName,
+                    imageURLString: imageURLString
+                )
+            }
+        }.resume()
+    }
+
+    // MARK: - HTML Parsing Helpers
+
+    private func extractMetaTag(html: String, property: String) -> String? {
+        let patterns = [
+            "property=[\"']\(NSRegularExpression.escapedPattern(for: property))[\"'][^>]*content=[\"']([^\"']+)[\"']",
+            "content=[\"']([^\"']+)[\"'][^>]*property=[\"']\(NSRegularExpression.escapedPattern(for: property))[\"']"
+        ]
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+               let range = Range(match.range(at: 1), in: html) {
+                return String(html[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return nil
+    }
+
+    private func extractMetaTag(html: String, name: String) -> String? {
+        let patterns = [
+            "name=[\"']\(NSRegularExpression.escapedPattern(for: name))[\"'][^>]*content=[\"']([^\"']+)[\"']",
+            "content=[\"']([^\"']+)[\"'][^>]*name=[\"']\(NSRegularExpression.escapedPattern(for: name))[\"']"
+        ]
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+               let range = Range(match.range(at: 1), in: html) {
+                return String(html[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return nil
+    }
+
+    private func extractHTMLTitle(html: String) -> String? {
+        if let regex = try? NSRegularExpression(pattern: "<title[^>]*>([^<]+)</title>", options: .caseInsensitive),
+           let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+           let range = Range(match.range(at: 1), in: html) {
+            return String(html[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return nil
+    }
+
+    // MARK: - Auth Token
+
+    private func loadAuthToken() -> (accessToken: String, userId: String)? {
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else { return nil }
+        let tokenURL = containerURL.appendingPathComponent("auth-token.json")
+        guard let data = try? Data(contentsOf: tokenURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = json["access_token"] as? String,
+              let userId = json["user_id"] as? String else { return nil }
+        if let expiresAt = json["expires_at"] as? Double {
+            if Date().timeIntervalSince1970 > expiresAt {
+                print("[ShareViewController] Auth token expired")
+                return nil
+            }
+        }
+        return (token, userId)
     }
 
     // MARK: - Animation
@@ -497,37 +763,39 @@ class ShareViewController: UIViewController {
     @objc private func handleSave() {
         print("[ShareViewController] Save button tapped")
         noteTextView.resignFirstResponder()
-
         saveButton.isEnabled = false
         saveButton.alpha = 0.5
         saveButton.setTitle("", for: .normal)
         saveSpinner.startAnimating()
 
+        guard let auth = loadAuthToken() else {
+            print("[ShareViewController] No auth token found — falling back to App Group write")
+            let noteText = noteTextView.text ?? ""
+            let sharedText = parsedTexts.joined(separator: "\n\n")
+            let combined = [noteText, sharedText].filter { !$0.isEmpty }.joined(separator: "\n\n")
+            saveSharedData(["text": combined, "urls": parsedURLs, "images": parsedImagePaths, "timestamp": Date().timeIntervalSince1970])
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.showSuccessAndDismiss()
+            }
+            return
+        }
+
         let noteText = noteTextView.text ?? ""
-        let sharedText = parsedTexts.joined(separator: "\n\n")
-        let combinedText: String
-        if noteText.isEmpty {
-            combinedText = sharedText
-        } else if sharedText.isEmpty {
-            combinedText = noteText
-        } else {
-            combinedText = noteText + "\n\n" + sharedText
+        var parts: [String] = []
+        if !noteText.trimmingCharacters(in: .whitespaces).isEmpty {
+            parts.append(noteText.trimmingCharacters(in: .whitespaces))
         }
+        var metaParts: [String] = []
+        if let t = scrapedTitle, !t.isEmpty { metaParts.append(t) }
+        if let d = scrapedDescription, !d.isEmpty { metaParts.append(d) }
+        if !metaParts.isEmpty { parts.append(metaParts.joined(separator: "\n")) }
+        if !parsedURLs.isEmpty { parts.append(parsedURLs.joined(separator: "\n")) }
+        let nonURLTexts = parsedTexts.filter { !$0.hasPrefix("http") }
+        if !nonURLTexts.isEmpty { parts.append(nonURLTexts.joined(separator: "\n\n")) }
+        let finalText = parts.joined(separator: "\n\n")
 
-        let sharedData: [String: Any] = [
-            "text": combinedText,
-            "urls": parsedURLs,
-            "images": parsedImagePaths,
-            "timestamp": Date().timeIntervalSince1970
-        ]
-
-        print("[ShareViewController] Saving shared data — urls: \(parsedURLs.count), images: \(parsedImagePaths.count), hasNote: \(!noteText.isEmpty)")
-        saveSharedData(sharedData)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            print("[ShareViewController] Completing extension request after save")
-            self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
-        }
+        print("[ShareViewController] Inserting recall directly to Supabase — userId: \(auth.userId), textLength: \(finalText.count)")
+        insertRecall(text: finalText, urls: parsedURLs, imagePaths: parsedImagePaths, userId: auth.userId, accessToken: auth.accessToken)
     }
 
     @objc private func handleCancel() {
@@ -535,6 +803,66 @@ class ShareViewController: UIViewController {
         noteTextView?.resignFirstResponder()
         animateSheetOut { [weak self] in
             self?.extensionContext?.cancelRequest(withError: NSError(domain: "UserCancelled", code: 0))
+        }
+    }
+
+    // MARK: - Supabase Insert
+
+    private func insertRecall(text: String, urls: [String], imagePaths: [String], userId: String, accessToken: String) {
+        guard let url = URL(string: "\(supabaseURL)/rest/v1/recalls") else { return }
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        let body: [String: Any] = [
+            "text": text,
+            "user_id": userId,
+            "created_at": now,
+            "updated_at": now,
+        ]
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return }
+        request.httpBody = httpBody
+
+        // Write images to App Group for main app to upload later
+        if !imagePaths.isEmpty {
+            saveSharedData(["text": "", "urls": [], "images": imagePaths, "timestamp": Date().timeIntervalSince1970])
+        }
+
+        print("[ShareViewController] POST \(supabaseURL)/rest/v1/recalls")
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 201 {
+                    print("[ShareViewController] Recall inserted successfully")
+                    self.showSuccessAndDismiss()
+                } else {
+                    let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+                    print("[ShareViewController] Insert failed — status: \(statusCode), error: \(String(describing: error))")
+                    // Fall back to App Group write
+                    let noteText = self.noteTextView.text ?? ""
+                    let combined = [noteText, text].filter { !$0.isEmpty }.joined(separator: "\n\n")
+                    self.saveSharedData(["text": combined, "urls": self.parsedURLs, "images": self.parsedImagePaths, "timestamp": Date().timeIntervalSince1970])
+                    self.showSuccessAndDismiss()
+                }
+            }
+        }.resume()
+    }
+
+    private func showSuccessAndDismiss() {
+        saveSpinner.stopAnimating()
+        saveButton.setTitle("✓  Saved", for: .normal)
+        saveButton.backgroundColor = UIColor(hex: "#4CAF50")
+        saveButton.alpha = 1.0
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
         }
     }
 
@@ -657,7 +985,7 @@ class ShareViewController: UIViewController {
         }
     }
 
-    // MARK: - Save to App Group
+    // MARK: - Save to App Group (fallback)
 
     private func saveSharedData(_ data: [String: Any]) {
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
