@@ -1,6 +1,6 @@
 /**
  * Create Recall from Share Screen
- * 
+ *
  * This screen handles creating a recall from shared content (images, text, URLs)
  * received from other apps via share intents.
  */
@@ -27,11 +27,39 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, uploadImageToDatabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { BlurView } from 'expo-blur';
 import { getInitialShareData, listenForShareIntents } from '@/utils/nativeShareReceiver';
 import type { ReceivedShareData } from '@/types/ShareExtension';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+function getDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url.replace(/^https?:\/\//, '').split('/')[0];
+  }
+}
+
+// ─── skeleton shimmer card ───────────────────────────────────────────────────
+
+function SkeletonCard() {
+  return (
+    <View style={styles.urlCard}>
+      <View style={[styles.skeletonHero, { backgroundColor: colors.cardDark }]} />
+      <View style={styles.urlCardBody}>
+        <View style={[styles.skeletonLine, { width: '40%', marginBottom: 8 }]} />
+        <View style={[styles.skeletonLine, { width: '90%', marginBottom: 6 }]} />
+        <View style={[styles.skeletonLine, { width: '70%' }]} />
+      </View>
+    </View>
+  );
+}
+
+// ─── main component ──────────────────────────────────────────────────────────
 
 export default function CreateRecallFromShareScreen() {
   const router = useRouter();
@@ -53,14 +81,16 @@ export default function CreateRecallFromShareScreen() {
   } | null>(null);
   const [isLoadingShareData, setIsLoadingShareData] = useState(true);
   const [isScrapingUrl, setIsScrapingUrl] = useState(false);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [scrapedMetadata, setScrapedMetadata] = useState<{
     title?: string;
     description?: string;
     imageUrl?: string;
     siteName?: string;
+    faviconUrl?: string;
   } | null>(null);
 
-  // Load initial share data
+  // ── load initial share data ──────────────────────────────────────────────
   useEffect(() => {
     const loadShareData = async () => {
       try {
@@ -83,7 +113,6 @@ export default function CreateRecallFromShareScreen() {
           }
           if (shareData.urls && shareData.urls.length > 0) {
             setUrls(shareData.urls);
-            // Do NOT pre-populate text with raw URLs — let the scraper populate it
           }
         } else {
           console.log('[CreateRecallFromShare] No initial share data found');
@@ -98,13 +127,49 @@ export default function CreateRecallFromShareScreen() {
     loadShareData();
   }, []);
 
-  // Auto-scrape metadata when only a URL is received
+  // ── auto-detect GPS location on mount ───────────────────────────────────
   useEffect(() => {
-    const scrapeIfUrlOnly = async () => {
+    const autoDetectLocation = async () => {
+      console.log('[CreateRecallFromShare] Auto-detecting location...');
+      setIsDetectingLocation(true);
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          console.log('[CreateRecallFromShare] Location permission denied');
+          return;
+        }
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        const [geocoded] = await Location.reverseGeocodeAsync({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        });
+        const name = [geocoded?.name, geocoded?.city, geocoded?.region]
+          .filter(Boolean)
+          .join(', ');
+        const resolvedName =
+          name || `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+        console.log('[CreateRecallFromShare] Auto-detected location:', resolvedName);
+        setLocation({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          name: resolvedName,
+        });
+      } catch {
+        console.log('[CreateRecallFromShare] Auto-location failed (non-fatal)');
+      } finally {
+        setIsDetectingLocation(false);
+      }
+    };
+
+    autoDetectLocation();
+  }, []);
+
+  // ── scrape URL metadata ──────────────────────────────────────────────────
+  useEffect(() => {
+    const scrapeUrl = async () => {
       if (urls.length === 0) return;
-      // Only scrape if text is empty or contains only raw URLs (no user-written content)
-      const hasUserText = text.trim() && !urls.some(u => text.trim() === u);
-      if (hasUserText) return;
 
       try {
         console.log('[CreateRecallFromShare] Scraping URL metadata for:', urls[0]);
@@ -115,18 +180,6 @@ export default function CreateRecallFromShareScreen() {
         if (!error && data) {
           console.log('[CreateRecallFromShare] Scraped metadata:', data);
           setScrapedMetadata(data);
-          // Pre-populate text with title + description only (URL is shown in chip, not duplicated in text)
-          const parts = [data.title, data.description].filter(Boolean);
-          if (parts.length > 0) {
-            setText(prev => {
-              const isEmptyOrJustUrl = !prev.trim() || urls.some(u => prev.trim() === u);
-              return isEmptyOrJustUrl ? parts.join('\n\n') : prev;
-            });
-          }
-          // Add preview image only if no real images are present (avoid overwriting user images)
-          if (data.imageUrl && images.length === 0) {
-            setImages([data.imageUrl]);
-          }
         }
       } catch (err) {
         console.log('[CreateRecallFromShare] URL scraping failed (non-fatal):', err);
@@ -135,12 +188,12 @@ export default function CreateRecallFromShareScreen() {
       }
     };
 
-    scrapeIfUrlOnly();
+    scrapeUrl();
   }, [urls]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-extract location from shared images
+  // ── EXIF location fallback (only if GPS failed and no location set) ──────
   useEffect(() => {
-    const extractLocation = async () => {
+    const extractExifLocation = async () => {
       if (images.length === 0 || location) return;
       try {
         const { extractLocationFromImage } = await import('@/utils/imageLocationExtractor');
@@ -161,10 +214,10 @@ export default function CreateRecallFromShareScreen() {
       }
     };
 
-    extractLocation();
+    extractExifLocation();
   }, [images]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Listen for share intents while screen is active
+  // ── listen for foreground share intents ─────────────────────────────────
   useEffect(() => {
     console.log('[CreateRecallFromShare] Setting up share intent listener...');
 
@@ -175,16 +228,9 @@ export default function CreateRecallFromShareScreen() {
         urlCount: shareData.urls?.length || 0,
       });
 
-      if (shareData.text) {
-        setText(shareData.text);
-      }
-      if (shareData.images && shareData.images.length > 0) {
-        setImages(shareData.images);
-      }
-      if (shareData.urls && shareData.urls.length > 0) {
-        setUrls(shareData.urls);
-        // Do NOT pre-populate text with raw URLs — let the scraper populate it
-      }
+      if (shareData.text) setText(shareData.text);
+      if (shareData.images && shareData.images.length > 0) setImages(shareData.images);
+      if (shareData.urls && shareData.urls.length > 0) setUrls(shareData.urls);
     });
 
     return () => {
@@ -193,33 +239,64 @@ export default function CreateRecallFromShareScreen() {
     };
   }, []);
 
-  const handleRemoveImage = useCallback((index: number) => {
-    const newImages = [...images];
-    newImages.splice(index, 1);
-    setImages(newImages);
-
-    if (currentImageIndex >= newImages.length && newImages.length > 0) {
-      setCurrentImageIndex(newImages.length - 1);
-    } else if (newImages.length === 0) {
-      setCurrentImageIndex(0);
+  // ── watch location-search return params ─────────────────────────────────
+  useEffect(() => {
+    const lat = params.selectedLatitude;
+    const lng = params.selectedLongitude;
+    const name = params.selectedLocationName;
+    const type = params.selectedPrimaryType;
+    if (lat && lng && name) {
+      console.log('[CreateRecallFromShare] Location selected from search:', name);
+      setLocation({
+        latitude: parseFloat(lat as string),
+        longitude: parseFloat(lng as string),
+        name: name as string,
+        primaryType: type as string | undefined,
+      });
     }
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-  }, [images, currentImageIndex]);
+  // ── handlers ─────────────────────────────────────────────────────────────
+
+  const handleRemoveImage = useCallback(
+    (index: number) => {
+      console.log('[CreateRecallFromShare] Remove image at index:', index);
+      const newImages = [...images];
+      newImages.splice(index, 1);
+      setImages(newImages);
+
+      if (currentImageIndex >= newImages.length && newImages.length > 0) {
+        setCurrentImageIndex(newImages.length - 1);
+      } else if (newImages.length === 0) {
+        setCurrentImageIndex(0);
+      }
+
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+    },
+    [images, currentImageIndex],
+  );
 
   const handleAddLocation = () => {
+    console.log('[CreateRecallFromShare] Navigate to location search');
     router.push('/location-search?from=create-recall-from-share');
   };
 
+  const handleCancel = () => {
+    console.log('[CreateRecallFromShare] Cancel pressed');
+    router.back();
+  };
+
   const handleSave = async () => {
+    console.log('[CreateRecallFromShare] Save pressed');
+
     if (!user) {
       Alert.alert('Error', 'You must be logged in to create a recall');
       return;
     }
 
-    if (!text.trim() && images.length === 0) {
+    if (!text.trim() && images.length === 0 && urls.length === 0) {
       Alert.alert('Error', 'Please add some content before saving');
       return;
     }
@@ -234,15 +311,16 @@ export default function CreateRecallFromShareScreen() {
       console.log('[CreateRecallFromShare] Has location:', !!location);
       console.log('[CreateRecallFromShare] URLs to persist:', urls);
 
-      // Build final text: append any URLs not already present in the text
-      const missingUrls = urls.filter(u => !text.includes(u));
-      const finalText = missingUrls.length > 0
-        ? [text.trim(), ...missingUrls].filter(Boolean).join('\n\n')
-        : text.trim();
+      // Build final text: user note + scraped title/description + URLs
+      const parts: string[] = [];
+      if (text.trim()) parts.push(text.trim());
+      const metaParts = [scrapedMetadata?.title, scrapedMetadata?.description].filter(Boolean);
+      if (metaParts.length > 0) parts.push(metaParts.join('\n'));
+      if (urls.length > 0) parts.push(urls.join('\n'));
+      const finalText = parts.join('\n\n');
 
       console.log('[CreateRecallFromShare] Final text length:', finalText.length);
 
-      // Create the recall
       const { data: recallData, error: recallError } = await supabase
         .from('recalls')
         .insert({
@@ -266,19 +344,13 @@ export default function CreateRecallFromShareScreen() {
 
       console.log('[CreateRecallFromShare] Recall created with ID:', recallData.id);
 
-      // Upload images
       if (images.length > 0) {
         setSavingStage('Uploading Images...');
         console.log('[CreateRecallFromShare] Uploading', images.length, 'images...');
 
-        // Upload first image synchronously
         if (images[0]) {
           try {
-            const firstImageId = await uploadImageToDatabase(
-              images[0],
-              recallData.id,
-              'image/jpeg'
-            );
+            const firstImageId = await uploadImageToDatabase(images[0], recallData.id, 'image/jpeg');
             if (firstImageId) {
               console.log('[CreateRecallFromShare] First image uploaded:', firstImageId);
             }
@@ -287,16 +359,11 @@ export default function CreateRecallFromShareScreen() {
           }
         }
 
-        // Upload remaining images asynchronously
         if (images.length > 1) {
           (async () => {
             for (let i = 1; i < images.length; i++) {
               try {
-                const imageId = await uploadImageToDatabase(
-                  images[i],
-                  recallData.id,
-                  'image/jpeg'
-                );
+                const imageId = await uploadImageToDatabase(images[i], recallData.id, 'image/jpeg');
                 if (imageId) {
                   console.log(`[CreateRecallFromShare] Image ${i + 1} uploaded:`, imageId);
                 }
@@ -305,7 +372,6 @@ export default function CreateRecallFromShareScreen() {
               }
             }
 
-            // Trigger category matching after all images are uploaded
             console.log('[CreateRecallFromShare] Triggering category matching...');
             try {
               await supabase.functions.invoke('match-recollection-category', {
@@ -317,7 +383,6 @@ export default function CreateRecallFromShareScreen() {
           })();
         }
       } else {
-        // No images - trigger category matching immediately
         (async () => {
           console.log('[CreateRecallFromShare] Triggering category matching (no images)...');
           try {
@@ -337,8 +402,6 @@ export default function CreateRecallFromShareScreen() {
       }
 
       console.log('[CreateRecallFromShare] Recall created successfully');
-
-      // Navigate back to home
       router.replace('/(tabs)/(home)');
     } catch (error) {
       console.error('[CreateRecallFromShare] Error saving recall:', error);
@@ -349,18 +412,26 @@ export default function CreateRecallFromShareScreen() {
     }
   };
 
-  const handleCancel = () => {
-    router.back();
-  };
+  // ── derived state ─────────────────────────────────────────────────────────
+
+  const hasContent = text.trim().length > 0 || images.length > 0 || urls.length > 0;
+  const hasUrlAndImages = urls.length > 0 && images.length > 0;
+  const showFromSection = urls.length > 0 || images.length > 0;
+
+  const locationIconName = location ? 'location.fill' : 'location';
+  const locationText = isDetectingLocation
+    ? 'Detecting location...'
+    : location
+    ? location.name
+    : 'Add Location';
+  const locationColor = location ? colors.primary : colors.textSecondary;
+
+  // ── loading state ─────────────────────────────────────────────────────────
 
   if (isLoadingShareData) {
     return (
       <View style={styles.container}>
-        <Stack.Screen
-          options={{
-            headerShown: false,
-          }}
-        />
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading shared content...</Text>
@@ -369,149 +440,219 @@ export default function CreateRecallFromShareScreen() {
     );
   }
 
+  // ── render ────────────────────────────────────────────────────────────────
+
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          headerShown: false,
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoid}
       >
-        {/* Header */}
+        {/* ── Header ── */}
         <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-          <Pressable onPress={handleCancel} style={styles.headerButton} disabled={isSaving}>
+          <Pressable onPress={handleCancel} style={styles.cancelButton} disabled={isSaving}>
             <IconSymbol
               ios_icon_name="xmark"
               android_material_icon_name="close"
-              size={24}
+              size={20}
               color={colors.text}
             />
           </Pressable>
 
-          <Text style={styles.headerTitle}>Create from Share</Text>
+          <Text style={styles.headerTitle}>Save to Recall</Text>
 
           <Pressable
             onPress={handleSave}
-            style={[styles.headerButton, styles.saveButton]}
-            disabled={isSaving || (!text.trim() && images.length === 0 && urls.length === 0)}
+            style={[styles.savePill, !hasContent && styles.savePillDisabled]}
+            disabled={isSaving || !hasContent}
           >
             {isSaving ? (
-              <ActivityIndicator size="small" color={colors.text} />
+              <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text
-                style={[
-                  styles.saveButtonText,
-                  (!text.trim() && images.length === 0 && urls.length === 0) && styles.saveButtonTextDisabled,
-                ]}
-              >
+              <Text style={[styles.savePillText, !hasContent && styles.savePillTextDisabled]}>
                 Save
               </Text>
             )}
           </Pressable>
         </View>
 
-        {/* Content */}
+        {/* ── Scroll content ── */}
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Images */}
-          {images.length > 0 && (
-            <View style={styles.imagesSection}>
-              <ScrollView
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                onScroll={(event) => {
-                  const offsetX = event.nativeEvent.contentOffset.x;
-                  const index = Math.round(offsetX / (SCREEN_WIDTH - 32));
-                  setCurrentImageIndex(index);
-                }}
-                scrollEventThrottle={16}
-              >
-                {images.map((imageUri, index) => (
-                  <View key={index} style={styles.imageContainer}>
-                    <Image
-                      source={{ uri: imageUri }}
-                      style={styles.image}
-                      resizeMode="cover"
-                    />
-                    <Pressable
-                      style={styles.removeImageButton}
-                      onPress={() => handleRemoveImage(index)}
-                    >
-                      <BlurView intensity={80} style={styles.removeImageBlur}>
-                        <IconSymbol
-                          ios_icon_name="xmark.circle.fill"
-                          android_material_icon_name="cancel"
-                          size={28}
-                          color={colors.text}
-                        />
-                      </BlurView>
-                    </Pressable>
-                  </View>
-                ))}
-              </ScrollView>
+          {/* ── FROM section ── */}
+          {showFromSection && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>From</Text>
 
-              {images.length > 1 && (
-                <View style={styles.imageIndicators}>
-                  {images.map((_, index) => (
-                    <View
-                      key={index}
-                      style={[
-                        styles.indicator,
-                        index === currentImageIndex && styles.indicatorActive,
-                      ]}
-                    />
-                  ))}
+              {/* Image carousel (shown first when both images + URL present) */}
+              {images.length > 0 && (
+                <View style={styles.carouselWrapper}>
+                  <ScrollView
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    onScroll={(event) => {
+                      const offsetX = event.nativeEvent.contentOffset.x;
+                      const index = Math.round(offsetX / (SCREEN_WIDTH - 32));
+                      setCurrentImageIndex(index);
+                    }}
+                    scrollEventThrottle={16}
+                  >
+                    {images.map((imageUri, index) => (
+                      <View key={index} style={styles.imageContainer}>
+                        <Image
+                          source={{ uri: imageUri }}
+                          style={styles.carouselImage}
+                          resizeMode="cover"
+                        />
+                        <Pressable
+                          style={styles.removeImageButton}
+                          onPress={() => handleRemoveImage(index)}
+                        >
+                          <BlurView intensity={80} style={styles.removeImageBlur}>
+                            <IconSymbol
+                              ios_icon_name="xmark.circle.fill"
+                              android_material_icon_name="cancel"
+                              size={28}
+                              color={colors.text}
+                            />
+                          </BlurView>
+                        </Pressable>
+                      </View>
+                    ))}
+                  </ScrollView>
+
+                  {images.length > 1 && (
+                    <View style={styles.pageDots}>
+                      {images.map((_, index) => (
+                        <View
+                          key={index}
+                          style={[
+                            styles.dot,
+                            index === currentImageIndex && styles.dotActive,
+                          ]}
+                        />
+                      ))}
+                    </View>
+                  )}
                 </View>
+              )}
+
+              {/* URL card */}
+              {urls.length > 0 && (
+                <>
+                  {isScrapingUrl ? (
+                    <SkeletonCard />
+                  ) : scrapedMetadata ? (
+                    hasUrlAndImages ? (
+                      /* Compact card when images are also present */
+                      <View style={styles.urlCard}>
+                        <View style={styles.compactCardRow}>
+                          {scrapedMetadata.imageUrl ? (
+                            <Image
+                              source={{ uri: scrapedMetadata.imageUrl }}
+                              style={styles.compactThumbnail}
+                              resizeMode="cover"
+                            />
+                          ) : (
+                            <View style={[styles.compactThumbnail, styles.compactThumbnailFallback]}>
+                              <IconSymbol
+                                ios_icon_name="globe"
+                                android_material_icon_name="language"
+                                size={24}
+                                color={colors.textTertiary}
+                              />
+                            </View>
+                          )}
+                          <View style={styles.compactCardText}>
+                            {scrapedMetadata.siteName ? (
+                              <Text style={styles.siteNameText} numberOfLines={1}>
+                                {scrapedMetadata.siteName}
+                              </Text>
+                            ) : null}
+                            {scrapedMetadata.title ? (
+                              <Text style={styles.cardTitle} numberOfLines={2}>
+                                {scrapedMetadata.title}
+                              </Text>
+                            ) : (
+                              <Text style={styles.domainChipText} numberOfLines={1}>
+                                {getDomain(urls[0])}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+                      </View>
+                    ) : (
+                      /* Full card when no images */
+                      <View style={styles.urlCard}>
+                        {scrapedMetadata.imageUrl ? (
+                          <Image
+                            source={{ uri: scrapedMetadata.imageUrl }}
+                            style={styles.heroImage}
+                            resizeMode="cover"
+                          />
+                        ) : null}
+                        <View style={styles.urlCardBody}>
+                          <View style={styles.siteNameRow}>
+                            <IconSymbol
+                              ios_icon_name="globe"
+                              android_material_icon_name="language"
+                              size={12}
+                              color={colors.textTertiary}
+                            />
+                            <Text style={styles.siteNameText} numberOfLines={1}>
+                              {scrapedMetadata.siteName || getDomain(urls[0])}
+                            </Text>
+                          </View>
+                          {scrapedMetadata.title ? (
+                            <Text style={styles.cardTitle} numberOfLines={2}>
+                              {scrapedMetadata.title}
+                            </Text>
+                          ) : null}
+                          {scrapedMetadata.description ? (
+                            <Text style={styles.cardDescription} numberOfLines={2}>
+                              {scrapedMetadata.description}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    )
+                  ) : (
+                    /* Domain chip fallback — no metadata yet */
+                    <View style={styles.domainChip}>
+                      <IconSymbol
+                        ios_icon_name="link"
+                        android_material_icon_name="link"
+                        size={14}
+                        color={colors.textTertiary}
+                      />
+                      <Text style={styles.domainChipText} numberOfLines={1}>
+                        {getDomain(urls[0])}
+                      </Text>
+                    </View>
+                  )}
+                </>
               )}
             </View>
           )}
 
-          {/* URL chips — one per URL */}
-          {urls.length > 0 && (
-            <View style={styles.urlChipsContainer}>
-              {urls.map((url, index) => (
-                <View key={index} style={styles.urlChip}>
-                  <IconSymbol
-                    ios_icon_name="link"
-                    android_material_icon_name="link"
-                    size={14}
-                    color={colors.textTertiary}
-                  />
-                  <Text style={styles.urlChipText} numberOfLines={1}>
-                    {url.replace(/^https?:\/\//, '').split('/')[0]}
-                  </Text>
-                  {index === 0 && scrapedMetadata?.siteName && (
-                    <Text style={styles.urlSiteName}>{scrapedMetadata.siteName}</Text>
-                  )}
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* URL scraping loading banner */}
-          {isScrapingUrl && (
-            <View style={styles.scrapingBanner}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.scrapingText}>Fetching content from link...</Text>
-            </View>
-          )}
-
-          {/* Text Input */}
-          <View style={styles.textSection}>
+          {/* ── NOTE section ── */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Note</Text>
             <TextInput
               style={styles.textInput}
               value={text}
-              onChangeText={setText}
-              placeholder="Add a note about this shared content..."
+              onChangeText={(val) => {
+                console.log('[CreateRecallFromShare] Note text changed, length:', val.length);
+                setText(val);
+              }}
+              placeholder="Add a note (optional)"
               placeholderTextColor={colors.textTertiary}
               multiline
               textAlignVertical="top"
@@ -519,48 +660,43 @@ export default function CreateRecallFromShareScreen() {
             />
           </View>
 
-          {/* Location */}
-          <View style={styles.locationSection}>
+          {/* ── LOCATION section ── */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Location</Text>
             <Pressable
-              style={styles.locationButton}
+              style={styles.locationRow}
               onPress={handleAddLocation}
-              disabled={isSaving}
+              disabled={isSaving || isDetectingLocation}
             >
-              <IconSymbol
-                ios_icon_name="location.fill"
-                android_material_icon_name="location-on"
-                size={20}
-                color={location ? colors.primary : colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.locationButtonText,
-                  location && styles.locationButtonTextActive,
-                ]}
-              >
-                {location ? location.name : 'Add Location'}
-              </Text>
+              <View style={styles.locationLeft}>
+                {isDetectingLocation ? (
+                  <ActivityIndicator size="small" color={colors.textSecondary} />
+                ) : (
+                  <IconSymbol
+                    ios_icon_name={locationIconName}
+                    android_material_icon_name="location-on"
+                    size={20}
+                    color={locationColor}
+                  />
+                )}
+                <Text
+                  style={[styles.locationText, location && styles.locationTextActive]}
+                  numberOfLines={1}
+                >
+                  {locationText}
+                </Text>
+              </View>
+              {location && !isDetectingLocation && (
+                <Text style={styles.changeText}>Change</Text>
+              )}
             </Pressable>
-          </View>
-
-          {/* Info */}
-          <View style={styles.infoSection}>
-            <IconSymbol
-              ios_icon_name="info.circle"
-              android_material_icon_name="info"
-              size={16}
-              color={colors.textTertiary}
-            />
-            <Text style={styles.infoText}>
-              This content was shared from another app. You can edit it before saving.
-            </Text>
           </View>
         </ScrollView>
 
-        {/* Saving Overlay */}
+        {/* ── Saving overlay ── */}
         {isSaving && (
           <View style={styles.savingOverlay}>
-            <View style={styles.savingContent}>
+            <View style={styles.savingCard}>
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={styles.savingText}>{savingStage || 'Saving...'}</Text>
             </View>
@@ -570,6 +706,8 @@ export default function CreateRecallFromShareScreen() {
     </View>
   );
 }
+
+// ─── styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
@@ -589,6 +727,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
   },
+
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -599,45 +739,74 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     backgroundColor: colors.background,
   },
-  headerButton: {
-    padding: 8,
-    minWidth: 60,
+  cancelButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.cardDark,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     color: colors.text,
   },
-  saveButton: {
-    alignItems: 'flex-end',
+  savePill: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    minWidth: 60,
+    alignItems: 'center',
   },
-  saveButtonText: {
-    fontSize: 16,
+  savePillDisabled: {
+    backgroundColor: colors.cardDark,
+  },
+  savePillText: {
+    fontSize: 15,
     fontWeight: '600',
-    color: colors.primary,
+    color: '#fff',
   },
-  saveButtonTextDisabled: {
+  savePillTextDisabled: {
     color: colors.textTertiary,
   },
+
+  // Scroll
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 40,
+    gap: 24,
   },
-  imagesSection: {
-    marginBottom: 16,
+
+  // Section
+  section: {
+    gap: 8,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 0,
+  },
+
+  // Image carousel
+  carouselWrapper: {
+    gap: 10,
   },
   imageContainer: {
     width: SCREEN_WIDTH - 32,
-    height: 280,
-    marginRight: 12,
+    height: 260,
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: colors.cardDark,
   },
-  image: {
+  carouselImage: {
     width: '100%',
     height: '100%',
   },
@@ -652,128 +821,182 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 20,
   },
-  imageIndicators: {
+  pageDots: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 12,
     gap: 6,
   },
-  indicator: {
+  dot: {
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: colors.textTertiary,
   },
-  indicatorActive: {
+  dotActive: {
     backgroundColor: colors.primary,
     width: 20,
   },
-  textSection: {
-    marginBottom: 16,
+
+  // URL card (full)
+  urlCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
   },
-  textInput: {
+  heroImage: {
+    height: 180,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    width: '100%',
+  },
+  urlCardBody: {
+    padding: 12,
+    gap: 4,
+  },
+  siteNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  siteNameText: {
+    fontSize: 12,
+    color: colors.textTertiary,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+    lineHeight: 20,
+  },
+  cardDescription: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+
+  // Compact URL card (when images also present)
+  compactCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 12,
+  },
+  compactThumbnail: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+  },
+  compactThumbnailFallback: {
+    backgroundColor: colors.cardDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactCardText: {
+    flex: 1,
+    gap: 4,
+  },
+
+  // Domain chip fallback
+  domainChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     backgroundColor: colors.card,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignSelf: 'flex-start',
+  },
+  domainChipText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+
+  // Skeleton
+  skeletonHero: {
+    height: 140,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  skeletonLine: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.cardDark,
+  },
+
+  // Note input
+  textInput: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
     padding: 16,
     fontSize: 16,
     color: colors.text,
-    minHeight: 150,
+    minHeight: 100,
     maxHeight: 300,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  locationSection: {
-    marginBottom: 16,
-  },
-  locationButton: {
+
+  // Location
+  locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
     padding: 16,
     backgroundColor: colors.card,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  locationButtonText: {
-    fontSize: 16,
-    color: colors.textSecondary,
+  locationLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
   },
-  locationButtonTextActive: {
-    color: colors.primary,
+  locationText: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  locationTextActive: {
+    color: colors.text,
     fontWeight: '500',
   },
-  infoSection: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    padding: 12,
-    backgroundColor: colors.cardDark,
-    borderRadius: 12,
-  },
-  infoText: {
-    flex: 1,
+  changeText: {
     fontSize: 13,
-    color: colors.textTertiary,
-    lineHeight: 18,
+    color: colors.primary,
+    fontWeight: '500',
+    marginLeft: 8,
   },
+
+  // Saving overlay
   savingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  savingContent: {
+  savingCard: {
     backgroundColor: colors.card,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 32,
     alignItems: 'center',
     gap: 16,
     minWidth: 200,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   savingText: {
     fontSize: 16,
     color: colors.text,
     fontWeight: '600',
-  },
-  scrapingBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    backgroundColor: colors.cardDark,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  scrapingText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  urlChipsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
-  urlChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: colors.cardDark,
-    borderRadius: 20,
-    alignSelf: 'flex-start',
-  },
-  urlChipText: {
-    fontSize: 13,
-    color: colors.textTertiary,
-    maxWidth: 200,
-  },
-  urlSiteName: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    fontWeight: '500',
   },
 });
