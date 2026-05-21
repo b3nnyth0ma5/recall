@@ -66,6 +66,12 @@ export async function getSharedData(): Promise<SharedData | null> {
 
       // Parse JSON
       const data = JSON.parse(content) as SharedData;
+
+      // Normalize bare POSIX paths to file:// URIs (Swift writes fileURL.path without scheme)
+      if (data.images) {
+        data.images = data.images.map((p: string) => p.startsWith('file://') ? p : `file://${p}`);
+      }
+
       console.log('[ShareExtensionModule] Parsed shared data:', {
         hasText: !!data.text,
         urlCount: data.urls?.length || 0,
@@ -140,10 +146,13 @@ export async function copySharedImages(imagePaths: string[]): Promise<string[]> 
 
     for (const imagePath of imagePaths) {
       try {
+        // Normalize bare POSIX paths to file:// URIs required by expo-file-system
+        const normalizedPath = imagePath.startsWith('file://') ? imagePath : `file://${imagePath}`;
+
         // Check if source file exists
-        const fileInfo = await FileSystem.getInfoAsync(imagePath);
+        const fileInfo = await FileSystem.getInfoAsync(normalizedPath);
         if (!fileInfo.exists) {
-          console.warn('[ShareExtensionModule] Image file not found:', imagePath);
+          console.warn('[ShareExtensionModule] Image file not found:', normalizedPath);
           continue;
         }
 
@@ -153,7 +162,7 @@ export async function copySharedImages(imagePaths: string[]): Promise<string[]> 
 
         // Copy the file
         await FileSystem.copyAsync({
-          from: imagePath,
+          from: normalizedPath,
           to: destPath,
         });
 

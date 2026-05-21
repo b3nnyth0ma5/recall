@@ -9,7 +9,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet, View, Platform, Linking } from 'react-native';
 import { supabase } from '@/utils/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { hasPendingShareData } from '@/utils/nativeShareReceiver';
+
 
 const PeopleGraphOverlay = memo(() => {
   const { showGraph, people, anchorPosition, closeGraph } = usePeopleGraph();
@@ -115,24 +115,6 @@ function RootLayoutNav() {
         handleIncomingUrl(url);
       }
     });
-
-    // Also check App Group container for share data written by the extension
-    const checkForShareData = async () => {
-      try {
-        console.log('[URLHandler] Checking App Group for pending share data...');
-        const hasPending = await hasPendingShareData();
-        if (hasPending && user) {
-          console.log('[URLHandler] Found pending share data in App Group, navigating to create-recall-from-share');
-          router.replace('/create-recall-from-share');
-        }
-      } catch (error) {
-        console.error('[URLHandler] Error checking App Group share data:', error);
-      }
-    };
-
-    if (user) {
-      checkForShareData();
-    }
 
     // Foreground URL events
     const subscription = Linking.addEventListener('url', ({ url }) => {
