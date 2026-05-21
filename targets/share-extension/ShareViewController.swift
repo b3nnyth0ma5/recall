@@ -127,8 +127,9 @@ class ShareViewController: UIViewController {
             ]
 
             self.saveSharedData(sharedData)
-            self.openMainApp()
-            self.completeRequest()
+            self.openMainApp {
+                self.completeRequest()
+            }
         }
     }
 
@@ -149,16 +150,23 @@ class ShareViewController: UIViewController {
         }
     }
 
-    private func openMainApp() {
-        guard let url = URL(string: appURLScheme) else { return }
+    private func openMainApp(completion: @escaping () -> Void) {
+        guard let url = URL(string: appURLScheme) else {
+            completion()
+            return
+        }
         var responder: UIResponder? = self
         while responder != nil {
             if let application = responder as? UIApplication {
-                application.open(url, options: [:], completionHandler: nil)
+                application.open(url, options: [:]) { _ in
+                    completion()
+                }
                 return
             }
             responder = responder?.next
         }
+        // Responder walk failed — still complete
+        completion()
     }
 
     private func completeRequest() {
