@@ -448,13 +448,13 @@ export default function CreateRecallFromShareScreen() {
   const hasUrlAndImages = urls.length > 0 && images.length > 0;
   const showFromSection = urls.length > 0 || images.length > 0;
 
-  const locationIconName = location ? 'location.fill' : 'location';
+  const locationIconName = location ? 'location.fill' : 'mappin.circle.fill';
   const locationText = isDetectingLocation
     ? 'Detecting location...'
     : location
     ? location.name
     : 'Add Location';
-  const locationColor = location ? colors.primary : '#FFFFFF';
+  const locationColor = location ? colors.primary : colors.textTertiary;
 
   // ── loading state ─────────────────────────────────────────────────────────
 
@@ -484,10 +484,9 @@ export default function CreateRecallFromShareScreen() {
         <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <Pressable onPress={handleCancel} style={styles.cancelButton} disabled={isSaving}>
             <IconSymbol
-              ios_icon_name="xmark"
-              android_material_icon_name="close"
+              name="xmark"
               size={20}
-              color="#FFFFFF"
+              color={colors.text}
             />
           </Pressable>
 
@@ -516,7 +515,15 @@ export default function CreateRecallFromShareScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* ── FROM section ── */}
-          {showFromSection && (
+          {!showFromSection ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>From</Text>
+              <View style={styles.noSourceCard}>
+                <IconSymbol name="link" size={20} color={colors.textTertiary} />
+                <Text style={styles.noSourceText}>No source URL</Text>
+              </View>
+            </View>
+          ) : (
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>From</Text>
 
@@ -547,8 +554,7 @@ export default function CreateRecallFromShareScreen() {
                         >
                           <BlurView intensity={80} style={styles.removeImageBlur}>
                             <IconSymbol
-                              ios_icon_name="xmark.circle.fill"
-                              android_material_icon_name="cancel"
+                              name="xmark.circle.fill"
                               size={28}
                               color={colors.text}
                             />
@@ -593,8 +599,7 @@ export default function CreateRecallFromShareScreen() {
                           ) : (
                             <View style={[styles.compactThumbnail, styles.compactThumbnailFallback]}>
                               <IconSymbol
-                                ios_icon_name="globe"
-                                android_material_icon_name="language"
+                                name="link"
                                 size={24}
                                 color={colors.textTertiary}
                               />
@@ -631,8 +636,7 @@ export default function CreateRecallFromShareScreen() {
                         <View style={styles.urlCardBody}>
                           <View style={styles.siteNameRow}>
                             <IconSymbol
-                              ios_icon_name="globe"
-                              android_material_icon_name="language"
+                              name="link"
                               size={12}
                               color={colors.textTertiary}
                             />
@@ -657,8 +661,7 @@ export default function CreateRecallFromShareScreen() {
                     /* Domain chip fallback — no metadata yet */
                     <View style={styles.domainChip}>
                       <IconSymbol
-                        ios_icon_name="link"
-                        android_material_icon_name="link"
+                        name="link"
                         size={14}
                         color={colors.textTertiary}
                       />
@@ -673,6 +676,7 @@ export default function CreateRecallFromShareScreen() {
           )}
 
           {/* ── NOTE section ── */}
+
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Note</Text>
             <TextInput
@@ -703,8 +707,7 @@ export default function CreateRecallFromShareScreen() {
                   <ActivityIndicator size="small" color={colors.textSecondary} />
                 ) : (
                   <IconSymbol
-                    ios_icon_name={locationIconName}
-                    android_material_icon_name="location-on"
+                    name={locationIconName}
                     size={20}
                     color={locationColor}
                   />
@@ -726,8 +729,7 @@ export default function CreateRecallFromShareScreen() {
           {!isLoadingShareData && images.length === 0 && urls.length === 0 && !text && (
             <View style={styles.emptyState}>
               <IconSymbol
-                ios_icon_name="exclamationmark.circle"
-                android_material_icon_name="error"
+                name="exclamationmark.triangle"
                 size={32}
                 color={colors.textTertiary}
               />
@@ -1035,6 +1037,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     fontWeight: '600',
+  },
+
+  // No source placeholder
+  noSourceCard: {
+    height: 120,
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  noSourceText: {
+    fontSize: 14,
+    color: colors.textTertiary,
   },
 
   // Empty state
