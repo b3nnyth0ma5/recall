@@ -28,7 +28,10 @@ export async function getSharedContainerURLAsync(): Promise<string | null> {
   try {
     const { getAppGroupContainerPath } = await import('../modules/AppGroupModule');
     const path = await getAppGroupContainerPath();
-    if (path) return path.endsWith('/') ? path : `${path}/`;
+    if (path) {
+      const normalized = path.startsWith('file://') ? path : `file://${path}`;
+      return normalized.endsWith('/') ? normalized : `${normalized}/`;
+    }
     return null;
   } catch {
     return null;
