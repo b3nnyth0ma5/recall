@@ -14,6 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "appleTeamId": "9PWN6F3TK8",
       "bundleIdentifier": "com.b3nny1nc.recall",
       "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
       "infoPlist": {
@@ -150,25 +151,7 @@
           }
         }
       ],
-      [
-        "@bacons/apple-targets",
-        {
-          "targets": [
-            {
-              "type": "share-extension",
-              "name": "ShareExtension",
-              "bundleIdentifier": "com.b3nny1nc.recall.ShareExtension",
-              "deploymentTarget": "15.1",
-              "entitlements": {
-                "com.apple.security.application-groups": [
-                  "group.com.b3nny1nc.recall"
-                ]
-              },
-              "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png"
-            }
-          ]
-        }
-      ],
+      "@bacons/apple-targets",
       "./app.plugin.js"
     ],
     "scheme": "recall",
@@ -179,25 +162,7 @@
       "supabaseUrl": "https://cesmsdnblkdjkskmiqib.supabase.co",
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4",
       "router": {},
-      "eas": {
-        "build": {
-          "experimental": {
-            "ios": {
-              "appExtensions": [
-                {
-                  "bundleIdentifier": "com.b3nny1nc.recall.ShareExtension",
-                  "targetName": "ShareExtension",
-                  "entitlements": {
-                    "com.apple.security.application-groups": [
-                      "group.com.b3nny1nc.recall"
-                    ]
-                  }
-                }
-              ]
-            }
-          }
-        }
-      }
+      "eas": {}
     }
   },
   "scheme": "Recall"
