@@ -151,22 +151,14 @@ class ShareViewController: UIViewController {
     }
 
     private func openMainApp(completion: @escaping () -> Void) {
-        guard let url = URL(string: appURLScheme) else {
+        guard let url = URL(string: appURLScheme),
+              let ctx = extensionContext else {
             completion()
             return
         }
-        var responder: UIResponder? = self
-        while responder != nil {
-            if let application = responder as? UIApplication {
-                application.open(url, options: [:]) { _ in
-                    completion()
-                }
-                return
-            }
-            responder = responder?.next
-        }
-        // Responder walk failed — still complete
-        completion()
+        ctx.open(url, completionHandler: { _ in
+            completion()
+        })
     }
 
     private func completeRequest() {
