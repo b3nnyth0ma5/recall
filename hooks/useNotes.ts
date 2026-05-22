@@ -1,9 +1,12 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Note } from '@/types/Note';
 import { supabase, getImageDataUrl, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
+import { getRecallUrlsForRecalls, triggerScrapeIfMissing, RecallUrlMetadata } from '@/utils/urlProcessor';
+
+export type { RecallUrlMetadata };
 
 export type SearchStage = 'idle' | 'resolving' | 'people' | 'keywords' | 'searching' | 'complete';
 
@@ -41,6 +44,8 @@ export function useNotes() {
   const [searchExtractedKeywords, setSearchExtractedKeywords] = useState<string[] | undefined>(undefined);
   const [searchTimeMs, setSearchTimeMs] = useState<number | undefined>(undefined);
   const [searchTimings, setSearchTimings] = useState<SearchTimings>({});
+  const [urlMetadataByRecallId, setUrlMetadataByRecallId] = useState<Record<string, RecallUrlMetadata[]>>({});
+  const urlRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { user } = useAuth();
 
   const ITEMS_PER_PAGE = 7;
@@ -312,6 +317,31 @@ export function useNotes() {
       } else {
         setNotes(notesWithImagesAndPeople);
       }
+
+      // Fire-and-forget URL metadata batch fetch for this page
+      const pageIds = notesWithImagesAndPeople.map((n: any) => n.id);
+      if (pageIds.length > 0) {
+        getRecallUrlsForRecalls(pageIds).then(fetched => {
+          setUrlMetadataByRecallId(prev => ({ ...prev, ...fetched }));
+          // Trigger lazy scrape for unscraped rows
+          const unscrapedIds: string[] = [];
+          for (const rows of Object.values(fetched)) {
+            for (const row of rows) {
+              if (row.scraped_at === null) unscrapedIds.push(row.id);
+            }
+          }
+          if (unscrapedIds.length > 0) {
+            console.log('[useNotes] loadNotes: lazy scrape for', unscrapedIds.length, 'unscraped rows');
+            unscrapedIds.forEach(id => triggerScrapeIfMissing(id));
+            if (urlRefreshTimerRef.current) clearTimeout(urlRefreshTimerRef.current);
+            urlRefreshTimerRef.current = setTimeout(() => {
+              getRecallUrlsForRecalls(pageIds).then(updated => {
+                setUrlMetadataByRecallId(prev => ({ ...prev, ...updated }));
+              });
+            }, 6000);
+          }
+        });
+      }
       
       if (__DEV__) console.log(`Loaded ${notesWithImagesAndPeople.length} notes for page ${pageNum}`);
     } catch (error) {
@@ -390,6 +420,11 @@ export function useNotes() {
       setNotes(prevNotes => 
         prevNotes.map(note => note.id === noteId ? updatedNote : note)
       );
+
+      // Refresh URL metadata for this note
+      getRecallUrlsForRecalls([noteId]).then(fetched => {
+        setUrlMetadataByRecallId(prev => ({ ...prev, ...fetched }));
+      });
       
       if (__DEV__) console.log('Single note refreshed successfully');
     } catch (error) {
@@ -786,6 +821,56 @@ export function useNotes() {
     }
   }, [refreshNotes, user, loadImagesForRecalls]);
 
+  /**
+   * Fetch URL metadata for the given recall IDs (or all current notes if omitted)
+   * and merge into state. Triggers lazy scrape for any unscraped rows.
+   */
+  const refreshUrlMetadata = useCallback(async (recallIds?: string[]) => {
+    const ids = recallIds ?? notes.map(n => n.id);
+    if (ids.length === 0) return;
+
+    if (__DEV__) console.log('[useNotes] refreshUrlMetadata for', ids.length, 'recalls');
+
+    const fetched = await getRecallUrlsForRecalls(ids);
+
+    setUrlMetadataByRecallId(prev => ({ ...prev, ...fetched }));
+
+    // Trigger lazy scrape for any rows with scraped_at IS NULL
+    const unscrapedIds: string[] = [];
+    for (const rows of Object.values(fetched)) {
+      for (const row of rows) {
+        if (row.scraped_at === null) {
+          unscrapedIds.push(row.id);
+        }
+      }
+    }
+
+    if (unscrapedIds.length > 0) {
+      console.log('[useNotes] Triggering lazy scrape for', unscrapedIds.length, 'unscraped URL rows');
+      unscrapedIds.forEach(id => triggerScrapeIfMissing(id));
+
+      // Schedule a single follow-up refresh to pick up newly scraped rows
+      if (urlRefreshTimerRef.current) {
+        clearTimeout(urlRefreshTimerRef.current);
+      }
+      urlRefreshTimerRef.current = setTimeout(() => {
+        console.log('[useNotes] Follow-up URL metadata refresh after scrape delay');
+        getRecallUrlsForRecalls(ids).then(updated => {
+          setUrlMetadataByRecallId(prev => ({ ...prev, ...updated }));
+        });
+      }, 6000);
+    }
+  }, [notes]);
+
+  /**
+   * Returns the first URL metadata row for a given recall, or null if none.
+   */
+  const getUrlMetadataForRecall = useCallback((recallId: string): RecallUrlMetadata | null => {
+    const rows = urlMetadataByRecallId[recallId];
+    if (!rows || rows.length === 0) return null;
+    return rows[0];
+  }, [urlMetadataByRecallId]);
+
   const getSearchHistory = useCallback(async () => {
     if (!user) {
       return [];
@@ -831,6 +916,7 @@ export function useNotes() {
     searchExtractedKeywords,
     searchTimeMs,
     searchTimings,
+    urlMetadataByRecallId,
     addNote,
     updateNote,
     deleteNote,
@@ -838,6 +924,8 @@ export function useNotes() {
     refreshNotes,
     loadMoreNotes,
     refreshSingleNote,
+    refreshUrlMetadata,
+    getUrlMetadataForRecall,
     getSearchHistory,
     getCachedNote,
   };

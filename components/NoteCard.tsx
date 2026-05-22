@@ -5,7 +5,8 @@ import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { IconSymbol } from './IconSymbol';
 import UrlPreviewCard from './UrlPreviewCard';
-import { extractUrls, getRecallUrls, triggerScrapeIfMissing } from '@/utils/urlProcessor';
+import { extractUrls } from '@/utils/urlProcessor';
+import { useNotesContext } from '@/contexts/NotesContext';
 const FullScreenImage = React.lazy(() =>
   import('./FullScreenImage').then(m => ({ default: m.FullScreenImage }))
 );
@@ -60,6 +61,7 @@ const countNewlines = (text: string): number => {
 
 // Memoized component for better performance
 export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount, scrollToImageIndex }: NoteCardProps) {
+  const { getUrlMetadataForRecall } = useNotesContext();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -81,15 +83,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   
   // Track if images are currently being uploaded
   const [isUploadingImages, setIsUploadingImages] = useState(false);
-
-  // URL preview metadata
-  const [urlMetadata, setUrlMetadata] = useState<{
-    id: string;
-    url: string;
-    og_title: string | null;
-    og_description: string | null;
-    og_site_name: string | null;
-  } | null>(null);
 
   // Animation values for deletion
   const opacity = useSharedValue(1);
@@ -163,48 +156,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       setIsUploadingImages(false);
     }
   }, [note.id, note.imageIds, note.images, loading, expectedImageCount]);
-
-  // Load URL preview metadata for the first URL in the note
-  useEffect(() => {
-    let mounted = true;
-
-    const loadUrlMetadata = async () => {
-      if (!note.text || extractUrls(note.text).length === 0) {
-        setUrlMetadata(null);
-        return;
-      }
-
-      console.log('[NoteCard] Loading URL metadata for recall:', note.id);
-      const rows = await getRecallUrls(note.id);
-      if (!mounted) return;
-
-      if (rows.length === 0) {
-        setUrlMetadata(null);
-        return;
-      }
-
-      const first = rows[0];
-      setUrlMetadata({
-        id: first.id,
-        url: first.url,
-        og_title: first.og_title,
-        og_description: first.og_description,
-        og_site_name: first.og_site_name,
-      });
-
-      // Lazy backfill if metadata not yet scraped
-      if (first.og_title === null) {
-        console.log('[NoteCard] og_title missing, triggering lazy scrape for:', first.id);
-        triggerScrapeIfMissing(first.id);
-      }
-    };
-
-    loadUrlMetadata();
-
-    return () => {
-      mounted = false;
-    };
-  }, [note.id, note.text]);
 
   // Scroll to specific image if scrollToImageIndex is provided - MUST be before conditional returns
   useEffect(() => {
@@ -592,14 +543,23 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               </Pressable>
             )}
 
-            {urlMetadata !== null && (
-              <UrlPreviewCard
-                url={urlMetadata.url}
-                ogTitle={urlMetadata.og_title}
-                ogDescription={urlMetadata.og_description}
-                ogSiteName={urlMetadata.og_site_name}
-              />
-            )}
+            {(() => {
+              const urlMeta = getUrlMetadataForRecall(note.id);
+              const noteHasUrl = note.text ? extractUrls(note.text).length > 0 : false;
+              if (urlMeta !== null && noteHasUrl) {
+                return (
+                  <UrlPreviewCard
+                    url={urlMeta.url}
+                    ogTitle={urlMeta.og_title}
+                    ogDescription={urlMeta.og_description}
+                    ogSiteName={urlMeta.og_site_name}
+                    ogImageUrl={urlMeta.og_image_url}
+                    scrapedAt={urlMeta.scraped_at}
+                  />
+                );
+              }
+              return null;
+            })()}
 
             <View style={styles.locationTimeContainer}>
               {note.location && (

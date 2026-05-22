@@ -37,7 +37,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
 import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding, triggerPeopleFinder } from '@/utils/supabase';
-import { processRecallUrls } from '@/utils/urlProcessor';
+import { processRecallUrls, processRecallUrlsAndAwaitScrape, extractUrls } from '@/utils/urlProcessor';
 import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
@@ -62,7 +62,7 @@ export default function NoteEditorScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { user } = useAuth();
-  const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote, getCachedNote } = useNotesContext();
+  const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote, getCachedNote, refreshUrlMetadata } = useNotesContext();
 
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageData[]>([]);
@@ -1138,15 +1138,30 @@ export default function NoteEditorScreen() {
       }
 
       console.log('[NoteEditor] [ASYNC] Processing URLs in note text for recall:', recallId);
-      processRecallUrls(user.id, recallId, noteData.text).then(result => {
-        if (result.success) {
-          console.log('[NoteEditor] [ASYNC] URLs processed successfully');
-        } else {
-          console.error('[NoteEditor] [ASYNC] Failed to process URLs:', result.error);
-        }
-      }).catch(error => {
-        console.error('[NoteEditor] [ASYNC] Error processing URLs:', error);
-      });
+      const urlsInEditorText = extractUrls(noteData.text);
+      if (urlsInEditorText.length > 0) {
+        console.log('[NoteEditor] [ASYNC] Awaiting URL scrape for', urlsInEditorText.length, 'URL(s)');
+        processRecallUrlsAndAwaitScrape(user.id, recallId, noteData.text, 8000).then(result => {
+          if (result.success) {
+            console.log('[NoteEditor] [ASYNC] URLs processed and scraped successfully');
+            refreshUrlMetadata([recallId]);
+          } else {
+            console.error('[NoteEditor] [ASYNC] Failed to process/scrape URLs:', result.error);
+          }
+        }).catch(error => {
+          console.error('[NoteEditor] [ASYNC] Error processing URLs:', error);
+        });
+      } else {
+        processRecallUrls(user.id, recallId, noteData.text).then(result => {
+          if (result.success) {
+            console.log('[NoteEditor] [ASYNC] URLs processed successfully (no URLs in text)');
+          } else {
+            console.error('[NoteEditor] [ASYNC] Failed to process URLs:', result.error);
+          }
+        }).catch(error => {
+          console.error('[NoteEditor] [ASYNC] Error processing URLs:', error);
+        });
+      }
 
       setTimeout(() => {
         triggerCategoryMatching(recallId).then(result => {

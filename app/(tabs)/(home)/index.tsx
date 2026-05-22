@@ -15,9 +15,10 @@ import { supabase } from '@/utils/supabase';
 import { uploadImageToDatabase } from '@/utils/supabase';
 import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 import { ZeroState } from '@/components/ZeroState';
+import { extractUrls, processRecallUrlsAndAwaitScrape } from '@/utils/urlProcessor';
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote } = useNotesContext();
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata } = useNotesContext();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -266,6 +267,17 @@ export default function HomeScreen() {
 
       console.log('[handleCreateRecallFromCombined] Recall created with ID:', recallData.id);
 
+      // Stage 2: Scraping URL (if text contains a URL)
+      const urlsInText = extractUrls(data.text);
+      if (urlsInText.length > 0) {
+        if (onProgress) onProgress('Scraping URL...');
+        setSavingStage('Scraping URL...');
+        console.log('[handleCreateRecallFromCombined] Stage: Scraping URL(s)... count:', urlsInText.length);
+        await processRecallUrlsAndAwaitScrape(user.id, recallData.id, data.text, 8000);
+        console.log('[handleCreateRecallFromCombined] Scraping complete');
+        await refreshUrlMetadata([recallData.id]);
+      }
+
       const totalImageCount = data.images.length;
       if (totalImageCount > 0) {
         pendingImageUploadsRef.current.set(recallData.id, totalImageCount);
@@ -273,12 +285,12 @@ export default function HomeScreen() {
       }
 
       if (data.images.length > 0) {
-        // Stage 2: Detecting People (shown before image upload for better UX)
+        // Stage 3: Detecting People (shown before image upload for better UX)
         if (onProgress) onProgress('Detecting People...');
         setSavingStage('Detecting People...');
         console.log('[handleCreateRecallFromCombined] Stage: Detecting people...');
         
-        // Stage 3: Matching Categories (shown before image upload for better UX)
+        // Stage 4: Matching Categories (shown before image upload for better UX)
         if (onProgress) onProgress('Matching Categories...');
         setSavingStage('Matching Categories...');
         console.log('[handleCreateRecallFromCombined] Stage: Matching categories...');
@@ -387,12 +399,12 @@ export default function HomeScreen() {
         }
       } else {
         // No images - show people detection and category matching stages
-        // Stage 2: Detecting People (text-only)
+        // Stage 3: Detecting People (text-only)
         if (onProgress) onProgress('Detecting People...');
         setSavingStage('Detecting People...');
         console.log(`[handleCreateRecallFromCombined] Stage: Detecting people (text-only)...`);
         
-        // Stage 3: Matching Categories
+        // Stage 4: Matching Categories
         if (onProgress) onProgress('Matching Categories...');
         setSavingStage('Matching Categories...');
         

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, memo } from 'react';
+import React, { useState, memo } from 'react';
 import {
   View,
   Text,
@@ -10,31 +10,18 @@ import {
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { SkeletonLoader } from './SkeletonLoader';
-import { fetchOgImageUrl } from '@/utils/ogImageScraper';
 
 export interface UrlPreviewCardProps {
   url: string;
   ogTitle: string | null;
   ogDescription: string | null;
   ogSiteName: string | null;
+  ogImageUrl: string | null;
+  scrapedAt: string | null;
 }
 
-function UrlPreviewCard({ url, ogTitle, ogDescription, ogSiteName }: UrlPreviewCardProps) {
-  // undefined = still loading, null = failed/none, string = loaded
-  const [imageUrl, setImageUrl] = useState<string | null | undefined>(undefined);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    fetchOgImageUrl(url).then(result => {
-      if (mountedRef.current) {
-        setImageUrl(result);
-      }
-    });
-    return () => {
-      mountedRef.current = false;
-    };
-  }, [url]);
+function UrlPreviewCard({ url, ogTitle, ogDescription, ogSiteName, ogImageUrl, scrapedAt }: UrlPreviewCardProps) {
+  const [imageFailed, setImageFailed] = useState(false);
 
   const fallbackSite = (() => {
     try {
@@ -45,10 +32,6 @@ function UrlPreviewCard({ url, ogTitle, ogDescription, ogSiteName }: UrlPreviewC
   })();
   const displaySite = ogSiteName ?? fallbackSite;
 
-  const isLoading = ogTitle === null && ogDescription === null && ogSiteName === null;
-  const hasImage = typeof imageUrl === 'string';
-  const imageLoading = imageUrl === undefined;
-
   const handlePress = () => {
     console.log('[UrlPreviewCard] User tapped URL preview card:', url);
     Linking.openURL(url).catch(err => {
@@ -56,7 +39,8 @@ function UrlPreviewCard({ url, ogTitle, ogDescription, ogSiteName }: UrlPreviewC
     });
   };
 
-  if (isLoading) {
+  // Show skeleton while scraping is pending
+  if (scrapedAt === null) {
     return (
       <View style={styles.card}>
         <View style={styles.row}>
@@ -71,23 +55,36 @@ function UrlPreviewCard({ url, ogTitle, ogDescription, ogSiteName }: UrlPreviewC
     );
   }
 
+  // Fully scraped but all metadata is null — render compact link chip
+  const allMetadataEmpty = !ogTitle && !ogDescription && !ogSiteName && !ogImageUrl;
+  if (allMetadataEmpty) {
+    return (
+      <Pressable style={styles.linkChip} onPress={handlePress}>
+        <IconSymbol name="link" size={13} color={colors.primary} />
+        <Text style={styles.linkChipText} numberOfLines={1}>
+          {fallbackSite}
+        </Text>
+      </Pressable>
+    );
+  }
+
+  const hasImage = typeof ogImageUrl === 'string' && ogImageUrl.length > 0 && !imageFailed;
+
   return (
     <Pressable style={styles.card} onPress={handlePress}>
       <View style={styles.row}>
-        {(hasImage || imageLoading) && (
-          <View style={[styles.imageContainer, imageLoading && styles.imagePlaceholder]}>
-            {hasImage && (
-              <Image
-                source={{ uri: imageUrl as string }}
-                style={styles.image}
-                resizeMode="cover"
-                onError={() => setImageUrl(null)}
-              />
-            )}
+        {hasImage && (
+          <View style={styles.imageContainer}>
+            <Image
+              source={{ uri: ogImageUrl as string }}
+              style={styles.image}
+              resizeMode="cover"
+              onError={() => setImageFailed(true)}
+            />
           </View>
         )}
 
-        <View style={[styles.textColumn, !hasImage && !imageLoading && styles.textColumnFull]}>
+        <View style={[styles.textColumn, !hasImage && styles.textColumnFull]}>
           {ogTitle ? (
             <Text style={styles.title} numberOfLines={2}>
               {ogTitle}
@@ -136,9 +133,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     flexShrink: 0,
   },
-  imagePlaceholder: {
-    backgroundColor: colors.background,
-  },
   image: {
     width: 88,
     height: 88,
@@ -181,5 +175,25 @@ const styles = StyleSheet.create({
   },
   skeletonBottom: {
     marginTop: 12,
+  },
+  linkChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 8,
+    marginHorizontal: 6,
+    backgroundColor: colors.cardDark,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  linkChipText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '500',
+    flexShrink: 1,
   },
 });
