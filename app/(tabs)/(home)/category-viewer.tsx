@@ -47,7 +47,7 @@ export default function CategoryViewerScreen() {
   const [isMatching, setIsMatching] = useState(false);
   const matchingCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [totalRecallCount, setTotalRecallCount] = useState(0);
-  const [sortOrder, setSortOrder] = useState<SortOrder>('Best match');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('Newest');
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
@@ -1210,10 +1210,9 @@ export default function CategoryViewerScreen() {
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <IconSymbol 
-                      ios_icon_name="pencil.circle.fill" 
-                      android_material_icon_name="edit" 
-                      size={24} 
-                      color={colors.primary} 
+                      name="pencil"
+                      size={12} 
+                      color="#FFFFFF" 
                     />
                   </Pressable>
                 </View>
@@ -1407,10 +1406,9 @@ export default function CategoryViewerScreen() {
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <IconSymbol 
-                    ios_icon_name="pencil.circle.fill" 
-                    android_material_icon_name="edit" 
-                    size={24} 
-                    color={colors.primary} 
+                    name="pencil"
+                    size={12} 
+                    color="#FFFFFF" 
                   />
                 </Pressable>
               </View>
@@ -1719,11 +1717,16 @@ const styles = StyleSheet.create({
   },
   photoEditBadge: {
     position: 'absolute',
-    bottom: -4,
-    right: -4,
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    padding: 2,
+    top: -2,
+    right: -2,
+    backgroundColor: '#007AFF',
+    borderRadius: 11,
+    width: 22,
+    height: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   categoryTextContainer: {
     flex: 1,

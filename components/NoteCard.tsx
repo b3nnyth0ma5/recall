@@ -243,6 +243,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           <Text
             key={index}
             style={styles.linkText}
+            numberOfLines={1}
+            ellipsizeMode="tail"
             onPress={(e) => {
               e.stopPropagation();
               console.log('Opening URL:', part);

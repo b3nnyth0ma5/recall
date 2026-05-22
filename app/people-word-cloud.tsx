@@ -406,10 +406,36 @@ export default function PeopleWordCloudScreen() {
       />
 
       {selectedPeople.length > 0 && (
-        <View style={styles.selectedCountContainer}>
-          <Text style={styles.selectedCountText}>
-            {selectedPeople.length} {selectedPeople.length === 1 ? 'person' : 'people'} selected
+        <View style={styles.selectedSection}>
+          <Text style={styles.selectedTitle}>
+            Selected ({selectedPeople.length})
           </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.selectedScroll}
+            contentContainerStyle={styles.selectedScrollContent}
+          >
+            {selectedPeople.map((person) => (
+              <Pressable
+                key={person.id}
+                style={styles.selectedChip}
+                onPress={() => {
+                  console.log('[PeopleWordCloud] Deselecting person from chip:', person.person_name);
+                  togglePerson(person);
+                }}
+              >
+                <PersonAvatar
+                  personName={person.person_name}
+                  photoUrl={person.photo_url}
+                  size={40}
+                />
+                <Text style={styles.selectedChipName} numberOfLines={1}>
+                  {person.person_name.length > 10 ? person.person_name.substring(0, 10) + '…' : person.person_name}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
         </View>
       )}
 
@@ -544,17 +570,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selectedCountContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+  selectedSection: {
     backgroundColor: colors.card,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
-  selectedCountText: {
+  selectedTitle: {
     fontSize: 13,
     color: colors.primary,
     fontWeight: '600',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  selectedScroll: {
+    flexGrow: 0,
+  },
+  selectedScrollContent: {
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  selectedChip: {
+    alignItems: 'center',
+    backgroundColor: colors.cardDark,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginHorizontal: 4,
+    minWidth: 60,
+  },
+  selectedChipName: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 4,
+    textAlign: 'center',
+    maxWidth: 64,
   },
   loadingContainer: {
     flex: 1,
