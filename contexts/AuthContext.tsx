@@ -15,27 +15,70 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 async function writeTokenToAppGroup(newSession: Session | null) {
-  if (Platform.OS !== 'ios') return;
+  const hasSession = newSession !== null;
+  console.log(
+    '[AuthContext] writeTokenToAppGroup called — has session:',
+    hasSession,
+    '| platform:',
+    Platform.OS
+  );
+
+  if (Platform.OS !== 'ios') {
+    console.log('[AuthContext] writeTokenToAppGroup — skipping, not iOS');
+    return;
+  }
+
   try {
     const { getAppGroupContainerPath } = await import('@/modules/AppGroupModule');
     const containerPath = await getAppGroupContainerPath();
-    if (!containerPath) return;
-    const normalized = containerPath.startsWith('file://') ? containerPath : `file://${containerPath}`;
-    const tokenPath = normalized.endsWith('/') ? `${normalized}auth-token.json` : `${normalized}/auth-token.json`;
+
+    console.log(
+      '[AuthContext] App Group container path:',
+      containerPath ?? 'NULL'
+    );
+
+    if (!containerPath) {
+      console.warn('[AuthContext] writeTokenToAppGroup — containerPath is null, aborting');
+      return;
+    }
+
+    const normalized = containerPath.startsWith('file://')
+      ? containerPath
+      : `file://${containerPath}`;
+    const tokenPath = normalized.endsWith('/')
+      ? `${normalized}auth-token.json`
+      : `${normalized}/auth-token.json`;
+
     if (newSession) {
-      console.log('[AuthContext] Writing auth token to App Group for share extension');
-      await FileSystem.writeAsStringAsync(tokenPath, JSON.stringify({
+      const payload = JSON.stringify({
         access_token: newSession.access_token,
         refresh_token: newSession.refresh_token,
         user_id: newSession.user.id,
         expires_at: newSession.expires_at ?? 0,
-      }));
+      });
+      console.log(
+        '[AuthContext] Writing token file to:',
+        tokenPath,
+        '| payload size:',
+        payload.length,
+        'bytes'
+      );
+      await FileSystem.writeAsStringAsync(tokenPath, payload);
+      console.log('[AuthContext] Token file written successfully');
     } else {
-      console.log('[AuthContext] Clearing auth token from App Group (sign out)');
+      console.log('[AuthContext] Deleting token file at:', tokenPath);
       await FileSystem.deleteAsync(tokenPath, { idempotent: true });
+      console.log('[AuthContext] Token file deleted successfully');
     }
   } catch (e) {
-    // non-fatal
+    console.error(
+      '[AuthContext] writeTokenToAppGroup FAILED:',
+      e instanceof Error ? e.message : String(e)
+    );
+    console.error(
+      '[AuthContext] writeTokenToAppGroup error stack:',
+      e instanceof Error ? e.stack : 'no stack'
+    );
   }
 }
 
@@ -91,11 +134,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const appStateSubscription = AppState.addEventListener('change', async (nextState) => {
       if (nextState === 'active') {
         console.log('[AuthContext] App foregrounded — refreshing App Group auth token');
+
+        // Run App Group diagnostics on every foreground so we can see the
+        // native module state in device logs without needing Xcode.
+        try {
+          const { getDiagnostics } = await import('@/modules/AppGroupModule');
+          const diagnostics = await getDiagnostics();
+          console.log('[AuthContext] App Group diagnostics:', JSON.stringify(diagnostics));
+        } catch (diagErr) {
+          console.warn('[AuthContext] getDiagnostics threw:', String(diagErr));
+        }
+
         try {
           const { data: { session: currentSession } } = await supabase.auth.getSession();
           await writeTokenToAppGroup(currentSession);
         } catch (e) {
-          // non-fatal
+          console.error(
+            '[AuthContext] App foreground token refresh FAILED:',
+            e instanceof Error ? e.message : String(e)
+          );
+          console.error(
+            '[AuthContext] App foreground token refresh error stack:',
+            e instanceof Error ? e.stack : 'no stack'
+          );
         }
       }
     });
