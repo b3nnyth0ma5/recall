@@ -1,1 +1,8 @@
-{"enabled":true,"device_id":"ae513b30-48db-42a5-b850-311e030ba273","session_id":"b3081c96-e1ef-4175-ae5e-5595392388d9","session_last_active":"2026-05-12T23:31:12.980918031Z","distinct_id":"6e60d4f7-3dd7-4c04-9564-598c69976f61","schema_version":1}
+{
+  "enabled": true,
+  "device_id": "ae513b30-48db-42a5-b850-311e030ba273",
+  "session_id": "b3081c96-e1ef-4175-ae5e-5595392388d9",
+  "session_last_active": 1779443471056,
+  "distinct_id": "6e60d4f7-3dd7-4c04-9564-598c69976f61",
+  "schema_version": 1
+}

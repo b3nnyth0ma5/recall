@@ -233,32 +233,19 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     }
   };
 
+  // Strip URLs from text for display in the card.
+  // The URL is still surfaced via UrlPreviewCard, and the raw note.text
+  // (with URLs intact) is what the editor reads — so editing is unaffected.
+  const stripUrlsForDisplay = (text: string): string => {
+    return text.replace(/\s*https?:\/\/\S+\s*/g, ' ').trim();
+  };
+
   const renderTextWithLinks = (text: string) => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = text.split(urlRegex).filter(part => part !== '');
-    
-    return parts.map((part, index) => {
-      if (part.match(urlRegex)) {
-        return (
-          <Text
-            key={index}
-            style={styles.linkText}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            onPress={(e) => {
-              e.stopPropagation();
-              console.log('Opening URL:', part);
-              Linking.openURL(part).catch(err => {
-                console.error('Failed to open URL:', err);
-              });
-            }}
-          >
-            {part}
-          </Text>
-        );
-      }
-      return <Text key={index} style={styles.normalText}>{part}</Text>;
-    });
+    const stripped = stripUrlsForDisplay(text);
+    if (!stripped) {
+      return null;
+    }
+    return <Text style={styles.normalText}>{stripped}</Text>;
   };
 
   const getPreviewText = () => {

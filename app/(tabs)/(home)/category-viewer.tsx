@@ -1717,9 +1717,9 @@ const styles = StyleSheet.create({
   },
   photoEditBadge: {
     position: 'absolute',
-    top: -2,
+    bottom: -2,
     right: -2,
-    backgroundColor: '#007AFF',
+    backgroundColor: '#0a7ea4',
     borderRadius: 11,
     width: 22,
     height: 22,
