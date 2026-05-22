@@ -43,24 +43,45 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
 
     // Build comprehensive share message with recall text, location, and image info
     let shareMessage = '';
-    
-    // Pre-enter the recall text at the top
-    if (recall.text) {
-      shareMessage += `${recall.text}\n\n`;
+
+    // Strip URLs from recall.text so they don't appear inline at the message head —
+    // iOS Messages aggressively globs trailing content into a leading URL otherwise,
+    // making the link unclickable and corrupting the rest of the message body.
+    // The extracted URL(s) are placed below on a labeled line.
+    const urlRegex = /https?:\/\/\S+/g;
+    const extractedUrls = recall.text?.match(urlRegex) ?? [];
+    const textWithoutUrls = (recall.text ?? '')
+      .replace(urlRegex, '')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    // Recall body text (URLs removed)
+    if (textWithoutUrls) {
+      shareMessage += `${textWithoutUrls}\n\n`;
     }
 
-    // Add location information with Google Maps link
+    // Extracted URL(s) on a labeled line so iOS Messages parses each as its own link
+    if (extractedUrls.length > 0) {
+      shareMessage += '🔗 Link:\n';
+      for (const url of extractedUrls) {
+        shareMessage += `${url}\n`;
+      }
+      shareMessage += '\n';
+    }
+
+    // Location with Google Maps link on its own labeled line
     if (recall.location) {
       shareMessage += `📍 ${recall.location}\n`;
-      
       if (recall.latitude && recall.longitude) {
         const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${recall.latitude},${recall.longitude}`;
-        shareMessage += `${mapsUrl}\n`;
+        shareMessage += `🗺️ ${mapsUrl}\n`;
       }
-      
       shareMessage += '\n';
-      shareMessage += 'Shared from Recall';
     }
+
+    // Footer — shown on every share, not just shares with a location
+    shareMessage += 'Shared from Recall';
 
     console.log('Share message prepared:', shareMessage.substring(0, 100) + '...');
 
