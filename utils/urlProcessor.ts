@@ -117,12 +117,13 @@ export async function processRecallUrls(
         url: url,
       }));
 
-      const { error: insertError } = await supabase
+      const { data: insertedRows, error: insertError } = await supabase
         .from('recall_urls')
         .upsert(urlRecords, {
           onConflict: 'user_id,recall_id,url',
           ignoreDuplicates: false,
-        });
+        })
+        .select('id, url');
 
       if (insertError) {
         console.error('Error inserting URLs:', insertError);
@@ -130,6 +131,16 @@ export async function processRecallUrls(
       }
 
       console.log('New URLs inserted successfully');
+
+      // Fire-and-forget scrape for each newly inserted row
+      if (insertedRows) {
+        for (const row of insertedRows) {
+          console.log('[urlProcessor] Triggering scrape for URL:', row.url, 'id:', row.id);
+          supabase.functions
+            .invoke('scrape-url-metadata', { body: { recall_url_id: row.id } })
+            .catch(err => console.warn('[urlProcessor] scrape invoke failed for', row.url, err));
+        }
+      }
     }
 
     // Delete removed URLs
@@ -163,18 +174,21 @@ export async function processRecallUrls(
 /**
  * Get all URLs for a recall
  * @param recallId - The recall ID
- * @returns Promise with array of URL records
+ * @returns Promise with array of URL records including OG metadata
  */
 export async function getRecallUrls(recallId: string): Promise<{
   id: string;
   url: string;
   url_data: string | null;
+  og_title: string | null;
+  og_description: string | null;
+  og_site_name: string | null;
   created_at: string;
 }[]> {
   try {
     const { data, error } = await supabase
       .from('recall_urls')
-      .select('id, url, url_data, created_at')
+      .select('id, url, url_data, og_title, og_description, og_site_name, created_at')
       .eq('recall_id', recallId)
       .order('created_at', { ascending: true });
 
@@ -188,4 +202,16 @@ export async function getRecallUrls(recallId: string): Promise<{
     console.error('Exception in getRecallUrls:', error);
     return [];
   }
+}
+
+/**
+ * Fire-and-forget trigger to scrape OG metadata for a recall_url row
+ * that doesn't yet have og_title populated.
+ * @param recallUrlId - The recall_urls row id
+ */
+export function triggerScrapeIfMissing(recallUrlId: string): void {
+  console.log('[urlProcessor] triggerScrapeIfMissing for recall_url_id:', recallUrlId);
+  supabase.functions
+    .invoke('scrape-url-metadata', { body: { recall_url_id: recallUrlId } })
+    .catch(err => console.warn('[urlProcessor] triggerScrapeIfMissing invoke failed for', recallUrlId, err));
 }
