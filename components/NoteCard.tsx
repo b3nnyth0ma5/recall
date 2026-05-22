@@ -519,6 +519,24 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                 />
               </View>
             )}
+						
+						{(() => {
+              const urlMeta = getUrlMetadataForRecall(note.id);
+              const noteHasUrl = note.text ? extractUrls(note.text).length > 0 : false;
+              if (urlMeta !== null && noteHasUrl) {
+                return (
+                  <UrlPreviewCard
+                    url={urlMeta.url}
+                    ogTitle={urlMeta.og_title}
+                    ogDescription={urlMeta.og_description}
+                    ogSiteName={urlMeta.og_site_name}
+                    ogImageUrl={urlMeta.og_image_url}
+                    scrapedAt={urlMeta.scraped_at}
+                  />
+                );
+              }
+              return null;
+            })()}
 
             {note.text && (
               <Pressable onPress={handleTextPress}>
@@ -542,24 +560,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                 )}
               </Pressable>
             )}
-
-            {(() => {
-              const urlMeta = getUrlMetadataForRecall(note.id);
-              const noteHasUrl = note.text ? extractUrls(note.text).length > 0 : false;
-              if (urlMeta !== null && noteHasUrl) {
-                return (
-                  <UrlPreviewCard
-                    url={urlMeta.url}
-                    ogTitle={urlMeta.og_title}
-                    ogDescription={urlMeta.og_description}
-                    ogSiteName={urlMeta.og_site_name}
-                    ogImageUrl={urlMeta.og_image_url}
-                    scrapedAt={urlMeta.scraped_at}
-                  />
-                );
-              }
-              return null;
-            })()}
 
             <View style={styles.locationTimeContainer}>
               {note.location && (
