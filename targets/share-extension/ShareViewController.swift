@@ -627,20 +627,37 @@ class ShareViewController: UIViewController {
             self.isScraping = false
 
             guard let data = data, error == nil,
-                  let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
+                  let rawHtml = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
                 DispatchQueue.main.async { self.showURLPreview(urlString: urlString) }
                 return
             }
+            // Cap HTML at 512KB to stay within iOS share-extension memory limits on heavy pages
+            let maxBytes = 512 * 1024
+            let html: String
+            if rawHtml.utf8.count > maxBytes {
+                let truncated = rawHtml.prefix(maxBytes)
+                html = String(truncated)
+            } else {
+                html = rawHtml
+            }
 
-            let title = self.extractMetaTag(html: html, property: "og:title")
-                ?? self.extractMetaTag(html: html, property: "twitter:title")
-                ?? self.extractHTMLTitle(html: html)
-            let description = self.extractMetaTag(html: html, property: "og:description")
-                ?? self.extractMetaTag(html: html, property: "twitter:description")
-                ?? self.extractMetaTag(html: html, name: "description")
-            let imageURLString = self.extractMetaTag(html: html, property: "og:image")
-                ?? self.extractMetaTag(html: html, property: "twitter:image")
-            let siteName = self.extractMetaTag(html: html, property: "og:site_name")
+            let metaTags = self.extractAllMetaTags(html: html)
+
+            let title = (metaTags["og:title"]
+                ?? metaTags["twitter:title"]
+                ?? self.extractHTMLTitle(html: html))
+                .map { self.decodeHtmlEntities($0) }
+            let description = (metaTags["og:description"]
+                ?? metaTags["twitter:description"]
+                ?? metaTags["description"])
+                .map { self.decodeHtmlEntities($0) }
+            let imageURLString = metaTags["og:image"]
+                ?? metaTags["og:image:secure_url"]
+                ?? metaTags["og:image:url"]
+                ?? metaTags["twitter:image"]
+                ?? metaTags["twitter:image:src"]
+            let siteName = (metaTags["og:site_name"] ?? metaTags["application-name"])
+                .map { self.decodeHtmlEntities($0) }
 
             self.scrapedTitle = title
             self.scrapedDescription = description
@@ -662,34 +679,48 @@ class ShareViewController: UIViewController {
 
     // MARK: - HTML Parsing Helpers
 
-    private func extractMetaTag(html: String, property: String) -> String? {
-        let patterns = [
-            "property=[\"']\(NSRegularExpression.escapedPattern(for: property))[\"'][^>]*content=[\"']([^\"']+)[\"']",
-            "content=[\"']([^\"']+)[\"'][^>]*property=[\"']\(NSRegularExpression.escapedPattern(for: property))[\"']"
-        ]
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-               let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-               let range = Range(match.range(at: 1), in: html) {
-                return String(html[range]).trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
-        return nil
-    }
+    /// Parses all <meta> tags in the HTML and returns a dictionary keyed by the
+    /// lowercased `property` or `name` attribute value. Attribute order-independent —
+    /// handles Shopify/Wix-style markup where `content` precedes `property`.
+    private func extractAllMetaTags(html: String) -> [String: String] {
+        var tags: [String: String] = [:]
+        // Match every <meta ...> tag (self-closing or not)
+        guard let metaRegex = try? NSRegularExpression(
+            pattern: "<meta\\s+([^>]*?)/?>",
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        ) else { return tags }
 
-    private func extractMetaTag(html: String, name: String) -> String? {
-        let patterns = [
-            "name=[\"']\(NSRegularExpression.escapedPattern(for: name))[\"'][^>]*content=[\"']([^\"']+)[\"']",
-            "content=[\"']([^\"']+)[\"'][^>]*name=[\"']\(NSRegularExpression.escapedPattern(for: name))[\"']"
-        ]
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-               let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-               let range = Range(match.range(at: 1), in: html) {
-                return String(html[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let metaMatches = metaRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+        for match in metaMatches {
+            guard match.numberOfRanges >= 2,
+                  let attrsRange = Range(match.range(at: 1), in: html) else { continue }
+            let attrs = String(html[attrsRange])
+
+            // Find key (property=... or name=...) and content=... in any order
+            let keyRegex = try? NSRegularExpression(
+                pattern: "(?:property|name)\\s*=\\s*[\"']([^\"']+)[\"']",
+                options: [.caseInsensitive]
+            )
+            let contentRegex = try? NSRegularExpression(
+                pattern: "content\\s*=\\s*[\"']([^\"']*)[\"']",
+                options: [.caseInsensitive]
+            )
+
+            guard let keyMatch = keyRegex?.firstMatch(in: attrs, range: NSRange(attrs.startIndex..., in: attrs)),
+                  keyMatch.numberOfRanges >= 2,
+                  let keyRange = Range(keyMatch.range(at: 1), in: attrs),
+                  let contentMatch = contentRegex?.firstMatch(in: attrs, range: NSRange(attrs.startIndex..., in: attrs)),
+                  contentMatch.numberOfRanges >= 2,
+                  let contentRange = Range(contentMatch.range(at: 1), in: attrs) else { continue }
+
+            let key = String(attrs[keyRange]).lowercased()
+            let value = String(attrs[contentRange])
+            // First occurrence wins (some sites duplicate meta tags)
+            if tags[key] == nil {
+                tags[key] = value
             }
         }
-        return nil
+        return tags
     }
 
     private func extractHTMLTitle(html: String) -> String? {
@@ -699,6 +730,81 @@ class ShareViewController: UIViewController {
             return String(html[range]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return nil
+    }
+
+    /// Decodes HTML character entities in a string. Handles named entities, hex numeric
+    /// entities (&#xNNNN;) and decimal numeric entities (&#NNN;), including full Unicode
+    /// code points (emoji, supplementary characters). Matches the JS decodeHtmlEntities
+    /// function in the scrape-url-metadata edge function.
+    private func decodeHtmlEntities(_ text: String) -> String {
+        if text.isEmpty { return text }
+        var result = text
+
+        // Named entities — match the JS decoder
+        let namedEntities: [(String, String)] = [
+            ("&amp;", "&"),
+            ("&lt;", "<"),
+            ("&gt;", ">"),
+            ("&quot;", "\""),
+            ("&apos;", "'"),
+            ("&nbsp;", " "),
+            ("&ldquo;", "\u{201C}"),
+            ("&rdquo;", "\u{201D}"),
+            ("&lsquo;", "\u{2018}"),
+            ("&rsquo;", "\u{2019}"),
+            ("&mdash;", "\u{2014}"),
+            ("&ndash;", "\u{2013}"),
+            ("&hellip;", "\u{2026}"),
+        ]
+        for (entity, replacement) in namedEntities {
+            result = result.replacingOccurrences(of: entity, with: replacement)
+        }
+
+        // Hex numeric entities &#x...; — up to 6 hex digits, full Unicode incl. emojis
+        if let hexRegex = try? NSRegularExpression(pattern: "&#x([0-9a-fA-F]{1,6});", options: []) {
+            let nsResult = NSMutableString(string: result)
+            let matches = hexRegex.matches(in: result, range: NSRange(result.startIndex..., in: result))
+            // Iterate matches in reverse so ranges remain valid as we mutate
+            for match in matches.reversed() {
+                guard match.numberOfRanges >= 2,
+                      let hexRange = Range(match.range(at: 1), in: result),
+                      let fullRange = Range(match.range, in: result) else { continue }
+                let hexStr = String(result[hexRange])
+                if let codePoint = UInt32(hexStr, radix: 16),
+                   codePoint > 0,
+                   codePoint <= 0x10FFFF,
+                   let scalar = Unicode.Scalar(codePoint) {
+                    let replacement = String(scalar)
+                    let nsFullRange = NSRange(fullRange, in: result)
+                    nsResult.replaceCharacters(in: nsFullRange, with: replacement)
+                }
+            }
+            result = nsResult as String
+        }
+
+        // Decimal numeric entities &#NNN; — up to 7 digits
+        if let decRegex = try? NSRegularExpression(pattern: "&#([0-9]{1,7});", options: []) {
+            let nsResult = NSMutableString(string: result)
+            let matches = decRegex.matches(in: result, range: NSRange(result.startIndex..., in: result))
+            // Iterate matches in reverse so ranges remain valid as we mutate
+            for match in matches.reversed() {
+                guard match.numberOfRanges >= 2,
+                      let decRange = Range(match.range(at: 1), in: result),
+                      let fullRange = Range(match.range, in: result) else { continue }
+                let decStr = String(result[decRange])
+                if let codePoint = UInt32(decStr),
+                   codePoint > 0,
+                   codePoint <= 0x10FFFF,
+                   let scalar = Unicode.Scalar(codePoint) {
+                    let replacement = String(scalar)
+                    let nsFullRange = NSRange(fullRange, in: result)
+                    nsResult.replaceCharacters(in: nsFullRange, with: replacement)
+                }
+            }
+            result = nsResult as String
+        }
+
+        return result
     }
 
     // MARK: - Auth Token
