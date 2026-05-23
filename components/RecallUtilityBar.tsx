@@ -1,5 +1,5 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Pressable, Platform } from 'react-native';
 import { IconSymbol } from './IconSymbol';
 import { colors } from '@/styles/commonStyles';
@@ -34,6 +34,19 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
   const shareButtonRef = useRef<View>(null);
   const [popoverVisible, setPopoverVisible] = useState(false);
   const [anchorRect, setAnchorRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [pendingIncludeLocation, setPendingIncludeLocation] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!popoverVisible && pendingIncludeLocation !== null) {
+      const choice = pendingIncludeLocation;
+      setPendingIncludeLocation(null);
+      const timer = setTimeout(() => {
+        console.log('Firing deferred onShare after popover dismiss — includeLocation:', choice);
+        onShare({ includeLocation: choice });
+      }, Platform.OS === 'ios' ? 350 : 0);
+      return () => clearTimeout(timer);
+    }
+  }, [popoverVisible, pendingIncludeLocation, onShare]);
 
   const handleAskQuestion = async () => {
     console.log('User tapped Chat icon on recall');
@@ -107,8 +120,8 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
         anchorPosition={anchorRect}
         onSelect={(includeLocation) => {
           console.log('SharePopover selection — includeLocation:', includeLocation);
+          setPendingIncludeLocation(includeLocation);
           setPopoverVisible(false);
-          onShare({ includeLocation });
         }}
         onDismiss={() => {
           console.log('SharePopover dismissed');
