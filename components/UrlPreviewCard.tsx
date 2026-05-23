@@ -117,13 +117,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
-    padding: 4,
+    padding: 0,
     marginTop: 10,
-    marginHorizontal: 6,
+    marginHorizontal: 0,
   },
   row: {
     flexDirection: 'row',
-    gap: 4,
+    gap: 0,
   },
   imageContainer: {
     width: 88,
