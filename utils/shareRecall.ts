@@ -18,6 +18,24 @@ if (Platform.OS !== 'web') {
   }
 }
 
+/**
+ * Determine a safe file extension from a URL by parsing the pathname only
+ * (ignoring query string) and matching common image formats. Defaults to 'jpg'.
+ */
+function getImageExtensionFromUrl(url: string): 'jpg' | 'jpeg' | 'png' | 'webp' | 'heic' | 'gif' {
+  try {
+    // Strip query string and fragment, then take the segment after the last '.'
+    const pathname = url.split('?')[0].split('#')[0];
+    const ext = (pathname.split('.').pop() || '').toLowerCase();
+    if (ext === 'png' || ext === 'webp' || ext === 'heic' || ext === 'gif' || ext === 'jpeg') {
+      return ext;
+    }
+    return 'jpg';
+  } catch {
+    return 'jpg';
+  }
+}
+
 export interface SharedRecallData {
   text: string;
   images: string[]; // CDN URLs
@@ -130,18 +148,27 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
           }
         }
 
-        console.log(`Starting download process for ${resolvedImages.length} image(s)`);
+        // Filter out any slots that still have no URL (e.g. imageIds that returned no row)
+        const downloadableImages = resolvedImages
+          .map((url, originalIndex) => ({ url, originalIndex }))
+          .filter(item => !!item.url);
+        const skippedCount = resolvedImages.length - downloadableImages.length;
+        if (skippedCount > 0) {
+          console.warn(`Skipping ${skippedCount} image slot(s) with no resolvable URL`);
+        }
+
+        console.log(`Starting download process for ${downloadableImages.length} image(s)`);
 
         // Download all images to temporary locations
-        const downloadPromises = resolvedImages.map(async (imageUrl, index) => {
-          const fileExtension = imageUrl.includes('.png') ? 'png' : 'jpg';
+        const downloadPromises = downloadableImages.map(async ({ url: imageUrl, originalIndex }, index) => {
+          const fileExtension = getImageExtensionFromUrl(imageUrl);
           const timestamp = Date.now();
           const randomSuffix = Math.random().toString(36).substring(7);
-          const fileName = `share_recall_${recall.id}_${index}_${timestamp}_${randomSuffix}.${fileExtension}`;
+          const fileName = `share_recall_${recall.id}_${originalIndex}_${timestamp}_${randomSuffix}.${fileExtension}`;
           const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
           
-          console.log(`[Image ${index + 1}/${resolvedImages.length}] Starting download`);
-          console.log(`[Image ${index + 1}] Source URL:`, imageUrl);
+          console.log(`[Image ${index + 1}/${downloadableImages.length}] Starting download`);
+          console.log(`[Image ${index + 1}] Source URL (originalIndex ${originalIndex}):`, imageUrl);
           console.log(`[Image ${index + 1}] Target path:`, fileUri);
           
           try {
@@ -190,8 +217,19 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
         // Filter out failed downloads
         const validUris = downloadResults.filter((uri): uri is string => uri !== null);
         
-        console.log(`Download summary: ${validUris.length} successful out of ${resolvedImages.length} total`);
+        console.log(`Download summary: ${validUris.length} successful out of ${downloadableImages.length} total`);
         console.log('Valid URIs:', validUris);
+
+        // Reorder so the currently-viewed image is the first one shared (primary preview).
+        let orderedUris = validUris;
+        if (currentImageIndex > 0 && validUris.length > 1) {
+          const targetPos = downloadableImages.findIndex(item => item.originalIndex === currentImageIndex);
+          if (targetPos > 0 && targetPos < validUris.length) {
+            orderedUris = [validUris[targetPos], ...validUris.slice(0, targetPos), ...validUris.slice(targetPos + 1)];
+            console.log(`Reordered: putting image at original index ${currentImageIndex} (validUris pos ${targetPos}) first`);
+            console.log('Reordered URIs:', orderedUris);
+          }
+        }
         
         // If we successfully downloaded at least one image, share them using react-native-share
         if (validUris.length > 0) {
@@ -201,7 +239,8 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
           const shareOptions: any = {
             title: 'Share Recall',
             message: shareMessage.trim(),
-            urls: validUris, // react-native-share supports multiple files on both platforms
+            urls: orderedUris, // react-native-share supports multiple files on both platforms
+            type: 'image/*', // Hint to share sheet that these are images, not generic files
           };
           
           console.log('Share options:', {
