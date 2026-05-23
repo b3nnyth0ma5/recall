@@ -3,11 +3,12 @@ import React, { useEffect } from 'react';
 import {
   View,
   Text,
-  Modal,
   Pressable,
   StyleSheet,
   useColorScheme,
   Dimensions,
+  BackHandler,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -46,6 +47,18 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
     }
   }, [visible]);
 
+  // Wire Android hardware back button to dismiss while visible
+  useEffect(() => {
+    if (!visible || Platform.OS !== 'android') return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onDismiss();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [visible, onDismiss]);
+
+  if (!visible) return null;
+
   const handleSelect = (includeLocation: boolean) => {
     console.log('User selected share option — includeLocation:', includeLocation);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -56,7 +69,7 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
   const dividerColor = isDark ? colors.divider : '#E5E5E5';
   const textColor = isDark ? colors.text : colors.textOnLight;
 
-  // Compute popover position
+  // Compute popover position using screen-absolute anchor coordinates
   let popoverLeft = 0;
   let popoverTop = 0;
   let tailLeft = POPOVER_WIDTH / 2 - TAIL_SIZE / 2;
@@ -65,7 +78,7 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
     const anchorCenterX = anchorPosition.x + anchorPosition.width / 2;
 
     // Centre popover on anchor, then clamp to screen edges
-    let rawLeft = anchorCenterX - POPOVER_WIDTH / 2;
+    const rawLeft = anchorCenterX - POPOVER_WIDTH / 2;
     const minLeft = SCREEN_EDGE_MARGIN + insets.left;
     const maxLeft = screenWidth - POPOVER_WIDTH - SCREEN_EDGE_MARGIN - insets.right;
     popoverLeft = Math.max(minLeft, Math.min(rawLeft, maxLeft));
@@ -74,11 +87,8 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
     tailLeft = anchorCenterX - popoverLeft - TAIL_SIZE / 2;
     tailLeft = Math.max(8, Math.min(tailLeft, POPOVER_WIDTH - 8 - TAIL_SIZE));
 
-    // Position card bottom = anchor top - gap
-    // We'll use bottom-anchoring via absolute top
-    popoverTop = anchorPosition.y - POPOVER_GAP - TAIL_SIZE;
-    // We don't know card height yet, so we use a fixed estimate (~100px for two rows)
-    popoverTop -= 100;
+    // Position card bottom = anchor top - gap - tail - card height estimate (~100px for two rows)
+    popoverTop = anchorPosition.y - POPOVER_GAP - TAIL_SIZE - 100;
   }
 
   const cardStyle = {
@@ -92,7 +102,8 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: isDark ? 0.5 : 0.18,
     shadowRadius: 8,
-    elevation: 8,
+    elevation: 10000,
+    zIndex: 10000,
   };
 
   const tailStyle = {
@@ -107,18 +118,13 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
     shadowOffset: { width: 2, height: 2 },
     shadowOpacity: isDark ? 0.3 : 0.1,
     shadowRadius: 2,
-    elevation: 4,
+    elevation: 9999,
+    zIndex: 9999,
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onDismiss}
-    >
-      {/* Backdrop */}
+    <View style={styles.overlay} pointerEvents="box-none">
+      {/* Backdrop — full-screen tap-to-dismiss */}
       <Pressable style={styles.backdrop} onPress={onDismiss}>
         {/* Prevent backdrop press from propagating through the card */}
         <Pressable style={cardStyle} onPress={() => {}}>
@@ -151,11 +157,20 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
         {/* Downward-pointing tail */}
         <View style={tailStyle} />
       </Pressable>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+    elevation: 9999,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.15)',

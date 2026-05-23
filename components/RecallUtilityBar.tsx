@@ -35,8 +35,8 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
   const [popoverVisible, setPopoverVisible] = useState(false);
   const [anchorRect, setAnchorRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
-  // Keep a stable ref to the latest onShare so the deferred setTimeout can
-  // call it even if RecallUtilityBar re-renders or unmounts before it fires.
+  // Keep a stable ref to the latest onShare so the callback always calls
+  // the latest version even if RecallUtilityBar re-renders.
   const onShareRef = useRef(onShare);
   useEffect(() => {
     onShareRef.current = onShare;
@@ -115,14 +115,8 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
         onSelect={(includeLocation) => {
           console.log('SharePopover selection — includeLocation:', includeLocation);
           setPopoverVisible(false);
-          // Defer the share via setTimeout so the Modal has a tick to dismiss.
-          // Use the ref so we always call the latest onShare even if RecallUtilityBar
-          // re-renders or its parent recycles between now and when the timer fires.
-          // NOTE: intentionally no clearTimeout — the timer must survive a component unmount.
-          setTimeout(() => {
-            console.log('Firing deferred onShare — includeLocation:', includeLocation);
-            onShareRef.current({ includeLocation });
-          }, Platform.OS === 'ios' ? 350 : 0);
+          console.log('Firing onShare immediately — includeLocation:', includeLocation);
+          onShareRef.current({ includeLocation });
         }}
         onDismiss={() => {
           console.log('SharePopover dismissed');
