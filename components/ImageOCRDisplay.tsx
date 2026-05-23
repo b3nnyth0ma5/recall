@@ -320,7 +320,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
                 </Pressable>
                 <IconSymbol
                   name={showExplanation ? 'chevron.up' : 'chevron.down'}
-                  size={16}
+                  size={18}
                   color={colors.textSecondary}
                 />
               </View>
@@ -429,7 +429,7 @@ const styles = StyleSheet.create({
   sectionHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 20,
   },
   copyButton: {
     width: 24,
