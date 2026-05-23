@@ -372,14 +372,14 @@ Deno.serve(async (req) => {
     const [recallsResult, imagesResult, recallPeopleResult] = await Promise.all([
       supabase.rpc('match_recalls', {
         query_embedding: embeddingStr,
-        match_threshold: 0.6,
+        match_threshold: 0.4,
         match_count: 50,
         user_id_filter: user.id
       }),
       supabase.rpc('match_recall_images', {
         query_embedding: embeddingStr,
-        match_threshold: 0.0,
-        match_count: 100,
+        match_threshold: 0.4,
+        match_count: 50,
         user_id_filter: user.id
       }),
       matchingPersonIds.length > 0
@@ -761,7 +761,7 @@ ${context}`;
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    const processingTime = Date.now() - startTime;
+    const processingTime = Date.now() - startTim;
     console.error('=== Error in Search Recalls V3 Edge Function ===');
     console.error('Error type:', error?.constructor?.name);
     console.error('Error message:', error instanceof Error ? error.message : 'Unknown error');
