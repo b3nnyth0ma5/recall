@@ -10,7 +10,7 @@ const corsHeaders = {
 const MOBILE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const MAX_BYTES = 256 * 1024; // 256 KB cap
 const FETCH_TIMEOUT_MS = 6000;
-const MAX_FIELD_LENGTH = 1000;
+const MAX_FIELD_LENGTH = 2000;
 const MAX_IMAGE_URL_LENGTH = 2000;
 
 // ---------------------------------------------------------------------------
