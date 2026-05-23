@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, memo, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
@@ -264,7 +263,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       return false;
     }
     const newlineCount = countNewlines(note.text);
-    return note.text.length > 125 || newlineCount > 6;
+    return note.text.length > 200 || newlineCount > 5;
   };
 
   const handleImageError = (index: number) => {
