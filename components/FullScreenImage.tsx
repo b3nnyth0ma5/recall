@@ -5,7 +5,6 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Image,
   Dimensions,
   Modal,
   NativeSyntheticEvent,
@@ -576,14 +575,21 @@ export function FullScreenImage({
             {/* OCR Button - Bottom Right */}
             <Pressable
               style={styles.ocrButton}
-              onPress={handleOCRButtonPress}
+              onPress={() => {
+                console.log('[FullScreenImage] Text/OCR button pressed for image index:', currentImageIndex);
+                handleOCRButtonPress();
+              }}
               hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              accessibilityLabel="View extracted text and explanation"
+              accessibilityRole="button"
             >
-              <Image
-                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-                style={styles.ocrButtonIcon}
-                resizeMode="contain"
-              />
+              <View style={styles.shareButtonContent}>
+                <IconSymbol
+                  name="text.alignleft"
+                  size={24}
+                  color="#FFFFFF"
+                />
+              </View>
             </Pressable>
 
             {/* Pagination Dots - Bottom Center */}
@@ -746,10 +752,6 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: colors.primary,
     zIndex: 1000,
-  },
-  ocrButtonIcon: {
-    width: 36,
-    height: 36,
   },
   paginationContainer: {
     position: 'absolute',

@@ -1,10 +1,19 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Pressable, ScrollView } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, Pressable, ScrollView, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { IconSymbol } from './IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { getImageOCRResults, triggerOCRProcessing, retryOCRProcessing } from '@/utils/supabase';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const SUCCESS_GREEN = '#34C759';
 
 interface ImageOCRDisplayProps {
   imageId: string;
@@ -33,6 +42,62 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
   const [showOcrText, setShowOcrText] = useState(true);
   const [showExplanation, setShowExplanation] = useState(true);
   const [autoTriggered, setAutoTriggered] = useState(false);
+
+  // Copy-to-clipboard state
+  const [ocrTextCopied, setOcrTextCopied] = useState(false);
+  const [explanationCopied, setExplanationCopied] = useState(false);
+  const ocrTextCopyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const explanationCopyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear timers on unmount
+  useEffect(() => {
+    return () => {
+      if (ocrTextCopyTimer.current) clearTimeout(ocrTextCopyTimer.current);
+      if (explanationCopyTimer.current) clearTimeout(explanationCopyTimer.current);
+    };
+  }, []);
+
+  const handleCopyOcrText = async () => {
+    if (!ocrText) return;
+    console.log('[ImageOCRDisplay] Copy extracted text button pressed');
+    try {
+      await Clipboard.setStringAsync(ocrText);
+      console.log('[ImageOCRDisplay] Extracted text copied to clipboard');
+      if (Platform.OS !== 'web') {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+      LayoutAnimation.easeInEaseOut();
+      setOcrTextCopied(true);
+      if (ocrTextCopyTimer.current) clearTimeout(ocrTextCopyTimer.current);
+      ocrTextCopyTimer.current = setTimeout(() => {
+        LayoutAnimation.easeInEaseOut();
+        setOcrTextCopied(false);
+      }, 1500);
+    } catch (err) {
+      console.error('[ImageOCRDisplay] Failed to copy extracted text:', err);
+    }
+  };
+
+  const handleCopyExplanation = async () => {
+    if (!explanation) return;
+    console.log('[ImageOCRDisplay] Copy AI explanation button pressed');
+    try {
+      await Clipboard.setStringAsync(explanation);
+      console.log('[ImageOCRDisplay] AI explanation copied to clipboard');
+      if (Platform.OS !== 'web') {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+      LayoutAnimation.easeInEaseOut();
+      setExplanationCopied(true);
+      if (explanationCopyTimer.current) clearTimeout(explanationCopyTimer.current);
+      explanationCopyTimer.current = setTimeout(() => {
+        LayoutAnimation.easeInEaseOut();
+        setExplanationCopied(false);
+      }, 1500);
+    } catch (err) {
+      console.error('[ImageOCRDisplay] Failed to copy AI explanation:', err);
+    }
+  };
 
   // Separate function for loading OCR results (not a callback to avoid circular dependencies)
   const loadOCRResults = async () => {
@@ -199,11 +264,26 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
                 <IconSymbol name="doc.text" size={18} color={colors.primary} />
                 <Text style={styles.sectionTitle}>Extracted Text</Text>
               </View>
-              <IconSymbol
-                name={showOcrText ? 'chevron.up' : 'chevron.down'}
-                size={16}
-                color={colors.textSecondary}
-              />
+              <View style={styles.sectionHeaderRight}>
+                <Pressable
+                  onPress={handleCopyOcrText}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel="Copy extracted text"
+                  accessibilityRole="button"
+                  style={styles.copyButton}
+                >
+                  <IconSymbol
+                    name={ocrTextCopied ? 'checkmark' : 'doc.on.doc'}
+                    size={18}
+                    color={ocrTextCopied ? SUCCESS_GREEN : colors.textSecondary}
+                  />
+                </Pressable>
+                <IconSymbol
+                  name={showOcrText ? 'chevron.up' : 'chevron.down'}
+                  size={16}
+                  color={colors.textSecondary}
+                />
+              </View>
             </Pressable>
             {showOcrText && (
               <Animated.View entering={FadeIn} style={styles.sectionContent}>
@@ -224,11 +304,26 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
                 <IconSymbol name="sparkles" size={18} color={colors.primary} />
                 <Text style={styles.sectionTitle}>AI Explanation</Text>
               </View>
-              <IconSymbol
-                name={showExplanation ? 'chevron.up' : 'chevron.down'}
-                size={16}
-                color={colors.textSecondary}
-              />
+              <View style={styles.sectionHeaderRight}>
+                <Pressable
+                  onPress={handleCopyExplanation}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel="Copy AI explanation"
+                  accessibilityRole="button"
+                  style={styles.copyButton}
+                >
+                  <IconSymbol
+                    name={explanationCopied ? 'checkmark' : 'doc.on.doc'}
+                    size={18}
+                    color={explanationCopied ? SUCCESS_GREEN : colors.textSecondary}
+                  />
+                </Pressable>
+                <IconSymbol
+                  name={showExplanation ? 'chevron.up' : 'chevron.down'}
+                  size={16}
+                  color={colors.textSecondary}
+                />
+              </View>
             </Pressable>
             {showExplanation && (
               <Animated.View entering={FadeIn} style={styles.sectionContent}>
@@ -329,6 +424,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flex: 1,
+  },
+  sectionHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  copyButton: {
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   sectionTitle: {
     color: colors.text,
