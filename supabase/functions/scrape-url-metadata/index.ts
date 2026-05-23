@@ -11,8 +11,156 @@ const FETCH_TIMEOUT_MS = 6000;
 const MAX_FIELD_LENGTH = 500;
 const MAX_IMAGE_URL_LENGTH = 2000;
 
+// ---------------------------------------------------------------------------
+// YouTube helpers
+// ---------------------------------------------------------------------------
+
+function extractYouTubeVideoId(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^(www\.|m\.)/, '');
+
+    // youtu.be/<id>
+    if (host === 'youtu.be') {
+      const id = u.pathname.slice(1).split('/')[0];
+      return id || null;
+    }
+
+    if (host === 'youtube.com') {
+      // /watch?v=<id>
+      const v = u.searchParams.get('v');
+      if (v) return v;
+
+      // /shorts/<id>  or  /embed/<id>  or  /v/<id>
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (['shorts', 'embed', 'v'].includes(parts[0]) && parts[1]) {
+        return parts[1];
+      }
+    }
+  } catch {
+    // invalid URL — fall through
+  }
+  return null;
+}
+
+function isYouTubeUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^(www\.|m\.)/, '');
+    return host === 'youtube.com' || host === 'youtu.be';
+  } catch {
+    return false;
+  }
+}
+
+interface YouTubeResult {
+  og_title: string | undefined;
+  og_description: string | undefined;
+  og_site_name: string;
+  og_image_url: string | null;
+}
+
+// Tier 1: YouTube Data API v3
+async function fetchYouTubeDataAPI(
+  videoId: string,
+  apiKey: string
+): Promise<YouTubeResult | null> {
+  console.log(`[YouTube API] Calling for video ${videoId}`);
+  try {
+    const apiUrl =
+      `https://www.googleapis.com/youtube/v3/videos` +
+      `?part=snippet&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    const res = await fetch(apiUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      console.warn(`[YouTube API] HTTP ${res.status} — falling through to oEmbed`);
+      return null;
+    }
+
+    const data = await res.json();
+
+    if (!data.items || data.items.length === 0) {
+      console.warn(`[YouTube API] No items found for video ${videoId}`);
+      return null;
+    }
+
+    const snippet = data.items[0].snippet;
+
+    // Pick the highest-resolution thumbnail available
+    const thumbPriority = ['maxres', 'standard', 'high', 'medium', 'default'];
+    let og_image_url: string | null = null;
+    for (const key of thumbPriority) {
+      const thumb = snippet.thumbnails?.[key]?.url;
+      if (thumb && thumb.length <= MAX_IMAGE_URL_LENGTH) {
+        og_image_url = thumb;
+        break;
+      }
+    }
+
+    console.log(`[YouTube API] Success for video ${videoId}`);
+    return {
+      og_title: snippet.title ? snippet.title.substring(0, MAX_FIELD_LENGTH) : undefined,
+      og_description: snippet.description
+        ? snippet.description.substring(0, MAX_FIELD_LENGTH)
+        : undefined,
+      og_site_name: 'YouTube',
+      og_image_url,
+    };
+  } catch (err) {
+    console.warn(`[YouTube API] Error: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
+// Tier 2: YouTube oEmbed
+async function fetchYouTubeOEmbed(url: string): Promise<YouTubeResult | null> {
+  console.log(`[YouTube oEmbed] Calling for ${url}`);
+  try {
+    const oEmbedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    const res = await fetch(oEmbedUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      console.warn(`[YouTube oEmbed] HTTP ${res.status} — falling through to HTML scrape`);
+      return null;
+    }
+
+    const data = await res.json();
+
+    const og_image_url =
+      data.thumbnail_url && data.thumbnail_url.length <= MAX_IMAGE_URL_LENGTH
+        ? data.thumbnail_url
+        : null;
+
+    console.log(`[YouTube oEmbed] Success`);
+    return {
+      og_title: data.title ? String(data.title).substring(0, MAX_FIELD_LENGTH) : undefined,
+      // oEmbed has no description field — use author_name as a fallback signal
+      og_description: data.author_name
+        ? String(data.author_name).substring(0, MAX_FIELD_LENGTH)
+        : undefined,
+      og_site_name: 'YouTube',
+      og_image_url,
+    };
+  } catch (err) {
+    console.warn(`[YouTube oEmbed] Error: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Generic HTML scrape helpers (unchanged from v7)
+// ---------------------------------------------------------------------------
+
 function extractMetaContent(html: string, property: string): string | undefined {
-  // Try property/name attribute first, then reversed attribute order
   const patterns = [
     new RegExp(`<meta\\s+(?:property|name)=["']${property}["']\\s+content=["']([^"']+)["']`, 'i'),
     new RegExp(`<meta\\s+content=["']([^"']+)["']\\s+(?:property|name)=["']${property}["']`, 'i'),
@@ -32,7 +180,6 @@ function extractTitle(html: string): string | undefined {
 function decodeHtmlEntities(text: string): string {
   if (!text) return text;
   return text
-    // Named entities — keep the existing 6 plus add common extras
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -46,24 +193,16 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&mdash;/g, '\u2014')
     .replace(/&ndash;/g, '\u2013')
     .replace(/&hellip;/g, '\u2026')
-    // Hex numeric: &#x...; — supports all Unicode including emojis (up to 6 hex digits)
     .replace(/&#x([0-9a-fA-F]{1,6});/g, (_, hex) => {
       try {
         const code = parseInt(hex, 16);
-        if (code > 0 && code <= 0x10FFFF) {
-          return String.fromCodePoint(code);
-        }
-        return _;
+        return code > 0 && code <= 0x10FFFF ? String.fromCodePoint(code) : _;
       } catch { return _; }
     })
-    // Decimal numeric: &#NNN; (up to 7 digits)
     .replace(/&#([0-9]{1,7});/g, (_, dec) => {
       try {
         const code = parseInt(dec, 10);
-        if (code > 0 && code <= 0x10FFFF) {
-          return String.fromCodePoint(code);
-        }
-        return _;
+        return code > 0 && code <= 0x10FFFF ? String.fromCodePoint(code) : _;
       } catch { return _; }
     });
 }
@@ -78,28 +217,99 @@ function cleanField(value: string | undefined): string | undefined {
 function resolveOgImageUrl(rawValue: string, sourceUrl: string): string | null {
   const decoded = decodeHtmlEntities(rawValue).trim();
   if (!decoded) return null;
-
-  // Resolve relative URLs against the source URL
   let resolved = decoded;
   try {
     resolved = new URL(decoded, sourceUrl).href;
   } catch {
-    // If resolution fails, fall back to raw value
     resolved = decoded;
   }
-
-  // Must start with http:// or https://
-  if (!resolved.startsWith('http://') && !resolved.startsWith('https://')) {
-    return null;
-  }
-
-  // Cap at 2000 chars
-  if (resolved.length > MAX_IMAGE_URL_LENGTH) {
-    return null;
-  }
-
+  if (!resolved.startsWith('http://') && !resolved.startsWith('https://')) return null;
+  if (resolved.length > MAX_IMAGE_URL_LENGTH) return null;
   return resolved;
 }
+
+// Tier 3: HTML scrape (generic, unchanged logic)
+async function scrapeHtml(url: string): Promise<{
+  og_title: string | undefined;
+  og_description: string | undefined;
+  og_site_name: string | undefined;
+  og_image_url: string | null;
+  fetchOk: boolean;
+  fetchStatus?: number;
+  fetchError?: string;
+}> {
+  console.log(`[HTML scrape] Calling for ${url}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': MOBILE_UA,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      signal: controller.signal,
+      redirect: 'follow',
+    });
+    clearTimeout(timeoutId);
+
+    const fetchStatus = response.status;
+    console.log('[HTML scrape] Fetch response status:', fetchStatus);
+
+    if (!response.ok) {
+      return { og_title: undefined, og_description: undefined, og_site_name: undefined, og_image_url: null, fetchOk: false, fetchStatus };
+    }
+
+    let html = '';
+    const reader = response.body?.getReader();
+    if (reader) {
+      let bytesRead = 0;
+      const decoder = new TextDecoder();
+      while (bytesRead < MAX_BYTES) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        html += decoder.decode(value, { stream: true });
+        bytesRead += value.byteLength;
+        if (html.toLowerCase().includes('</head>')) break;
+      }
+      reader.cancel();
+    }
+    console.log('[HTML scrape] HTML read, length:', html.length, 'bytes');
+
+    const og_title = cleanField(extractMetaContent(html, 'og:title') ?? extractTitle(html));
+    const og_description = cleanField(
+      extractMetaContent(html, 'og:description') ?? extractMetaContent(html, 'description')
+    );
+
+    const rawSiteName = extractMetaContent(html, 'og:site_name');
+    let og_site_name: string | undefined;
+    if (rawSiteName) {
+      og_site_name = cleanField(rawSiteName);
+    } else {
+      try {
+        og_site_name = new URL(url).hostname.replace(/^www\./, '') || undefined;
+      } catch {
+        og_site_name = undefined;
+      }
+    }
+
+    const rawOgImage = extractMetaContent(html, 'og:image');
+    const og_image_url = rawOgImage ? resolveOgImageUrl(rawOgImage, url) : null;
+
+    return { og_title, og_description, og_site_name, og_image_url, fetchOk: true, fetchStatus };
+  } catch (err) {
+    clearTimeout(timeoutId);
+    const fetchError = err instanceof Error ? err.message : String(err);
+    console.warn('[HTML scrape] Fetch failed:', fetchError);
+    return { og_title: undefined, og_description: undefined, og_site_name: undefined, og_image_url: null, fetchOk: false, fetchError };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main handler
+// ---------------------------------------------------------------------------
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -111,7 +321,6 @@ Deno.serve(async (req) => {
   console.log('Timestamp:', new Date().toISOString());
 
   try {
-    // Parse request
     let body: { recall_url_id?: string; force?: boolean };
     try {
       body = await req.json();
@@ -134,14 +343,12 @@ Deno.serve(async (req) => {
     console.log('Processing recall_url_id:', recall_url_id);
     console.log('Force re-scrape:', !!force);
 
-    // Init service-role Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Fetch the row — include scraped_at for idempotency check
     const { data: row, error: fetchRowError } = await supabase
       .from('recall_urls')
       .select('id, url, og_title, url_data, scraped_at')
@@ -159,7 +366,6 @@ Deno.serve(async (req) => {
     console.log('Row found. URL:', row.url);
     console.log('Existing scraped_at:', row.scraped_at);
 
-    // Idempotency: if scraped_at already set and force is not true, skip scraping
     if (row.scraped_at && !force) {
       console.log('scraped_at already present — skipping scrape, chaining to embedding-url if applicable');
       if (row.url_data) {
@@ -171,122 +377,97 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fetch the URL HTML with mobile UA and 6s timeout
-    console.log('Fetching URL:', row.url);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    // -----------------------------------------------------------------------
+    // Metadata extraction — YouTube waterfall or generic HTML scrape
+    // -----------------------------------------------------------------------
 
-    let html = '';
-    let fetchOk = false;
-    let fetchStatus: number | undefined;
-
-    try {
-      const response = await fetch(row.url, {
-        method: 'GET',
-        headers: {
-          'User-Agent': MOBILE_UA,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        signal: controller.signal,
-        redirect: 'follow',
-      });
-      clearTimeout(timeoutId);
-
-      fetchStatus = response.status;
-      console.log('Fetch response status:', fetchStatus);
-
-      if (!response.ok) {
-        console.warn('Non-2xx response from target site:', fetchStatus);
-        // Stamp scraped_at even on HTTP error so we don't retry dead URLs
-        await supabase
-          .from('recall_urls')
-          .update({ scraped_at: new Date().toISOString() })
-          .eq('id', recall_url_id);
-        return new Response(
-          JSON.stringify({ success: false, scraped: false, reason: 'http_error', status: fetchStatus }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // Read up to MAX_BYTES
-      const reader = response.body?.getReader();
-      if (reader) {
-        let bytesRead = 0;
-        const decoder = new TextDecoder();
-        while (bytesRead < MAX_BYTES) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          html += decoder.decode(value, { stream: true });
-          bytesRead += value.byteLength;
-          // Stop early once we've passed </head> — OG tags are always in <head>
-          if (html.toLowerCase().includes('</head>')) break;
-        }
-        reader.cancel();
-      }
-      fetchOk = true;
-      console.log('HTML read, length:', html.length, 'bytes');
-    } catch (err) {
-      clearTimeout(timeoutId);
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn('Fetch failed:', msg);
-      // Stamp scraped_at even on fetch failure so we don't retry dead URLs
-      await supabase
-        .from('recall_urls')
-        .update({ scraped_at: new Date().toISOString() })
-        .eq('id', recall_url_id);
-      return new Response(
-        JSON.stringify({ success: false, scraped: false, reason: 'fetch_failed', error: msg }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Parse OG metadata
     let og_title: string | undefined;
     let og_description: string | undefined;
     let og_site_name: string | undefined;
     let og_image_url: string | null = null;
+    let fetchOk = true; // assume ok unless HTML scrape fails
 
-    if (fetchOk && html) {
-      // og:title with fallback to <title>
-      og_title = cleanField(extractMetaContent(html, 'og:title') ?? extractTitle(html));
-      // og:description with fallback to meta description
-      og_description = cleanField(
-        extractMetaContent(html, 'og:description') ??
-        extractMetaContent(html, 'description')
-      );
-      // og:site_name with fallback to hostname
-      const rawSiteName = extractMetaContent(html, 'og:site_name');
-      if (rawSiteName) {
-        og_site_name = cleanField(rawSiteName);
-      } else {
-        try {
-          const hostname = new URL(row.url).hostname.replace(/^www\./, '');
-          og_site_name = hostname || undefined;
-        } catch {
-          og_site_name = undefined;
+    if (isYouTubeUrl(row.url)) {
+      const videoId = extractYouTubeVideoId(row.url);
+      console.log(`Detected YouTube URL ${row.url}, video ID: ${videoId}`);
+
+      let result: YouTubeResult | null = null;
+
+      // Tier 1: YouTube Data API v3
+      const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
+      if (apiKey && videoId) {
+        result = await fetchYouTubeDataAPI(videoId, apiKey);
+      } else if (!apiKey) {
+        console.warn('[YouTube API] GOOGLE_MAPS_API_KEY not set — skipping to oEmbed');
+      } else if (!videoId) {
+        console.warn('[YouTube API] Could not extract video ID — skipping to oEmbed');
+      }
+
+      // Tier 2: oEmbed
+      if (!result) {
+        result = await fetchYouTubeOEmbed(row.url);
+      }
+
+      // Tier 3: HTML scrape
+      if (!result) {
+        console.log('[YouTube] Both API and oEmbed failed — falling back to HTML scrape');
+        const scraped = await scrapeHtml(row.url);
+        fetchOk = scraped.fetchOk;
+        if (!scraped.fetchOk) {
+          // Stamp scraped_at to prevent retry storms
+          await supabase
+            .from('recall_urls')
+            .update({ scraped_at: new Date().toISOString() })
+            .eq('id', recall_url_id);
+          const reason = scraped.fetchError ? 'fetch_failed' : 'http_error';
+          return new Response(
+            JSON.stringify({ success: false, scraped: false, reason, status: scraped.fetchStatus, error: scraped.fetchError }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
         }
+        og_title = scraped.og_title;
+        og_description = scraped.og_description;
+        og_site_name = scraped.og_site_name;
+        og_image_url = scraped.og_image_url;
+      } else {
+        og_title = result.og_title;
+        og_description = result.og_description;
+        og_site_name = result.og_site_name;
+        og_image_url = result.og_image_url;
       }
-      // og:image — resolve relative URLs, validate scheme, cap length
-      const rawOgImage = extractMetaContent(html, 'og:image');
-      if (rawOgImage) {
-        og_image_url = resolveOgImageUrl(rawOgImage, row.url);
-        console.log('Parsed og_image_url:', og_image_url);
-      }
+
     } else {
-      // Fetch succeeded but no HTML — derive site_name from hostname
-      try {
-        og_site_name = new URL(row.url).hostname.replace(/^www\./, '') || undefined;
-      } catch {
-        og_site_name = undefined;
+      // Non-YouTube: generic HTML scrape only
+      const scraped = await scrapeHtml(row.url);
+      fetchOk = scraped.fetchOk;
+
+      if (!scraped.fetchOk) {
+        await supabase
+          .from('recall_urls')
+          .update({ scraped_at: new Date().toISOString() })
+          .eq('id', recall_url_id);
+        const reason = scraped.fetchError ? 'fetch_failed' : 'http_error';
+        return new Response(
+          JSON.stringify({ success: false, scraped: false, reason, status: scraped.fetchStatus, error: scraped.fetchError }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
+
+      og_title = scraped.og_title;
+      og_description = scraped.og_description;
+      og_site_name = scraped.og_site_name;
+      og_image_url = scraped.og_image_url;
     }
 
-    console.log('Parsed og_title:', og_title);
-    console.log('Parsed og_description:', og_description?.substring(0, 80));
-    console.log('Parsed og_site_name:', og_site_name);
+    console.log('Final og_title:', og_title);
+    console.log('Final og_description:', og_description?.substring(0, 80));
+    console.log('Final og_site_name:', og_site_name);
+    console.log('Final og_image_url:', og_image_url);
 
-    // Build url_data
+    // -----------------------------------------------------------------------
+    // Build url_data for embeddings
+    // -----------------------------------------------------------------------
+
     let url_data: string | null = row.url_data ?? null;
     if (og_title && og_description) {
       url_data = `${og_title}\n\n${og_description}`;
@@ -295,12 +476,13 @@ Deno.serve(async (req) => {
     } else if (og_description) {
       url_data = og_description;
     }
-    // If neither, leave url_data as existing value (don't overwrite with empty)
 
     console.log('url_data length:', url_data?.length ?? 0);
 
-    // Build update payload — coalesce semantics: never overwrite non-null with null
-    // scraped_at is ALWAYS set unconditionally
+    // -----------------------------------------------------------------------
+    // DB update — coalesce semantics, scraped_at always written
+    // -----------------------------------------------------------------------
+
     const updatePayload: Record<string, string | null> = {
       scraped_at: new Date().toISOString(),
     };
@@ -317,12 +499,11 @@ Deno.serve(async (req) => {
 
     if (updateError) {
       console.error('DB update error:', updateError.message);
-      // Don't fail the whole request — return partial success
     } else {
       console.log('DB updated successfully');
     }
 
-    // Chain to embedding-url (fire and forget) — only if url_data is non-empty
+    // Chain to embedding-url (fire and forget)
     const embedding_triggered = !!(url_data);
     if (embedding_triggered) {
       console.log('Chaining to embedding-url (fire-and-forget)...');
