@@ -394,11 +394,11 @@ Deno.serve(async (req) => {
       let result: YouTubeResult | null = null;
 
       // Tier 1: YouTube Data API v3
-      const apiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
+      const apiKey = Deno.env.get('GOOGLE_YOUTUBE_API_KEY');
       if (apiKey && videoId) {
         result = await fetchYouTubeDataAPI(videoId, apiKey);
       } else if (!apiKey) {
-        console.warn('[YouTube API] GOOGLE_PLACES_API_KEY not set — skipping to oEmbed');
+        console.warn('[YouTube API] GOOGLE_YOUTUBE_API_KEY not set — skipping to oEmbed');
       } else if (!videoId) {
         console.warn('[YouTube API] Could not extract video ID — skipping to oEmbed');
       }
