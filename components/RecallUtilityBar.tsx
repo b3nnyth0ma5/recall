@@ -34,19 +34,13 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
   const shareButtonRef = useRef<View>(null);
   const [popoverVisible, setPopoverVisible] = useState(false);
   const [anchorRect, setAnchorRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [pendingIncludeLocation, setPendingIncludeLocation] = useState<boolean | null>(null);
 
+  // Keep a stable ref to the latest onShare so the deferred setTimeout can
+  // call it even if RecallUtilityBar re-renders or unmounts before it fires.
+  const onShareRef = useRef(onShare);
   useEffect(() => {
-    if (!popoverVisible && pendingIncludeLocation !== null) {
-      const choice = pendingIncludeLocation;
-      setPendingIncludeLocation(null);
-      const timer = setTimeout(() => {
-        console.log('Firing deferred onShare after popover dismiss — includeLocation:', choice);
-        onShare({ includeLocation: choice });
-      }, Platform.OS === 'ios' ? 350 : 0);
-      return () => clearTimeout(timer);
-    }
-  }, [popoverVisible, pendingIncludeLocation, onShare]);
+    onShareRef.current = onShare;
+  }, [onShare]);
 
   const handleAskQuestion = async () => {
     console.log('User tapped Chat icon on recall');
@@ -120,8 +114,15 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
         anchorPosition={anchorRect}
         onSelect={(includeLocation) => {
           console.log('SharePopover selection — includeLocation:', includeLocation);
-          setPendingIncludeLocation(includeLocation);
           setPopoverVisible(false);
+          // Defer the share via setTimeout so the Modal has a tick to dismiss.
+          // Use the ref so we always call the latest onShare even if RecallUtilityBar
+          // re-renders or its parent recycles between now and when the timer fires.
+          // NOTE: intentionally no clearTimeout — the timer must survive a component unmount.
+          setTimeout(() => {
+            console.log('Firing deferred onShare — includeLocation:', includeLocation);
+            onShareRef.current({ includeLocation });
+          }, Platform.OS === 'ios' ? 350 : 0);
         }}
         onDismiss={() => {
           console.log('SharePopover dismissed');
