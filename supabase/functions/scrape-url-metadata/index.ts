@@ -1,3 +1,5 @@
+NEW
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 const corsHeaders = {
@@ -8,7 +10,7 @@ const corsHeaders = {
 const MOBILE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const MAX_BYTES = 256 * 1024; // 256 KB cap
 const FETCH_TIMEOUT_MS = 6000;
-const MAX_FIELD_LENGTH = 500;
+const MAX_FIELD_LENGTH = 1000;
 const MAX_IMAGE_URL_LENGTH = 2000;
 
 // ---------------------------------------------------------------------------
@@ -91,7 +93,7 @@ async function fetchYouTubeDataAPI(
     const snippet = data.items[0].snippet;
 
     // Pick the highest-resolution thumbnail available
-    const thumbPriority = ['maxres', 'standard', 'high', 'medium', 'default'];
+    const thumbPriority = ['standard', 'high', 'medium', 'default'];
     let og_image_url: string | null = null;
     for (const key of thumbPriority) {
       const thumb = snippet.thumbnails?.[key]?.url;
@@ -394,11 +396,11 @@ Deno.serve(async (req) => {
       let result: YouTubeResult | null = null;
 
       // Tier 1: YouTube Data API v3
-      const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
+      const apiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
       if (apiKey && videoId) {
         result = await fetchYouTubeDataAPI(videoId, apiKey);
       } else if (!apiKey) {
-        console.warn('[YouTube API] GOOGLE_MAPS_API_KEY not set — skipping to oEmbed');
+        console.warn('[YouTube API] GOOGLE_PLACES_API_KEY not set — skipping to oEmbed');
       } else if (!videoId) {
         console.warn('[YouTube API] Could not extract video ID — skipping to oEmbed');
       }
