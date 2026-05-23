@@ -89,7 +89,7 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
     tailLeft = Math.max(8, Math.min(tailLeft, POPOVER_WIDTH - 8 - TAIL_SIZE));
 
     // Position card bottom = anchor top - gap - tail - card height estimate (~100px for two rows)
-    popoverTop = anchorPosition.y - POPOVER_GAP - TAIL_SIZE - 100;
+    popoverTop = anchorPosition.y - POPOVER_GAP - TAIL_SIZE - 84;
   }
 
   const cardStyle = {
