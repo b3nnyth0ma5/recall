@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    gap: 0,
+    gap: 4,
   },
   imageContainer: {
     width: 88,
