@@ -64,7 +64,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
 
     // Extracted URL(s) on a labeled line so iOS Messages parses each as its own link
     if (extractedUrls.length > 0) {
-      shareMessage += '🔗 Link:\n';
+      shareMessage += '🔗 ';
       for (const url of extractedUrls) {
         shareMessage += `${url}\n`;
       }
