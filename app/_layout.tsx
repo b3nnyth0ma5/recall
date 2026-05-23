@@ -6,6 +6,7 @@ import { NotesProvider } from '@/contexts/NotesContext';
 import { PeopleGraphProvider, usePeopleGraph } from '@/contexts/PeopleGraphContext';
 import { PeopleGraph } from '@/components/PeopleGraph';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { PortalProvider } from '@gorhom/portal';
 import { StyleSheet, View, Platform, Linking } from 'react-native';
 import { supabase } from '@/utils/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -337,15 +338,17 @@ function RootLayoutNav() {
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <WidgetProvider>
-          <NotesProvider>
-            <PeopleGraphProvider>
-              <RootLayoutNav />
-            </PeopleGraphProvider>
-          </NotesProvider>
-        </WidgetProvider>
-      </AuthProvider>
+      <PortalProvider>
+        <AuthProvider>
+          <WidgetProvider>
+            <NotesProvider>
+              <PeopleGraphProvider>
+                <RootLayoutNav />
+              </PeopleGraphProvider>
+            </NotesProvider>
+          </WidgetProvider>
+        </AuthProvider>
+      </PortalProvider>
     </GestureHandlerRootView>
   );
 }

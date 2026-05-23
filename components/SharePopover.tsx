@@ -10,6 +10,7 @@ import {
   BackHandler,
   Platform,
 } from 'react-native';
+import { Portal } from '@gorhom/portal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { IconSymbol } from './IconSymbol';
@@ -57,8 +58,6 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
     return () => subscription.remove();
   }, [visible, onDismiss]);
 
-  if (!visible) return null;
-
   const handleSelect = (includeLocation: boolean) => {
     console.log('User selected share option — includeLocation:', includeLocation);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -70,6 +69,8 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
   const textColor = isDark ? colors.text : colors.textOnLight;
 
   // Compute popover position using screen-absolute anchor coordinates
+  // (measureInWindow returns window-absolute coords; the Portal host is window-rooted,
+  //  so these values map directly with no coordinate-space adjustment needed)
   let popoverLeft = 0;
   let popoverTop = 0;
   let tailLeft = POPOVER_WIDTH / 2 - TAIL_SIZE / 2;
@@ -123,56 +124,56 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
   };
 
   return (
-    <View style={styles.overlay} pointerEvents="box-none">
-      {/* Backdrop — full-screen tap-to-dismiss */}
-      <Pressable style={styles.backdrop} onPress={onDismiss}>
-        {/* Prevent backdrop press from propagating through the card */}
-        <Pressable style={cardStyle} onPress={() => {}}>
-          {/* Option 1: Share with location */}
-          <Pressable
-            style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-            onPress={() => handleSelect(true)}
-          >
-            <IconSymbol name="mappin.and.ellipse" size={18} color={colors.primary} />
-            <Text style={[styles.rowText, { color: textColor }]}>
-              Share with location
-            </Text>
+    <Portal>
+      {visible && (
+        <View style={styles.overlay} pointerEvents="box-none">
+          {/* Backdrop — full-screen tap-to-dismiss (sibling of card, not parent) */}
+          <Pressable style={styles.backdrop} onPress={onDismiss} />
+
+          {/* Popover card */}
+          <Pressable style={cardStyle} onPress={() => {}}>
+            {/* Option 1: Share with location */}
+            <Pressable
+              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+              onPress={() => handleSelect(true)}
+            >
+              <IconSymbol name="mappin.and.ellipse" size={18} color={colors.primary} />
+              <Text style={[styles.rowText, { color: textColor }]}>
+                Share with location
+              </Text>
+            </Pressable>
+
+            {/* Divider */}
+            <View style={[styles.divider, { backgroundColor: dividerColor }]} />
+
+            {/* Option 2: Share without location */}
+            <Pressable
+              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+              onPress={() => handleSelect(false)}
+            >
+              <IconSymbol name="mappin.slash" size={18} color={colors.textSecondary} />
+              <Text style={[styles.rowText, { color: textColor }]}>
+                Share without location
+              </Text>
+            </Pressable>
           </Pressable>
 
-          {/* Divider */}
-          <View style={[styles.divider, { backgroundColor: dividerColor }]} />
-
-          {/* Option 2: Share without location */}
-          <Pressable
-            style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-            onPress={() => handleSelect(false)}
-          >
-            <IconSymbol name="mappin.slash" size={18} color={colors.textSecondary} />
-            <Text style={[styles.rowText, { color: textColor }]}>
-              Share without location
-            </Text>
-          </Pressable>
-        </Pressable>
-
-        {/* Downward-pointing tail */}
-        <View style={tailStyle} />
-      </Pressable>
-    </View>
+          {/* Downward-pointing tail */}
+          <View style={tailStyle} />
+        </View>
+      )}
+    </Portal>
   );
 }
 
 const styles = StyleSheet.create({
   overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
     zIndex: 9999,
     elevation: 9999,
   },
   backdrop: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.15)',
   },
   row: {
