@@ -86,14 +86,24 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
 
     console.log('Share message prepared:', shareMessage.substring(0, 100) + '...');
 
-    // If there are images, download them and share with the message
-    if (recall.images && recall.images.length > 0 && Platform.OS !== 'web' && Share) {
-      console.log(`Starting download process for ${recall.images?.length ?? 0} image(s)`);
-      
+    // If there are images (either populated URLs OR just imageIds), download and share with the message
+    const hasUrlImages = !!(recall.images && recall.images.length > 0);
+    const hasIdImages = !!(recall.imageIds && recall.imageIds.length > 0);
+    const hasAnyImages = hasUrlImages || hasIdImages;
+
+    if (hasAnyImages && Platform.OS !== 'web' && Share) {
+      const totalImageCount = Math.max(recall.images?.length ?? 0, recall.imageIds?.length ?? 0);
+      console.log(`Starting download process for ${totalImageCount} image(s) — hasUrlImages: ${hasUrlImages}, hasIdImages: ${hasIdImages}`);
+
       try {
-        // Pre-resolve any missing image URLs (images beyond index 1 may be empty strings
-        // due to lazy-loading optimisation in loadImagesForRecalls)
-        const resolvedImages = [...(recall.images ?? [])];
+        // Build resolvedImages array sized to totalImageCount.
+        // Prefer existing URLs from recall.images; gaps will be filled from recall.imageIds via Supabase below.
+        const resolvedImages: string[] = new Array(totalImageCount).fill('');
+        if (recall.images) {
+          recall.images.forEach((url, index) => {
+            if (url) resolvedImages[index] = url;
+          });
+        }
 
         const missingIndices: number[] = [];
         resolvedImages.forEach((url, index) => {
@@ -241,6 +251,14 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
         console.error('❌ Error in image download/share process:', imageError);
         // Fall through to text-only share
       }
+    } else {
+      // Image branch was skipped — log why
+      console.log('[shareRecall] Skipping image branch:', {
+        hasUrlImages: !!(recall.images && recall.images.length > 0),
+        hasIdImages: !!(recall.imageIds && recall.imageIds.length > 0),
+        platform: Platform.OS,
+        shareModuleAvailable: !!Share,
+      });
     }
 
     // Fallback: Share text only
