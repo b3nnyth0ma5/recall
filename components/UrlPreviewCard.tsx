@@ -118,12 +118,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 12,
     padding: 0,
-    marginTop: 10,
-    marginHorizontal: 0,
+    marginTop: 2,
+    marginHorizontal: 2,
   },
   row: {
     flexDirection: 'row',
-    gap: 4,
+    gap: 8,
   },
   imageContainer: {
     width: 88,
