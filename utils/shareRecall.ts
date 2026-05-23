@@ -104,24 +104,14 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
 
     console.log('Share message prepared:', shareMessage.substring(0, 100) + '...');
 
-    // If there are images (either populated URLs OR just imageIds), download and share with the message
-    const hasUrlImages = !!(recall.images && recall.images.length > 0);
-    const hasIdImages = !!(recall.imageIds && recall.imageIds.length > 0);
-    const hasAnyImages = hasUrlImages || hasIdImages;
-
-    if (hasAnyImages && Platform.OS !== 'web' && Share) {
-      const totalImageCount = Math.max(recall.images?.length ?? 0, recall.imageIds?.length ?? 0);
-      console.log(`Starting download process for ${totalImageCount} image(s) — hasUrlImages: ${hasUrlImages}, hasIdImages: ${hasIdImages}`);
-
+    // If there are images, download them and share with the message
+    if (recall.images && recall.images.length > 0 && Platform.OS !== 'web' && Share) {
+      console.log(`Starting download process for ${recall.images?.length ?? 0} image(s)`);
+      
       try {
-        // Build resolvedImages array sized to totalImageCount.
-        // Prefer existing URLs from recall.images; gaps will be filled from recall.imageIds via Supabase below.
-        const resolvedImages: string[] = new Array(totalImageCount).fill('');
-        if (recall.images) {
-          recall.images.forEach((url, index) => {
-            if (url) resolvedImages[index] = url;
-          });
-        }
+        // Pre-resolve any missing image URLs (images beyond index 1 may be empty strings
+        // due to lazy-loading optimisation in loadImagesForRecalls)
+        const resolvedImages = [...(recall.images ?? [])];
 
         const missingIndices: number[] = [];
         resolvedImages.forEach((url, index) => {
@@ -148,27 +138,18 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
           }
         }
 
-        // Filter out any slots that still have no URL (e.g. imageIds that returned no row)
-        const downloadableImages = resolvedImages
-          .map((url, originalIndex) => ({ url, originalIndex }))
-          .filter(item => !!item.url);
-        const skippedCount = resolvedImages.length - downloadableImages.length;
-        if (skippedCount > 0) {
-          console.warn(`Skipping ${skippedCount} image slot(s) with no resolvable URL`);
-        }
-
-        console.log(`Starting download process for ${downloadableImages.length} image(s)`);
+        console.log(`Starting download process for ${resolvedImages.length} image(s)`);
 
         // Download all images to temporary locations
-        const downloadPromises = downloadableImages.map(async ({ url: imageUrl, originalIndex }, index) => {
+        const downloadPromises = resolvedImages.map(async (imageUrl, index) => {
           const fileExtension = getImageExtensionFromUrl(imageUrl);
           const timestamp = Date.now();
           const randomSuffix = Math.random().toString(36).substring(7);
-          const fileName = `share_recall_${recall.id}_${originalIndex}_${timestamp}_${randomSuffix}.${fileExtension}`;
+          const fileName = `share_recall_${recall.id}_${index}_${timestamp}_${randomSuffix}.${fileExtension}`;
           const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
           
-          console.log(`[Image ${index + 1}/${downloadableImages.length}] Starting download`);
-          console.log(`[Image ${index + 1}] Source URL (originalIndex ${originalIndex}):`, imageUrl);
+          console.log(`[Image ${index + 1}/${resolvedImages.length}] Starting download`);
+          console.log(`[Image ${index + 1}] Source URL:`, imageUrl);
           console.log(`[Image ${index + 1}] Target path:`, fileUri);
           
           try {
@@ -217,19 +198,8 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
         // Filter out failed downloads
         const validUris = downloadResults.filter((uri): uri is string => uri !== null);
         
-        console.log(`Download summary: ${validUris.length} successful out of ${downloadableImages.length} total`);
+        console.log(`Download summary: ${validUris.length} successful out of ${resolvedImages.length} total`);
         console.log('Valid URIs:', validUris);
-
-        // Reorder so the currently-viewed image is the first one shared (primary preview).
-        let orderedUris = validUris;
-        if (currentImageIndex > 0 && validUris.length > 1) {
-          const targetPos = downloadableImages.findIndex(item => item.originalIndex === currentImageIndex);
-          if (targetPos > 0 && targetPos < validUris.length) {
-            orderedUris = [validUris[targetPos], ...validUris.slice(0, targetPos), ...validUris.slice(targetPos + 1)];
-            console.log(`Reordered: putting image at original index ${currentImageIndex} (validUris pos ${targetPos}) first`);
-            console.log('Reordered URIs:', orderedUris);
-          }
-        }
         
         // If we successfully downloaded at least one image, share them using react-native-share
         if (validUris.length > 0) {
@@ -239,8 +209,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
           const shareOptions: any = {
             title: 'Share Recall',
             message: shareMessage.trim(),
-            urls: orderedUris, // react-native-share supports multiple files on both platforms
-            type: 'image/*', // Hint to share sheet that these are images, not generic files
+            urls: validUris, // react-native-share supports multiple files on both platforms
           };
           
           console.log('Share options:', {
@@ -290,14 +259,6 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
         console.error('❌ Error in image download/share process:', imageError);
         // Fall through to text-only share
       }
-    } else {
-      // Image branch was skipped — log why
-      console.log('[shareRecall] Skipping image branch:', {
-        hasUrlImages: !!(recall.images && recall.images.length > 0),
-        hasIdImages: !!(recall.imageIds && recall.imageIds.length > 0),
-        platform: Platform.OS,
-        shareModuleAvailable: !!Share,
-      });
     }
 
     // Fallback: Share text only
