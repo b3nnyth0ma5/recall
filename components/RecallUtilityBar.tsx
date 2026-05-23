@@ -1,14 +1,15 @@
 
-import React from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, StyleSheet, Pressable, Platform } from 'react-native';
 import { IconSymbol } from './IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import * as Haptics from 'expo-haptics';
-import { Platform } from 'react-native';
+import { SharePopover } from './SharePopover';
 
 interface RecallUtilityBarProps {
   onAskQuestion: () => void;
-  onShare: () => void;
+  onShare: (options?: { includeLocation: boolean }) => void;
+  hasLocation: boolean;
 }
 
 /**
@@ -23,15 +24,20 @@ interface RecallUtilityBarProps {
  * - Good touch target areas with hitSlop
  * - Haptic feedback on interactions
  * - Non-filled icon versions for cleaner look
+ * - Location-aware share popover
  */
 export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
   onAskQuestion,
   onShare,
+  hasLocation,
 }) => {
+  const shareButtonRef = useRef<View>(null);
+  const [popoverVisible, setPopoverVisible] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+
   const handleAskQuestion = async () => {
     console.log('User tapped Chat icon on recall');
     
-    // Provide haptic feedback
     if (Platform.OS !== 'web') {
       try {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -44,18 +50,27 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
   };
 
   const handleShare = async () => {
-    console.log('User tapped Share icon on recall');
+    console.log('User tapped Share icon on recall — hasLocation:', hasLocation);
     
-    // Provide haptic feedback
-    if (Platform.OS !== 'web') {
-      try {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
+    if (!hasLocation) {
+      // No location — fire share immediately with existing behaviour
+      if (Platform.OS !== 'web') {
+        try {
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        } catch (error) {
+          console.error('Error triggering haptic feedback:', error);
+        }
       }
+      onShare();
+      return;
     }
-    
-    onShare();
+
+    // Has location — measure button and open popover
+    shareButtonRef.current?.measureInWindow((x, y, width, height) => {
+      console.log('Share button measured — anchor rect:', { x, y, width, height });
+      setAnchorRect({ x, y, width, height });
+      setPopoverVisible(true);
+    });
   };
 
   return (
@@ -75,6 +90,7 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
 
       {/* Share Icon - Non-filled version */}
       <Pressable
+        ref={shareButtonRef}
         onPress={handleShare}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         style={styles.iconButton}
@@ -85,6 +101,20 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
           color={colors.primary}
         />
       </Pressable>
+
+      <SharePopover
+        visible={popoverVisible}
+        anchorPosition={anchorRect}
+        onSelect={(includeLocation) => {
+          console.log('SharePopover selection — includeLocation:', includeLocation);
+          setPopoverVisible(false);
+          onShare({ includeLocation });
+        }}
+        onDismiss={() => {
+          console.log('SharePopover dismissed');
+          setPopoverVisible(false);
+        }}
+      />
     </View>
   );
 };

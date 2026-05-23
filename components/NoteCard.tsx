@@ -101,10 +101,10 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   });
 
   // Callbacks - MUST be defined at top level before any conditional returns
-  const handleSharePress = useCallback(async () => {
-    console.log('User tapped Share button on recall:', note.id);
+  const handleSharePress = useCallback(async (options?: { includeLocation: boolean }) => {
+    console.log('User tapped Share button on recall:', note.id, '— options:', options);
     try {
-      await shareRecall(note, currentImageIndex);
+      await shareRecall(note, currentImageIndex, options);
     } catch (error) {
       console.error('Error sharing recall:', error);
     }
@@ -577,6 +577,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
             <RecallUtilityBar
               onAskQuestion={handleAskQuestion}
               onShare={handleSharePress}
+              hasLocation={Boolean(note.location)}
             />
           </View>
         </Swipeable>

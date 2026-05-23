@@ -35,7 +35,8 @@ export interface SharedRecallData {
  * @param recall - The note/recall to share
  * @param currentImageIndex - The index of the image currently being viewed (becomes primary)
  */
-export async function shareRecall(recall: Note, currentImageIndex: number = 0): Promise<void> {
+export async function shareRecall(recall: Note, currentImageIndex: number = 0, options?: { includeLocation?: boolean }): Promise<void> {
+  const includeLocation = options?.includeLocation !== false;
   try {
     console.log('User tapped Share button for recall:', recall.id);
     console.log('Current image index:', currentImageIndex);
@@ -71,7 +72,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0): 
     }
 
     // Location with Google Maps link on its own labeled line
-    if (recall.location) {
+    if (recall.location && includeLocation) {
       shareMessage += `📍 ${recall.location}\n`;
       if (recall.latitude && recall.longitude) {
         const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${recall.latitude},${recall.longitude}`;

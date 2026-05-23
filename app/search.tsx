@@ -152,6 +152,8 @@ export default function SearchScreen() {
   }, [searchStage, isSearching, hasSearched]);
 
   const handleSearch = useCallback(() => {
+    console.log('User submitted search query:', searchQuery.trim() || '(empty)');
+    Keyboard.dismiss();
     if (searchQuery.trim()) {
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
