@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
 
 const corsHeaders = {
@@ -10,6 +9,7 @@ const corsHeaders = {
 // Threshold configuration
 const TEXT_SIMILARITY_THRESHOLD = 0.4;
 const IMAGE_SIMILARITY_THRESHOLD = 0.25;
+const URL_SIMILARITY_THRESHOLD = 0.4;
 
 interface ExtractedEntities {
   keywords: string[];
@@ -22,6 +22,7 @@ interface RecallMatch {
   recall_id: string;
   text_similarity: number;
   image_similarities: number[];
+  url_similarities: number[];
   keyword_matches: number;
   recall_data: {
     text: string;
@@ -37,9 +38,19 @@ interface RecallMatch {
     image_explanation: string;
     similarity: number;
   }>;
+  urls_data: Array<{
+    id: string;
+    url: string;
+    og_site_name: string;
+    og_title: string;
+    og_description: string;
+    url_data: string;
+    similarity: number;
+  }>;
   isLocationMatch: boolean;
   isPeopleMatch: boolean;
   isKeywordMatch: boolean;
+  isUrlMatch: boolean;
 }
 
 /**
@@ -369,7 +380,7 @@ Deno.serve(async (req) => {
     // Convert embedding array to pgvector string format
     const embeddingStr = `[${queryEmbedding.join(',')}]`;
 
-    const [recallsResult, imagesResult, recallPeopleResult] = await Promise.all([
+    const [recallsResult, imagesResult, urlsResult, recallPeopleResult] = await Promise.all([
       supabase.rpc('match_recalls', {
         query_embedding: embeddingStr,
         match_threshold: 0.4,
@@ -377,6 +388,12 @@ Deno.serve(async (req) => {
         user_id_filter: user.id
       }),
       supabase.rpc('match_recall_images', {
+        query_embedding: embeddingStr,
+        match_threshold: 0.4,
+        match_count: 50,
+        user_id_filter: user.id
+      }),
+      supabase.rpc('match_recall_urls', {
         query_embedding: embeddingStr,
         match_threshold: 0.4,
         match_count: 50,
@@ -407,15 +424,24 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (urlsResult.error) {
+      console.error('Error fetching urls via RPC:', urlsResult.error);
+      return new Response(JSON.stringify({ error: 'Failed to fetch urls' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
     const dbQueryTime = Date.now() - dbQueryStart;
     console.log(`[Timing] Database vector search (RPC): ${dbQueryTime}ms`);
-    console.log(`Found ${(recallsResult.data || []).length} recall matches and ${(imagesResult.data || []).length} image matches from DB`);
+    console.log(`Found ${(recallsResult.data || []).length} recall matches, ${(imagesResult.data || []).length} image matches, ${(urlsResult.data || []).length} url matches from DB`);
 
     // Step 4: Filter and score recalls
     const filteringStart = Date.now();
 
     const allRecalls = recallsResult.data || [];
     const allImages = imagesResult.data || [];
+    const allUrls = urlsResult.data || [];
     const recallPeopleData = recallPeopleResult.data || [];
 
     // Group images by recall_id
@@ -427,28 +453,38 @@ Deno.serve(async (req) => {
       imagesByRecall.get(image.recall_id)!.push(image);
     }
 
-    // Also collect recall IDs that matched via images (even if recall itself didn't hit threshold)
-    const imageRecallIds = new Set<string>(allImages.map((img: any) => img.recall_id));
+    // Group urls by recall_id
+    const urlsByRecall = new Map<string, typeof allUrls>();
+    for (const urlRow of allUrls) {
+      if (!urlsByRecall.has(urlRow.recall_id)) {
+        urlsByRecall.set(urlRow.recall_id, []);
+      }
+      urlsByRecall.get(urlRow.recall_id)!.push(urlRow);
+    }
 
-    // Fetch full data for recalls that matched via images but not via text
-    const imageOnlyRecallIds = [...imageRecallIds].filter(
+    // Also collect recall IDs that matched via images or urls (even if recall itself didn't hit threshold)
+    const imageRecallIds = new Set<string>(allImages.map((img: any) => img.recall_id));
+    const urlRecallIds = new Set<string>(allUrls.map((u: any) => u.recall_id));
+
+    // Fetch full data for recalls that matched only via images or urls (not via text)
+    const auxiliaryOnlyRecallIds = [...new Set([...imageRecallIds, ...urlRecallIds])].filter(
       id => !allRecalls.some((r: any) => r.id === id)
     );
 
-    let imageOnlyRecalls: any[] = [];
-    if (imageOnlyRecallIds.length > 0) {
+    let auxiliaryOnlyRecalls: any[] = [];
+    if (auxiliaryOnlyRecallIds.length > 0) {
       const { data } = await supabase
         .from('recalls')
         .select('id, text, location, location_primary_type, latitude, longitude, created_at')
-        .in('id', imageOnlyRecallIds)
+        .in('id', auxiliaryOnlyRecallIds)
         .eq('user_id', user.id);
-      imageOnlyRecalls = data || [];
+      auxiliaryOnlyRecalls = data || [];
     }
 
     // Combine all candidate recalls
     const allCandidates = [
       ...allRecalls.map((r: any) => ({ ...r, textSimilarity: 1 - (r.distance ?? 1) })),
-      ...imageOnlyRecalls.map((r: any) => ({ ...r, textSimilarity: 0 }))
+      ...auxiliaryOnlyRecalls.map((r: any) => ({ ...r, textSimilarity: 0 }))
     ];
 
     // Group recall_people by recall_id
@@ -500,28 +536,44 @@ Deno.serve(async (req) => {
         similarity: 1 - (img.distance ?? 1)
       }));
 
-      const hasImageMatch = imageSimilarities.some(sim => sim >= IMAGE_SIMILARITY_THRESHOLD);
+      const recallUrls = urlsByRecall.get(recall.id) || [];
+      const urlSimilarities = recallUrls.map((u: any) => 1 - (u.distance ?? 1));
+      const urlsData: RecallMatch['urls_data'] = recallUrls.map((u: any) => ({
+        id: u.id,
+        url: u.url || '',
+        og_site_name: u.og_site_name || '',
+        og_title: u.og_title || '',
+        og_description: u.og_description || '',
+        url_data: u.url_data || '',
+        similarity: 1 - (u.distance ?? 1)
+      }));
 
-      if (isLocationMatch || isPeopleMatch || isKeywordMatch || hasImageMatch ||
+      const hasImageMatch = imageSimilarities.some(sim => sim >= IMAGE_SIMILARITY_THRESHOLD);
+      const hasUrlMatch = urlSimilarities.some(sim => sim >= URL_SIMILARITY_THRESHOLD);
+
+      if (isLocationMatch || isPeopleMatch || isKeywordMatch || hasImageMatch || hasUrlMatch ||
           (entities.keywords.length === 0 && entities.people.length === 0 && !locationCoords)) {
         recallMatches.push({
           recall_id: recall.id,
           text_similarity: recall.textSimilarity,
           image_similarities: imageSimilarities,
-          keyword_matches: isKeywordMatch ? 1 : 0,
+          url_similarities: urlSimilarities,
+          keyword_matches: isKeywordMatch? 1:0,
           recall_data: {
-            text: recall.text || '',
-            location: recall.location || '',
-            location_primary_type: recall.location_primary_type || '',
-            created_at: recall.created_at,
-            latitude: recall.latitude ?? null,
-            longitude: recall.longitude ?? null,
+          text: recall.text||'',
+          location: recall.location||'',
+          location_primary_type: recall.location_primary_type||'',
+          created_at: recall.created_at,
+          latitude: recall.latitude??null,
+          longitude: recall.longitude??null,
           },
           images_data: imagesData,
+          urls_data: urlsData,
           isLocationMatch,
           isPeopleMatch,
-          isKeywordMatch
-        });
+          isKeywordMatch,
+          isUrlMatch: false
+          });
       }
     }
 
@@ -568,6 +620,10 @@ Deno.serve(async (req) => {
         contextText += `Text: ${recall.recall_data.text}\n`;
         contextText += `Location: ${recall.recall_data.location}\n`;
         contextText += `Location Type: ${recall.recall_data.location_primary_type}\n`;
+        contextText += `URL: ${recall.urls_data.url}\n`;
+        contextText += `URL Title: ${recall.urls_data.og_title}\n`;
+        contextText += `URL Description: ${recall.urls_data.og_description}\n`;
+        contextText += `URL Data: ${recall.urls_data.url_data}\n`;
 
         if (recall.images_data && recall.images_data.length > 0) {
           contextText += `Images (${recall.images_data.length}):\n`;
@@ -761,7 +817,7 @@ ${context}`;
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    const processingTime = Date.now() - startTim;
+    const processingTime = Date.now() - startTime;
     console.error('=== Error in Search Recalls V3 Edge Function ===');
     console.error('Error type:', error?.constructor?.name);
     console.error('Error message:', error instanceof Error ? error.message : 'Unknown error');
