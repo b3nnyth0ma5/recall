@@ -384,19 +384,19 @@ Deno.serve(async (req) => {
       supabase.rpc('match_recalls', {
         query_embedding: embeddingStr,
         match_threshold: 0.4,
-        match_count: 50,
+        match_count: 30,
         user_id_filter: user.id
       }),
       supabase.rpc('match_recall_images', {
         query_embedding: embeddingStr,
         match_threshold: 0.4,
-        match_count: 50,
+        match_count: 30,
         user_id_filter: user.id
       }),
       supabase.rpc('match_recall_urls', {
         query_embedding: embeddingStr,
         match_threshold: 0.4,
-        match_count: 50,
+        match_count: 30,
         user_id_filter: user.id
       }),
       matchingPersonIds.length > 0
@@ -620,10 +620,29 @@ Deno.serve(async (req) => {
         contextText += `Text: ${recall.recall_data.text}\n`;
         contextText += `Location: ${recall.recall_data.location}\n`;
         contextText += `Location Type: ${recall.recall_data.location_primary_type}\n`;
-        contextText += `URL: ${recall.urls_data.url}\n`;
-        contextText += `URL Title: ${recall.urls_data.og_title}\n`;
-        contextText += `URL Description: ${recall.urls_data.og_description}\n`;
-        contextText += `URL Data: ${recall.urls_data.url_data}\n`;
+
+        if (recall.urls_data && recall.urls_data.length > 0) {
+          contextText += `URLs (${recall.urls_data.length}):\n`;
+          recall.urls_data.forEach((url, urlIdx) => {
+            contextText += `  URL ${urlIdx + 1}`;
+            if (url.similarity && url.similarity < 1.0) {
+              contextText += ` (${Math.round(url.similarity * 100)}% match)`;
+            }
+            contextText += `:\n`;
+            if (url.og_title) {
+              contextText += `    URL Title: ${url.og_title}\n`;
+            }
+            if (url.og_description) {
+              contextText += `    URL Description: ${url.og_description}\n`;
+            }
+            if (url.url_data) {
+              contextText += `    URL Data: ${url.url_data}\n`;
+            }
+            if (url.url) {
+              contextText += `    URL: ${url.url}\n`;
+            }
+          });
+        }
 
         if (recall.images_data && recall.images_data.length > 0) {
           contextText += `Images (${recall.images_data.length}):\n`;
