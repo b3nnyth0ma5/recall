@@ -37,3 +37,14 @@ netlify.toml
 .netlify/
 
 package-lock.json
+
+.next/
+.turbo/
+.vercel/
+.cache/
+build/
+.bun/bun.lock
+bun.lockb
+yarn.lock
+next-env.d.ts
+pnpm-lock.yaml
