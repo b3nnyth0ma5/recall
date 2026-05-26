@@ -396,7 +396,7 @@ Deno.serve(async (req) => {
       supabase.rpc('match_recall_urls', {
         query_embedding: embeddingStr,
         match_threshold: 0.4,
-        match_count: 30,
+        match_count: 50,
         user_id_filter: user.id
       }),
       matchingPersonIds.length > 0
@@ -572,7 +572,7 @@ Deno.serve(async (req) => {
           isLocationMatch,
           isPeopleMatch,
           isKeywordMatch,
-          isUrlMatch: false
+          isUrlMatch: hasUrlMatch
           });
       }
     }
@@ -621,29 +621,6 @@ Deno.serve(async (req) => {
         contextText += `Location: ${recall.recall_data.location}\n`;
         contextText += `Location Type: ${recall.recall_data.location_primary_type}\n`;
 
-        if (recall.urls_data && recall.urls_data.length > 0) {
-          contextText += `URLs (${recall.urls_data.length}):\n`;
-          recall.urls_data.forEach((url, urlIdx) => {
-            contextText += `  URL ${urlIdx + 1}`;
-            if (url.similarity && url.similarity < 1.0) {
-              contextText += ` (${Math.round(url.similarity * 100)}% match)`;
-            }
-            contextText += `:\n`;
-            if (url.og_title) {
-              contextText += `    URL Title: ${url.og_title}\n`;
-            }
-            if (url.og_description) {
-              contextText += `    URL Description: ${url.og_description}\n`;
-            }
-            if (url.url_data) {
-              contextText += `    URL Data: ${url.url_data}\n`;
-            }
-            if (url.url) {
-              contextText += `    URL: ${url.url}\n`;
-            }
-          });
-        }
-
         if (recall.images_data && recall.images_data.length > 0) {
           contextText += `Images (${recall.images_data.length}):\n`;
           recall.images_data.forEach((img, imgIdx) => {
@@ -657,6 +634,27 @@ Deno.serve(async (req) => {
             }
             if (img.ocr_text) {
               contextText += `    OCR Text: ${img.ocr_text}\n`;
+            }
+          });
+        }
+
+        if (recall.urls_data && recall.urls_data.length > 0) {
+          contextText += `Linked pages (${recall.urls_data.length}):\n`;
+          recall.urls_data.forEach((url, urlIdx) => {
+            contextText += `  Page ${urlIdx + 1}`;
+            if (url.similarity && url.similarity < 1.0) {
+              contextText += ` (${Math.round(url.similarity * 100)}% match)`;
+            }
+            contextText += `:\n`;
+            if (url.og_title) {
+              contextText += `    Title: ${url.og_title}\n`;
+            }
+            if (url.og_description) {
+              contextText += `    Description: ${url.og_description}\n`;
+            }
+            if (url.url_data) {
+              const excerpt = url.url_data.length > 800 ? url.url_data.slice(0, 800) + '…' : url.url_data;
+              contextText += `    Content: ${excerpt}\n`;
             }
           });
         }
@@ -685,6 +683,12 @@ CRITICAL RULES:
 MATCH INFORMATION:
 - Pay attention to match type indicators: [LOCATION], [PEOPLE], [KEYWORD]
 - Pay attention to keyword match counts - more matched keywords indicate better relevance
+
+LINKED PAGES:
+- Each recall may include "Linked pages" with content scraped from URLs the user saved
+- Use linked-page content (title, description, page text) when it is relevant to answering the question
+- When information comes from a linked page rather than the recall text itself, attribute it clearly, e.g. "according to the linked article…" or "the linked page states…"
+- Linked-page content is supplementary — always prefer the recall's own text when both are available
 
 Provide your answer in JSON format with inline source references: {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
 Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John mentioned he'll bring the presentation SOURCE_2.", "confidence": 90, "sources": ["SOURCE_1", "SOURCE_2"]}
