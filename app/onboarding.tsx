@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
@@ -374,11 +373,9 @@ function UseCaseCard({ card, index, isLast }: UseCaseCardProps) {
         <Text style={cardStyles.label}>The use case</Text>
         <Text style={cardStyles.text}>{card.useCase}</Text>
         <View style={cardStyles.recallRow}>
-          <View style={cardStyles.recallBadge}>
-            <Text style={cardStyles.recallBadgeText}>Recall it</Text>
-          </View>
+            <Text style={cardStyles.label}>Recall it</Text>
         </View>
-        <Text style={cardStyles.recallText}>{card.recallIt}</Text>
+        <Text style={cardStyles.text}>{card.recallIt}</Text>
       </View>
     </Animated.View>
   );
@@ -400,20 +397,20 @@ const cardStyles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    height: 180,
+    height: 190,
   },
   body: {
     padding: 16,
   },
   title: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
     color: '#FFFFFF',
     marginBottom: 10,
     letterSpacing: -0.3,
   },
   label: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.primary,
     textTransform: 'uppercase',
@@ -421,7 +418,7 @@ const cardStyles = StyleSheet.create({
     marginBottom: 6,
   },
   text: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#B0B0B0',
     lineHeight: 21,
     marginBottom: 14,
@@ -446,10 +443,9 @@ const cardStyles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   recallText: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#B0B0B0',
     lineHeight: 21,
-    fontStyle: 'italic',
   },
 });
 
@@ -482,7 +478,7 @@ function TopBar({ currentStep, onLoginPress }: TopBarProps) {
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={topBarStyles.loginButton}
         >
-          <Text style={topBarStyles.loginButtonText}>Login / Signup</Text>
+          <Text style={topBarStyles.loginButtonText}>Login / Sign up</Text>
         </Pressable>
       ) : (
         <View style={topBarStyles.loginButtonSpacer} />
@@ -906,25 +902,20 @@ export default function OnboardingScreen() {
               second brain.
             </Text>
 
-            <FeaturePill
-              icon={<MapPin size={24} color={CORAL} strokeWidth={2} />}
-              label="A place"
-              description="Pin a location so you remember where it happened."
+						<FeaturePill
+              icon={<FileText size={24} color={CORAL} strokeWidth={2} />}
+              label="Text"
+              description="Write a thought, an observation, some notes — anything really."
             />
-            <FeaturePill
-              icon={<Tags size={24} color={CORAL} strokeWidth={2} />}
-              label="Categories"
-              description="Create a category just by describing it. Recall keeps everything organised."
-            />
-            <FeaturePill
+						<FeaturePill
               icon={<Images size={24} color={CORAL} strokeWidth={2} />}
               label="Images"
               description="Attach images. Recall will analyse them; ready when you need anything from them."
             />
             <FeaturePill
-              icon={<FileText size={24} color={CORAL} strokeWidth={2} />}
-              label="Text"
-              description="Write a thought, an observation, some notes — anything really."
+              icon={<MapPin size={24} color={CORAL} strokeWidth={2} />}
+              label="A place"
+              description="Pin a location so you remember where it happened."
             />
             <FeaturePill
               icon={<Globe size={24} color={CORAL} strokeWidth={2} />}
@@ -936,7 +927,12 @@ export default function OnboardingScreen() {
               label="People"
               description="Recall surfaces and tags people mentioned anywhere — even in the images."
             />
-
+						<FeaturePill
+              icon={<Tags size={24} color={CORAL} strokeWidth={2} />}
+              label="Categories"
+              description="Create a category just by describing it. Recall keeps everything organised."
+            />
+						
             {/* Spacer so content clears the bottom chevrons */}
             <View style={{ height: 24 }} />
           </ScrollView>
