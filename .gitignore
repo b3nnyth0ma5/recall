@@ -48,3 +48,5 @@ bun.lockb
 yarn.lock
 next-env.d.ts
 pnpm-lock.yaml
+
+bun.lock

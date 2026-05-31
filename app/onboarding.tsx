@@ -1,15 +1,444 @@
 
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, Platform, ScrollView, Image } from 'react-native';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Dimensions,
+  Platform,
+  ScrollView,
+  Image,
+  KeyboardAvoidingView,
+  TextInput,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  ImageSourcePropType,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { AUTH_REDIRECT_URLS } from '@/constants/config';
 import * as Haptics from 'expo-haptics';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// ─── Image resolver ──────────────────────────────────────────────────────────
+function resolveImageSource(
+  source: string | number | ImageSourcePropType | undefined
+): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
+}
+
+// ─── Use-case data ────────────────────────────────────────────────────────────
+interface UseCase {
+  key: string;
+  title: string;
+  useCase: string;
+  recallIt: string;
+  image: ImageSourcePropType;
+}
+
+const ANYTHING_CARD: UseCase = {
+  key: 'anything',
+  title: 'Literally anything you want',
+  useCase:
+    "If it crosses your mind, it belongs in Recall. A dream you don't want to forget. A compliment someone gave you. The colour of paint in a hotel lobby. A funny thing your kid said. The wine your neighbour brought to dinner. Recall has no opinion about what's worth saving — only that you might want it back one day.",
+  recallIt:
+    "Ask in plain language: 'what was that thing about…?' Recall searches across everything you've ever saved — text, images, places, people, links — and surfaces whatever fits. The more you capture, the more your second brain has to draw on.",
+  image: require('@/assets/images/onboarding/use-case-anything.jpg'),
+};
+
+const RANDOM_POOL: UseCase[] = [
+  {
+    key: 'wines',
+    title: 'Wines',
+    useCase:
+      "That bottle you loved at dinner. The one your friend recommended. The label you photographed at that vineyard. Snap a picture of the bottle and add a tasting note — even just 'liked it, peppery.' Recall extracts the producer, vintage, and region from the label automatically.",
+    recallIt:
+      "Ask: 'which Bordeaux did I open last summer?' or 'show me the reds I rated 7/10 or higher.' Recall finds the bottle, the note, the place — perfect for the next restaurant order or wine shop visit.",
+    image: require('@/assets/images/onboarding/use-case-wines.jpg'),
+  },
+  {
+    key: 'ideas',
+    title: 'Ideas',
+    useCase:
+      'Every fleeting thought, half-formed concept, or shower-time epiphany — captured before it slips away. Jot down a sentence, dictate a voice memo, snap a sketch on a napkin. Recall preserves the spark and the context: when you had it, where you were, what triggered it.',
+    recallIt:
+      "Ask: 'what was that idea I had about the side project last month?' or 'show me everything I noted down about pricing.' Recall connects related ideas across time and surfaces the thread you were pulling on — even if you've forgotten the exact words.",
+    image: require('@/assets/images/onboarding/use-case-ideas.jpg'),
+  },
+  {
+    key: 'inventory',
+    title: 'Things',
+    useCase:
+      "Keep track of everything you own and where it lives. Snap a photo of the contents of a drawer, a storage box in the attic, or the shelf in the garage. Add a note about what's inside, condition, or when you bought it. Recall handles the rest — turning piles of stuff into a searchable, organised inventory you can actually find again.",
+    recallIt:
+      "Ask: 'where did I put the Christmas lights?' or 'do I still have spare HDMI cables?' Recall surfaces the photo, the note, and the location instantly.",
+    image: require('@/assets/images/onboarding/use-case-inventory.jpg'),
+  },
+  {
+    key: 'dreamhome',
+    title: 'Dream Home',
+    useCase:
+      "Every interior you've fallen in love with, every paint colour that caught your eye, every fixture and floorplan idea — collected as you find them. Snap pages from magazines, save Instagram posts, pin a tile shop on the map, jot a sentence about the kitchen you stayed in on holiday.",
+    recallIt:
+      "Ask: 'what was that green I liked for the bedroom?' or 'show me the bathrooms I've saved.' Recall pulls the photos, the notes and the places together — turning a scattered moodboard into something you can actually take to a builder.",
+    image: require('@/assets/images/onboarding/use-case-dreamhome.jpg'),
+  },
+  {
+    key: 'lists',
+    title: 'Lists',
+    useCase:
+      "Shopping lists, packing lists, gift ideas, books to read, films to watch. All the running tallies that live on scraps of paper and half-finished notes apps — finally in one place. Add items in seconds, with photos or links if you want the extra context.",
+    recallIt:
+      "Ask: 'what's on my packing list for skiing?' or 'what books did I want to read this summer?' Recall pulls up the list and remembers what you finished.",
+    image: require('@/assets/images/onboarding/use-case-lists.jpg'),
+  },
+  {
+    key: 'cookbooks',
+    title: 'Cookbooks',
+    useCase:
+      'Your physical cookbook shelf, made searchable. Snap the cover, the recipe index and a few favourite pages from each book. Recall indexes the recipes — so a wall of cookbooks becomes a personal recipe database you can actually use mid-week.',
+    recallIt:
+      "Ask: 'which of my books has a good roast chicken recipe?' or 'what can I make with aubergines?' Recall points you to the exact book and page.",
+    image: require('@/assets/images/onboarding/use-case-cookbooks.jpg'),
+  },
+  {
+    key: 'todo',
+    title: 'Things to do',
+    useCase:
+      "The restaurant a friend mentioned. The hiking trail you saw on Instagram. The exhibition closing next month. All the 'we should do that sometime' moments — captured with a link, a photo, or a pinned location, so they don't fade into vague intentions.",
+    recallIt:
+      "Ask: 'what restaurants did I save in Lisbon?' or 'what gig did Elly recommend?' Recall surfaces ideas by place, by season, or by who suggested them — turning a backlog of intentions into actual plans.",
+    image: require('@/assets/images/onboarding/use-case-todo.jpg'),
+  },
+  {
+    key: 'receipts',
+    title: 'Bills & Invoices',
+    useCase:
+      "Never lose a receipt again. Snap it the moment you're handed one — paper, email, or screen. Recall reads the merchant, the amount, the items and the date automatically, so you don't have to type anything.",
+    recallIt:
+      "Ask: 'how much did I spend on coffee last month?' or 'find the receipt from the hardware store in June.' Recall surfaces the image and the extracted details, ready to forward, file or claim.",
+    image: require('@/assets/images/onboarding/use-case-receipts.jpg'),
+  },
+  {
+    key: 'dates',
+    title: 'Important Dates',
+    useCase:
+      "Birthdays, anniversaries, the day you started a new job, when the boiler was last serviced. The dates you'll wish you remembered, plus the context: who, what, where, and what you did last time.",
+    recallIt:
+      "Ask: 'what did I get Mum last year?' or 'when's our anniversary?' Recall surfaces the date and everything attached to it — so you never duplicate a gift, miss a milestone, or forget the year the car was bought.",
+    image: require('@/assets/images/onboarding/use-case-dates.jpg'),
+  },
+  {
+    key: 'misc',
+    title: 'Miscellaneous',
+    useCase:
+      "Everything that doesn't fit a neat category. A serial number from the back of an appliance. A parking spot photo. A Wi-Fi password scribbled on a coaster. A quote you liked. The bits and pieces of life that don't belong in a notes app but you really do need later.",
+    recallIt:
+      "Ask: 'what was the Wi-Fi at that café?' or 'find the serial number for the washing machine.' Recall surfaces the photo or note instantly.",
+    image: require('@/assets/images/onboarding/use-case-misc.jpg'),
+  },
+  {
+    key: 'alcohol',
+    title: 'Alcohol Cabinet',
+    useCase:
+      'The whiskies, gins, vermouths and bitters scattered across your shelf — all in one searchable place. Snap each bottle as you open it, add a quick note on how you liked it, what you mixed it with, or who gifted it.',
+    recallIt:
+      "Ask: 'what gin do I have that works for a Negroni?' or 'which whisky did Dad bring last Christmas?' Recall surfaces the bottle, your tasting note and what's still left.",
+    image: require('@/assets/images/onboarding/use-case-alcohol.jpg'),
+  },
+  {
+    key: 'pets',
+    title: 'Pets',
+    useCase:
+      "Vaccination dates, vet bills, the brand of food they actually eat, the toy they destroyed in a week, photos at every age. Everything about your pet, in one place — instead of scattered across the fridge, the vet's portal and your camera roll.",
+    recallIt:
+      "Ask: 'when's the next worming due?' or 'what was the name of that treat she loved?' Recall surfaces the record, the photo or the receipt.",
+    image: require('@/assets/images/onboarding/use-case-pets.jpg'),
+  },
+  {
+    key: 'plants',
+    title: 'Plants',
+    useCase:
+      "Every plant in the house, plus the ones you've killed and the ones you want to try. Snap each pot, note the species, when you last watered, when you repotted, the spot it likes. Recall keeps the care notes attached to the plant instead of on a sticky note that's long gone.",
+    recallIt:
+      "Ask: 'when did I last feed the monstera?' or 'which plants are safe for the cat?' Recall surfaces the schedule, the photos and the notes.",
+    image: require('@/assets/images/onboarding/use-case-plants.jpg'),
+  },
+  {
+    key: 'collectibles',
+    title: 'Collectibles',
+    useCase:
+      'Coins, stamps, action figures, trading cards, vinyl, enamel pins — whatever you collect. Snap each piece, note the condition, the year, where you bought it and what you paid. Recall reads what it can from the image and keeps the rest organised.',
+    recallIt:
+      "Ask: 'do I already own this one?' or 'what's missing from the 1986 set?' Recall surfaces matches, gaps and duplicates — so you stop buying the same thing twice and finally close out the set.",
+    image: require('@/assets/images/onboarding/use-case-collectibles.jpg'),
+  },
+  {
+    key: 'jewellery',
+    title: 'Jewellery',
+    useCase:
+      'Every ring, chain, pair of earrings and family heirloom — photographed, valued and quietly catalogued. Add the maker, the metal, the stone, the story behind it. Useful for insurance, useful for inheritance.',
+    recallIt:
+      "Ask: 'where's Grandma's brooch?' or 'show me the silver pieces.' Recall surfaces the photo, the location and the details — ready for an insurance claim, a valuation or just finding what to wear tonight.",
+    image: require('@/assets/images/onboarding/use-case-jewellery.jpg'),
+  },
+  {
+    key: 'events',
+    title: 'Upcoming Events',
+    useCase:
+      "Concerts, weddings, festivals, conferences, the gallery opening next month. The tickets, the wristbands, the dress code, the address, who else is going and what time you said you'd arrive — all in one place instead of scattered across email and DMs.",
+    recallIt:
+      "Ask: 'what's on this weekend?' or 'where's the ticket for Friday?' Recall pulls up the event, the tickets, the location and any notes — so you stop scrolling through inboxes the morning of.",
+    image: require('@/assets/images/onboarding/use-case-events.jpg'),
+  },
+];
+
+// Stable random pick of 3 from pool (lazy initialiser — runs once)
+function pickThreeRandom(): UseCase[] {
+  const pool = [...RANDOM_POOL];
+  const picked: UseCase[] = [];
+  for (let i = 0; i < 3; i++) {
+    const idx = Math.floor(Math.random() * pool.length);
+    picked.push(pool.splice(idx, 1)[0]);
+  }
+  return picked;
+}
+
+// ─── AnimatedPressable ────────────────────────────────────────────────────────
+interface AnimatedPressableProps {
+  onPress?: () => void;
+  style?: object | object[];
+  children: React.ReactNode;
+  disabled?: boolean;
+  scaleValue?: number;
+}
+
+function AnimatedPressable({
+  onPress,
+  style,
+  children,
+  disabled,
+  scaleValue = 0.97,
+}: AnimatedPressableProps) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const animateIn = useCallback(() => {
+    Animated.spring(scale, {
+      toValue: scaleValue,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 4,
+    }).start();
+  }, [scale, scaleValue]);
+  const animateOut = useCallback(() => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 4,
+    }).start();
+  }, [scale]);
+  return (
+    <Animated.View style={[{ transform: [{ scale }] }, disabled && { opacity: 0.5 }]}>
+      <Pressable
+        onPressIn={animateIn}
+        onPressOut={animateOut}
+        onPress={onPress}
+        disabled={disabled}
+        style={style}
+      >
+        {children}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+// ─── Feature pill for "What is a Recall?" ────────────────────────────────────
+interface FeaturePillProps {
+  icon: string;
+  label: string;
+  description: string;
+}
+
+function FeaturePill({ icon, label, description }: FeaturePillProps) {
+  return (
+    <View style={featureStyles.pill}>
+      <View style={featureStyles.pillIconRow}>
+        <View style={featureStyles.pillIconCircle}>
+          <Text style={featureStyles.pillIcon}>{icon}</Text>
+        </View>
+        <Text style={featureStyles.pillLabel}>{label}</Text>
+      </View>
+      <Text style={featureStyles.pillDesc}>{description}</Text>
+    </View>
+  );
+}
+
+const featureStyles = StyleSheet.create({
+  pill: {
+    backgroundColor: '#242424',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  pillIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    gap: 10,
+  },
+  pillIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,107,122,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pillIcon: {
+    fontSize: 18,
+  },
+  pillLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  pillDesc: {
+    fontSize: 14,
+    color: '#B0B0B0',
+    lineHeight: 20,
+  },
+});
+
+// ─── Use-case card ────────────────────────────────────────────────────────────
+interface UseCaseCardProps {
+  card: UseCase;
+  index: number;
+}
+
+function UseCaseCard({ card, index }: UseCaseCardProps) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(16)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 380,
+        delay: index * 80,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 380,
+        delay: index * 80,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [index, opacity, translateY]);
+
+  return (
+    <Animated.View style={[cardStyles.wrapper, { opacity, transform: [{ translateY }] }]}>
+      <Image
+        source={resolveImageSource(card.image)}
+        style={cardStyles.image}
+        resizeMode="cover"
+      />
+      <View style={cardStyles.body}>
+        <Text style={cardStyles.title}>{card.title}</Text>
+        <Text style={cardStyles.label}>The use case</Text>
+        <Text style={cardStyles.text}>{card.useCase}</Text>
+        <View style={cardStyles.recallRow}>
+          <View style={cardStyles.recallBadge}>
+            <Text style={cardStyles.recallBadgeText}>Recall it</Text>
+          </View>
+        </View>
+        <Text style={cardStyles.recallText}>{card.recallIt}</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+const cardStyles = StyleSheet.create({
+  wrapper: {
+    backgroundColor: '#242424',
+    borderRadius: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#333333',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  image: {
+    width: '100%',
+    height: 180,
+  },
+  body: {
+    padding: 16,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 10,
+    letterSpacing: -0.3,
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  text: {
+    fontSize: 14,
+    color: '#B0B0B0',
+    lineHeight: 21,
+    marginBottom: 14,
+  },
+  recallRow: {
+    marginBottom: 8,
+  },
+  recallBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,107,122,0.12)',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,122,0.25)',
+  },
+  recallBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  recallText: {
+    fontSize: 14,
+    color: '#B0B0B0',
+    lineHeight: 21,
+    fontStyle: 'italic',
+  },
+});
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
 export default function OnboardingScreen() {
   const [currentPage, setCurrentPage] = useState(0);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -17,113 +446,51 @@ export default function OnboardingScreen() {
   const { user } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
 
-  const handleNext = () => {
-    if (Platform.OS !== 'web') {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
+  // Auth state (step 4)
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
 
-    if (currentPage < 2) {
+  // Stable random 3 use-case cards — lazy initialiser runs once
+  const [selectedCards] = useState<UseCase[]>(() => pickThreeRandom());
+
+  // ── Haptics helpers ──────────────────────────────────────────────────────
+  const hapticLight = () => {
+    if (Platform.OS !== 'web') {
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch (_) {}
+    }
+  };
+  const hapticMedium = () => {
+    if (Platform.OS !== 'web') {
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch (_) {}
+    }
+  };
+  const hapticHeavy = () => {
+    if (Platform.OS !== 'web') {
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); } catch (_) {}
+    }
+  };
+
+  // ── Navigation ───────────────────────────────────────────────────────────
+  const handleNext = () => {
+    console.log('[Onboarding] Next button pressed, currentPage:', currentPage);
+    hapticLight();
+    if (currentPage < 3) {
       const nextPage = currentPage + 1;
       setCurrentPage(nextPage);
       scrollViewRef.current?.scrollTo({ x: nextPage * SCREEN_WIDTH, animated: true });
     }
   };
 
-  const handleGetStarted = async () => {
-    if (isCompleting) {
-      console.log('[Onboarding] Already completing onboarding, ignoring duplicate call');
-      return;
-    }
-
-    setIsCompleting(true);
-
-    if (Platform.OS !== 'web') {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
-
-    try {
-      // Update user_journeys table to mark onboarding as complete
-      if (user?.id) {
-        console.log('[Onboarding] Marking onboarding as complete for user:', user.id);
-        
-        // Check if user_journeys record exists
-        const { data: existingJourney, error: fetchError } = await supabase
-          .from('user_journeys')
-          .select('*')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        if (fetchError && fetchError.code !== 'PGRST116') {
-          console.error('[Onboarding] Error fetching user journey:', fetchError);
-        }
-
-        if (existingJourney) {
-          // Update existing record
-          console.log('[Onboarding] Updating existing user journey record');
-          const { error: updateError } = await supabase
-            .from('user_journeys')
-            .update({ main_onboarding_date: new Date().toISOString() })
-            .eq('user_id', user.id);
-
-          if (updateError) {
-            console.error('[Onboarding] Error updating user journey:', updateError);
-          } else {
-            console.log('[Onboarding] Successfully updated user journey');
-          }
-        } else {
-          // Insert new record
-          console.log('[Onboarding] Inserting new user journey record');
-          const { error: insertError } = await supabase
-            .from('user_journeys')
-            .insert({
-              user_id: user.id,
-              main_onboarding_date: new Date().toISOString(),
-            });
-
-          if (insertError) {
-            console.error('[Onboarding] Error inserting user journey:', insertError);
-          } else {
-            console.log('[Onboarding] Successfully inserted user journey');
-          }
-        }
-
-        // Wait a bit to ensure the database update is complete
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-
-      // Navigate to home screen using replace to avoid back navigation to onboarding
-      console.log('[Onboarding] Navigating to home screen');
-      router.replace('/(tabs)/(home)');
-    } catch (error) {
-      console.error('[Onboarding] Error completing onboarding:', error);
-      // Navigate anyway to avoid blocking the user
-      router.replace('/(tabs)/(home)');
-    } finally {
-      setIsCompleting(false);
-    }
+  const handleGoToLogin = () => {
+    console.log('[Onboarding] Login/Signup button pressed, jumping to step 4');
+    hapticMedium();
+    setCurrentPage(3);
+    scrollViewRef.current?.scrollTo({ x: 3 * SCREEN_WIDTH, animated: true });
   };
 
-  const handleSkip = async () => {
-    if (Platform.OS !== 'web') {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
-
-    await handleGetStarted();
-  };
-
-  const handleScroll = (event: any) => {
+  const handleScroll = (event: { nativeEvent: { contentOffset: { x: number } } }) => {
     const offsetX = event.nativeEvent.contentOffset.x;
     const page = Math.round(offsetX / SCREEN_WIDTH);
     if (page !== currentPage) {
@@ -131,14 +498,167 @@ export default function OnboardingScreen() {
     }
   };
 
+  // ── Onboarding completion ────────────────────────────────────────────────
+  const markOnboardingComplete = async (userId: string) => {
+    console.log('[Onboarding] Marking onboarding complete for user:', userId);
+    const { data: existingJourney, error: fetchError } = await supabase
+      .from('user_journeys')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.error('[Onboarding] Error fetching user journey:', fetchError);
+    }
+
+    if (existingJourney) {
+      console.log('[Onboarding] Updating existing user journey record');
+      const { error: updateError } = await supabase
+        .from('user_journeys')
+        .update({ main_onboarding_date: new Date().toISOString() })
+        .eq('user_id', userId);
+      if (updateError) {
+        console.error('[Onboarding] Error updating user journey:', updateError);
+      } else {
+        console.log('[Onboarding] Successfully updated user journey');
+      }
+    } else {
+      console.log('[Onboarding] Inserting new user journey record');
+      const { error: insertError } = await supabase
+        .from('user_journeys')
+        .insert({
+          user_id: userId,
+          main_onboarding_date: new Date().toISOString(),
+        });
+      if (insertError) {
+        console.error('[Onboarding] Error inserting user journey:', insertError);
+      } else {
+        console.log('[Onboarding] Successfully inserted user journey');
+      }
+    }
+  };
+
+  // ── Login history ────────────────────────────────────────────────────────
+  const logLogin = async (userId: string) => {
+    try {
+      const { error } = await supabase
+        .from('login_history')
+        .insert([{ user_id: userId, login_at: new Date().toISOString() }]);
+      if (error) {
+        console.error('[Onboarding] Error logging login:', error);
+      } else {
+        console.log('[Onboarding] Login logged successfully');
+      }
+    } catch (err) {
+      console.error('[Onboarding] Error logging login:', err);
+    }
+  };
+
+  // ── Auth handler ─────────────────────────────────────────────────────────
+  const handleAuth = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please enter both email and password');
+      return;
+    }
+    console.log('[Onboarding] Auth button pressed, isSignUp:', isSignUp, 'email:', email);
+
+    try {
+      setAuthLoading(true);
+
+      if (isSignUp) {
+        console.log('[Onboarding] Attempting sign up for:', email);
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: AUTH_REDIRECT_URLS.EMAIL_CONFIRMED },
+        });
+
+        if (error) {
+          console.error('[Onboarding] Sign up error:', error.message);
+          Alert.alert('Sign Up Error', error.message);
+        } else if (data.user) {
+          console.log('[Onboarding] Sign up successful, email confirmation required');
+          Alert.alert(
+            'Check your email',
+            'Account created! Please check your email to verify your account before signing in.',
+            [{ text: 'OK' }]
+          );
+          setIsSignUp(false);
+          // Do NOT mark onboarding complete — wait for actual sign-in after email confirmation
+        }
+      } else {
+        console.log('[Onboarding] Attempting sign in for:', email);
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+        if (error) {
+          console.error('[Onboarding] Sign in error:', error.message);
+          Alert.alert('Sign In Error', error.message);
+        } else if (data.user) {
+          console.log('[Onboarding] Sign in successful, user:', data.user.id);
+          hapticHeavy();
+          await logLogin(data.user.id);
+
+          if (isCompleting) return;
+          setIsCompleting(true);
+
+          try {
+            await markOnboardingComplete(data.user.id);
+            await new Promise(resolve => setTimeout(resolve, 500));
+            console.log('[Onboarding] Navigating to home screen');
+            router.replace('/(tabs)/(home)');
+          } catch (navErr) {
+            console.error('[Onboarding] Error completing onboarding after sign in:', navErr);
+            router.replace('/(tabs)/(home)');
+          } finally {
+            setIsCompleting(false);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Onboarding] Unexpected auth error:', err);
+      Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleForgotPassword = () => {
+    console.log('[Onboarding] Forgot password pressed');
+    router.push('/reset-password');
+  };
+
+  const handleToggleSignUp = () => {
+    console.log('[Onboarding] Toggle sign up/in, switching to:', !isSignUp ? 'sign up' : 'sign in');
+    setIsSignUp(!isSignUp);
+  };
+
+  // ── Derived display values ───────────────────────────────────────────────
+  const showTopButton = currentPage < 3;
+  const showNextButton = currentPage < 3;
+  const showIndicators = currentPage < 3;
+  const authButtonLabel = isSignUp ? 'Create account' : 'Sign in';
+  const switchLabel = isSignUp
+    ? 'Already have an account? Sign in'
+    : "Don't have an account? Sign up";
+  const authTitle = isSignUp ? 'Create your account' : 'Welcome back';
+  const authSubtitle = isSignUp
+    ? 'Join Recall and start building your second brain.'
+    : 'Sign in to continue to Recall.';
+
+  const allCards = [...selectedCards, ANYTHING_CARD];
+
   return (
     <View style={styles.container}>
-      {/* Skip Button */}
-      <Pressable onPress={handleSkip} style={styles.skipButton} disabled={isCompleting}>
-        <Text style={styles.skipText}>Skip</Text>
-      </Pressable>
+      {/* ── Top-right Login/Signup button (steps 1–3) ── */}
+      {showTopButton && (
+        <AnimatedPressable onPress={handleGoToLogin} style={styles.topRightButton}>
+          <Text style={styles.topRightButtonText}>
+            {currentPage === 0 ? 'Sign in' : 'Login / Sign up'}
+          </Text>
+        </AnimatedPressable>
+      )}
 
-      {/* Scrollable Pages */}
+      {/* ── Horizontal pager ── */}
       <ScrollView
         ref={scrollViewRef}
         horizontal
@@ -147,265 +667,564 @@ export default function OnboardingScreen() {
         onScroll={handleScroll}
         scrollEventThrottle={16}
         style={styles.scrollView}
-        scrollEnabled={!isCompleting}
+        scrollEnabled={!isCompleting && !authLoading}
       >
-        {/* Page 1: Welcome */}
+        {/* ════════════════════════════════════════════════════════════════
+            PAGE 1 — Welcome to Recall
+        ════════════════════════════════════════════════════════════════ */}
         <View style={[styles.page, { width: SCREEN_WIDTH }]}>
-          <View style={styles.pageContent}>
-            <View style={styles.iconContainer}>
-              <Image 
-                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')} 
-                style={styles.appIcon}
+          <ScrollView
+            contentContainerStyle={styles.pageScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Hero image */}
+            <View style={styles.heroImageWrapper}>
+              <Image
+                source={require('@/assets/images/onboarding/hero-stack.jpg')}
+                style={styles.heroImage}
+                resizeMode="cover"
+              />
+              <View style={styles.heroImageOverlay} />
+            </View>
+
+            {/* App icon + wordmark */}
+            <View style={styles.brandRow}>
+              <Image
+                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+                style={styles.brandIcon}
+                resizeMode="contain"
+              />
+              <Text style={styles.brandName}>Recall</Text>
+            </View>
+
+            {/* Hero copy */}
+            <Text style={styles.heroHeadline}>Capture anything.</Text>
+            <Text style={styles.heroHeadlineAccent}>Recall it later.</Text>
+            <Text style={styles.heroSubtitle}>
+              Recall is your second brain for anything you want to remember — a thought, a website,
+              that Insta post, some photos, a place. Save it in seconds. Recall it later.
+            </Text>
+
+            {/* How it works teaser */}
+            <View style={styles.howItWorksRow}>
+              <View style={styles.howStep}>
+                <View style={styles.howStepNumber}>
+                  <Text style={styles.howStepNumberText}>01</Text>
+                </View>
+                <Text style={styles.howStepLabel}>Create</Text>
+                <Text style={styles.howStepDesc}>
+                  Add a Recall — some text, a URL, photos, a location.
+                </Text>
+              </View>
+              <View style={styles.howDivider} />
+              <View style={styles.howStep}>
+                <View style={styles.howStepNumber}>
+                  <Text style={styles.howStepNumberText}>02</Text>
+                </View>
+                <Text style={styles.howStepLabel}>Recall</Text>
+                <Text style={styles.howStepDesc}>
+                  Search anything — a word, that place, those people, ask a question. It surfaces.
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+
+        {/* ════════════════════════════════════════════════════════════════
+            PAGE 2 — What is a Recall?
+        ════════════════════════════════════════════════════════════════ */}
+        <View style={[styles.page, { width: SCREEN_WIDTH }]}>
+          <ScrollView
+            contentContainerStyle={styles.pageScrollContent}
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled
+          >
+            <Text style={styles.sectionHeading}>What is a Recall?</Text>
+            <Text style={styles.sectionSubheading}>
+              A Recall is more than just a note. It's everything your memory needs — kept in your
+              second brain.
+            </Text>
+
+            <FeaturePill
+              icon="✍️"
+              label="Text"
+              description="Write a thought, an observation, some notes — anything really."
+            />
+            <FeaturePill
+              icon="📸"
+              label="Images"
+              description="Attach images. Recall will analyse them; ready when you need anything from them."
+            />
+            <FeaturePill
+              icon="📍"
+              label="A place"
+              description="Pin a location so you remember where it happened."
+            />
+            <FeaturePill
+              icon="🔗"
+              label="Links"
+              description="Include a URL and the content will be available for you to Recall."
+            />
+            <FeaturePill
+              icon="👥"
+              label="People"
+              description="Recall surfaces and tags people mentioned anywhere — even in the images."
+            />
+            <FeaturePill
+              icon="🗂️"
+              label="Categories"
+              description="Create a category just by describing it. Recall keeps everything organised."
+            />
+
+            {/* Spacer so content clears the bottom button */}
+            <View style={{ height: 24 }} />
+          </ScrollView>
+        </View>
+
+        {/* ════════════════════════════════════════════════════════════════
+            PAGE 3 — Use Cases
+        ════════════════════════════════════════════════════════════════ */}
+        <View style={[styles.page, { width: SCREEN_WIDTH }]}>
+          <ScrollView
+            contentContainerStyle={styles.pageScrollContent}
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled
+          >
+            <Text style={styles.sectionHeading}>What to use Recall for?</Text>
+            <Text style={styles.sectionSubheading}>
+              A few of the things people use Recall for. Slide through to see what it could do for
+              you.
+            </Text>
+
+            {allCards.map((card, index) => (
+              <UseCaseCard key={card.key} card={card} index={index} />
+            ))}
+
+            <View style={{ height: 24 }} />
+          </ScrollView>
+        </View>
+
+        {/* ════════════════════════════════════════════════════════════════
+            PAGE 4 — Login / Sign Up
+        ════════════════════════════════════════════════════════════════ */}
+        <KeyboardAvoidingView
+          style={{ width: SCREEN_WIDTH }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView
+            contentContainerStyle={[styles.pageScrollContent, styles.authScrollContent]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Brand */}
+            <View style={styles.authBrandRow}>
+              <Image
+                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+                style={styles.authBrandIcon}
                 resizeMode="contain"
               />
             </View>
-            <Text style={styles.title}>Welcome to Recall</Text>
-            <Text style={styles.description}>
-              The smart way to remember
-            </Text>
-          </View>
-        </View>
 
-        {/* Page 2: Features */}
-        <View style={[styles.page, { width: SCREEN_WIDTH }]}>
-          <View style={styles.pageContent}>
-            <View style={styles.featuresContainer}>
-              <View style={styles.featureIconWrapper}>
-                <View style={styles.featureIconCircle}>
-                  <IconSymbol name="text.alignleft" size={36} color={colors.primary} />
-                </View>
-              </View>
-              <View style={styles.featureIconWrapper}>
-                <View style={styles.featureIconCircle}>
-                  <IconSymbol name="camera.fill" size={36} color={colors.primary} />
-                </View>
-              </View>
-              <View style={styles.featureIconWrapper}>
-                <View style={styles.featureIconCircle}>
-                  <IconSymbol name="map.fill" size={36} color={colors.primary} />
-                </View>
-              </View>
-            </View>
-            <Text style={styles.title}>Capture Everything</Text>
-            <Text style={styles.description}>
-              Capture whatever you want to Recall: use your words, add photos, link that location...or all three!
-            </Text>
-						<Text style={styles.description}>
-              Mention people and let our AI detect and tag them to the Recall.
-            </Text>
-						<Text style={styles.description}>
-							The more you capture the more you can Recall!
-            </Text>
-          </View>
-        </View>
+            <Text style={styles.authTitle}>{authTitle}</Text>
+            <Text style={styles.authSubtitle}>{authSubtitle}</Text>
 
-        {/* Page 3: Get Started */}
-        <View style={[styles.page, { width: SCREEN_WIDTH }]}>
-          <View style={styles.pageContent}>
-            <View style={styles.iconContainer}>
-              <IconSymbol name="magnifyingglass" size={80} color={colors.primary} />
-            </View>
-            <Text style={styles.title}>Recall Anything!</Text>
-            <Text style={styles.description}>
-              Just ask and let Recall do the work
-            </Text>
-            
-            <View style={styles.benefitsContainer}>
-              <View style={styles.benefitRow}>
-                <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>What was that wine I had at Estelle&apos;s with James?</Text>
-              </View>
-              <View style={styles.benefitRow}>
-                <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>Make a list of the books I&apos;ve been wanting to buy</Text>
-              </View>
-              <View style={styles.benefitRow}>
-                <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>Restaurants near me I&apos;ve rated 7/10 or higher</Text>
-              </View>
-							<View style={styles.benefitRow}>
-                <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>Where did I take that picture of a lemon tree?</Text>
-              </View>
-							<View style={styles.benefitRow}>
-                <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>All my recalls that mention Elly</Text>
-              </View>
-							<View style={styles.benefitRow}>
-                <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-                <Text style={styles.benefitText}>What gins do I have in my drinks trolley?</Text>
+            {/* Inputs */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Email</Text>
+              <View style={styles.inputWrapper}>
+                <IconSymbol
+                  name="envelope.fill"
+                  size={18}
+                  color={colors.textSecondary}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="you@example.com"
+                  placeholderTextColor={colors.textTertiary}
+                  value={email}
+                  onChangeText={(v) => {
+                    setEmail(v);
+                  }}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoComplete="email"
+                  returnKeyType="next"
+                />
               </View>
             </View>
-          </View>
-        </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Password</Text>
+              <View style={styles.inputWrapper}>
+                <IconSymbol
+                  name="lock.fill"
+                  size={18}
+                  color={colors.textSecondary}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.textTertiary}
+                  value={password}
+                  onChangeText={(v) => {
+                    setPassword(v);
+                  }}
+                  secureTextEntry
+                  autoComplete="password"
+                  returnKeyType="done"
+                  onSubmitEditing={handleAuth}
+                />
+              </View>
+            </View>
+
+            {/* Forgot password */}
+            {!isSignUp && (
+              <AnimatedPressable
+                onPress={handleForgotPassword}
+                style={styles.forgotButton}
+              >
+                <Text style={styles.forgotText}>Forgot password?</Text>
+              </AnimatedPressable>
+            )}
+
+            {/* Primary CTA */}
+            <AnimatedPressable
+              onPress={handleAuth}
+              disabled={authLoading || isCompleting}
+              style={[
+                styles.authButton,
+                (authLoading || isCompleting) && styles.authButtonDisabled,
+              ]}
+            >
+              {authLoading || isCompleting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.authButtonText}>{authButtonLabel}</Text>
+              )}
+            </AnimatedPressable>
+
+            {/* Toggle sign-in / sign-up */}
+            <AnimatedPressable
+              onPress={handleToggleSignUp}
+              disabled={authLoading}
+              style={styles.switchButton}
+            >
+              <Text style={styles.switchText}>{switchLabel}</Text>
+            </AnimatedPressable>
+
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        </KeyboardAvoidingView>
       </ScrollView>
 
-      {/* Page Indicators */}
-      <View style={styles.indicatorContainer}>
-        {[0, 1, 2].map((index) => (
-          <View
-            key={index}
-            style={[
-              styles.indicator,
-              currentPage === index && styles.indicatorActive,
-            ]}
-          />
-        ))}
-      </View>
+      {/* ── Page indicators (steps 1–3) ── */}
+      {showIndicators && (
+        <View style={styles.indicatorContainer}>
+          {[0, 1, 2, 3].map((index) => (
+            <View
+              key={index}
+              style={[
+                styles.indicator,
+                currentPage === index && styles.indicatorActive,
+              ]}
+            />
+          ))}
+        </View>
+      )}
 
-      {/* Bottom Button */}
-      <View style={styles.bottomContainer}>
-        {currentPage < 2 ? (
-          <Pressable onPress={handleNext} style={styles.nextButton} disabled={isCompleting}>
+      {/* ── Bottom Next button (steps 1–3) ── */}
+      {showNextButton && (
+        <View style={styles.bottomContainer}>
+          <AnimatedPressable
+            onPress={handleNext}
+            style={styles.nextButton}
+            disabled={isCompleting}
+          >
             <Text style={styles.nextButtonText}>Next</Text>
-          </Pressable>
-        ) : (
-          <Pressable onPress={handleGetStarted} style={styles.getStartedButton} disabled={isCompleting}>
-            <Text style={styles.getStartedButtonText}>
-              {isCompleting ? 'Loading...' : 'Start Recalling Now'}
-            </Text>
-            {!isCompleting && <IconSymbol name="arrow.right" size={20} color="#FFFFFF" />}
-          </Pressable>
-        )}
-      </View>
+            <IconSymbol name="arrow.right" size={18} color="#FFFFFF" />
+          </AnimatedPressable>
+        </View>
+      )}
     </View>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const TOP_BUTTON_TOP = Platform.OS === 'android' ? 48 : 60;
+const BOTTOM_PADDING = Platform.OS === 'android' ? 32 : 48;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  skipButton: {
+
+  // ── Top-right button ──
+  topRightButton: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 48 : 60,
-    right: 24,
-    zIndex: 10,
+    top: TOP_BUTTON_TOP,
+    right: 20,
+    zIndex: 20,
     paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(255,107,122,0.12)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,122,0.3)',
   },
-  skipText: {
-    fontSize: 16,
-    color: colors.textSecondary,
+  topRightButtonText: {
+    fontSize: 13,
     fontWeight: '600',
+    color: colors.primary,
   },
+
+  // ── Pager ──
   scrollView: {
     flex: 1,
   },
   page: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
   },
-  pageContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  pageScrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: TOP_BUTTON_TOP + 52,
+    paddingBottom: BOTTOM_PADDING + 80,
+  },
+
+  // ── Page 1: Hero ──
+  heroImageWrapper: {
     width: '100%',
-    maxWidth: 400,
-  },
-  iconContainer: {
-    marginBottom: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appIcon: {
-    width: 120,
-    height: 120,
-  },
-  featuresContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 32,
-    gap: 24,
-  },
-  featureIconWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  featureIconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.card,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  description: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 24,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 32,
-  },
-  statBadge: {
-    backgroundColor: colors.card,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    height: SCREEN_HEIGHT * 0.28,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.primary,
+    overflow: 'hidden',
+    marginBottom: 28,
+    position: 'relative',
   },
-  statText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  benefitsContainer: {
+  heroImage: {
     width: '100%',
+    height: '100%',
+  },
+  heroImageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(26,26,26,0.15)',
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    gap: 10,
+  },
+  brandIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+  },
+  brandName: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  heroHeadline: {
+    fontSize: 38,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.8,
+    lineHeight: 44,
+  },
+  heroHeadlineAccent: {
+    fontSize: 38,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: -0.8,
+    lineHeight: 44,
+    marginBottom: 20,
+  },
+  heroSubtitle: {
+    fontSize: 16,
+    color: '#B0B0B0',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  howItWorksRow: {
+    flexDirection: 'row',
+    backgroundColor: '#242424',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#333333',
     gap: 16,
   },
-  benefitRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: colors.card,
-    padding: 16,
-    borderRadius: 12,
-  },
-  benefitText: {
-    fontSize: 14,
-    color: colors.text,
+  howStep: {
     flex: 1,
   },
+  howStepNumber: {
+    marginBottom: 6,
+  },
+  howStepNumberText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+    letterSpacing: 1,
+  },
+  howStepLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 6,
+  },
+  howStepDesc: {
+    fontSize: 13,
+    color: '#B0B0B0',
+    lineHeight: 19,
+  },
+  howDivider: {
+    width: 1,
+    backgroundColor: '#333333',
+    alignSelf: 'stretch',
+  },
+
+  // ── Pages 2 & 3: Section headings ──
+  sectionHeading: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+    marginBottom: 10,
+  },
+  sectionSubheading: {
+    fontSize: 15,
+    color: '#B0B0B0',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+
+  // ── Page 4: Auth ──
+  authScrollContent: {
+    paddingTop: TOP_BUTTON_TOP + 20,
+  },
+  authBrandRow: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  authBrandIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
+  },
+  authTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  authSubtitle: {
+    fontSize: 15,
+    color: '#B0B0B0',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 32,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#B0B0B0',
+    marginBottom: 6,
+    letterSpacing: 0.2,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#242424',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#3A3A3A',
+    minHeight: 52,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    color: '#FFFFFF',
+    minHeight: 24,
+  },
+  forgotButton: {
+    alignSelf: 'flex-end',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    marginBottom: 8,
+    marginTop: -4,
+  },
+  forgotText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '500',
+  },
+  authButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
+    marginTop: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  authButtonDisabled: {
+    opacity: 0.6,
+  },
+  authButtonText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  switchButton: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  switchText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '500',
+  },
+
+  // ── Indicators ──
   indicatorContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   indicator: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.inactive,
+    backgroundColor: '#444444',
   },
   indicatorActive: {
     width: 24,
     backgroundColor: colors.primary,
   },
+
+  // ── Bottom Next button ──
   bottomContainer: {
-    paddingHorizontal: 32,
-    paddingBottom: Platform.OS === 'android' ? 32 : 48,
+    paddingHorizontal: 24,
+    paddingBottom: BOTTOM_PADDING,
     alignItems: 'center',
-    gap: 12,
   },
   nextButton: {
     width: '100%',
@@ -414,30 +1233,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  nextButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  getStartedButton: {
-    width: '100%',
-    backgroundColor: colors.primary,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  getStartedButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
+  nextButtonText: {
+    fontSize: 17,
+    fontWeight: '700',
     color: '#FFFFFF',
-  },
-  footerText: {
-    fontSize: 12,
-    color: colors.textTertiary,
-    textAlign: 'center',
+    letterSpacing: -0.2,
   },
 });
