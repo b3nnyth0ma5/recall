@@ -31,6 +31,7 @@ import * as Location from 'expo-location';
 import { BlurView } from 'expo-blur';
 import { getInitialShareData, listenForShareIntents } from '@/utils/nativeShareReceiver';
 import type { ReceivedShareData } from '@/types/ShareExtension';
+import { plainTextToTiptapDoc } from '@/utils/tiptapPlainText';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -352,10 +353,15 @@ export default function CreateRecallFromShareScreen() {
 
       console.log('[CreateRecallFromShare] Final text length:', finalText.length);
 
+      // Build Tiptap doc from finalText so rich_text is populated
+      const richTextDoc = plainTextToTiptapDoc(finalText);
+      console.log('[CreateRecallFromShare] Writing rich_text + text, finalText length:', finalText.length);
+
       const { data: recallData, error: recallError } = await supabase
         .from('recalls')
         .insert({
           text: finalText,
+          rich_text: richTextDoc,
           user_id: user.id,
           latitude: location?.latitude,
           longitude: location?.longitude,

@@ -1,15 +1,29 @@
 
+export interface TiptapDoc {
+  type: 'doc';
+  content?: TiptapNode[];
+}
+
+export interface TiptapNode {
+  type: string;
+  attrs?: Record<string, any>;
+  content?: TiptapNode[];
+  marks?: Array<{ type: string; attrs?: Record<string, any> }>;
+  text?: string;
+}
+
 export interface Note {
   id: string;
-  text: string;
-  images: string[]; // Array of CDN URLs for display
+  text: string;                  // plain text — kept for embeddings/search
+  rich_text?: TiptapDoc | null;  // Tiptap JSON — display-faithful
+  images?: string[]; // Array of CDN URLs for display
   imageIds?: string[]; // Array of image record IDs
   created_at: string;
   updated_at: string;
-  latitude?: number;
-  longitude?: number;
-  location?: string;
-  location_primary_type?: string; // Primary type display name from Google Places API
+  latitude?: number | null;
+  longitude?: number | null;
+  location?: string | null;
+  location_primary_type?: string | null; // Primary type display name from Google Places API
   user_id?: string;
   relevance_score?: number; // AI-powered relevance score (0-100)
   relevance_reason?: string; // Explanation of why this recall matches
