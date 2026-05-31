@@ -232,10 +232,10 @@ function RootLayoutNav() {
     let targetRoute: string | null = null;
 
     if (!user) {
-      // User not authenticated
-      if (!inAuthGroup) {
-        targetRoute = '/login';
-        console.log('[Routing] Need to redirect to login (no user)');
+      // User not authenticated — send to onboarding unless already on onboarding or login
+      if (!inAuthGroup && !inOnboardingGroup) {
+        targetRoute = '/onboarding';
+        console.log('[Routing] Need to redirect to onboarding (no user)');
       }
     } else {
       // User is authenticated

@@ -17,14 +17,27 @@ import {
   ImageSourcePropType,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { AUTH_REDIRECT_URLS } from '@/constants/config';
 import * as Haptics from 'expo-haptics';
+import {
+  MapPin,
+  Tags,
+  Images,
+  FileText,
+  Globe,
+  User,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+const CORAL = '#FF6B7A';
 
 // ─── Image resolver ──────────────────────────────────────────────────────────
 function resolveImageSource(
@@ -262,7 +275,7 @@ function AnimatedPressable({
 
 // ─── Feature pill for "What is a Recall?" ────────────────────────────────────
 interface FeaturePillProps {
-  icon: string;
+  icon: React.ReactNode;
   label: string;
   description: string;
 }
@@ -272,7 +285,7 @@ function FeaturePill({ icon, label, description }: FeaturePillProps) {
     <View style={featureStyles.pill}>
       <View style={featureStyles.pillIconRow}>
         <View style={featureStyles.pillIconCircle}>
-          <Text style={featureStyles.pillIcon}>{icon}</Text>
+          {icon}
         </View>
         <Text style={featureStyles.pillLabel}>{label}</Text>
       </View>
@@ -304,9 +317,6 @@ const featureStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pillIcon: {
-    fontSize: 18,
-  },
   pillLabel: {
     fontSize: 16,
     fontWeight: '700',
@@ -324,9 +334,10 @@ const featureStyles = StyleSheet.create({
 interface UseCaseCardProps {
   card: UseCase;
   index: number;
+  isLast: boolean;
 }
 
-function UseCaseCard({ card, index }: UseCaseCardProps) {
+function UseCaseCard({ card, index, isLast }: UseCaseCardProps) {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(16)).current;
 
@@ -347,8 +358,12 @@ function UseCaseCard({ card, index }: UseCaseCardProps) {
     ]).start();
   }, [index, opacity, translateY]);
 
+  const wrapperStyle = isLast
+    ? [cardStyles.wrapper, { marginBottom: 0 }]
+    : cardStyles.wrapper;
+
   return (
-    <Animated.View style={[cardStyles.wrapper, { opacity, transform: [{ translateY }] }]}>
+    <Animated.View style={[wrapperStyle, { opacity, transform: [{ translateY }] }]}>
       <Image
         source={resolveImageSource(card.image)}
         style={cardStyles.image}
@@ -373,7 +388,7 @@ const cardStyles = StyleSheet.create({
   wrapper: {
     backgroundColor: '#242424',
     borderRadius: 16,
-    marginBottom: 16,
+    marginBottom: 24,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#333333',
@@ -438,6 +453,156 @@ const cardStyles = StyleSheet.create({
   },
 });
 
+// ─── TopBar ───────────────────────────────────────────────────────────────────
+interface TopBarProps {
+  currentStep: number;
+  onLoginPress: () => void;
+}
+
+function TopBar({ currentStep, onLoginPress }: TopBarProps) {
+  const insets = useSafeAreaInsets();
+  const topPadding = insets.top > 0 ? insets.top : (Platform.OS === 'android' ? 28 : 44);
+
+  return (
+    <View style={[topBarStyles.container, { paddingTop: topPadding }]}>
+      {/* Logo + wordmark */}
+      <View style={topBarStyles.logoRow}>
+        <Image
+          source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+          style={topBarStyles.logo}
+          resizeMode="contain"
+        />
+        <Text style={topBarStyles.wordmark}>Recall</Text>
+      </View>
+
+      {/* Login/Signup pill — hidden on auth step */}
+      {currentStep < 3 ? (
+        <Pressable
+          onPress={onLoginPress}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={topBarStyles.loginButton}
+        >
+          <Text style={topBarStyles.loginButtonText}>Login / Signup</Text>
+        </Pressable>
+      ) : (
+        <View style={topBarStyles.loginButtonSpacer} />
+      )}
+    </View>
+  );
+}
+
+const topBarStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    backgroundColor: '#1A1A1A',
+    zIndex: 20,
+  },
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  logo: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+  },
+  wordmark: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  loginButton: {
+    backgroundColor: '#242424',
+    borderWidth: 1,
+    borderColor: '#333333',
+    borderRadius: 999,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+  },
+  loginButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: CORAL,
+  },
+  loginButtonSpacer: {
+    width: 100,
+    height: 44,
+  },
+});
+
+// ─── ChevronNav ───────────────────────────────────────────────────────────────
+interface ChevronNavProps {
+  currentStep: number;
+  onPrev: () => void;
+  onNext: () => void;
+  bottomInset: number;
+}
+
+function ChevronNav({ currentStep, onPrev, onNext, bottomInset }: ChevronNavProps) {
+  const showLeft = currentStep > 0;
+  const showRight = currentStep < 3;
+  const paddingBottom = bottomInset > 0 ? bottomInset + 16 : 32;
+
+  return (
+    <View style={[chevronStyles.row, { paddingBottom }]}>
+      {/* Left slot */}
+      {showLeft ? (
+        <Pressable
+          onPress={onPrev}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={chevronStyles.button}
+        >
+          <ChevronLeft size={28} color="#FFFFFF" strokeWidth={2} />
+        </Pressable>
+      ) : (
+        <View style={chevronStyles.spacer} />
+      )}
+
+      {/* Right slot */}
+      {showRight ? (
+        <Pressable
+          onPress={onNext}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={chevronStyles.button}
+        >
+          <ChevronRight size={28} color="#FFFFFF" strokeWidth={2} />
+        </Pressable>
+      ) : (
+        <View style={chevronStyles.spacer} />
+      )}
+    </View>
+  );
+}
+
+const chevronStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    backgroundColor: '#1A1A1A',
+  },
+  button: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#242424',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spacer: {
+    width: 56,
+    height: 56,
+  },
+});
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function OnboardingScreen() {
   const [currentPage, setCurrentPage] = useState(0);
@@ -445,6 +610,7 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
+  const insets = useSafeAreaInsets();
 
   // Auth state (step 4)
   const [email, setEmail] = useState('');
@@ -474,12 +640,22 @@ export default function OnboardingScreen() {
 
   // ── Navigation ───────────────────────────────────────────────────────────
   const handleNext = () => {
-    console.log('[Onboarding] Next button pressed, currentPage:', currentPage);
+    console.log('[Onboarding] Chevron right pressed, currentPage:', currentPage);
     hapticLight();
     if (currentPage < 3) {
       const nextPage = currentPage + 1;
       setCurrentPage(nextPage);
       scrollViewRef.current?.scrollTo({ x: nextPage * SCREEN_WIDTH, animated: true });
+    }
+  };
+
+  const handlePrev = () => {
+    console.log('[Onboarding] Chevron left pressed, currentPage:', currentPage);
+    hapticLight();
+    if (currentPage > 0) {
+      const prevPage = currentPage - 1;
+      setCurrentPage(prevPage);
+      scrollViewRef.current?.scrollTo({ x: prevPage * SCREEN_WIDTH, animated: true });
     }
   };
 
@@ -633,9 +809,6 @@ export default function OnboardingScreen() {
   };
 
   // ── Derived display values ───────────────────────────────────────────────
-  const showTopButton = currentPage < 3;
-  const showNextButton = currentPage < 3;
-  const showIndicators = currentPage < 3;
   const authButtonLabel = isSignUp ? 'Create account' : 'Sign in';
   const switchLabel = isSignUp
     ? 'Already have an account? Sign in'
@@ -647,16 +820,14 @@ export default function OnboardingScreen() {
 
   const allCards = [...selectedCards, ANYTHING_CARD];
 
+  // Content top padding — below the top bar (approx 60px bar height)
+  const contentTopPadding = 16;
+  const bottomInset = insets.bottom;
+
   return (
     <View style={styles.container}>
-      {/* ── Top-right Login/Signup button (steps 1–3) ── */}
-      {showTopButton && (
-        <AnimatedPressable onPress={handleGoToLogin} style={styles.topRightButton}>
-          <Text style={styles.topRightButtonText}>
-            {currentPage === 0 ? 'Sign in' : 'Login / Sign up'}
-          </Text>
-        </AnimatedPressable>
-      )}
+      {/* ── Persistent Top Bar ── */}
+      <TopBar currentStep={currentPage} onLoginPress={handleGoToLogin} />
 
       {/* ── Horizontal pager ── */}
       <ScrollView
@@ -674,7 +845,7 @@ export default function OnboardingScreen() {
         ════════════════════════════════════════════════════════════════ */}
         <View style={[styles.page, { width: SCREEN_WIDTH }]}>
           <ScrollView
-            contentContainerStyle={styles.pageScrollContent}
+            contentContainerStyle={[styles.pageScrollContent, { paddingTop: contentTopPadding }]}
             showsVerticalScrollIndicator={false}
           >
             {/* Hero image */}
@@ -685,16 +856,6 @@ export default function OnboardingScreen() {
                 resizeMode="cover"
               />
               <View style={styles.heroImageOverlay} />
-            </View>
-
-            {/* App icon + wordmark */}
-            <View style={styles.brandRow}>
-              <Image
-                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-                style={styles.brandIcon}
-                resizeMode="contain"
-              />
-              <Text style={styles.brandName}>Recall</Text>
             </View>
 
             {/* Hero copy */}
@@ -735,7 +896,7 @@ export default function OnboardingScreen() {
         ════════════════════════════════════════════════════════════════ */}
         <View style={[styles.page, { width: SCREEN_WIDTH }]}>
           <ScrollView
-            contentContainerStyle={styles.pageScrollContent}
+            contentContainerStyle={[styles.pageScrollContent, { paddingTop: contentTopPadding }]}
             showsVerticalScrollIndicator={false}
             nestedScrollEnabled
           >
@@ -746,37 +907,37 @@ export default function OnboardingScreen() {
             </Text>
 
             <FeaturePill
-              icon="✍️"
-              label="Text"
-              description="Write a thought, an observation, some notes — anything really."
-            />
-            <FeaturePill
-              icon="📸"
-              label="Images"
-              description="Attach images. Recall will analyse them; ready when you need anything from them."
-            />
-            <FeaturePill
-              icon="📍"
+              icon={<MapPin size={24} color={CORAL} strokeWidth={2} />}
               label="A place"
               description="Pin a location so you remember where it happened."
             />
             <FeaturePill
-              icon="🔗"
+              icon={<Tags size={24} color={CORAL} strokeWidth={2} />}
+              label="Categories"
+              description="Create a category just by describing it. Recall keeps everything organised."
+            />
+            <FeaturePill
+              icon={<Images size={24} color={CORAL} strokeWidth={2} />}
+              label="Images"
+              description="Attach images. Recall will analyse them; ready when you need anything from them."
+            />
+            <FeaturePill
+              icon={<FileText size={24} color={CORAL} strokeWidth={2} />}
+              label="Text"
+              description="Write a thought, an observation, some notes — anything really."
+            />
+            <FeaturePill
+              icon={<Globe size={24} color={CORAL} strokeWidth={2} />}
               label="Links"
               description="Include a URL and the content will be available for you to Recall."
             />
             <FeaturePill
-              icon="👥"
+              icon={<User size={24} color={CORAL} strokeWidth={2} />}
               label="People"
               description="Recall surfaces and tags people mentioned anywhere — even in the images."
             />
-            <FeaturePill
-              icon="🗂️"
-              label="Categories"
-              description="Create a category just by describing it. Recall keeps everything organised."
-            />
 
-            {/* Spacer so content clears the bottom button */}
+            {/* Spacer so content clears the bottom chevrons */}
             <View style={{ height: 24 }} />
           </ScrollView>
         </View>
@@ -786,7 +947,7 @@ export default function OnboardingScreen() {
         ════════════════════════════════════════════════════════════════ */}
         <View style={[styles.page, { width: SCREEN_WIDTH }]}>
           <ScrollView
-            contentContainerStyle={styles.pageScrollContent}
+            contentContainerStyle={[styles.pageScrollContent, { paddingTop: contentTopPadding }]}
             showsVerticalScrollIndicator={false}
             nestedScrollEnabled
           >
@@ -797,7 +958,12 @@ export default function OnboardingScreen() {
             </Text>
 
             {allCards.map((card, index) => (
-              <UseCaseCard key={card.key} card={card} index={index} />
+              <UseCaseCard
+                key={card.key}
+                card={card}
+                index={index}
+                isLast={index === allCards.length - 1}
+              />
             ))}
 
             <View style={{ height: 24 }} />
@@ -812,7 +978,7 @@ export default function OnboardingScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <ScrollView
-            contentContainerStyle={[styles.pageScrollContent, styles.authScrollContent]}
+            contentContainerStyle={[styles.pageScrollContent, styles.authScrollContent, { paddingTop: contentTopPadding + 8 }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
@@ -917,65 +1083,24 @@ export default function OnboardingScreen() {
         </KeyboardAvoidingView>
       </ScrollView>
 
-      {/* ── Page indicators (steps 1–3) ── */}
-      {showIndicators && (
-        <View style={styles.indicatorContainer}>
-          {[0, 1, 2, 3].map((index) => (
-            <View
-              key={index}
-              style={[
-                styles.indicator,
-                currentPage === index && styles.indicatorActive,
-              ]}
-            />
-          ))}
-        </View>
-      )}
-
-      {/* ── Bottom Next button (steps 1–3) ── */}
-      {showNextButton && (
-        <View style={styles.bottomContainer}>
-          <AnimatedPressable
-            onPress={handleNext}
-            style={styles.nextButton}
-            disabled={isCompleting}
-          >
-            <Text style={styles.nextButtonText}>Next</Text>
-            <IconSymbol name="arrow.right" size={18} color="#FFFFFF" />
-          </AnimatedPressable>
-        </View>
-      )}
+      {/* ── Chevron navigation ── */}
+      <ChevronNav
+        currentStep={currentPage}
+        onPrev={handlePrev}
+        onNext={handleNext}
+        bottomInset={bottomInset}
+      />
     </View>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const TOP_BUTTON_TOP = Platform.OS === 'android' ? 48 : 60;
 const BOTTOM_PADDING = Platform.OS === 'android' ? 32 : 48;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-
-  // ── Top-right button ──
-  topRightButton: {
-    position: 'absolute',
-    top: TOP_BUTTON_TOP,
-    right: 20,
-    zIndex: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(255,107,122,0.12)',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,107,122,0.3)',
-  },
-  topRightButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.primary,
   },
 
   // ── Pager ──
@@ -987,8 +1112,7 @@ const styles = StyleSheet.create({
   },
   pageScrollContent: {
     paddingHorizontal: 24,
-    paddingTop: TOP_BUTTON_TOP + 52,
-    paddingBottom: BOTTOM_PADDING + 80,
+    paddingBottom: BOTTOM_PADDING,
   },
 
   // ── Page 1: Hero ──
@@ -1007,23 +1131,6 @@ const styles = StyleSheet.create({
   heroImageOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(26,26,26,0.15)',
-  },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    gap: 10,
-  },
-  brandIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-  },
-  brandName: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
   },
   heroHeadline: {
     fontSize: 38,
@@ -1100,9 +1207,7 @@ const styles = StyleSheet.create({
   },
 
   // ── Page 4: Auth ──
-  authScrollContent: {
-    paddingTop: TOP_BUTTON_TOP + 20,
-  },
+  authScrollContent: {},
   authBrandRow: {
     alignItems: 'center',
     marginBottom: 20,
@@ -1199,52 +1304,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: '500',
-  },
-
-  // ── Indicators ──
-  indicatorContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  indicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#444444',
-  },
-  indicatorActive: {
-    width: 24,
-    backgroundColor: colors.primary,
-  },
-
-  // ── Bottom Next button ──
-  bottomContainer: {
-    paddingHorizontal: 24,
-    paddingBottom: BOTTOM_PADDING,
-    alignItems: 'center',
-  },
-  nextButton: {
-    width: '100%',
-    backgroundColor: colors.primary,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  nextButtonText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.2,
   },
 });
