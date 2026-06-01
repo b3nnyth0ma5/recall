@@ -108,7 +108,20 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const hasImages = images.length > 0;
   const hasDocuments = documents.length > 0;
   const textHasUrl = hasUrl(text);
-  
+
+  type MediaItem =
+    | { kind: 'image'; image: ImageData; index: number }
+    | { kind: 'document'; doc: Document; index: number };
+  const mediaItems: MediaItem[] = [
+    ...images.map((image, i) => ({ kind: 'image' as const, image, index: i })),
+    ...documents.map((doc, i) => ({ kind: 'document' as const, doc, index: i })),
+  ];
+  const hasMedia = mediaItems.length > 0;
+
+  const imagesPart = images.length > 0 ? `${images.length} ${images.length === 1 ? 'Image' : 'Images'}` : '';
+  const docsPart = documents.length > 0 ? `${documents.length} ${documents.length === 1 ? 'Document' : 'Documents'}` : '';
+  const mediaHeaderLabel = [imagesPart, docsPart].filter(Boolean).join(' • ');
+
   const textInputHeight = (hasImages || hasDocuments) ? 510 : 792;
 
   useEffect(() => {
@@ -132,7 +145,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     
     const rawIndex = contentOffsetX / itemWidth;
     const calculatedIndex = Math.floor(rawIndex + 0.5);
-    const clampedIndex = Math.max(0, Math.min(calculatedIndex, images.length - 1));
+    const totalMediaCount = images.length + documents.length;
+    const clampedIndex = Math.max(0, Math.min(calculatedIndex, totalMediaCount - 1));
     
     if (clampedIndex !== currentImageIndex) {
       setCurrentImageIndex(clampedIndex);
@@ -140,7 +154,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     
     const indicesToLoad: number[] = [];
     
-    if (!loadedImageIndices.has(clampedIndex) && images[clampedIndex] && images[clampedIndex].id && !images[clampedIndex].uri) {
+    // Only attempt lazy-loading for indices within the images array (not documents)
+    if (clampedIndex < images.length && !loadedImageIndices.has(clampedIndex) && images[clampedIndex] && images[clampedIndex].id && !images[clampedIndex].uri) {
       indicesToLoad.push(clampedIndex);
     }
     
@@ -150,7 +165,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     }
     
     const prevIndex = clampedIndex - 1;
-    if (prevIndex >= 0 && !loadedImageIndices.has(prevIndex) && images[prevIndex] && images[prevIndex].id && !images[prevIndex].uri) {
+    if (prevIndex >= 0 && prevIndex < images.length && !loadedImageIndices.has(prevIndex) && images[prevIndex] && images[prevIndex].id && !images[prevIndex].uri) {
       indicesToLoad.push(prevIndex);
     }
     
@@ -1312,10 +1327,10 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                   recallId={isEditing ? noteId : undefined}
                 />
 
-                {hasImages && (
+                {hasMedia && (
                   <View style={styles.imagesContainer}>
                     <View style={styles.imagesHeader}>
-                      <Text style={styles.imagesTitle}>{images.length} {images.length === 1 ? 'Image' : 'Images'}</Text>
+                      <Text style={styles.imagesTitle}>{mediaHeaderLabel}</Text>
                     </View>
                     <ScrollView
                       ref={imageScrollRef}
@@ -1329,14 +1344,26 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                       snapToInterval={IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING}
                       snapToAlignment="start"
                     >
-                      {images.map((image, index) => {
-                        const isLoaded = loadedImageIndices.has(index) || image.uri;
-                        
+                      {mediaItems.map((item, globalIndex) => {
+                        if (item.kind === 'document') {
+                          return (
+                            <DocumentTile
+                              key={`doc-${item.doc.id ?? item.doc.file_name}-${item.index}`}
+                              document={item.doc}
+                              width={IMAGE_CAROUSEL_WIDTH}
+                              height={IMAGE_CAROUSEL_WIDTH * 0.75}
+                              showRemoveButton
+                              onRemove={() => removeDocument(item.index)}
+                            />
+                          );
+                        }
+                        const image = item.image;
+                        const isLoaded = loadedImageIndices.has(item.index) || image.uri;
                         return (
-                          <Pressable 
-                            key={`${image.id || 'new'}-${index}`} 
+                          <Pressable
+                            key={`${image.id || 'new'}-${item.index}`}
                             style={styles.imageWrapper}
-                            onPress={() => handleImagePress(index)}
+                            onPress={() => handleImagePress(globalIndex)}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           >
                             {!isLoaded ? (
@@ -1349,16 +1376,16 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                             )}
                             <View style={styles.imageActions}>
                               <Pressable
-                                onPress={() => removeImage(index)}
+                                onPress={() => removeImage(item.index)}
                                 style={styles.imageActionButton}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                               >
                                 <View style={styles.actionButtonCircle}>
-                                  <IconSymbol 
-                                    ios_icon_name="xmark" 
-                                    android_material_icon_name="close" 
-                                    size={12} 
-                                    color="#FFFFFF" 
+                                  <IconSymbol
+                                    ios_icon_name="xmark"
+                                    android_material_icon_name="close"
+                                    size={12}
+                                    color="#FFFFFF"
                                   />
                                 </View>
                               </Pressable>
@@ -1366,34 +1393,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                           </Pressable>
                         );
                       })}
-                    </ScrollView>
-                  </View>
-                )}
-
-                {hasDocuments && (
-                  <View style={styles.documentsContainer}>
-                    <View style={styles.imagesHeader}>
-                      <Text style={styles.imagesTitle}>
-                        {documents.length}
-                        {' '}
-                        {documents.length === 1 ? 'Document' : 'Documents'}
-                      </Text>
-                    </View>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.imagesScrollContent}
-                    >
-                      {documents.map((doc, index) => (
-                        <DocumentTile
-                          key={`doc-${doc.id ?? doc.file_name}-${index}`}
-                          document={doc}
-                          width={IMAGE_CAROUSEL_WIDTH}
-                          height={IMAGE_CAROUSEL_WIDTH * 0.75}
-                          showRemoveButton
-                          onRemove={() => removeDocument(index)}
-                        />
-                      ))}
                     </ScrollView>
                   </View>
                 )}

@@ -227,15 +227,13 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / (IMAGE_WIDTH + IMAGE_SPACING));
     
-    if (index >= 0 && index < totalImageCount) {
+    if (index >= 0 && index < displayMedia.length) {
       setCurrentImageIndex(index);
       
-      // Prefetch next image
-      if (totalImageCount > 2) {
-        const nextIndex = index + 1;
-        if (nextIndex < totalImageCount && !lazyLoadedImages[nextIndex]) {
-          lazyLoadImage(nextIndex);
-        }
+      // Prefetch next item only if it's an image (not a document)
+      const nextIndex = index + 1;
+      if (nextIndex < displayMedia.length && displayMedia[nextIndex].kind === 'image' && !lazyLoadedImages[nextIndex]) {
+        lazyLoadImage(nextIndex);
       }
     }
   };

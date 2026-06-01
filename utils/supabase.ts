@@ -828,9 +828,10 @@ export async function uploadDocumentToDatabase(
     console.log('[uploadDocumentToDatabase] CDN URL:', cdnUrl);
 
     // Upload thumbnail if present (PDF)
+    let thumbnailPersisted = false;
     if (thumbnailUri) {
       try {
-        console.log('[uploadDocumentToDatabase] Uploading PDF thumbnail...');
+        console.log('[uploadDocumentToDatabase] Uploading PDF thumbnail from:', thumbnailUri);
         const thumbBase64 = await FileSystem.readAsStringAsync(thumbnailUri, {
           encoding: FileSystem.EncodingType.Base64,
         });
@@ -838,18 +839,26 @@ export async function uploadDocumentToDatabase(
         const { uploadImageToCloudflare } = await import('./cloudflareCDN');
         const thumbCdnUrl = await uploadImageToCloudflare(thumbBase64, thumbFileName, 'image/jpeg');
         if (thumbCdnUrl) {
-          await supabase
+          const { error: thumbUpdateError } = await supabase
             .from('recall_documents')
             .update({ thumbnail_url: thumbCdnUrl })
             .eq('id', docRow.id);
-          console.log('[uploadDocumentToDatabase] Thumbnail uploaded:', thumbCdnUrl);
+          if (thumbUpdateError) {
+            console.error('[uploadDocumentToDatabase] ❌ Failed to persist thumbnail_url:', thumbUpdateError);
+          } else {
+            thumbnailPersisted = true;
+            console.log('[uploadDocumentToDatabase] ✅ thumbnail_url persisted:', thumbCdnUrl);
+          }
+        } else {
+          console.warn('[uploadDocumentToDatabase] ⚠️ uploadImageToCloudflare returned null/undefined for thumbnail — server-side fallback will handle it');
         }
       } catch (thumbErr) {
-        console.warn('[uploadDocumentToDatabase] Thumbnail upload failed (non-fatal):', thumbErr);
+        console.error('[uploadDocumentToDatabase] ❌ Thumbnail upload failed (non-fatal):', thumbErr);
+        // Don't block document upload — server-side fallback will fill thumbnail_url
       }
     }
 
-    console.log('=== Document upload complete ===');
+    console.log(`=== Document upload complete — thumbnail_url persisted: ${thumbnailPersisted} ===`);
     return { id: docRow.id, cdn_url: cdnUrl };
   } catch (error) {
     console.error('[uploadDocumentToDatabase] Exception:', error);

@@ -1,11 +1,16 @@
 /**
- * extract-document Edge Function
- * 
+ * extract-document Edge Function v4
+ *
  * Receives a recall_document record ID, downloads the file from Supabase Storage
  * (cdn_url is a storage path like "<userId>/<uuid>-<fileName>"),
  * uploads it to OpenAI Files API, uses the Responses API to extract text
  * and generate a summary, then stores results and triggers embedding-document.
- * 
+ *
+ * v4 adds: server-side PDF thumbnail fallback via pdfjs-serverless.
+ * When content_type is application/pdf and thumbnail_url is null, renders page 1
+ * to PNG, uploads to Cloudflare Images, and sets recall_documents.thumbnail_url.
+ * Failure is silent (non-blocking).
+ *
  * Mirrors the ocr-image → embedding-image pipeline pattern exactly.
  */
 
@@ -33,13 +38,104 @@ interface OpenAIErrorResponse {
   };
 }
 
+/**
+ * Render the first page of a PDF buffer to a PNG Uint8Array using pdfjs-serverless.
+ * Returns null on any failure so the caller can silently skip thumbnail generation.
+ */
+async function renderPdfFirstPageToPng(pdfBytes: Uint8Array): Promise<Uint8Array | null> {
+  try {
+    // pdfjs-serverless bundles its own canvas implementation — no native deps needed.
+    const { getDocument, GlobalWorkerOptions } = await import(
+      'https://esm.sh/pdfjs-serverless@0.5.0'
+    );
+    // Disable the worker in a Deno/Edge environment.
+    GlobalWorkerOptions.workerSrc = '';
+
+    const loadingTask = getDocument({ data: pdfBytes });
+    const pdfDoc = await loadingTask.promise;
+    const page = await pdfDoc.getPage(1);
+
+    // Render at 1.5× scale for a reasonable thumbnail resolution (~900px wide for A4).
+    const viewport = page.getViewport({ scale: 1.5 });
+
+    // pdfjs-serverless exposes a createCanvas helper that works in Deno.
+    const { createCanvas } = await import('https://esm.sh/pdfjs-serverless@0.5.0/canvas');
+    const canvas = createCanvas(Math.round(viewport.width), Math.round(viewport.height));
+    const context = canvas.getContext('2d');
+
+    await page.render({ canvasContext: context as any, viewport }).promise;
+
+    // Export as PNG buffer.
+    const pngBuffer: Buffer = canvas.toBuffer('image/png');
+    return new Uint8Array(pngBuffer);
+  } catch (err) {
+    console.warn('[extract-document] renderPdfFirstPageToPng failed (non-critical):', err);
+    return null;
+  }
+}
+
+/**
+ * Upload a PNG Uint8Array to Cloudflare Images and return the public delivery URL.
+ * Returns null on any failure so the caller can silently skip.
+ */
+async function uploadPngToCloudflare(
+  pngBytes: Uint8Array,
+  fileName: string,
+): Promise<string | null> {
+  try {
+    const cfAccountId = Deno.env.get('CLOUDFLARE_ACCOUNT_ID');
+    const cfApiToken = Deno.env.get('CLOUDFLARE_IMAGES_API_TOKEN');
+
+    if (!cfAccountId || !cfApiToken) {
+      console.warn('[extract-document] Cloudflare credentials not configured — skipping thumbnail upload');
+      return null;
+    }
+
+    const formData = new FormData();
+    const blob = new Blob([pngBytes], { type: 'image/png' });
+    formData.append('file', blob, fileName);
+    formData.append('requireSignedURLs', 'false');
+
+    const uploadRes = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/images/v1`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${cfApiToken}` },
+        body: formData,
+      },
+    );
+
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text();
+      console.warn('[extract-document] Cloudflare Images upload failed (non-critical):', errText.substring(0, 200));
+      return null;
+    }
+
+    const uploadData = await uploadRes.json() as {
+      result?: { variants?: string[] };
+      success?: boolean;
+    };
+
+    if (!uploadData.success || !uploadData.result?.variants?.length) {
+      console.warn('[extract-document] Cloudflare Images upload returned no variants');
+      return null;
+    }
+
+    // Return the first variant URL (typically the "public" variant).
+    return uploadData.result.variants[0];
+  } catch (err) {
+    console.warn('[extract-document] uploadPngToCloudflare threw (non-critical):', err);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   const startTime = Date.now();
-  console.log('=== extract-document Edge Function Started ===');
+  console.log('=== extract-document Edge Function Started (v4) ===');
   console.log('Timestamp:', new Date().toISOString());
 
   try {
@@ -101,7 +197,7 @@ Deno.serve(async (req) => {
     console.log('Fetching document row from database...');
     const { data: docData, error: fetchError } = await supabase
       .from('recall_documents')
-      .select('cdn_url, file_name, content_type, user_id, recall_id, processed_at')
+      .select('cdn_url, file_name, content_type, user_id, recall_id, processed_at, thumbnail_url')
       .eq('id', record.id)
       .single();
 
@@ -454,6 +550,58 @@ Deno.serve(async (req) => {
       EdgeRuntime.waitUntil(cleanupPromise);
     }
 
+    // Step 7: PDF thumbnail fallback — only for PDFs that don't yet have a thumbnail_url.
+    // Runs after the main success path; failure is silent and non-blocking.
+    let thumbnailGenerated = false;
+    const isPdf = docData.content_type === 'application/pdf';
+    const needsThumbnail = isPdf && !docData.thumbnail_url;
+
+    if (needsThumbnail) {
+      console.log('[extract-document] Step 7: Generating PDF thumbnail for', record.id);
+      const thumbnailPromise = (async () => {
+        try {
+          const pngBytes = await renderPdfFirstPageToPng(fileBytes);
+          if (!pngBytes) {
+            console.warn('[extract-document] PDF render returned null — skipping thumbnail upload');
+            return;
+          }
+
+          const thumbnailFileName = `${record.id}-thumbnail.png`;
+          const thumbnailUrl = await uploadPngToCloudflare(pngBytes, thumbnailFileName);
+          if (!thumbnailUrl) {
+            console.warn('[extract-document] Cloudflare upload returned null — skipping thumbnail DB update');
+            return;
+          }
+
+          const { error: thumbUpdateError } = await supabase
+            .from('recall_documents')
+            .update({ thumbnail_url: thumbnailUrl })
+            .eq('id', record.id);
+
+          if (thumbUpdateError) {
+            console.warn('[extract-document] Failed to save thumbnail_url (non-critical):', thumbUpdateError.message);
+          } else {
+            console.log('[extract-document] PDF thumbnail saved:', thumbnailUrl);
+            thumbnailGenerated = true;
+          }
+        } catch (thumbErr) {
+          console.warn('[extract-document] PDF thumbnail generation threw (non-critical):', thumbErr);
+        }
+      })();
+
+      // @ts-ignore - EdgeRuntime is provided by Supabase's Deno runtime
+      if (typeof EdgeRuntime !== 'undefined' && typeof EdgeRuntime.waitUntil === 'function') {
+        // @ts-ignore
+        EdgeRuntime.waitUntil(thumbnailPromise);
+        console.log('[extract-document] EdgeRuntime.waitUntil registered for PDF thumbnail generation');
+      } else {
+        // In environments without waitUntil, await inline so the response includes the result.
+        await thumbnailPromise;
+      }
+    } else if (isPdf && docData.thumbnail_url) {
+      console.log('[extract-document] PDF already has thumbnail_url — skipping Step 7');
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -463,6 +611,7 @@ Deno.serve(async (req) => {
         docExplanationLength: docExplanation.length,
         openaiFileId,
         embeddingTriggered,
+        thumbnailGenerated,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

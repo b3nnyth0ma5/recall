@@ -56,20 +56,31 @@ export async function pickDocuments(): Promise<PickedDocument[]> {
       let thumbnailUri: string | undefined;
       if (asset.mimeType === 'application/pdf') {
         try {
-          console.log('[DocumentPicker] Generating PDF thumbnail for:', asset.name);
+          console.log('[DocumentPicker] Generating PDF thumbnail for:', asset.name, 'uri:', asset.uri);
+          // Normalise URI: react-native-pdf-thumbnail needs a file:// URI
+          let pdfUri = asset.uri;
+          if (!pdfUri.includes('://')) {
+            pdfUri = `file://${pdfUri}`;
+            console.log('[DocumentPicker] Prepended file:// to URI:', pdfUri);
+          } else if (!pdfUri.startsWith('file://')) {
+            console.log('[DocumentPicker] Non-file URI scheme detected, attempting anyway:', pdfUri);
+          }
           // Dynamic import to avoid crashing on platforms where native module is unavailable
           const PdfThumbnail = require('react-native-pdf-thumbnail').default;
-          const { uri } = await PdfThumbnail.generate(asset.uri, 0);
-          thumbnailUri = uri;
-          console.log('[DocumentPicker] PDF thumbnail generated:', thumbnailUri);
-        } catch (e) {
-          console.warn('[DocumentPicker] PDF thumbnail generation failed:', e);
+          const result = await PdfThumbnail.generate(pdfUri, 0);
+          thumbnailUri = result.uri;
+          console.log('[DocumentPicker] ✅ PDF thumbnail generated at:', thumbnailUri);
+        } catch (e: any) {
+          console.error('[DocumentPicker] ❌ PDF thumbnail generation failed for', asset.name, '— error:', e?.message ?? e);
+          // Don't rethrow — leave thumbnailUri undefined; server-side fallback will fill it in.
         }
       }
 
+      const normalizedName = normalizeDocumentFileName(asset.name, asset.mimeType ?? 'application/octet-stream');
+
       valid.push({
         uri: asset.uri,
-        name: asset.name,
+        name: normalizedName,
         size: asset.size ?? 0,
         mimeType: asset.mimeType ?? 'application/octet-stream',
         thumbnailUri,
@@ -82,6 +93,54 @@ export async function pickDocuments(): Promise<PickedDocument[]> {
     console.error('[DocumentPicker] Error picking documents:', error);
     return [];
   }
+}
+
+/**
+ * Returns the canonical file extension for a MIME type, or null if unknown.
+ */
+function canonicalExtensionForMime(mime: string): string | null {
+  const m = (mime || '').toLowerCase();
+  if (m === 'application/pdf') return 'pdf';
+  if (m === 'application/msword') return 'doc';
+  if (m === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+  if (m === 'application/vnd.ms-excel') return 'xls';
+  if (m === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'xlsx';
+  if (m === 'application/vnd.ms-powerpoint') return 'ppt';
+  if (m === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') return 'pptx';
+  if (m === 'text/plain') return 'txt';
+  if (m === 'text/markdown') return 'md';
+  if (m === 'text/csv') return 'csv';
+  return null;
+}
+
+/**
+ * Ensures a file name has exactly one trailing extension that matches the MIME type.
+ * - If name already ends with the correct extension (case-insensitive), returns name unchanged.
+ * - If name ends with a different/wrong extension, leaves it alone (don't second-guess the user).
+ * - If name has no extension at all, appends the canonical one for the mime type.
+ * - Strips trailing duplicates like `report.pdf.pdf` → `report.pdf`.
+ */
+export function normalizeDocumentFileName(name: string, mimeType: string): string {
+  if (!name) return name;
+  const canonical = canonicalExtensionForMime(mimeType);
+  if (!canonical) return name;
+  const lower = name.toLowerCase();
+  // Strip trailing duplicate: `foo.pdf.pdf` -> `foo.pdf`
+  const dupSuffix = `.${canonical}.${canonical}`;
+  if (lower.endsWith(dupSuffix)) {
+    const fixed = name.slice(0, name.length - canonical.length - 1);
+    console.log(`[DocumentPicker] normalizeDocumentFileName: stripped duplicate extension "${name}" → "${fixed}"`);
+    return fixed;
+  }
+  // Already correctly extended
+  if (lower.endsWith(`.${canonical}`)) return name;
+  // No extension at all -> append
+  if (!name.includes('.')) {
+    const fixed = `${name}.${canonical}`;
+    console.log(`[DocumentPicker] normalizeDocumentFileName: appended extension "${name}" → "${fixed}"`);
+    return fixed;
+  }
+  return name;
 }
 
 /**

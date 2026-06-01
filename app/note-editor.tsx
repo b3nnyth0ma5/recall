@@ -124,7 +124,20 @@ export default function NoteEditorScreen() {
   const hasImages = images.length > 0;
   const hasDocuments = documents.length > 0;
   const textHasUrl = hasUrl(text);
-  
+
+  type MediaItem =
+    | { kind: 'image'; image: ImageData; index: number }
+    | { kind: 'document'; doc: Document; index: number };
+  const mediaItems: MediaItem[] = [
+    ...images.map((image, i) => ({ kind: 'image' as const, image, index: i })),
+    ...documents.map((doc, i) => ({ kind: 'document' as const, doc, index: i })),
+  ];
+  const hasMedia = mediaItems.length > 0;
+
+  const imagesPart = images.length > 0 ? `${images.length} ${images.length === 1 ? 'Image' : 'Images'}` : '';
+  const docsPart = documents.length > 0 ? `${documents.length} ${documents.length === 1 ? 'Document' : 'Documents'}` : '';
+  const mediaHeaderLabel = [imagesPart, docsPart].filter(Boolean).join(' • ');
+
   const textInputHeight = (hasImages || hasDocuments) ? 340 : 480 * 1.1;
 
   useEffect(() => {
@@ -143,9 +156,12 @@ export default function NoteEditorScreen() {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / (IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING));
     
-    if (index >= 0 && index < images.length) {
+    // mediaItems is derived in render scope; use images.length + documents.length as the bound
+    const totalMediaCount = images.length + documents.length;
+    if (index >= 0 && index < totalMediaCount) {
       setCurrentImageIndex(index);
       
+      // Only lazy-load if the next item is an image (index within images array)
       if (images.length > 2 && index >= 1 && !isLazyLoading) {
         const nextIndex = index + 1;
         
@@ -1544,12 +1560,12 @@ export default function NoteEditorScreen() {
         recallId={isEditing ? (params.id as string) : undefined}
       />
 
-      {hasImages && (
+      {hasMedia && (
         <View style={styles.imagesContainer}>
           <View style={styles.imagesHeader}>
-            <Text style={styles.imagesTitle}>{images.length} {images.length === 1 ? 'Image' : 'Images'}</Text>
+            <Text style={styles.imagesTitle}>{mediaHeaderLabel}</Text>
             <View style={styles.paginationDots}>
-              {images.map((_, index) => (
+              {mediaItems.map((_, index) => (
                 <View
                   key={index}
                   style={[
@@ -1572,66 +1588,54 @@ export default function NoteEditorScreen() {
             snapToInterval={IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING}
             snapToAlignment="start"
           >
-            {displayImages.map((image, index) => (
-              <Pressable 
-                key={`${image.id || 'new'}-${index}`} 
-                style={styles.imageWrapper}
-                onPress={() => handleImagePress(index)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                {!image.uri ? (
-                  <View style={styles.imageLoadingContainer}>
-                    <ActivityIndicator size="large" color={colors.primary} />
-                    <Text style={styles.loadingImageText}>Loading...</Text>
-                  </View>
-                ) : (
-                  <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
-                )}
-                <View style={styles.imageActions}>
-                  <Pressable
-                    onPress={() => removeImage(index)}
-                    style={styles.imageActionButton}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <View style={styles.actionButtonCircle}>
-                      <IconSymbol 
-                        name="xmark" 
-                        size={14} 
-                        color="#FFFFFF" 
-                      />
+            {mediaItems.map((item, globalIndex) => {
+              if (item.kind === 'document') {
+                return (
+                  <DocumentTile
+                    key={`doc-${item.doc.id ?? item.doc.file_name}-${item.index}`}
+                    document={item.doc}
+                    width={IMAGE_CAROUSEL_WIDTH}
+                    height={IMAGE_CAROUSEL_WIDTH * 0.75}
+                    showRemoveButton
+                    onRemove={() => removeDocument(item.index)}
+                  />
+                );
+              }
+              const image = item.image;
+              const displayImage = displayImages[item.index] ?? image;
+              return (
+                <Pressable
+                  key={`${image.id || 'new'}-${item.index}`}
+                  style={styles.imageWrapper}
+                  onPress={() => handleImagePress(globalIndex)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  {!displayImage.uri ? (
+                    <View style={styles.imageLoadingContainer}>
+                      <ActivityIndicator size="large" color={colors.primary} />
+                      <Text style={styles.loadingImageText}>Loading...</Text>
                     </View>
-                  </Pressable>
-                </View>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
-      {hasDocuments && (
-        <View style={styles.documentsContainer}>
-          <View style={styles.imagesHeader}>
-            <Text style={styles.imagesTitle}>
-              {documents.length}
-              {' '}
-              {documents.length === 1 ? 'Document' : 'Documents'}
-            </Text>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.imagesScrollContent}
-          >
-            {documents.map((doc, index) => (
-              <DocumentTile
-                key={`doc-${doc.id ?? doc.file_name}-${index}`}
-                document={doc}
-                width={IMAGE_CAROUSEL_WIDTH}
-                height={IMAGE_CAROUSEL_WIDTH * 0.75}
-                showRemoveButton
-                onRemove={() => removeDocument(index)}
-              />
-            ))}
+                  ) : (
+                    <Image source={{ uri: displayImage.uri }} style={styles.image} resizeMode="cover" />
+                  )}
+                  <View style={styles.imageActions}>
+                    <Pressable
+                      onPress={() => removeImage(item.index)}
+                      style={styles.imageActionButton}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <View style={styles.actionButtonCircle}>
+                        <IconSymbol
+                          name="xmark"
+                          size={14}
+                          color="#FFFFFF"
+                        />
+                      </View>
+                    </Pressable>
+                  </View>
+                </Pressable>
+              );
+            })}
           </ScrollView>
         </View>
       )}

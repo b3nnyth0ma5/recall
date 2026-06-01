@@ -548,7 +548,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         <View style={styles.containerWrapper}>
           <View style={styles.container}>
             <View style={styles.inputContainer}>
-              {documents.length > 0 && (
+              {(images.length > 0 || documents.length > 0) && (
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -560,35 +560,8 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                   removeClippedSubviews={false}
                   keyboardShouldPersistTaps="handled"
                 >
-                  {documents.map((doc, index) => (
-                    <DocumentTile
-                      key={`doc-${index}`}
-                      document={doc}
-                      width={80}
-                      height={80}
-                      showRemoveButton
-                      onRemove={() => handleRemoveDocument(index)}
-                    />
-                  ))}
-                </ScrollView>
-              )}
-
-              {images.length > 0 && (
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false} 
-                  style={styles.imagesScroll}
-                  contentContainerStyle={styles.imagesScrollContent}
-                  decelerationRate="fast"
-                  snapToInterval={88}
-                  snapToAlignment="start"
-                  scrollEnabled={true}
-                  nestedScrollEnabled={true}
-                  removeClippedSubviews={false}
-                  keyboardShouldPersistTaps="handled"
-                >
                   {images.map((imageState, index) => (
-                    <View key={index} style={styles.imageContainer}>
+                    <View key={`img-${index}`} style={styles.imageContainer}>
                       <Image source={{ uri: imageState.uri }} style={styles.image} />
                       {imageState.isPlaceholder && (
                         <View style={styles.placeholderOverlay}>
@@ -604,6 +577,16 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
                         <IconSymbol name="xmark.circle.fill" size={20} color="#FFFFFF" />
                       </Pressable>
                     </View>
+                  ))}
+                  {documents.map((doc, index) => (
+                    <DocumentTile
+                      key={`doc-${index}`}
+                      document={doc}
+                      width={80}
+                      height={80}
+                      showRemoveButton
+                      onRemove={() => handleRemoveDocument(index)}
+                    />
                   ))}
                 </ScrollView>
               )}
