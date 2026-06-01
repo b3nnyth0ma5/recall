@@ -904,7 +904,7 @@ const styles = StyleSheet.create({
   // ── Tap-to-preview pill ──────────────────────────────────────────────────
   tapToPreviewContainer: {
     position: 'absolute',
-    top: '35%',
+    bottom: '35%',
     left: 0,
     right: 0,
     alignItems: 'center',
