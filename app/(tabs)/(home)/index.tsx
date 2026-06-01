@@ -549,9 +549,9 @@ export default function HomeScreen() {
         }
       >
         <View style={[styles.customHeader, { paddingTop: insets.top }]}>
-          <Pressable 
-            onPress={handleRecallIconPress} 
-            style={styles.headerIconButton}
+          <Pressable
+            onPress={handleRecallIconPress}
+            style={styles.headerLogoGroup}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Image
@@ -559,10 +559,9 @@ export default function HomeScreen() {
               style={styles.headerIcon}
               resizeMode="contain"
             />
+            <Text style={styles.headerTitle}>Recall</Text>
           </Pressable>
-          
-          <Text style={styles.headerTitle}>Recall</Text>
-          
+
           <Pressable 
             onPress={handleProfile} 
             style={styles.headerIconButton}
@@ -668,10 +667,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
   },
+  headerLogoGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   headerTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: colors.primary,
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
   },
   headerIconButton: {
     padding: 8,
@@ -679,8 +683,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerIcon: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
+    borderRadius: 10,
   },
   scrollView: {
     flex: 1,

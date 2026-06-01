@@ -1941,7 +1941,7 @@ const styles = StyleSheet.create({
   floatingActionsContainer: {
     position: 'absolute',
     bottom: 95,
-    right: 20,
+    left: 20,
     flexDirection: 'column',
     gap: 12,
     zIndex: 1002,

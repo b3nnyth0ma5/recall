@@ -115,9 +115,7 @@ export function DocumentTile({
           }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <View style={styles.removeButtonCircle}>
-            <IconSymbol name="xmark" size={12} color="#FFFFFF" />
-          </View>
+          <IconSymbol name="xmark.circle.fill" size={20} color="rgba(255,255,255,0.95)" />
         </Pressable>
       )}
     </Pressable>
@@ -227,15 +225,9 @@ const styles = StyleSheet.create({
   },
   removeButton: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-  },
-  removeButtonCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    top: 4,
+    right: 4,
+    zIndex: 10,
+    padding: 4,
   },
 });

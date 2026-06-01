@@ -1,5 +1,5 @@
 /**
- * extract-document Edge Function v4
+ * extract-document Edge Function v5
  *
  * Receives a recall_document record ID, downloads the file from Supabase Storage
  * (cdn_url is a storage path like "<userId>/<uuid>-<fileName>"),
@@ -11,7 +11,10 @@
  * to PNG, uploads to Cloudflare Images, and sets recall_documents.thumbnail_url.
  * Failure is silent (non-blocking).
  *
- * Mirrors the ocr-image → embedding-image pipeline pattern exactly.
+ * v5: Fixed 401 on embedding-document call.
+ * Replaced supabase.functions.invoke() + EdgeRuntime.waitUntil() with an
+ * awaited bare fetch() using explicit Authorization: Bearer header.
+ * Mirrors the proven ocr-image -> embedding-image pattern exactly.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
@@ -135,7 +138,7 @@ Deno.serve(async (req) => {
   }
 
   const startTime = Date.now();
-  console.log('=== extract-document Edge Function Started (v4) ===');
+  console.log('=== extract-document Edge Function Started (v5) ===');
   console.log('Timestamp:', new Date().toISOString());
 
   try {
@@ -487,40 +490,40 @@ Deno.serve(async (req) => {
     console.log('=== Document extraction completed successfully ===');
     console.log('Total processing time:', processingTime, 'ms');
 
-    // Step 5: Trigger embedding-document via supabase.functions.invoke() so the SDK
-    // handles the Authorization header correctly using the already-loaded service-role key.
-    // Wrap in EdgeRuntime.waitUntil() so the isolate stays alive until the call completes.
+    // Step 5: Trigger embedding-document
+    // FIXED v5: Use awaited bare fetch() with explicit Authorization header.
+    // This mirrors the proven ocr-image -> embedding-image pattern exactly.
+    // Do NOT use supabase.functions.invoke() — it produces a malformed JWT.
+    // Do NOT wrap in EdgeRuntime.waitUntil() — the call must complete before we return.
     const hasContent = (extractedText && extractedText.trim().length > 0)
       || (docExplanation && docExplanation.trim().length > 0);
 
     let embeddingTriggered = false;
     if (hasContent) {
       console.log('[extract-document] Triggering embedding-document for', record.id);
-      const embeddingPromise = supabase.functions.invoke('embedding-document', {
-        body: {
-          recall_document_id: record.id,
-          extracted_text: extractedText,
-          doc_explanation: docExplanation,
-        },
-      }).then(({ error }) => {
-        if (error) {
-          console.error('[extract-document] embedding-document invoke error:', error);
-        } else {
-          console.log('[extract-document] embedding-document invoked successfully');
-        }
-      }).catch(err => {
-        console.error('[extract-document] embedding-document invoke threw:', err);
-      });
+      try {
+        const embeddingResponse = await fetch(`${supabaseUrl}/functions/v1/embedding-document`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            recall_document_id: record.id,
+            extracted_text: extractedText,
+            doc_explanation: docExplanation,
+          }),
+        });
 
-      // Keep the isolate alive until the background call completes.
-      // EdgeRuntime is the Supabase Deno runtime global — it has waitUntil for exactly this.
-      // @ts-ignore - EdgeRuntime is provided by Supabase's Deno runtime
-      if (typeof EdgeRuntime !== 'undefined' && typeof EdgeRuntime.waitUntil === 'function') {
-        // @ts-ignore
-        EdgeRuntime.waitUntil(embeddingPromise);
-        console.log('[extract-document] EdgeRuntime.waitUntil registered for embedding-document call');
-      } else {
-        console.warn('[extract-document] EdgeRuntime.waitUntil not available — embedding call may not complete');
+        if (embeddingResponse.ok) {
+          const embeddingData = await embeddingResponse.json();
+          console.log('[extract-document] embedding-document succeeded:', embeddingData);
+        } else {
+          const errorText = await embeddingResponse.text();
+          console.error('[extract-document] embedding-document failed:', embeddingResponse.status, errorText);
+        }
+      } catch (embeddingError) {
+        console.error('[extract-document] embedding-document threw:', embeddingError);
       }
       embeddingTriggered = true;
     } else {

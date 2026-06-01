@@ -37,7 +37,7 @@ import { SkeletonLoader } from './SkeletonLoader';
 import { Document } from '@/types/Document';
 import { formatFileSize, getFileExtension, getDocumentColor } from '@/utils/documentPicker';
 // Lucide share icon — non-negotiable per spec
-import { Share2 } from 'lucide-react-native';
+import { Share } from 'lucide-react-native';
 
 type MediaItem =
   | { kind: 'image'; url: string; id?: string }
@@ -741,7 +741,7 @@ export function FullScreenImage({
                     variant="pulse"
                   />
                 ) : (
-                  <Share2 size={24} color="#FFFFFF" strokeWidth={2.2} />
+                  <Share size={24} color="#FFFFFF" strokeWidth={2.2} />
                 )}
               </View>
             </Pressable>

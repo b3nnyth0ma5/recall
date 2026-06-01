@@ -390,7 +390,7 @@ export default function ProfileScreen() {
 
         {/* App Info */}
         <View style={styles.appInfo}>
-          <Text style={styles.appInfoText}>Recall App v1.0.0</Text>
+          <Text style={styles.appInfoText}>Recall App v{Constants.expoConfig?.version ?? '1.0.0'} ({Constants.nativeBuildVersion ?? 'dev'})</Text>
           <Text style={styles.appInfoText}>© 2024 Recall. All rights reserved.</Text>
         </View>
       </ScrollView>
