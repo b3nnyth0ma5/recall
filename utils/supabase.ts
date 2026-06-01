@@ -754,6 +754,170 @@ export async function triggerPeopleFinder(
   }
 }
 
+// ============================================================
+// Document utilities
+// ============================================================
+
+export async function uploadDocumentToDatabase(
+  noteId: string,
+  fileUri: string,
+  thumbnailUri: string | undefined,
+  fileName: string,
+  contentType: string,
+  fileSize: number
+): Promise<{ id: string; cdn_url?: string } | null> {
+  try {
+    console.log('=== Starting document upload ===');
+    console.log('Note ID:', noteId);
+    console.log('File name:', fileName);
+    console.log('Content type:', contentType);
+    console.log('File size:', fileSize);
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.error('[uploadDocumentToDatabase] No active session');
+      return null;
+    }
+
+    // Read file as base64
+    console.log('[uploadDocumentToDatabase] Reading file as base64...');
+    const base64Data = await FileSystem.readAsStringAsync(fileUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    console.log('[uploadDocumentToDatabase] Base64 length:', base64Data.length);
+
+    // Insert a row into recall_documents first (without cdn_url — edge function will update it)
+    const { data: docRow, error: insertError } = await supabase
+      .from('recall_documents')
+      .insert([{
+        recall_id: noteId,
+        user_id: session.user.id,
+        file_name: fileName,
+        file_size: fileSize,
+        content_type: contentType,
+      }])
+      .select('id')
+      .single();
+
+    if (insertError || !docRow) {
+      console.error('[uploadDocumentToDatabase] Insert error:', insertError);
+      return null;
+    }
+
+    console.log('[uploadDocumentToDatabase] Document row created, id:', docRow.id);
+
+    // Call cloudflare-upload-document edge function
+    console.log('[uploadDocumentToDatabase] Calling cloudflare-upload-document edge function...');
+    const { data: uploadData, error: uploadError } = await supabase.functions.invoke('cloudflare-upload-document', {
+      body: {
+        base64Data,
+        fileName,
+        contentType,
+        userId: session.user.id,
+        documentId: docRow.id,
+      },
+    });
+
+    if (uploadError) {
+      console.error('[uploadDocumentToDatabase] Edge function error:', uploadError);
+      // Row was inserted but upload failed — leave it for retry
+      return { id: docRow.id };
+    }
+
+    const cdnUrl: string | undefined = uploadData?.cdnUrl;
+    console.log('[uploadDocumentToDatabase] CDN URL:', cdnUrl);
+
+    // Upload thumbnail if present (PDF)
+    if (thumbnailUri) {
+      try {
+        console.log('[uploadDocumentToDatabase] Uploading PDF thumbnail...');
+        const thumbBase64 = await FileSystem.readAsStringAsync(thumbnailUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const thumbFileName = `thumb-${docRow.id}.jpg`;
+        const { uploadImageToCloudflare } = await import('./cloudflareCDN');
+        const thumbCdnUrl = await uploadImageToCloudflare(thumbBase64, thumbFileName, 'image/jpeg');
+        if (thumbCdnUrl) {
+          await supabase
+            .from('recall_documents')
+            .update({ thumbnail_url: thumbCdnUrl })
+            .eq('id', docRow.id);
+          console.log('[uploadDocumentToDatabase] Thumbnail uploaded:', thumbCdnUrl);
+        }
+      } catch (thumbErr) {
+        console.warn('[uploadDocumentToDatabase] Thumbnail upload failed (non-fatal):', thumbErr);
+      }
+    }
+
+    console.log('=== Document upload complete ===');
+    return { id: docRow.id, cdn_url: cdnUrl };
+  } catch (error) {
+    console.error('[uploadDocumentToDatabase] Exception:', error);
+    return null;
+  }
+}
+
+export async function getDocumentSignedUrl(cdnUrl: string): Promise<string | null> {
+  try {
+    if (!cdnUrl) return null;
+    // If it's already an https URL (CDN), return as-is
+    if (cdnUrl.startsWith('https://')) {
+      return cdnUrl;
+    }
+    // Otherwise treat as a Supabase Storage path
+    const { data, error } = await supabase.storage
+      .from('documents')
+      .createSignedUrl(cdnUrl, 3600); // 1 hour TTL
+    if (error) {
+      console.error('[getDocumentSignedUrl] Error creating signed URL:', error);
+      return null;
+    }
+    return data?.signedUrl ?? null;
+  } catch (error) {
+    console.error('[getDocumentSignedUrl] Exception:', error);
+    return null;
+  }
+}
+
+export async function deleteDocumentRecord(documentId: string): Promise<boolean> {
+  try {
+    console.log('[deleteDocumentRecord] Deleting document:', documentId);
+    const { error } = await supabase
+      .from('recall_documents')
+      .delete()
+      .eq('id', documentId);
+    if (error) {
+      console.error('[deleteDocumentRecord] Error:', error);
+      return false;
+    }
+    console.log('[deleteDocumentRecord] Deleted successfully');
+    return true;
+  } catch (error) {
+    console.error('[deleteDocumentRecord] Exception:', error);
+    return false;
+  }
+}
+
+export async function fetchDocumentsForNote(noteId: string): Promise<any[]> {
+  try {
+    console.log('[fetchDocumentsForNote] Fetching documents for note:', noteId);
+    const { data, error } = await supabase
+      .from('recall_documents')
+      .select('*')
+      .eq('recall_id', noteId)
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.error('[fetchDocumentsForNote] Error:', error);
+      return [];
+    }
+    console.log('[fetchDocumentsForNote] Found', data?.length ?? 0, 'documents');
+    return data ?? [];
+  } catch (error) {
+    console.error('[fetchDocumentsForNote] Exception:', error);
+    return [];
+  }
+}
+
 export async function batchUploadImagesToCloudflare(batchSize: number = 100): Promise<{
   success: boolean;
   processed: number;

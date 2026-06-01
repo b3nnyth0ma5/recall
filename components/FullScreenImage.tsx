@@ -11,6 +11,8 @@ import {
   NativeScrollEvent,
   Platform,
   Alert,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
 import Animated, { 
   useSharedValue,
@@ -26,16 +28,24 @@ import { IconSymbol } from './IconSymbol';
 import ImageOCRDisplay from './ImageOCRDisplay';
 import { colors } from '@/styles/commonStyles';
 import * as Sharing from 'expo-sharing';
+import * as WebBrowser from 'expo-web-browser';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
-import { getImageDataUrl } from '@/utils/supabase';
+import { getImageDataUrl, getDocumentSignedUrl } from '@/utils/supabase';
 import { SkeletonLoader } from './SkeletonLoader';
+import { Document } from '@/types/Document';
+import { formatFileSize, getFileExtension, getDocumentColor } from '@/utils/documentPicker';
+
+type MediaItem =
+  | { kind: 'image'; url: string; id?: string }
+  | { kind: 'document'; doc: Document };
 
 interface FullScreenImageProps {
   visible: boolean;
-  images: string[];
+  images?: string[];
   imageIds?: string[];
+  media?: MediaItem[];
   initialIndex?: number;
   onClose: () => void;
 }
@@ -202,8 +212,9 @@ function ZoomableImage({ imageUrl, index, isLoaded, onLoad, resetTrigger }: Zoom
 
 export function FullScreenImage({
   visible,
-  images,
+  images = [],
   imageIds,
+  media,
   initialIndex = 0,
   onClose,
 }: FullScreenImageProps) {
@@ -214,6 +225,7 @@ export function FullScreenImage({
   const [loadedImages, setLoadedImages] = useState<string[]>([]);
   const [isLoadingImages, setIsLoadingImages] = useState(false);
   const [imageLoadStates, setImageLoadStates] = useState<{ [key: number]: boolean }>({});
+  const [openingDocument, setOpeningDocument] = useState(false);
   // resetTrigger increments whenever currentImageIndex changes to reset zoom in each slide
   const [resetTrigger, setResetTrigger] = useState(0);
   const scrollViewRef = useRef<React.ElementRef<typeof ScrollView>>(null);
@@ -221,6 +233,11 @@ export function FullScreenImage({
   // Animated values for swipe-to-dismiss gesture
   const translateY = useSharedValue(0);
   const contextY = useSharedValue(0);
+
+  // Build the effective media array — prefer `media` prop, fall back to images array
+  const effectiveMedia: MediaItem[] = media && media.length > 0
+    ? media
+    : images.map((url, i) => ({ kind: 'image' as const, url, id: imageIds?.[i] }));
 
   // Load all images when modal opens
   useEffect(() => {
@@ -286,7 +303,7 @@ export function FullScreenImage({
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / SCREEN_WIDTH);
-    if (index !== currentImageIndex && index >= 0 && index < loadedImages.length) {
+    if (index !== currentImageIndex && index >= 0 && index < effectiveMedia.length) {
       setCurrentImageIndex(index);
     }
   };
@@ -297,10 +314,52 @@ export function FullScreenImage({
   };
 
   const getCurrentImageId = () => {
+    const item = effectiveMedia[currentImageIndex];
+    if (item?.kind === 'image' && item.id) return item.id;
     if (imageIds && imageIds.length > currentImageIndex) {
       return imageIds[currentImageIndex];
     }
     return undefined;
+  };
+
+  const getCurrentDocument = (): Document | null => {
+    const item = effectiveMedia[currentImageIndex];
+    if (item?.kind === 'document') return item.doc;
+    return null;
+  };
+
+  const handleOpenDocument = async () => {
+    const doc = getCurrentDocument();
+    if (!doc) return;
+    console.log('[FullScreenImage] User tapped Open Document:', doc.file_name);
+    setOpeningDocument(true);
+    try {
+      const url = doc.cdn_url ?? doc.local_uri;
+      if (!url) {
+        Toast.show({ type: 'error', text1: 'Document not available', position: 'bottom' });
+        return;
+      }
+      if (doc.content_type === 'application/pdf' && url.startsWith('https://')) {
+        const signedUrl = await getDocumentSignedUrl(url);
+        if (signedUrl) {
+          await WebBrowser.openBrowserAsync(signedUrl);
+        } else {
+          Toast.show({ type: 'error', text1: 'Could not open document', position: 'bottom' });
+        }
+      } else if (url.startsWith('file://') || url.startsWith('/')) {
+        await Sharing.shareAsync(url, { dialogTitle: doc.file_name });
+      } else if (url.startsWith('https://')) {
+        const signedUrl = await getDocumentSignedUrl(url);
+        if (signedUrl) {
+          await WebBrowser.openBrowserAsync(signedUrl);
+        }
+      }
+    } catch (err) {
+      console.error('[FullScreenImage] Error opening document:', err);
+      Toast.show({ type: 'error', text1: 'Failed to open document', position: 'bottom' });
+    } finally {
+      setOpeningDocument(false);
+    }
   };
 
   const handleCloseOCRModal = () => {
@@ -493,10 +552,18 @@ export function FullScreenImage({
     };
   });
 
-  // Use loaded images or show loading state
-  const displayImages = loadedImages.length > 0 ? loadedImages : images;
+  // Build resolved image URLs for image items (use loadedImages for imageId-based items)
+  const resolvedMedia: MediaItem[] = effectiveMedia.map((item, i) => {
+    if (item.kind === 'image') {
+      const resolvedUrl = loadedImages[i] ?? item.url;
+      return { ...item, url: resolvedUrl };
+    }
+    return item;
+  });
 
-  const counterText = `${currentImageIndex + 1} / ${displayImages.length}`;
+  const counterText = `${currentImageIndex + 1} / ${resolvedMedia.length}`;
+  const currentItem = resolvedMedia[currentImageIndex];
+  const isCurrentDocument = currentItem?.kind === 'document';
 
   return (
     <Modal
@@ -523,7 +590,7 @@ export function FullScreenImage({
               </View>
             </Pressable>
 
-            {/* Image Carousel */}
+            {/* Media Carousel */}
             <ScrollView
               ref={scrollViewRef}
               horizontal
@@ -535,67 +602,120 @@ export function FullScreenImage({
               decelerationRate="fast"
               style={styles.scrollView}
             >
-              {displayImages.map((imageUrl, index) => (
-                <ZoomableImage
-                  key={`fullscreen-${index}`}
-                  imageUrl={imageUrl}
-                  index={index}
-                  isLoaded={!!imageLoadStates[index]}
-                  onLoad={handleImageLoad}
-                  resetTrigger={currentImageIndex === index ? 0 : resetTrigger}
-                />
-              ))}
+              {resolvedMedia.map((item, index) => {
+                if (item.kind === 'document') {
+                  const doc = item.doc;
+                  const thumbUrl = doc.local_thumbnail_uri ?? doc.thumbnail_url;
+                  const ext = getFileExtension(doc.file_name);
+                  const docColor = getDocumentColor(doc.content_type);
+                  const sizeText = doc.file_size ? formatFileSize(doc.file_size) : '';
+                  const pageText = doc.page_count ? `${doc.page_count} pages` : '';
+                  const truncatedName = doc.file_name.length > 40
+                    ? doc.file_name.substring(0, 37) + '...'
+                    : doc.file_name;
+                  return (
+                    <View key={`fullscreen-doc-${index}`} style={styles.imageWrapper}>
+                      {thumbUrl ? (
+                        <Image
+                          source={{ uri: thumbUrl }}
+                          style={styles.image}
+                          resizeMode="contain"
+                        />
+                      ) : (
+                        <View style={[styles.docPlaceholder, { backgroundColor: docColor }]}>
+                          <Text style={styles.docExtText}>{ext}</Text>
+                        </View>
+                      )}
+                      <View style={styles.docInfoOverlay}>
+                        <IconSymbol name="doc.fill" size={20} color="#FFFFFF" />
+                        <Text style={styles.docFileName}>{truncatedName}</Text>
+                        {sizeText ? <Text style={styles.docMeta}>{sizeText}</Text> : null}
+                        {pageText ? <Text style={styles.docMeta}>{pageText}</Text> : null}
+                      </View>
+                    </View>
+                  );
+                }
+                return (
+                  <ZoomableImage
+                    key={`fullscreen-${index}`}
+                    imageUrl={item.url}
+                    index={index}
+                    isLoaded={!!imageLoadStates[index]}
+                    onLoad={handleImageLoad}
+                    resetTrigger={currentImageIndex === index ? 0 : resetTrigger}
+                  />
+                );
+              })}
             </ScrollView>
 
-            {/* Share Image Button - Bottom Left */}
-            <Pressable
-              style={styles.shareButton}
-              onPress={handleShareImage}
-              disabled={isSharing}
-              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-            >
-              <View style={styles.shareButtonContent}>
-                {isSharing ? (
-                  <SkeletonLoader
-                    width={24}
-                    height={24}
-                    borderRadius={12}
-                    variant="pulse"
-                  />
-                ) : (
-                  <IconSymbol 
-                    name="paperplane.fill" 
-                    size={24} 
-                    color="#FFFFFF" 
-                  />
-                )}
-              </View>
-            </Pressable>
+            {/* Bottom Left: Share (images) or Open Document (documents) */}
+            {isCurrentDocument ? (
+              <Pressable
+                style={styles.shareButton}
+                onPress={handleOpenDocument}
+                disabled={openingDocument}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              >
+                <View style={styles.shareButtonContent}>
+                  {openingDocument ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <IconSymbol name="arrow.up.doc.fill" size={24} color="#FFFFFF" />
+                  )}
+                </View>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={styles.shareButton}
+                onPress={handleShareImage}
+                disabled={isSharing}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              >
+                <View style={styles.shareButtonContent}>
+                  {isSharing ? (
+                    <SkeletonLoader
+                      width={24}
+                      height={24}
+                      borderRadius={12}
+                      variant="pulse"
+                    />
+                  ) : (
+                    <IconSymbol 
+                      name="paperplane.fill" 
+                      size={24} 
+                      color="#FFFFFF" 
+                    />
+                  )}
+                </View>
+              </Pressable>
+            )}
 
-            {/* OCR Button - Bottom Right */}
-            <Pressable
-              style={styles.ocrButton}
-              onPress={() => {
-                console.log('[FullScreenImage] Text/OCR button pressed for image index:', currentImageIndex);
-                handleOCRButtonPress();
-              }}
-              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-              accessibilityLabel="View extracted text and explanation"
-              accessibilityRole="button"
-            >
-              <View style={styles.shareButtonContent}>
-                <IconSymbol
-                  name="text.alignleft"
-                  size={24}
-                  color="#FFFFFF"
-                />
-              </View>
-            </Pressable>
+            {/* OCR Button - Bottom Right (only for images) */}
+            {!isCurrentDocument && (
+              <Pressable
+                style={styles.ocrButton}
+                onPress={() => {
+                  console.log('[FullScreenImage] Text/OCR button pressed for image index:', currentImageIndex);
+                  handleOCRButtonPress();
+                }}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                accessibilityLabel="View extracted text and explanation"
+                accessibilityRole="button"
+              >
+                <View style={styles.shareButtonContent}>
+                  <IconSymbol
+                    name="text.alignleft"
+                    size={24}
+                    color="#FFFFFF"
+                  />
+                </View>
+              </Pressable>
+            )}
 
             {/* Pagination Dots - Bottom Center */}
-            {displayImages.length > 1 && (
+            {resolvedMedia.length > 1 && (
               <View style={styles.paginationContainer}>
-                {displayImages.map((_, index) => (
+                {resolvedMedia.map((_, index) => (
                   <View
                     key={index}
                     style={[
@@ -608,7 +728,7 @@ export function FullScreenImage({
             )}
 
             {/* Counter Badge - Top Left */}
-            {displayImages.length > 1 && (
+            {resolvedMedia.length > 1 && (
               <View style={styles.counterBadge}>
                 <Text style={styles.counterText}>
                   {counterText}
@@ -838,5 +958,36 @@ const styles = StyleSheet.create({
   ocrModalErrorText: {
     fontSize: 16,
     color: colors.textSecondary,
+  },
+  docPlaceholder: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT * 0.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  docExtText: {
+    fontSize: 48,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 2,
+  },
+  docInfoOverlay: {
+    position: 'absolute',
+    bottom: 120,
+    left: 24,
+    right: 24,
+    alignItems: 'center',
+    gap: 8,
+  },
+  docFileName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  docMeta: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '500',
   },
 });

@@ -1,4 +1,6 @@
 
+import { Document } from './Document';
+
 export interface Note {
   id: string;
   text: string;
@@ -15,6 +17,8 @@ export interface Note {
   relevance_reason?: string; // Explanation of why this recall matches
   used_for_answer?: boolean; // Whether this recall was used to derive the AI answer
   people?: Person[]; // People mentioned in this recall
+  documents?: Document[]; // Documents attached to this recall
+  documentIds?: string[]; // Array of document record IDs
 }
 
 export interface Person {

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, memo, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
+import { Document } from '@/types/Document';
 import { IconSymbol } from './IconSymbol';
 import UrlPreviewCard from './UrlPreviewCard';
 import { extractUrls } from '@/utils/urlProcessor';
@@ -28,6 +29,12 @@ import Animated, {
   FadeOut,
   SlideOutLeft,
 } from 'react-native-reanimated';
+import { DocumentTile } from './DocumentTile';
+import { getDocumentColor, getFileExtension } from '@/utils/documentPicker';
+
+type MediaItem =
+  | { kind: 'image'; url: string; id?: string }
+  | { kind: 'document'; doc: Document };
 
 interface NoteCardProps {
   note: Note;
@@ -390,8 +397,21 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       }) 
     : [];
 
+  const displayMedia: MediaItem[] = [
+    ...displayImages.map((url, i) => ({
+      kind: 'image' as const,
+      url,
+      id: note.imageIds?.[i],
+    })),
+    ...(note.documents ?? []).map(doc => ({
+      kind: 'document' as const,
+      doc,
+    })),
+  ];
+
   const hasPeople = note.people && note.people.length > 0;
   const hasImages = displayImages && displayImages.length > 0;
+  const hasMedia = displayMedia.length > 0;
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
@@ -399,7 +419,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         onPress={handleCardPress}
         style={styles.entireCardTouchArea}
       >
-        {hasImages && (
+        {hasMedia && (
           <View style={styles.imagesContainer}>
             <ScrollView
               ref={imageScrollRef}
@@ -413,54 +433,72 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               snapToInterval={IMAGE_WIDTH + IMAGE_SPACING}
               snapToAlignment="start"
             >
-              {displayImages.map((imageUrl, index) => (
-                <Pressable 
-                  key={`${note.id}-image-${index}`}
-                  onPress={() => handleImagePress(index)}
-                  style={styles.imageWrapper}
-                >
-                  {!imageUrl ? (
-                    <View style={styles.imageLoadingContainer}>
-                      <SkeletonLoader
+              {displayMedia.map((item, index) => {
+                if (item.kind === 'document') {
+                  return (
+                    <View key={`${note.id}-doc-${index}`} style={[styles.imageWrapper, { marginRight: IMAGE_SPACING }]}>
+                      <DocumentTile
+                        document={item.doc}
                         width={IMAGE_WIDTH}
                         height={IMAGE_HEIGHT}
-                        borderRadius={12}
-                        variant="wave"
+                        onPress={() => {
+                          console.log('[NoteCard] User tapped document tile:', item.doc.file_name);
+                          handleImagePress(index);
+                        }}
                       />
                     </View>
-                  ) : (
-                    <>
-                      {imageLoadingStates[index] && !imageErrorStates[index] && !imageLoadedStates[index] && (
-                        <View style={styles.imageLoadingContainer}>
-                          <SkeletonLoader
-                            width={IMAGE_WIDTH}
-                            height={IMAGE_HEIGHT}
-                            borderRadius={12}
-                            variant="wave"
-                          />
-                        </View>
-                      )}
-                      {imageErrorStates[index] ? (
-                        <View style={styles.imageErrorContainer}>
-                          <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
-                          <Text style={styles.imageErrorText}>Failed to load image</Text>
-                        </View>
-                      ) : (
-                        <Image
-                          source={{ uri: imageUrl }}
-                          style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
-                          resizeMode="cover"
-                          onLoadStart={() => handleImageLoadStart(index)}
-                          onLoad={() => handleImageLoad(index)}
-                          onError={() => handleImageError(index)}
+                  );
+                }
+                const imageUrl = item.url;
+                return (
+                  <Pressable 
+                    key={`${note.id}-image-${index}`}
+                    onPress={() => handleImagePress(index)}
+                    style={styles.imageWrapper}
+                  >
+                    {!imageUrl ? (
+                      <View style={styles.imageLoadingContainer}>
+                        <SkeletonLoader
+                          width={IMAGE_WIDTH}
+                          height={IMAGE_HEIGHT}
+                          borderRadius={12}
+                          variant="wave"
                         />
-                      )}
-                    </>
-                  )}
-                </Pressable>
-              ))}
+                      </View>
+                    ) : (
+                      <>
+                        {imageLoadingStates[index] && !imageErrorStates[index] && !imageLoadedStates[index] && (
+                          <View style={styles.imageLoadingContainer}>
+                            <SkeletonLoader
+                              width={IMAGE_WIDTH}
+                              height={IMAGE_HEIGHT}
+                              borderRadius={12}
+                              variant="wave"
+                            />
+                          </View>
+                        )}
+                        {imageErrorStates[index] ? (
+                          <View style={styles.imageErrorContainer}>
+                            <IconSymbol name="exclamationmark.triangle" size={40} color={colors.error} />
+                            <Text style={styles.imageErrorText}>Failed to load image</Text>
+                          </View>
+                        ) : (
+                          <Image
+                            source={{ uri: imageUrl }}
+                            style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
+                            resizeMode="cover"
+                            onLoadStart={() => handleImageLoadStart(index)}
+                            onLoad={() => handleImageLoad(index)}
+                            onError={() => handleImageError(index)}
+                          />
+                        )}
+                      </>
+                    )}
+                  </Pressable>
+                );
+              })}
             </ScrollView>
-            {totalImageCount > 0 && (
+            {displayMedia.length > 0 && (
               <View style={styles.imageCounter}>
                 {isUploadingImages && (
                   <ActivityIndicator 
@@ -470,7 +508,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                   />
                 )}
                 <Text style={styles.imageCounterText}>
-                  {totalImageCount > 1 ? `${currentImageIndex + 1} / ${totalImageCount}` : `1 / ${totalImageCount}`}
+                  {displayMedia.length > 1 ? `${currentImageIndex + 1} / ${displayMedia.length}` : `1 / ${displayMedia.length}`}
                 </Text>
               </View>
             )}
@@ -582,12 +620,13 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         </Swipeable>
       </Pressable>
 
-      {note.images && note.images.length > 0 && (
+      {hasMedia && (
         <React.Suspense fallback={null}>
           <FullScreenImage
             visible={showFullScreenImage}
-            images={note.images}
+            images={displayImages}
             imageIds={note.imageIds}
+            media={displayMedia}
             initialIndex={fullScreenImageIndex}
             onClose={() => setShowFullScreenImage(false)}
           />
@@ -608,6 +647,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     prevProps.note.images?.length === nextProps.note.images?.length &&
     prevProps.note.imageIds?.length === nextProps.note.imageIds?.length &&
     prevProps.note.people?.length === nextProps.note.people?.length &&
+    prevProps.note.documents?.length === nextProps.note.documents?.length &&
     prevProps.loading === nextProps.loading &&
     prevProps.expectedImageCount === nextProps.expectedImageCount &&
     prevProps.scrollToImageIndex === nextProps.scrollToImageIndex

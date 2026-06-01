@@ -178,6 +178,28 @@ export function getCloudflareImagePresets(cdnUrl: string) {
 }
 
 /**
+ * Get a document URL — if it's already an https URL return it as-is,
+ * otherwise generate a Supabase Storage signed URL (1h TTL).
+ */
+export async function getDocumentUrl(cdnUrl: string): Promise<string | null> {
+  if (!cdnUrl) return null;
+  if (cdnUrl.startsWith('https://')) return cdnUrl;
+  try {
+    const { data, error } = await supabase.storage
+      .from('documents')
+      .createSignedUrl(cdnUrl, 3600);
+    if (error) {
+      console.error('[getDocumentUrl] Error creating signed URL:', error);
+      return null;
+    }
+    return data?.signedUrl ?? null;
+  } catch (error) {
+    console.error('[getDocumentUrl] Exception:', error);
+    return null;
+  }
+}
+
+/**
  * Check if Cloudflare CDN is properly configured
  * This calls the edge function to verify API key is set
  */

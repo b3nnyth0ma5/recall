@@ -33,15 +33,19 @@ import Animated, {
 import { colors } from '@/styles/commonStyles';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { Note, Person } from '@/types/Note';
+import { Document } from '@/types/Document';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
 import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
-import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding, triggerPeopleFinder } from '@/utils/supabase';
+import { DocumentTile } from '@/components/DocumentTile';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding, triggerPeopleFinder, uploadDocumentToDatabase, deleteDocumentRecord } from '@/utils/supabase';
 import { processRecallUrls, processRecallUrlsAndAwaitScrape, extractUrls } from '@/utils/urlProcessor';
 import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
 import LocationSearchScreen from '@/app/location-search';
+import { pickDocuments } from '@/utils/documentPicker';
+import Toast from 'react-native-toast-message';
 
 interface ImageData {
   id?: string;
@@ -72,6 +76,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
 
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageData[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(false);
   const [processingCount, setProcessingCount] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -98,11 +103,12 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
 
   const isEditing = !!noteId;
   
-  const canSave = text.trim().length > 0 || images.length > 0;
+  const canSave = text.trim().length > 0 || images.length > 0 || documents.length > 0;
   const hasImages = images.length > 0;
+  const hasDocuments = documents.length > 0;
   const textHasUrl = hasUrl(text);
   
-  const textInputHeight = hasImages ? 510 : 792;
+  const textInputHeight = (hasImages || hasDocuments) ? 510 : 792;
 
   useEffect(() => {
     if (images.length > 0) {
@@ -599,6 +605,38 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     }, 300);
   };
 
+  const handleUploadDocument = useCallback(async () => {
+    console.log('[NoteEditorSlideUp] User tapped Upload Document FAB');
+    setShowFABs(false);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const picked = await pickDocuments();
+    if (picked.length === 0) return;
+    const newDocs: Document[] = picked.map(p => ({
+      file_name: p.name,
+      file_size: p.size,
+      content_type: p.mimeType,
+      local_uri: p.uri,
+      local_thumbnail_uri: p.thumbnailUri,
+      upload_state: 'pending' as const,
+    }));
+    console.log('[NoteEditorSlideUp] Adding', newDocs.length, 'document(s) to state');
+    setDocuments(prev => [...prev, ...newDocs]);
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  }, []);
+
+  const removeDocument = (index: number) => {
+    const doc = documents[index];
+    console.log('[NoteEditorSlideUp] User tapped remove document:', doc.file_name);
+    if (doc.id) {
+      deleteDocumentRecord(doc.id).catch(err =>
+        console.error('[NoteEditorSlideUp] Error deleting document record:', err)
+      );
+    }
+    setDocuments(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleBackdropPress = () => {
     if (showFABs) {
       setShowFABs(false);
@@ -939,6 +977,58 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
         }, 100);
       }
 
+      // Upload documents in background (fire-and-forget)
+      const docsToUpload = documents.filter(d => !d.id && d.local_uri);
+      if (docsToUpload.length > 0) {
+        console.log(`[NoteEditorSlideUp] [ASYNC] Starting background upload of ${docsToUpload.length} document(s)...`);
+        Toast.show({
+          type: 'info',
+          text1: 'Documents uploading...',
+          text2: `${docsToUpload.length} document${docsToUpload.length > 1 ? 's' : ''} uploading in background`,
+          position: 'bottom',
+        });
+        (async () => {
+          const results = await Promise.allSettled(
+            docsToUpload.map(doc =>
+              uploadDocumentToDatabase(
+                recallId,
+                doc.local_uri!,
+                doc.local_thumbnail_uri,
+                doc.file_name,
+                doc.content_type,
+                doc.file_size ?? 0
+              )
+            )
+          );
+          let successCount = 0;
+          let failCount = 0;
+          results.forEach((result) => {
+            if (result.status === 'fulfilled' && result.value?.id) {
+              successCount++;
+            } else {
+              failCount++;
+            }
+          });
+          console.log(`[NoteEditorSlideUp] [ASYNC] Documents upload complete: ${successCount} uploaded, ${failCount} failed`);
+          if (failCount === 0) {
+            Toast.show({
+              type: 'success',
+              text1: 'Documents ready',
+              text2: `${successCount} document${successCount > 1 ? 's' : ''} uploaded successfully`,
+              position: 'bottom',
+            });
+          } else {
+            Toast.show({
+              type: 'error',
+              text1: 'Some documents failed',
+              text2: `${failCount} document${failCount > 1 ? 's' : ''} failed to upload`,
+              position: 'bottom',
+            });
+          }
+          await refreshSingleNote(recallId);
+        })();
+      }
+
       console.log('[NoteEditorSlideUp] [ASYNC] Processing URLs in note text for recall:', recallId);
       const urlsInSlideUpText = extractUrls(noteData.text);
       if (urlsInSlideUpText.length > 0) {
@@ -1266,6 +1356,34 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                   </View>
                 )}
 
+                {hasDocuments && (
+                  <View style={styles.documentsContainer}>
+                    <View style={styles.imagesHeader}>
+                      <Text style={styles.imagesTitle}>
+                        {documents.length}
+                        {' '}
+                        {documents.length === 1 ? 'Document' : 'Documents'}
+                      </Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.imagesScrollContent}
+                    >
+                      {documents.map((doc, index) => (
+                        <DocumentTile
+                          key={`doc-${doc.id ?? doc.file_name}-${index}`}
+                          document={doc}
+                          width={IMAGE_CAROUSEL_WIDTH}
+                          height={IMAGE_CAROUSEL_WIDTH * 0.75}
+                          showRemoveButton
+                          onRemove={() => removeDocument(index)}
+                        />
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
                 {showFABs && (
                   <Animated.View
                     entering={FadeIn.duration(200)}
@@ -1276,6 +1394,19 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                       },
                     ]}
                   >
+                    <Pressable
+                      style={styles.floatingActionButton}
+                      onPress={handleUploadDocument}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <IconSymbol 
+                        ios_icon_name="doc.fill" 
+                        android_material_icon_name="insert-drive-file" 
+                        size={28} 
+                        color={colors.primary} 
+                      />
+                    </Pressable>
+
                     <Pressable
                       style={styles.floatingActionButton}
                       onPress={handleChooseFromLibrary}
@@ -1524,6 +1655,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   imagesContainer: {
+    paddingVertical: 16,
+    marginBottom: 8,
+  },
+  documentsContainer: {
     paddingVertical: 16,
     marginBottom: 8,
   },

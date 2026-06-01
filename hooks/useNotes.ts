@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Note } from '@/types/Note';
+import { Document } from '@/types/Document';
 import { supabase, getImageDataUrl, saveSearchHistory } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
@@ -145,15 +146,29 @@ export function useNotes() {
     const recallIds = recalls.map(r => r.id);
     const peopleByRecallId = await loadPeopleForRecalls(recallIds);
 
-    // Batch fetch all images for all recalls in one query
-    const { data: allImagesData, error: allImagesError } = await supabase
-      .from('recall_images')
-      .select('id, recall_id, cdn_url')
-      .in('recall_id', recallIds)
-      .order('created_at', { ascending: true });
+    // Batch fetch images and documents in parallel
+    const [imagesResult, documentsResult] = await Promise.all([
+      supabase
+        .from('recall_images')
+        .select('id, recall_id, cdn_url')
+        .in('recall_id', recallIds)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('recall_documents')
+        .select('id, recall_id, cdn_url, thumbnail_url, file_name, file_size, content_type, page_count, extracted_text, doc_explanation, processed_at, created_at')
+        .in('recall_id', recallIds)
+        .order('created_at', { ascending: true }),
+    ]);
+
+    const allImagesData = imagesResult.data;
+    const allImagesError = imagesResult.error;
+    const allDocumentsData = documentsResult.data;
 
     if (allImagesError) {
       console.error('Error fetching images:', allImagesError);
+    }
+    if (documentsResult.error) {
+      console.error('Error fetching documents:', documentsResult.error);
     }
 
     // Group images by recall_id
@@ -163,6 +178,28 @@ export function useNotes() {
         imagesByRecallId.set(img.recall_id, []);
       }
       imagesByRecallId.get(img.recall_id)!.push(img);
+    });
+
+    // Group documents by recall_id
+    const documentsByRecallId = new Map<string, Document[]>();
+    (allDocumentsData || []).forEach((doc: any) => {
+      if (!documentsByRecallId.has(doc.recall_id)) {
+        documentsByRecallId.set(doc.recall_id, []);
+      }
+      documentsByRecallId.get(doc.recall_id)!.push({
+        id: doc.id,
+        cdn_url: doc.cdn_url,
+        thumbnail_url: doc.thumbnail_url,
+        file_name: doc.file_name,
+        file_size: doc.file_size,
+        content_type: doc.content_type,
+        page_count: doc.page_count,
+        extracted_text: doc.extracted_text,
+        doc_explanation: doc.doc_explanation,
+        processed_at: doc.processed_at,
+        created_at: doc.created_at,
+        upload_state: 'uploaded' as const,
+      });
     });
 
     // Process recalls with their images
@@ -217,6 +254,7 @@ export function useNotes() {
             images: validImageUrls, 
             imageIds: imageIds,
             people: peopleByRecallId[recall.id] || [],
+            documents: documentsByRecallId.get(recall.id) || [],
           };
 
           // Update note cache with processed note
@@ -230,6 +268,7 @@ export function useNotes() {
             images: [], 
             imageIds: [],
             people: [],
+            documents: [],
           };
         }
       })

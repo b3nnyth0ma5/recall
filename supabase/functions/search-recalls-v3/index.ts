@@ -10,6 +10,7 @@ const corsHeaders = {
 const TEXT_SIMILARITY_THRESHOLD = 0.4;
 const IMAGE_SIMILARITY_THRESHOLD = 0.25;
 const URL_SIMILARITY_THRESHOLD = 0.4;
+const DOCUMENT_SIMILARITY_THRESHOLD = 0.4;
 
 interface ExtractedEntities {
   keywords: string[];
@@ -47,6 +48,9 @@ interface RecallMatch {
     url_data: string;
     similarity: number;
   }>;
+  document_similarities: number[];
+  isDocumentMatch?: boolean;
+  documents_data: { id: string; file_name: string; content_type: string; cdn_url: string | null; thumbnail_url: string | null; page_count: number | null; extracted_text_preview: string | null; doc_explanation: string | null; }[];
   isLocationMatch: boolean;
   isPeopleMatch: boolean;
   isKeywordMatch: boolean;
@@ -380,7 +384,8 @@ Deno.serve(async (req) => {
     // Convert embedding array to pgvector string format
     const embeddingStr = `[${queryEmbedding.join(',')}]`;
 
-    const [recallsResult, imagesResult, urlsResult, recallPeopleResult] = await Promise.all([
+    const embeddingArray = queryEmbedding;
+    const [recallsResult, imagesResult, urlsResult, docRes, recallPeopleResult] = await Promise.all([
       supabase.rpc('match_recalls', {
         query_embedding: embeddingStr,
         match_threshold: 0.4,
@@ -398,6 +403,12 @@ Deno.serve(async (req) => {
         match_threshold: 0.4,
         match_count: 50,
         user_id_filter: user.id
+      }),
+      supabase.rpc('match_recall_documents', {
+        query_embedding: embeddingArray,
+        match_threshold: DOCUMENT_SIMILARITY_THRESHOLD,
+        match_count: 50,
+        user_id: user.id,
       }),
       matchingPersonIds.length > 0
         ? supabase
@@ -462,12 +473,25 @@ Deno.serve(async (req) => {
       urlsByRecall.get(urlRow.recall_id)!.push(urlRow);
     }
 
+    // Group documents by recall_id
+    const allDocs = docRes.data || [];
+    type DocMatch = { id: string; recall_id: string; file_name: string; content_type: string; cdn_url: string | null; thumbnail_url: string | null; page_count: number | null; extracted_text_preview: string | null; doc_explanation: string | null; similarity: number; distance?: number; };
+    const documentsByRecallId = new Map<string, DocMatch[]>();
+    for (const doc of allDocs) {
+      const docWithSim: DocMatch = { ...doc, similarity: 1 - (doc.distance ?? 1) };
+      if (!documentsByRecallId.has(doc.recall_id)) {
+        documentsByRecallId.set(doc.recall_id, []);
+      }
+      documentsByRecallId.get(doc.recall_id)!.push(docWithSim);
+    }
+
     // Also collect recall IDs that matched via images or urls (even if recall itself didn't hit threshold)
     const imageRecallIds = new Set<string>(allImages.map((img: any) => img.recall_id));
     const urlRecallIds = new Set<string>(allUrls.map((u: any) => u.recall_id));
+    const docRecallIds = new Set<string>(allDocs.map((d: any) => d.recall_id));
 
-    // Fetch full data for recalls that matched only via images or urls (not via text)
-    const auxiliaryOnlyRecallIds = [...new Set([...imageRecallIds, ...urlRecallIds])].filter(
+    // Fetch full data for recalls that matched only via images, urls, or documents (not via text)
+    const auxiliaryOnlyRecallIds = [...new Set([...imageRecallIds, ...urlRecallIds, ...docRecallIds])].filter(
       id => !allRecalls.some((r: any) => r.id === id)
     );
 
@@ -550,8 +574,9 @@ Deno.serve(async (req) => {
 
       const hasImageMatch = imageSimilarities.some(sim => sim >= IMAGE_SIMILARITY_THRESHOLD);
       const hasUrlMatch = urlSimilarities.some(sim => sim >= URL_SIMILARITY_THRESHOLD);
+      const hasDocumentMatch = (documentsByRecallId.get(recall.id)?.length ?? 0) > 0;
 
-      if (isLocationMatch || isPeopleMatch || isKeywordMatch || hasImageMatch || hasUrlMatch ||
+      if (isLocationMatch || isPeopleMatch || isKeywordMatch || hasImageMatch || hasUrlMatch || hasDocumentMatch ||
           (entities.keywords.length === 0 && entities.people.length === 0 && !locationCoords)) {
         recallMatches.push({
           recall_id: recall.id,
@@ -569,6 +594,18 @@ Deno.serve(async (req) => {
           },
           images_data: imagesData,
           urls_data: urlsData,
+          documents_data: (documentsByRecallId.get(recall.id) ?? []).map(d => ({
+            id: d.id,
+            file_name: d.file_name,
+            content_type: d.content_type,
+            cdn_url: d.cdn_url,
+            thumbnail_url: d.thumbnail_url,
+            page_count: d.page_count,
+            extracted_text_preview: d.extracted_text_preview,
+            doc_explanation: d.doc_explanation,
+          })),
+          document_similarities: (documentsByRecallId.get(recall.id) ?? []).map(d => d.similarity),
+          isDocumentMatch: hasDocumentMatch,
           isLocationMatch,
           isPeopleMatch,
           isKeywordMatch,
@@ -659,6 +696,13 @@ Deno.serve(async (req) => {
           });
         }
 
+        const documentsContext = recall.documents_data && recall.documents_data.length > 0
+          ? `\n\nDocuments (${recall.documents_data.length}):\n` + recall.documents_data.map((d, i) =>
+              `  ${i + 1}. ${d.file_name} (${d.content_type}${d.page_count ? `, ${d.page_count} pages` : ''})${d.doc_explanation ? ` — ${d.doc_explanation}` : ''}\n     Excerpt: ${(d.extracted_text_preview || '').slice(0, 800)}`
+            ).join('\n')
+          : '';
+        contextText += documentsContext;
+
         return {
           sourceId,
           recallId: recall.recall_id,
@@ -689,6 +733,10 @@ LINKED PAGES:
 - Use linked-page content (title, description, page text) when it is relevant to answering the question
 - When information comes from a linked page rather than the recall text itself, attribute it clearly, e.g. "according to the linked article…" or "the linked page states…"
 - Linked-page content is supplementary — always prefer the recall's own text when both are available
+
+ATTACHED DOCUMENTS:
+- Each recall may include "Documents" with extracted text from files the user saved
+- When information comes from an attached document, cite it: "according to the attached document <file_name>..."
 
 Provide your answer in JSON format with inline source references: {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
 Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John mentioned he'll bring the presentation SOURCE_2.", "confidence": 90, "sources": ["SOURCE_1", "SOURCE_2"]}
