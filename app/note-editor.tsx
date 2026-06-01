@@ -103,12 +103,13 @@ export default function NoteEditorScreen() {
   const [isLazyLoading, setIsLazyLoading] = useState(false);
 
   // When initialRichText is loaded from DB/cache, push it into the editor
+  // editor is a stable bridge ref — intentionally omitted from deps
   useEffect(() => {
     if (initialRichText) {
       console.log('[NoteEditor] Setting editor content from loaded rich_text');
       editor.setContent(JSON.stringify(initialRichText));
     }
-  }, [initialRichText]);
+  }, [initialRichText]); // eslint-disable-line react-hooks/exhaustive-deps
   const isSharedRecall = params.isSharedRecall === 'true';
   const fromShare = params.fromShare === 'true';
   const openCamera = params.openCamera === 'true';

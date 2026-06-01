@@ -8,7 +8,7 @@ export interface TiptapNode {
   type: string;
   attrs?: Record<string, any>;
   content?: TiptapNode[];
-  marks?: Array<{ type: string; attrs?: Record<string, any> }>;
+  marks?: { type: string; attrs?: Record<string, any> }[];
   text?: string;
 }
 

@@ -104,12 +104,13 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   });
 
   // When initialRichText is loaded from DB/cache, push it into the editor
+  // editor is a stable bridge ref — intentionally omitted from deps
   useEffect(() => {
     if (initialRichText) {
       console.log('[NoteEditorSlideUp] Setting editor content from loaded rich_text');
       editor.setContent(JSON.stringify(initialRichText));
     }
-  }, [initialRichText]);
+  }, [initialRichText]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [loadedImageIndices, setLoadedImageIndices] = useState<Set<number>>(new Set());
   const [initialImageCount, setInitialImageCount] = useState(0);

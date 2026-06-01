@@ -26,7 +26,7 @@ interface TiptapViewerProps {
 
 // ─── mark helpers ─────────────────────────────────────────────────────────────
 
-function getMarkStyle(marks?: Array<{ type: string; attrs?: Record<string, any> }>): TextStyle {
+function getMarkStyle(marks?: { type: string; attrs?: Record<string, any> }[]): TextStyle {
   if (!marks || marks.length === 0) {
     return {};
   }

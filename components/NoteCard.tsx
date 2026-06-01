@@ -7,9 +7,6 @@ import { TiptapViewer } from './TiptapViewer';
 import UrlPreviewCard from './UrlPreviewCard';
 import { extractUrls } from '@/utils/urlProcessor';
 import { useNotesContext } from '@/contexts/NotesContext';
-const FullScreenImage = React.lazy(() =>
-  import('./FullScreenImage').then(m => ({ default: m.FullScreenImage }))
-);
 import { TimeAgo } from './TimeAgo';
 import { shareRecall } from '@/utils/shareRecall';
 import { getImageDataUrl } from '@/utils/supabase';
@@ -29,6 +26,10 @@ import Animated, {
   FadeOut,
   SlideOutLeft,
 } from 'react-native-reanimated';
+
+const FullScreenImage = React.lazy(() =>
+  import('./FullScreenImage').then(m => ({ default: m.FullScreenImage }))
+);
 
 interface NoteCardProps {
   note: Note;
