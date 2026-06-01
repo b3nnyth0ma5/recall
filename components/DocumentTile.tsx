@@ -32,7 +32,8 @@ export function DocumentTile({
   const thumbnailUrl = document.local_thumbnail_uri ?? document.thumbnail_url;
   const extension = getFileExtension(document.file_name);
   const docColor = getDocumentColor(document.content_type);
-  const isUploading = document.upload_state === 'uploading' || document.upload_state === 'pending';
+  const isUploading = document.upload_state === 'uploading';
+  const isPending = document.upload_state === 'pending';
   const isFailed = document.upload_state === 'failed';
   const isProcessing = document.cdn_url && !document.processed_at;
   const fileSizeText = document.file_size ? formatFileSize(document.file_size) : '';
@@ -71,11 +72,18 @@ export function DocumentTile({
         ) : null}
       </View>
 
-      {/* Uploading overlay */}
+      {/* Uploading overlay — only for active upload, not pending */}
       {isUploading && (
         <View style={styles.uploadingOverlay}>
           <ActivityIndicator size="small" color="#FFFFFF" />
           <Text style={styles.uploadingText}>Uploading...</Text>
+        </View>
+      )}
+
+      {/* Pending badge — queued, awaiting save */}
+      {isPending && (
+        <View style={styles.pendingBadge}>
+          <IconSymbol name="clock" size={10} color="#FFFFFF" />
         </View>
       )}
 
@@ -88,7 +96,7 @@ export function DocumentTile({
       )}
 
       {/* Processing badge (server-side text extraction in progress) */}
-      {isProcessing && !isUploading && (
+      {isProcessing && !isUploading && !isPending && (
         <View style={styles.processingBadge}>
           <ActivityIndicator size="small" color="#FFFFFF" style={styles.processingSpinner} />
         </View>
@@ -193,6 +201,17 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pendingBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
   },

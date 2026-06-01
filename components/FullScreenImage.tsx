@@ -334,26 +334,28 @@ export function FullScreenImage({
     console.log('[FullScreenImage] User tapped Open Document:', doc.file_name);
     setOpeningDocument(true);
     try {
-      const url = doc.cdn_url ?? doc.local_uri;
-      if (!url) {
+      // Prefer local file for docs not yet uploaded
+      const localUrl = doc.local_uri;
+      if (localUrl && (localUrl.startsWith('file://') || localUrl.startsWith('/'))) {
+        console.log('[FullScreenImage] Opening local document:', localUrl);
+        await Sharing.shareAsync(localUrl, { dialogTitle: doc.file_name });
+        return;
+      }
+
+      // cdn_url is a Supabase Storage path — must resolve to a signed URL
+      const storagePath = doc.cdn_url;
+      if (!storagePath) {
         Toast.show({ type: 'error', text1: 'Document not available', position: 'bottom' });
         return;
       }
-      if (doc.content_type === 'application/pdf' && url.startsWith('https://')) {
-        const signedUrl = await getDocumentSignedUrl(url);
-        if (signedUrl) {
-          await WebBrowser.openBrowserAsync(signedUrl);
-        } else {
-          Toast.show({ type: 'error', text1: 'Could not open document', position: 'bottom' });
-        }
-      } else if (url.startsWith('file://') || url.startsWith('/')) {
-        await Sharing.shareAsync(url, { dialogTitle: doc.file_name });
-      } else if (url.startsWith('https://')) {
-        const signedUrl = await getDocumentSignedUrl(url);
-        if (signedUrl) {
-          await WebBrowser.openBrowserAsync(signedUrl);
-        }
+      console.log('[FullScreenImage] Resolving storage path to signed URL:', storagePath);
+      const signedUrl = await getDocumentSignedUrl(storagePath);
+      console.log('[FullScreenImage] Signed URL resolved:', signedUrl ? 'ok' : 'null');
+      if (!signedUrl) {
+        Toast.show({ type: 'error', text1: 'Could not open document', position: 'bottom' });
+        return;
       }
+      await WebBrowser.openBrowserAsync(signedUrl);
     } catch (err) {
       console.error('[FullScreenImage] Error opening document:', err);
       Toast.show({ type: 'error', text1: 'Failed to open document', position: 'bottom' });

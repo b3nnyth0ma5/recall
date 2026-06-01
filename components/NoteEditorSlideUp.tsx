@@ -38,7 +38,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
 import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
 import { DocumentTile } from '@/components/DocumentTile';
-import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding, triggerPeopleFinder, uploadDocumentToDatabase, deleteDocumentRecord } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding, triggerPeopleFinder, uploadDocumentToDatabase, deleteDocumentRecord, fetchDocumentsForNote } from '@/utils/supabase';
 import { processRecallUrls, processRecallUrlsAndAwaitScrape, extractUrls } from '@/utils/urlProcessor';
 import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
 import { useAuth } from '@/contexts/AuthContext';
@@ -92,6 +92,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const [showFABs, setShowFABs] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [initialPeople, setInitialPeople] = useState<Person[]>([]);
+  const [initialDocuments, setInitialDocuments] = useState<Document[]>([]);
   const imageScrollRef = useRef<ScrollView>(null);
 
   const isEditing = !!noteId;
@@ -248,6 +249,27 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
             setInitialImageCount(cachedImages.length);
             console.log(`[NoteEditorSlideUp] Loaded ${cachedImages.length} images from cache`);
           }
+
+          // Load documents for this recall
+          console.log('[NoteEditorSlideUp] Loading documents for recall:', noteId);
+          const dbDocs = await fetchDocumentsForNote(noteId);
+          const loadedDocs: Document[] = dbDocs.map(d => ({
+            id: d.id,
+            cdn_url: d.cdn_url ?? undefined,
+            thumbnail_url: d.thumbnail_url ?? undefined,
+            file_name: d.file_name,
+            file_size: d.file_size ?? undefined,
+            content_type: d.content_type,
+            page_count: d.page_count ?? undefined,
+            extracted_text: d.extracted_text ?? undefined,
+            doc_explanation: d.doc_explanation ?? undefined,
+            processed_at: d.processed_at ?? undefined,
+            created_at: d.created_at ?? undefined,
+            upload_state: 'uploaded' as const,
+          }));
+          console.log(`[NoteEditorSlideUp] Loaded ${loadedDocs.length} documents from DB (cache path)`);
+          setDocuments(loadedDocs);
+          setInitialDocuments(loadedDocs);
 
           console.log('[NoteEditorSlideUp] Refreshing data in background...');
           
@@ -436,6 +458,27 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
           setInitialImageCount(loadedImages.length);
           console.log(`[NoteEditorSlideUp] Loaded ${imagesToLoadImmediately.length}/${imagesData.length} images immediately, ${imagesData.length - imagesToLoadImmediately.length} will be lazy loaded`);
         }
+
+        // Load documents for this recall
+        console.log('[NoteEditorSlideUp] Loading documents for recall:', noteId);
+        const dbDocs = await fetchDocumentsForNote(noteId);
+        const loadedDocs: Document[] = dbDocs.map(d => ({
+          id: d.id,
+          cdn_url: d.cdn_url ?? undefined,
+          thumbnail_url: d.thumbnail_url ?? undefined,
+          file_name: d.file_name,
+          file_size: d.file_size ?? undefined,
+          content_type: d.content_type,
+          page_count: d.page_count ?? undefined,
+          extracted_text: d.extracted_text ?? undefined,
+          doc_explanation: d.doc_explanation ?? undefined,
+          processed_at: d.processed_at ?? undefined,
+          created_at: d.created_at ?? undefined,
+          upload_state: 'uploaded' as const,
+        }));
+        console.log(`[NoteEditorSlideUp] Loaded ${loadedDocs.length} documents from DB`);
+        setDocuments(loadedDocs);
+        setInitialDocuments(loadedDocs);
       } catch (error) {
         console.error('[NoteEditorSlideUp] Error loading note:', error);
         Alert.alert('Error', 'Failed to load note');
@@ -830,7 +873,18 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
             }
           }
         }
-        
+
+        // Diff-based document deletion: remove any initially-loaded docs no longer in state
+        const currentDocIds = new Set(
+          documents.filter(d => d.id).map(d => d.id!)
+        );
+        for (const doc of initialDocuments) {
+          if (doc.id && !currentDocIds.has(doc.id)) {
+            console.log('[NoteEditorSlideUp] Deleting removed document:', doc.id);
+            await deleteDocumentRecord(doc.id);
+          }
+        }
+
         const newImagesCount = images.filter(img => !img.id).length;
         if (newImagesCount > 0) {
           imagesChanged = true;
