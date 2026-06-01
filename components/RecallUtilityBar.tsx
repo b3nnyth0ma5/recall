@@ -106,7 +106,7 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
         <ShareIcon
           size={24}
           color={colors.primary}
-          strokeWidth={2.2}
+          strokeWidth={1.7}
         />
       </Pressable>
 
