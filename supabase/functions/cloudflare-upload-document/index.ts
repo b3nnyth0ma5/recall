@@ -4,7 +4,9 @@
  * cloudflare-upload-document Edge Function
  * Uploads documents to Supabase Storage (documents bucket).
  * Returns the storage path (not a signed URL) so the client can sign on demand.
- * Also UPDATEs recall_documents.cdn_url which triggers extract-document via DB trigger.
+ * Also UPDATEs recall_documents.cdn_url and then directly invokes extract-document
+ * via bare fetch + service role key (mirrors the proven ocr-image -> embedding-image
+ * and extract-document -> embedding-document patterns).
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
@@ -216,9 +218,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const cdnUrl = storagePath;
     const totalTime = performance.now() - startTime;
 
-    // UPDATE recall_documents.cdn_url if we have a row id.
-    // This UPDATE triggers the on_document_cdn_url_set_trigger_extraction DB trigger
-    // which fires extract-document asynchronously.
+    // UPDATE recall_documents.cdn_url if we have a row id, then directly invoke
+    // extract-document via bare fetch + service role key.
     if (rowId) {
       console.log('Updating recall_documents.cdn_url for row:', rowId);
       const { error: updateError } = await supabase
@@ -230,10 +231,63 @@ Deno.serve(async (req: Request): Promise<Response> => {
         console.error('Failed to update cdn_url in recall_documents:', updateError);
         // Non-fatal: storage upload succeeded, just log the error
       } else {
-        console.log('recall_documents.cdn_url updated successfully — extract-document will be triggered by DB trigger');
+        console.log('recall_documents.cdn_url updated successfully — invoking extract-document directly');
+
+        // Fetch the full row so we can pass all required fields to extract-document.
+        // extract-document expects: { record: { id, recall_id, user_id, cdn_url, file_name, content_type } }
+        const { data: docRow, error: fetchError } = await supabase
+          .from('recall_documents')
+          .select('id, recall_id, user_id, cdn_url, file_name, content_type')
+          .eq('id', rowId)
+          .single();
+
+        if (fetchError || !docRow) {
+          console.error('Failed to fetch recall_documents row for extract-document invocation:', fetchError);
+        } else {
+          // Fire-and-forget: invoke extract-document in the background so the upload
+          // response returns to the client immediately.
+          EdgeRuntime.waitUntil(
+            (async () => {
+              try {
+                console.log('[extract-document invoke] Calling extract-document for row:', rowId);
+                const extractResponse = await fetch(
+                  `${supabaseUrl}/functions/v1/extract-document`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${supabaseServiceKey}`,
+                    },
+                    body: JSON.stringify({
+                      record: {
+                        id: docRow.id,
+                        recall_id: docRow.recall_id,
+                        user_id: docRow.user_id,
+                        cdn_url: docRow.cdn_url,
+                        file_name: docRow.file_name,
+                        content_type: docRow.content_type,
+                      },
+                    }),
+                  },
+                );
+                const extractStatus = extractResponse.status;
+                let extractBody = '';
+                try {
+                  extractBody = await extractResponse.text();
+                } catch (_) {
+                  // ignore body read errors
+                }
+                console.log(`[extract-document invoke] HTTP status: ${extractStatus}`);
+                console.log(`[extract-document invoke] Response body: ${extractBody.substring(0, 500)}`);
+              } catch (extractErr) {
+                console.error('[extract-document invoke] fetch threw (non-fatal):', extractErr);
+              }
+            })()
+          );
+        }
       }
     } else {
-      console.warn('No documentId/recordId provided — skipping recall_documents update');
+      console.warn('No documentId/recordId provided — skipping recall_documents update and extract-document invocation');
     }
 
     console.log('=== Upload Successful ===');
