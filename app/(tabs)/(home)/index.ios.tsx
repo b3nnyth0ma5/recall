@@ -450,6 +450,16 @@ export default function HomeScreen() {
             }
           }
           console.log(`[handleCreateRecallFromCombined] [ASYNC] All documents processed`);
+          // Delayed refreshes so the home card picks up processed_at once the edge function completes
+          console.log(`[handleCreateRecallFromCombined] [ASYNC] Scheduling delayed refreshes for document processing`);
+          setTimeout(() => {
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] 8s delayed refresh for recall ${recallData.id}`);
+            refreshSingleNote(recallData.id);
+          }, 8000);
+          setTimeout(() => {
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] 20s delayed refresh for recall ${recallData.id}`);
+            refreshSingleNote(recallData.id);
+          }, 20000);
         })();
       }
 

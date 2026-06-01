@@ -907,6 +907,37 @@ export async function deleteDocumentRecord(documentId: string): Promise<boolean>
   }
 }
 
+export async function getDocumentAnalysis(documentId: string): Promise<{
+  ocrText: string | undefined;
+  explanation: string | undefined;
+  processedAt: string | undefined;
+  isProcessing: boolean;
+} | null> {
+  try {
+    console.log('[getDocumentAnalysis] Fetching analysis for document:', documentId);
+    const { data, error } = await supabase
+      .from('recall_documents')
+      .select('extracted_text, doc_explanation, processed_at, created_at')
+      .eq('id', documentId)
+      .single();
+    if (error) {
+      console.error('[getDocumentAnalysis] Error:', error);
+      return null;
+    }
+    const result = {
+      ocrText: data.extracted_text ?? undefined,
+      explanation: data.doc_explanation ?? undefined,
+      processedAt: data.processed_at ?? undefined,
+      isProcessing: !data.processed_at && !!data.created_at,
+    };
+    console.log('[getDocumentAnalysis] Result — processedAt:', result.processedAt, 'isProcessing:', result.isProcessing);
+    return result;
+  } catch (error) {
+    console.error('[getDocumentAnalysis] Exception:', error);
+    return null;
+  }
+}
+
 export async function fetchDocumentsForNote(noteId: string): Promise<any[]> {
   try {
     console.log('[fetchDocumentsForNote] Fetching documents for note:', noteId);

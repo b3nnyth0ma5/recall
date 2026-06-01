@@ -36,6 +36,8 @@ import { getImageDataUrl, getDocumentSignedUrl } from '@/utils/supabase';
 import { SkeletonLoader } from './SkeletonLoader';
 import { Document } from '@/types/Document';
 import { formatFileSize, getFileExtension, getDocumentColor } from '@/utils/documentPicker';
+// Lucide share icon — non-negotiable per spec
+import { Share2 } from 'lucide-react-native';
 
 type MediaItem =
   | { kind: 'image'; url: string; id?: string }
@@ -65,13 +67,14 @@ const MAX_SCALE = 4;
  * - Pinch-to-zoom and pan per image slide
  * - Double-tap to toggle zoom
  * - OCR button always visible and clickable on top of images
- * - Share image using native share functionality
+ * - Share image/document using native share functionality
  * - Swipe down to dismiss with improved gesture handling (no refresh on close)
  * - Image counter and pagination dots
- * - OCR modal for viewing image analysis
+ * - OCR modal for viewing image/document analysis
  * - Reusable across NoteCard and note-editor
  * - Loads all images from imageIds when opened
  * - Skeleton placeholders instead of loading spinner
+ * - "Tap to preview" pill overlay for document slides
  */
 
 interface ZoomableImageProps {
@@ -210,6 +213,52 @@ function ZoomableImage({ imageUrl, index, isLoaded, onLoad, resetTrigger }: Zoom
   );
 }
 
+// ─── Tap-to-preview pill ────────────────────────────────────────────────────
+
+interface TapToPreviewPillProps {
+  onPress: () => void;
+  isOpening: boolean;
+}
+
+function TapToPreviewPill({ onPress, isOpening }: TapToPreviewPillProps) {
+  const pillScale = useSharedValue(1);
+
+  const handlePress = () => {
+    console.log('[FullScreenImage] Tap to preview pill pressed');
+    pillScale.value = withSpring(0.96, { damping: 15, stiffness: 300 }, () => {
+      pillScale.value = withSpring(1, { damping: 15, stiffness: 300 });
+    });
+    onPress();
+  };
+
+  const animatedPillStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pillScale.value }],
+  }));
+
+  const labelText = isOpening ? 'Opening…' : 'Tap to preview';
+
+  return (
+    <Animated.View style={[styles.tapToPreviewPill, animatedPillStyle]}>
+      <Pressable
+        onPress={handlePress}
+        disabled={isOpening}
+        style={styles.tapToPreviewPressable}
+        accessibilityLabel="Tap to preview document"
+        accessibilityRole="button"
+      >
+        {isOpening ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : (
+          <IconSymbol name="arrow.down.circle" size={22} color="#FFFFFF" />
+        )}
+        <Text style={styles.tapToPreviewLabel}>{labelText}</Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+// ─── Main component ─────────────────────────────────────────────────────────
+
 export function FullScreenImage({
   visible,
   images = [],
@@ -309,7 +358,7 @@ export function FullScreenImage({
   };
 
   const handleOCRButtonPress = () => {
-    console.log('OCR button pressed for image index:', currentImageIndex);
+    console.log('[FullScreenImage] Analysis button pressed for index:', currentImageIndex, 'isDocument:', isCurrentDocument);
     setShowOCRModal(true);
   };
 
@@ -373,7 +422,7 @@ export function FullScreenImage({
       Toast.show({
         type: 'info',
         text1: 'Not Available',
-        text2: 'Sharing images is not fully supported on web',
+        text2: 'Sharing is not fully supported on web',
         position: 'bottom',
       });
       return;
@@ -381,72 +430,94 @@ export function FullScreenImage({
 
     try {
       setIsSharing(true);
-      console.log('Checking if sharing is available...');
+      console.log('[FullScreenImage] Share button pressed — isDocument:', isCurrentDocument);
 
-      // Check if sharing is available
       const isAvailable = await Sharing.isAvailableAsync();
-      
       if (!isAvailable) {
-        console.log('Sharing is not available on this device');
-        Alert.alert(
-          'Not Available',
-          'Sharing is not available on this device.',
-          [{ text: 'OK' }]
-        );
+        console.log('[FullScreenImage] Sharing is not available on this device');
+        Alert.alert('Not Available', 'Sharing is not available on this device.', [{ text: 'OK' }]);
         setIsSharing(false);
         return;
       }
 
-      console.log('Sharing is available');
-      
-      // Get current image URL
-      const currentImageUrl = loadedImages[currentImageIndex];
-      console.log('Sharing image:', currentImageUrl);
-
-      // Trigger haptic feedback
       if (Platform.OS !== 'web') {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
 
-      // Download the image to a temporary location
-      const fileUri = FileSystem.cacheDirectory + `share_image_${Date.now()}.jpg`;
-      console.log('Downloading image to:', fileUri);
-      
+      // ── Document share path ──────────────────────────────────────────────
+      if (isCurrentDocument) {
+        const doc = getCurrentDocument();
+        if (!doc) {
+          setIsSharing(false);
+          return;
+        }
+        console.log('[FullScreenImage] Sharing document:', doc.file_name);
+
+        // Prefer local file
+        const localUrl = doc.local_uri;
+        if (localUrl && (localUrl.startsWith('file://') || localUrl.startsWith('/'))) {
+          console.log('[FullScreenImage] Sharing local document file:', localUrl);
+          await Sharing.shareAsync(localUrl, { dialogTitle: doc.file_name });
+        } else if (doc.cdn_url) {
+          console.log('[FullScreenImage] Resolving signed URL for document share:', doc.cdn_url);
+          const signedUrl = await getDocumentSignedUrl(doc.cdn_url);
+          if (!signedUrl) {
+            Toast.show({ type: 'error', text1: 'Could not share document', position: 'bottom' });
+            return;
+          }
+          const sanitizedName = doc.file_name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const destUri = (FileSystem.cacheDirectory ?? '') + sanitizedName;
+          console.log('[FullScreenImage] Downloading document to cache:', destUri);
+          const downloadResult = await FileSystem.downloadAsync(signedUrl, destUri);
+          if (downloadResult.status !== 200) {
+            throw new Error('Failed to download document for sharing');
+          }
+          await Sharing.shareAsync(downloadResult.uri, {
+            dialogTitle: doc.file_name,
+            mimeType: doc.content_type,
+          });
+        } else {
+          Toast.show({ type: 'error', text1: 'Document not available for sharing', position: 'bottom' });
+        }
+
+        if (Platform.OS !== 'web') {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        return;
+      }
+
+      // ── Image share path ─────────────────────────────────────────────────
+      const currentImageUrl = loadedImages[currentImageIndex];
+      console.log('[FullScreenImage] Sharing image:', currentImageUrl);
+
+      const fileUri = (FileSystem.cacheDirectory ?? '') + `share_image_${Date.now()}.jpg`;
+      console.log('[FullScreenImage] Downloading image to:', fileUri);
       const downloadResult = await FileSystem.downloadAsync(currentImageUrl, fileUri);
-      console.log('Download result:', downloadResult);
+      console.log('[FullScreenImage] Download result status:', downloadResult.status);
 
       if (downloadResult.status !== 200) {
         throw new Error('Failed to download image');
       }
 
-      // Share the image
-      console.log('Opening share dialog...');
+      console.log('[FullScreenImage] Opening share dialog for image...');
       await Sharing.shareAsync(downloadResult.uri, {
         dialogTitle: 'Share Image',
         mimeType: 'image/jpeg',
         UTI: 'public.jpeg',
       });
 
-      console.log('Share dialog completed');
+      console.log('[FullScreenImage] Share dialog completed');
 
-      // Success haptic feedback
       if (Platform.OS !== 'web') {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
     } catch (error) {
-      console.error('Error sharing image:', error);
-      
-      // Error haptic feedback
+      console.error('[FullScreenImage] Error sharing:', error);
       if (Platform.OS !== 'web') {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
-
-      Alert.alert(
-        'Error',
-        'Failed to share image. Please try again.',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Error', 'Failed to share. Please try again.', [{ text: 'OK' }]);
     } finally {
       setIsSharing(false);
     }
@@ -455,15 +526,12 @@ export function FullScreenImage({
   const handleClose = () => {
     if (isClosing) return;
     
-    console.log('Closing full screen image - preventing route refresh');
+    console.log('[FullScreenImage] Closing full screen viewer');
     setIsClosing(true);
     
-    // Reset animation values immediately to prevent any lingering animations
     translateY.value = 0;
     contextY.value = 0;
     
-    // Call onClose which will update the parent's state
-    // This should NOT trigger navigation or route refresh
     onClose();
   };
 
@@ -478,11 +546,9 @@ export function FullScreenImage({
       contextY.value = translateY.value;
     })
     .onUpdate((event) => {
-      // Only allow downward swipes
       if (event.translationY > 0) {
         translateY.value = contextY.value + event.translationY;
       } else {
-        // Allow slight upward movement for natural feel
         translateY.value = contextY.value + event.translationY * 0.3;
       }
     })
@@ -490,13 +556,11 @@ export function FullScreenImage({
       const shouldDismiss = translateY.value > DISMISS_THRESHOLD;
       
       if (shouldDismiss) {
-        // Animate out smoothly
         translateY.value = withTiming(
           SCREEN_HEIGHT,
           { duration: 200 },
           (finished) => {
             if (finished) {
-              // Reset immediately before closing to prevent flicker
               translateY.value = 0;
               contextY.value = 0;
               runOnJS(handleClose)();
@@ -504,7 +568,6 @@ export function FullScreenImage({
           }
         );
       } else {
-        // Spring back to original position
         translateY.value = withSpring(0, {
           damping: 25,
           stiffness: 400,
@@ -513,24 +576,19 @@ export function FullScreenImage({
       }
     });
 
-  // Animated style for the container with smooth interpolation
   const animatedContainerStyle = useAnimatedStyle(() => {
-    // Smooth opacity fade
     const opacity = interpolate(
       translateY.value,
       [0, SCREEN_HEIGHT * 0.5],
       [1, 0],
       Extrapolation.CLAMP
     );
-    
-    // Smooth scale down
     const containerScale = interpolate(
       translateY.value,
       [0, SCREEN_HEIGHT],
       [1, 0.85],
       Extrapolation.CLAMP
     );
-
     return {
       transform: [
         { translateY: translateY.value },
@@ -540,7 +598,6 @@ export function FullScreenImage({
     };
   });
 
-  // Animated style for background overlay
   const animatedBackgroundStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
       translateY.value,
@@ -548,10 +605,7 @@ export function FullScreenImage({
       [0.98, 0],
       Extrapolation.CLAMP
     );
-
-    return {
-      opacity: opacity,
-    };
+    return { opacity };
   });
 
   // Build resolved image URLs for image items (use loadedImages for imageId-based items)
@@ -566,6 +620,12 @@ export function FullScreenImage({
   const counterText = `${currentImageIndex + 1} / ${resolvedMedia.length}`;
   const currentItem = resolvedMedia[currentImageIndex];
   const isCurrentDocument = currentItem?.kind === 'document';
+
+  // Derived values for OCR modal
+  const ocrModalTitle = isCurrentDocument ? 'Document Analysis' : 'Image Analysis';
+  const currentDoc = getCurrentDocument();
+  const currentImageId = getCurrentImageId();
+  const hasAnalysisTarget = isCurrentDocument ? !!currentDoc?.id : !!currentImageId;
 
   return (
     <Modal
@@ -615,6 +675,7 @@ export function FullScreenImage({
                   const truncatedName = doc.file_name.length > 40
                     ? doc.file_name.substring(0, 37) + '...'
                     : doc.file_name;
+                  const isActive = index === currentImageIndex;
                   return (
                     <View key={`fullscreen-doc-${index}`} style={styles.imageWrapper}>
                       {thumbUrl ? (
@@ -628,6 +689,17 @@ export function FullScreenImage({
                           <Text style={styles.docExtText}>{ext}</Text>
                         </View>
                       )}
+
+                      {/* "Tap to preview" pill — centered in upper-middle area */}
+                      {isActive && (
+                        <View style={styles.tapToPreviewContainer}>
+                          <TapToPreviewPill
+                            onPress={handleOpenDocument}
+                            isOpening={openingDocument}
+                          />
+                        </View>
+                      )}
+
                       <View style={styles.docInfoOverlay}>
                         <IconSymbol name="doc.fill" size={20} color="#FFFFFF" />
                         <Text style={styles.docFileName}>{truncatedName}</Text>
@@ -650,69 +722,49 @@ export function FullScreenImage({
               })}
             </ScrollView>
 
-            {/* Bottom Left: Share (images) or Open Document (documents) */}
-            {isCurrentDocument ? (
-              <Pressable
-                style={styles.shareButton}
-                onPress={handleOpenDocument}
-                disabled={openingDocument}
-                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-              >
-                <View style={styles.shareButtonContent}>
-                  {openingDocument ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <IconSymbol name="arrow.up.doc.fill" size={24} color="#FFFFFF" />
-                  )}
-                </View>
-              </Pressable>
-            ) : (
-              <Pressable
-                style={styles.shareButton}
-                onPress={handleShareImage}
-                disabled={isSharing}
-                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-              >
-                <View style={styles.shareButtonContent}>
-                  {isSharing ? (
-                    <SkeletonLoader
-                      width={24}
-                      height={24}
-                      borderRadius={12}
-                      variant="pulse"
-                    />
-                  ) : (
-                    <IconSymbol 
-                      name="paperplane.fill" 
-                      size={24} 
-                      color="#FFFFFF" 
-                    />
-                  )}
-                </View>
-              </Pressable>
-            )}
-
-            {/* OCR Button - Bottom Right (only for images) */}
-            {!isCurrentDocument && (
-              <Pressable
-                style={styles.ocrButton}
-                onPress={() => {
-                  console.log('[FullScreenImage] Text/OCR button pressed for image index:', currentImageIndex);
-                  handleOCRButtonPress();
-                }}
-                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-                accessibilityLabel="View extracted text and explanation"
-                accessibilityRole="button"
-              >
-                <View style={styles.shareButtonContent}>
-                  <IconSymbol
-                    name="text.alignleft"
-                    size={24}
-                    color="#FFFFFF"
+            {/* Share FAB — bottom left, shown for both images and documents */}
+            <Pressable
+              style={styles.shareButton}
+              onPress={() => {
+                console.log('[FullScreenImage] Share FAB pressed — isDocument:', isCurrentDocument);
+                handleShareImage();
+              }}
+              disabled={isSharing}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+            >
+              <View style={styles.shareButtonContent}>
+                {isSharing ? (
+                  <SkeletonLoader
+                    width={24}
+                    height={24}
+                    borderRadius={12}
+                    variant="pulse"
                   />
-                </View>
-              </Pressable>
-            )}
+                ) : (
+                  <Share2 size={24} color="#FFFFFF" strokeWidth={2.2} />
+                )}
+              </View>
+            </Pressable>
+
+            {/* Analysis FAB — bottom right, shown for both images and documents */}
+            <Pressable
+              style={styles.ocrButton}
+              onPress={() => {
+                console.log('[FullScreenImage] Analysis FAB pressed — isDocument:', isCurrentDocument, 'index:', currentImageIndex);
+                handleOCRButtonPress();
+              }}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              accessibilityLabel={isCurrentDocument ? 'View document analysis' : 'View extracted text and explanation'}
+              accessibilityRole="button"
+            >
+              <View style={styles.shareButtonContent}>
+                <IconSymbol
+                  name="text.alignleft"
+                  size={24}
+                  color="#FFFFFF"
+                />
+              </View>
+            </Pressable>
 
             {/* Pagination Dots - Bottom Center */}
             {resolvedMedia.length > 1 && (
@@ -746,7 +798,7 @@ export function FullScreenImage({
         </GestureDetector>
       </View>
 
-      {/* OCR Modal */}
+      {/* Analysis Modal */}
       <Modal
         visible={showOCRModal}
         transparent={true}
@@ -756,7 +808,7 @@ export function FullScreenImage({
         <View style={styles.ocrModalContainer}>
           <View style={styles.ocrModalContent}>
             <View style={styles.ocrModalHeader}>
-              <Text style={styles.ocrModalTitle}>Image Analysis</Text>
+              <Text style={styles.ocrModalTitle}>{ocrModalTitle}</Text>
               <Pressable
                 onPress={handleCloseOCRModal}
                 style={styles.ocrModalCloseButton}
@@ -766,16 +818,28 @@ export function FullScreenImage({
               </Pressable>
             </View>
 
-            {getCurrentImageId() ? (
-              <ImageOCRDisplay
-                imageId={getCurrentImageId()!}
-                autoLoad={true}
-                compact={false}
-              />
+            {hasAnalysisTarget ? (
+              isCurrentDocument ? (
+                <ImageOCRDisplay
+                  mode="document"
+                  documentId={currentDoc?.id}
+                  autoLoad={true}
+                  compact={false}
+                />
+              ) : (
+                <ImageOCRDisplay
+                  mode="image"
+                  imageId={currentImageId!}
+                  autoLoad={true}
+                  compact={false}
+                />
+              )
             ) : (
               <View style={styles.ocrModalError}>
                 <Text style={styles.ocrModalErrorText}>
-                  No image ID available for analysis
+                  {isCurrentDocument
+                    ? 'No document ID available for analysis'
+                    : 'No image ID available for analysis'}
                 </Text>
               </View>
             )}
@@ -837,6 +901,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // ── Tap-to-preview pill ──────────────────────────────────────────────────
+  tapToPreviewContainer: {
+    position: 'absolute',
+    top: '35%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 200,
+  },
+  tapToPreviewPill: {
+    borderRadius: 28,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    elevation: 6,
+    boxShadow: '0px 4px 16px rgba(0,0,0,0.5)',
+  },
+  tapToPreviewPressable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    gap: 8,
+  },
+  tapToPreviewLabel: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  // ── Share / OCR FABs ─────────────────────────────────────────────────────
   shareButton: {
     position: 'absolute',
     bottom: 40,

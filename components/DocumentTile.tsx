@@ -98,7 +98,10 @@ export function DocumentTile({
       {/* Processing badge (server-side text extraction in progress) */}
       {isProcessing && !isUploading && !isPending && (
         <View style={styles.processingBadge}>
-          <ActivityIndicator size="small" color="#FFFFFF" style={styles.processingSpinner} />
+          <ActivityIndicator size="small" color="#FFFFFF" />
+          <Text style={styles.processingLabel}>
+            {width < 140 ? 'Processing…' : 'Processing document'}
+          </Text>
         </View>
       )}
 
@@ -197,12 +200,19 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     left: 8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    gap: 6,
+  },
+  processingLabel: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
   },
   pendingBadge: {
     position: 'absolute',
@@ -214,9 +224,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  processingSpinner: {
-    // no extra styles needed
   },
   removeButton: {
     position: 'absolute',

@@ -46,6 +46,7 @@ import * as Haptics from 'expo-haptics';
 import LocationSearchScreen from '@/app/location-search';
 import { pickDocuments } from '@/utils/documentPicker';
 import Toast from 'react-native-toast-message';
+import { useDocumentProcessingPoller } from '@/hooks/useDocumentProcessingPoller';
 
 interface ImageData {
   id?: string;
@@ -108,6 +109,9 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const hasImages = images.length > 0;
   const hasDocuments = documents.length > 0;
   const textHasUrl = hasUrl(text);
+
+  // Poll for document processing completion when editing an existing recall
+  useDocumentProcessingPoller(isEditing ? noteId : undefined, documents, setDocuments);
 
   type MediaItem =
     | { kind: 'image'; image: ImageData; index: number }

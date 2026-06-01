@@ -44,6 +44,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
 import { pickDocuments } from '@/utils/documentPicker';
 import Toast from 'react-native-toast-message';
+import { useDocumentProcessingPoller } from '@/hooks/useDocumentProcessingPoller';
 
 interface ImageData {
   id?: string;
@@ -124,6 +125,10 @@ export default function NoteEditorScreen() {
   const hasImages = images.length > 0;
   const hasDocuments = documents.length > 0;
   const textHasUrl = hasUrl(text);
+
+  // Poll for document processing completion when editing an existing recall
+  const noteIdForPolling = isEditing ? (params.id as string) : undefined;
+  useDocumentProcessingPoller(noteIdForPolling, documents, setDocuments);
 
   type MediaItem =
     | { kind: 'image'; image: ImageData; index: number }

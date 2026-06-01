@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, ActivityIndicator, Pressable, ScrollView, Layou
 import { IconSymbol } from './IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-import { getImageOCRResults, triggerOCRProcessing, retryOCRProcessing } from '@/utils/supabase';
+import { getImageOCRResults, triggerOCRProcessing, retryOCRProcessing, getDocumentAnalysis } from '@/utils/supabase';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 
@@ -16,23 +16,32 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const SUCCESS_GREEN = '#34C759';
 
 interface ImageOCRDisplayProps {
-  imageId: string;
+  imageId?: string;
+  documentId?: string;
+  mode?: 'image' | 'document';
   autoLoad?: boolean;
   compact?: boolean; // Show compact version with expandable sections
 }
 
 /**
- * Component to display OCR results and image explanations
- * 
+ * Component to display OCR results and image/document explanations
+ *
  * Features:
  * - Automatic loading of OCR results
- * - Manual trigger for OCR processing
+ * - Manual trigger for OCR processing (image mode only)
  * - Retry functionality for failed processing
  * - Loading states and error handling
  * - Expandable sections for better UX
- * - Auto-triggers OCR if processed_at is NULL
+ * - Auto-triggers OCR if processed_at is NULL (image mode only)
+ * - Document mode: reads extracted_text + doc_explanation from recall_documents
  */
-export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = false }: ImageOCRDisplayProps) {
+export default function ImageOCRDisplay({
+  imageId,
+  documentId,
+  mode = 'image',
+  autoLoad = true,
+  compact = false,
+}: ImageOCRDisplayProps) {
   const [ocrText, setOcrText] = useState<string | undefined>();
   const [explanation, setExplanation] = useState<string | undefined>();
   const [processedAt, setProcessedAt] = useState<string | undefined>();
@@ -99,43 +108,67 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
     }
   };
 
-  // Separate function for loading OCR results (not a callback to avoid circular dependencies)
-  const loadOCRResults = async () => {
-    if (!imageId) {
-      console.log('No imageId provided to ImageOCRDisplay');
+  // Load results — branches on mode
+  const loadResults = async () => {
+    if (mode === 'document') {
+      if (!documentId) {
+        console.log('[ImageOCRDisplay] No documentId provided (document mode)');
+        return;
+      }
+      setIsLoading(true);
+      setError(undefined);
+      try {
+        console.log('[ImageOCRDisplay] Loading document analysis for:', documentId);
+        const results = await getDocumentAnalysis(documentId);
+        if (results) {
+          setOcrText(results.ocrText);
+          setExplanation(results.explanation);
+          setProcessedAt(results.processedAt);
+          setIsProcessing(results.isProcessing);
+          if (results.isProcessing && !results.processedAt) {
+            console.log('[ImageOCRDisplay] Document still processing — will retry in 4s');
+            setTimeout(() => loadResults(), 4000);
+          }
+        } else {
+          setError('Failed to load document analysis');
+        }
+      } catch (err) {
+        console.error('[ImageOCRDisplay] Error loading document analysis:', err);
+        setError('An error occurred while loading document analysis');
+      } finally {
+        setIsLoading(false);
+      }
       return;
     }
 
+    // Image mode
+    if (!imageId) {
+      console.log('[ImageOCRDisplay] No imageId provided (image mode)');
+      return;
+    }
     setIsLoading(true);
     setError(undefined);
-
     try {
-      console.log('Loading OCR results for image:', imageId);
+      console.log('[ImageOCRDisplay] Loading OCR results for image:', imageId);
       const results = await getImageOCRResults(imageId);
-
       if (results) {
         setOcrText(results.ocrText);
         setExplanation(results.explanation);
         setProcessedAt(results.processedAt);
         setIsProcessing(results.isProcessing || false);
-
-        // If image is unprocessed (processed_at is NULL) and we haven't auto-triggered yet
         if (results.isProcessing && !results.processedAt && !autoTriggered) {
-          console.log('Image is unprocessed, auto-triggering OCR processing');
+          console.log('[ImageOCRDisplay] Image is unprocessed, auto-triggering OCR processing');
           setAutoTriggered(true);
           handleProcessImage();
         } else if (results.isProcessing) {
-          console.log('Image is still being processed, will retry in 3 seconds');
-          // Retry after a delay if still processing
-          setTimeout(() => {
-            loadOCRResults();
-          }, 3000);
+          console.log('[ImageOCRDisplay] Image is still being processed, will retry in 3 seconds');
+          setTimeout(() => loadResults(), 3000);
         }
       } else {
         setError('Failed to load OCR results');
       }
     } catch (err) {
-      console.error('Error loading OCR results:', err);
+      console.error('[ImageOCRDisplay] Error loading OCR results:', err);
       setError('An error occurred while loading OCR results');
     } finally {
       setIsLoading(false);
@@ -143,26 +176,25 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
   };
 
   const handleProcessImage = async () => {
+    if (mode === 'document') {
+      console.log('[ImageOCRDisplay] handleProcessImage called in document mode — server-triggered, no-op');
+      return;
+    }
     setIsLoading(true);
     setError(undefined);
     setIsProcessing(true);
-
     try {
-      console.log('Manually triggering OCR processing for image:', imageId);
-      const result = await triggerOCRProcessing(imageId);
-
+      console.log('[ImageOCRDisplay] Manually triggering OCR processing for image:', imageId);
+      const result = await triggerOCRProcessing(imageId!);
       if (result.success) {
-        console.log('OCR processing triggered successfully');
-        // Wait a bit then reload results
-        setTimeout(() => {
-          loadOCRResults();
-        }, 2000);
+        console.log('[ImageOCRDisplay] OCR processing triggered successfully');
+        setTimeout(() => loadResults(), 2000);
       } else {
         setError(result.error || 'Failed to trigger OCR processing');
         setIsProcessing(false);
       }
     } catch (err) {
-      console.error('Error triggering OCR processing:', err);
+      console.error('[ImageOCRDisplay] Error triggering OCR processing:', err);
       setError('An error occurred while processing the image');
       setIsProcessing(false);
     } finally {
@@ -171,26 +203,27 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
   };
 
   const handleRetry = async () => {
+    if (mode === 'document') {
+      // Re-poll the document row as a lightweight retry
+      console.log('[ImageOCRDisplay] Document retry — re-polling document:', documentId);
+      await loadResults();
+      return;
+    }
     setIsLoading(true);
     setError(undefined);
     setIsProcessing(true);
-
     try {
-      console.log('Retrying OCR processing for image:', imageId);
-      const result = await retryOCRProcessing(imageId);
-
+      console.log('[ImageOCRDisplay] Retrying OCR processing for image:', imageId);
+      const result = await retryOCRProcessing(imageId!);
       if (result.success) {
-        console.log('OCR retry triggered successfully');
-        // Wait a bit then reload results
-        setTimeout(() => {
-          loadOCRResults();
-        }, 2000);
+        console.log('[ImageOCRDisplay] OCR retry triggered successfully');
+        setTimeout(() => loadResults(), 2000);
       } else {
         setError(result.error || 'Failed to retry OCR processing');
         setIsProcessing(false);
       }
     } catch (err) {
-      console.error('Error retrying OCR processing:', err);
+      console.error('[ImageOCRDisplay] Error retrying OCR processing:', err);
       setError('An error occurred while retrying');
       setIsProcessing(false);
     } finally {
@@ -199,11 +232,18 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
   };
 
   useEffect(() => {
-    if (autoLoad && imageId) {
-      loadOCRResults();
+    if (autoLoad) {
+      if (mode === 'document' && documentId) {
+        loadResults();
+      } else if (mode === 'image' && imageId) {
+        loadResults();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageId, autoLoad]);
+  }, [imageId, documentId, mode, autoLoad]);
+
+  const analyzeButtonLabel = mode === 'document' ? 'Analyze Document with AI' : 'Analyze Image with AI';
+  const processingLabel = mode === 'document' ? 'Processing document with AI…' : 'Processing image with AI...';
 
   // If no results and not processing, show process button
   if (!ocrText && !explanation && !isProcessing && !isLoading) {
@@ -214,7 +254,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
           onPress={handleProcessImage}
         >
           <IconSymbol name="sparkles" size={20} color={colors.primary} />
-          <Text style={styles.processButtonText}>Analyze Image with AI</Text>
+          <Text style={styles.processButtonText}>{analyzeButtonLabel}</Text>
         </Pressable>
       </Animated.View>
     );
@@ -227,7 +267,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="small" color={colors.primary} />
           <Text style={styles.loadingText}>
-            {isProcessing ? 'Processing image with AI...' : 'Loading results...'}
+            {isProcessing ? processingLabel : 'Loading results...'}
           </Text>
         </View>
       </Animated.View>
@@ -343,7 +383,7 @@ export default function ImageOCRDisplay({ imageId, autoLoad = true, compact = fa
           </View>
         )}
 
-        {/* Retry button */}
+        {/* Retry / Reprocess button */}
         <Pressable style={styles.retrySmallButton} onPress={handleRetry}>
           <IconSymbol name="arrow.clockwise" size={14} color={colors.primary} />
           <Text style={styles.retrySmallButtonText}>Reprocess</Text>

@@ -1,12 +1,17 @@
 /**
- * embedding-document Edge Function
- * 
+ * embedding-document Edge Function v2
+ *
  * Direct mirror of embedding-image/index.ts with these substitutions:
  * - recall_document_id instead of recall_image_id
  * - recall_documents table instead of recall_images
  * - extracted_text + doc_explanation instead of ocr_text + image_explanation
  * - doc_embedding instead of recall_image_embedding
  * - Triggers people-finder after embedding (same as embedding-image)
+ *
+ * v2: Fixed fire-and-forget people-finder call — replaced bare fetch() with
+ * supabase.functions.invoke() wrapped in EdgeRuntime.waitUntil() so the isolate
+ * stays alive until the call completes and the service-role key is correctly
+ * serialized in the Authorization header. Mirrors the fix applied to extract-document v3.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.80.0';
@@ -48,7 +53,7 @@ Deno.serve(async (req) => {
   }
 
   const startTime = Date.now();
-  console.log('=== embedding-document Edge Function Started ===');
+  console.log('=== embedding-document Edge Function Started (v2) ===');
   console.log('Timestamp:', new Date().toISOString());
 
   try {
@@ -80,6 +85,9 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+
+    // Defensive startup log — confirms key is loaded (logs length, never the value)
+    console.log('[embedding-document] SERVICE_ROLE_KEY loaded:', supabaseServiceKey ? `length=${supabaseServiceKey.length}` : 'MISSING');
 
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error('Missing Supabase configuration');
@@ -297,9 +305,12 @@ Deno.serve(async (req) => {
     console.log('=== Embedding processing completed successfully ===');
     console.log('Total processing time:', processingTime, 'ms');
 
-    // Trigger people-finder asynchronously (same pattern as embedding-image)
-    console.log('=== Triggering people-finder function asynchronously ===');
-    console.log('Recall ID:', existingData.recall_id);
+    // Trigger people-finder via supabase.functions.invoke() so the SDK handles the
+    // Authorization header correctly using the already-loaded service-role key.
+    // Wrap in EdgeRuntime.waitUntil() so the isolate stays alive until the call completes.
+    // This fixes the UNAUTHORIZED_INVALID_JWT_FORMAT 401 caused by the old bare fetch()
+    // being torn down before the request hit the wire.
+    console.log('[embedding-document] Triggering people-finder for recall:', existingData.recall_id);
     console.log('User ID:', existingData.user_id);
 
     // Fetch the recall text to combine with doc explanation
@@ -321,34 +332,34 @@ Deno.serve(async (req) => {
       console.error('Exception fetching recall text:', recallFetchError);
     }
 
-    // Fire and forget people-finder
-    fetch(`${supabaseUrl}/functions/v1/people-finder`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseServiceKey}`,
-      },
-      body: JSON.stringify({
+    // Use supabase.functions.invoke() — the SDK attaches the service-role key correctly
+    // and the call is kept alive by EdgeRuntime.waitUntil().
+    const peopleFinderPromise = supabase.functions.invoke('people-finder', {
+      body: {
         recall_id: existingData.recall_id,
         user_id: existingData.user_id,
         text: recallText,
         image_explanation: finalDocExplanation, // people-finder accepts image_explanation field
-      }),
-    })
-      .then(async (response) => {
-        if (response.ok) {
-          const data = await response.json();
-          console.log('people-finder triggered successfully:', data);
-        } else {
-          const errorText = await response.text();
-          console.error('Failed to trigger people-finder:', errorText);
-        }
-      })
-      .catch((error) => {
-        console.error('Exception while triggering people-finder:', error);
-      });
+      },
+    }).then(({ error }) => {
+      if (error) {
+        console.error('[embedding-document] people-finder invoke error:', error);
+      } else {
+        console.log('[embedding-document] people-finder invoked successfully');
+      }
+    }).catch(err => {
+      console.error('[embedding-document] people-finder invoke threw:', err);
+    });
 
-    console.log('=== people-finder triggered asynchronously ===');
+    // Keep the isolate alive until the background call completes.
+    // @ts-ignore - EdgeRuntime is provided by Supabase's Deno runtime
+    if (typeof EdgeRuntime !== 'undefined' && typeof EdgeRuntime.waitUntil === 'function') {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(peopleFinderPromise);
+      console.log('[embedding-document] EdgeRuntime.waitUntil registered for people-finder call');
+    } else {
+      console.warn('[embedding-document] EdgeRuntime.waitUntil not available — people-finder call may not complete');
+    }
 
     return new Response(
       JSON.stringify({
