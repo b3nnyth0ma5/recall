@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Note } from '@/types/Note';
 import { Document } from '@/types/Document';
 import { supabase, getImageDataUrl, saveSearchHistory } from '@/utils/supabase';
-import { tiptapToPlainText, emptyTiptapDoc } from '@/utils/tiptapPlainText';
 import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
 import { getRecallUrlsForRecalls, triggerScrapeIfMissing, RecallUrlMetadata } from '@/utils/urlProcessor';
@@ -481,19 +480,14 @@ export function useNotes() {
     try {
       if (__DEV__) console.log('Adding recall to Supabase with location_primary_type:', note.location_primary_type);
       
-      // Derive plain text from rich_text if provided, to guarantee consistency
-      const richTextDoc = note.rich_text ?? emptyTiptapDoc();
-      const plainText = note.rich_text
-        ? tiptapToPlainText(note.rich_text) || note.text
-        : note.text;
+      const plainText = note.text || '';
 
-      console.log('[useNotes] addNote: writing rich_text + text, plain text length:', plainText.length);
+      console.log('[useNotes] addNote: writing text, plain text length:', plainText.length);
 
       const { data: recallData, error: recallError } = await supabase
         .from('recalls')
         .insert([{
           text: plainText,
-          rich_text: richTextDoc,
           latitude: note.latitude,
           longitude: note.longitude,
           location: note.location,
@@ -527,12 +521,9 @@ export function useNotes() {
     try {
       if (__DEV__) console.log('Updating recall in Supabase with location_primary_type:', updates.location_primary_type);
       
-      // Derive plain text from rich_text if provided, to guarantee consistency
-      const updatedPlainText = updates.rich_text
-        ? tiptapToPlainText(updates.rich_text) || updates.text || ''
-        : updates.text;
+      const updatedPlainText = updates.text;
 
-      console.log('[useNotes] updateNote: writing rich_text + text, plain text length:', updatedPlainText?.length ?? 0);
+      console.log('[useNotes] updateNote: writing text, plain text length:', updatedPlainText?.length ?? 0);
 
       const updatePayload: Record<string, any> = {
         text: updatedPlainText,
@@ -542,10 +533,6 @@ export function useNotes() {
         location_primary_type: updates.location_primary_type,
         updated_at: new Date().toISOString(),
       };
-
-      if (updates.rich_text !== undefined) {
-        updatePayload.rich_text = updates.rich_text;
-      }
 
       const { error: recallError } = await supabase
         .from('recalls')

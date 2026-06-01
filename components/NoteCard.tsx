@@ -4,7 +4,6 @@ import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { Document } from '@/types/Document';
 import { IconSymbol } from './IconSymbol';
-import { TiptapViewer } from './TiptapViewer';
 import UrlPreviewCard from './UrlPreviewCard';
 import { extractUrls } from '@/utils/urlProcessor';
 import { useNotesContext } from '@/contexts/NotesContext';
@@ -566,14 +565,15 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               return null;
             })()}
 
-            {(note.rich_text || note.text) && (
+            {note.text ? (
               <Pressable onPress={handleTextPress}>
                 <View style={styles.text}>
-                  <TiptapViewer
-                    doc={note.rich_text}
-                    fallbackText={note.text ? (isExpanded ? note.text : getPreviewText()) : undefined}
+                  <Text
+                    style={styles.noteText}
                     numberOfLines={isExpanded ? undefined : 6}
-                  />
+                  >
+                    {isExpanded ? note.text : getPreviewText()}
+                  </Text>
                 </View>
                 {shouldShowToggle() && (
                   <Pressable 
@@ -587,7 +587,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                   </Pressable>
                 )}
               </Pressable>
-            )}
+            ) : null}
 
             <View style={styles.locationTimeContainer}>
               {note.location && (
@@ -778,6 +778,11 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     marginRight: 48,
     zIndex: 1,
+  },
+  noteText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.text,
   },
   normalText: {
     color: colors.text,

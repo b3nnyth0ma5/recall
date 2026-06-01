@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   ScrollView,
   Pressable,
@@ -29,7 +30,6 @@ import Animated, {
   FadeIn,
   SlideInDown,
 } from 'react-native-reanimated';
-import { RichText, Toolbar, useEditorBridge, TenTapStartKit, TaskListBridge } from '@10play/tentap-editor';
 import { colors } from '@/styles/commonStyles';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { Note, Person } from '@/types/Note';
@@ -75,7 +75,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote, getCachedNote, refreshUrlMetadata } = useNotesContext();
 
   const [text, setText] = useState('');
-  const [initialRichText, setInitialRichText] = useState<TiptapDoc | null>(null);
   const [images, setImages] = useState<ImageData[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(false);
@@ -97,24 +96,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
 
   const isEditing = !!noteId;
 
-  // TenTap rich-text editor
-  const editor = useEditorBridge({
-    autofocus: !isEditing,
-    avoidIosKeyboard: true,
-    bridgeExtensions: [
-      ...TenTapStartKit,
-      TaskListBridge,
-    ],
-  });
-
-  // When initialRichText is loaded from DB/cache, push it into the editor
-  // editor is a stable bridge ref — intentionally omitted from deps
-  useEffect(() => {
-    if (initialRichText) {
-      console.log('[NoteEditorSlideUp] Setting editor content from loaded rich_text');
-      editor.setContent(JSON.stringify(initialRichText));
-    }
-  }, [initialRichText]); // eslint-disable-line react-hooks/exhaustive-deps
+  const textInputRef = useRef<any>(null);
 
   const [loadedImageIndices, setLoadedImageIndices] = useState<Set<number>>(new Set());
   const [initialImageCount, setInitialImageCount] = useState(0);
@@ -236,8 +218,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
         if (cachedNote) {
           console.log('[NoteEditorSlideUp] ✅ Using CACHED data for instant load');
           
-          const cachedRichText = cachedNote.rich_text ?? plainTextToTiptapDoc(cachedNote.text || '');
-          setInitialRichText(cachedRichText);
           setText(cachedNote.text || '');
           setLocationName(cachedNote.location || '');
           setLocationPrimaryType(cachedNote.location_primary_type || '');
@@ -282,8 +262,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
             if (recallData.updated_at !== cachedNote.updated_at) {
               console.log('[NoteEditorSlideUp] Data changed, updating from database');
               
-              const freshRichText = recallData.rich_text ?? plainTextToTiptapDoc(recallData.text || '');
-              setInitialRichText(freshRichText);
               setText(recallData.text || '');
               setLocationName(recallData.location || '');
               setLocationPrimaryType(recallData.location_primary_type || '');
@@ -376,8 +354,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
 
         console.log('[NoteEditorSlideUp] Note loaded from database:', recallData);
 
-        const dbRichText = recallData.rich_text ?? plainTextToTiptapDoc(recallData.text || '');
-        setInitialRichText(dbRichText);
         setText(recallData.text || '');
         setLocationName(recallData.location || '');
         setLocationPrimaryType(recallData.location_primary_type || '');
@@ -809,25 +785,11 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
       setSaving(true);
       console.log('[NoteEditorSlideUp] ===== STARTING SAVE PROCESS =====');
 
-      // Get rich text JSON from the editor (async bridge call)
-      let richTextDoc: TiptapDoc = emptyTiptapDoc();
-      try {
-        const jsonResult = await editor.getJSON();
-        if (jsonResult && typeof jsonResult === 'object') {
-          richTextDoc = jsonResult as TiptapDoc;
-          console.log('[NoteEditorSlideUp] Got rich_text JSON from editor');
-        }
-      } catch (editorErr) {
-        console.warn('[NoteEditorSlideUp] Could not get JSON from editor, using empty doc:', editorErr);
-      }
-
-      // Derive plain text from rich_text for embeddings/search
-      const plainText = tiptapToPlainText(richTextDoc) || text.trim();
-      console.log('[NoteEditorSlideUp] Derived plain text length:', plainText.length);
+      const plainText = text.trim();
+      console.log('[NoteEditorSlideUp] Plain text length:', plainText.length);
 
       const noteData = {
         text: plainText,
-        rich_text: richTextDoc,
         latitude: location?.latitude,
         longitude: location?.longitude,
         location: locationName,
@@ -1159,7 +1121,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     if (keyboardVisible) {
       Keyboard.dismiss();
     } else {
-      editor.focus();
+      textInputRef.current?.focus();
     }
   };
 
@@ -1173,8 +1135,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   };
 
   const handleRichTextPress = () => {
-    console.log('[NoteEditorSlideUp] Rich text area pressed, focusing editor');
-    editor.focus();
+    console.log('[NoteEditorSlideUp] Text area pressed, focusing input');
+    textInputRef.current?.focus();
   };
 
   const handleCloseFullScreenImage = useCallback(() => {
@@ -1272,13 +1234,22 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                   />
                 )}
 
-                <View style={[styles.richTextContainer, { height: textInputHeight }]}>
-                  <RichText
-                    editor={editor}
+                <Pressable
+                  style={[styles.richTextContainer, { height: textInputHeight }]}
+                  onPress={handleRichTextPress}
+                >
+                  <TextInput
+                    ref={textInputRef}
+                    style={styles.richText}
+                    value={text}
+                    onChangeText={setText}
+                    multiline
+                    placeholder="What's on your mind?"
+                    placeholderTextColor={colors.textTertiary ?? '#888888'}
+                    textAlignVertical="top"
+                    scrollEnabled={false}
                   />
-                </View>
-
-                <Toolbar editor={editor} />
+                </Pressable>
 
                 <PeopleAvatarsRow 
                   people={people} 
@@ -1623,6 +1594,9 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 26,
     color: colors.text,
+    flex: 1,
+    padding: 16,
+    textAlignVertical: 'top',
   },
   overlayInput: {
     position: 'absolute',

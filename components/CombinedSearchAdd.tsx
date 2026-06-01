@@ -33,11 +33,15 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { supabase } from '@/utils/supabase';
+import { pickDocuments, PickedDocument } from '@/utils/documentPicker';
+import { DocumentTile } from '@/components/DocumentTile';
+import { Document } from '@/types/Document';
 
 interface CombinedSearchAddProps {
   onCreateRecall: (data: {
     text: string;
     images: string[];
+    documents: Document[];
     location?: { latitude: number; longitude: number; name: string; primaryType?: string };
   }, onProgress?: (stage: string) => void) => Promise<void>;
   userId: string;
@@ -54,6 +58,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   const params = useLocalSearchParams();
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageState[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string; primaryType?: string } | null>(null);
   const [showDrawer, setShowDrawer] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -421,12 +426,13 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   };
 
   const handleCreateRecall = async () => {
-    if (!text.trim() && images.length === 0) {
-      Alert.alert('Empty Recall', 'Please add some text or images');
+    if (!text.trim() && images.length === 0 && documents.length === 0) {
+      Alert.alert('Empty Recall', 'Please add some text, images, or documents');
       return;
     }
 
     console.log('[CombinedSearchAdd] Dismissing keyboard immediately on recall creation');
+    console.log('[CombinedSearchAdd] Creating recall with', images.length, 'image(s) and', documents.length, 'document(s)');
     Keyboard.dismiss();
     if (textInputRef.current) {
       textInputRef.current.blur();
@@ -443,6 +449,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         {
           text: text.trim(),
           images: imageUris,
+          documents: documents,
           location: locationToSave || undefined,
         },
         (stage: string) => {
@@ -452,6 +459,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 
       setText('');
       setImages([]);
+      setDocuments([]);
       setLocation(currentLocation);
       setSavingStage('');
     } catch (error) {
@@ -467,13 +475,41 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
     setImages(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleRemoveDocument = (index: number) => {
+    console.log('[CombinedSearchAdd] User tapped remove document at index:', index);
+    setDocuments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDocumentPick = async () => {
+    console.log('[CombinedSearchAdd] User tapped document FAB');
+    try {
+      const picked = await pickDocuments();
+      if (picked && picked.length > 0) {
+        console.log('[CombinedSearchAdd] Picked', picked.length, 'document(s)');
+        const newDocs: Document[] = picked.map(p => ({
+          file_name: p.name,
+          file_size: p.size,
+          content_type: p.mimeType,
+          local_uri: p.uri,
+          local_thumbnail_uri: p.thumbnailUri,
+          upload_state: 'pending' as const,
+        }));
+        setDocuments(prev => [...prev, ...newDocs]);
+        setShowDrawer(false);
+      }
+    } catch (error) {
+      console.error('[CombinedSearchAdd] Error picking documents:', error);
+      Alert.alert('Error', 'Failed to pick document');
+    }
+  };
+
   const dismissKeyboard = () => {
     Keyboard.dismiss();
   };
 
   const allImagesOptimized = images.length === 0 || images.every(img => !img.isPlaceholder);
   
-  const isUpArrowDisabled = (!text.trim() && images.length === 0) || !allImagesOptimized;
+  const isUpArrowDisabled = (!text.trim() && images.length === 0 && documents.length === 0) || !allImagesOptimized;
 
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
@@ -483,6 +519,14 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
             entering={FadeIn.duration(200)}
             style={styles.floatingActionsContainer}
           >
+            <Pressable
+              style={styles.floatingActionButton}
+              onPress={handleDocumentPick}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="doc.fill" size={28} color={colors.primary} />
+            </Pressable>
+
             <Pressable
               style={styles.floatingActionButton}
               onPress={handleImagePick}
@@ -504,6 +548,31 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
         <View style={styles.containerWrapper}>
           <View style={styles.container}>
             <View style={styles.inputContainer}>
+              {documents.length > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.imagesScroll}
+                  contentContainerStyle={styles.imagesScrollContent}
+                  decelerationRate="fast"
+                  scrollEnabled={true}
+                  nestedScrollEnabled={true}
+                  removeClippedSubviews={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {documents.map((doc, index) => (
+                    <DocumentTile
+                      key={`doc-${index}`}
+                      document={doc}
+                      width={80}
+                      height={80}
+                      showRemoveButton
+                      onRemove={() => handleRemoveDocument(index)}
+                    />
+                  ))}
+                </ScrollView>
+              )}
+
               {images.length > 0 && (
                 <ScrollView 
                   horizontal 

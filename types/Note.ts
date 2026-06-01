@@ -4,7 +4,6 @@ import { Document } from './Document';
 export interface Note {
   id: string;
   text: string;                  // plain text — kept for embeddings/search
-  rich_text?: TiptapDoc | null;  // Tiptap JSON — display-faithful
   images?: string[]; // Array of CDN URLs for display
   imageIds?: string[]; // Array of image record IDs
   created_at: string;

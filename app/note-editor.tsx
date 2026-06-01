@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   ScrollView,
   Pressable,
@@ -28,7 +29,6 @@ import Animated, {
   runOnJS,
   FadeIn,
 } from 'react-native-reanimated';
-import { RichText, Toolbar, useEditorBridge, DEFAULT_TOOLBAR_ITEMS, TaskListBridge, CoreBridge, TenTapStartKit } from '@10play/tentap-editor';
 import { colors } from '@/styles/commonStyles';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { Note, Person } from '@/types/Note';
@@ -68,7 +68,6 @@ export default function NoteEditorScreen() {
   const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote, getCachedNote, refreshUrlMetadata } = useNotesContext();
 
   const [text, setText] = useState('');
-  const [initialRichText, setInitialRichText] = useState<TiptapDoc | null>(null);
   const [images, setImages] = useState<ImageData[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(false);
@@ -93,27 +92,8 @@ export default function NoteEditorScreen() {
 
   const isEditing = !!params.id;
 
-  // TenTap rich-text editor
-  const editor = useEditorBridge({
-    autofocus: !isEditing,
-    avoidIosKeyboard: true,
-    bridgeExtensions: [
-      ...TenTapStartKit,
-      TaskListBridge,
-    ],
-  });
-
   const [lazyLoadedImages, setLazyLoadedImages] = useState<ImageData[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
-
-  // When initialRichText is loaded from DB/cache, push it into the editor
-  // editor is a stable bridge ref — intentionally omitted from deps
-  useEffect(() => {
-    if (initialRichText) {
-      console.log('[NoteEditor] Setting editor content from loaded rich_text');
-      editor.setContent(JSON.stringify(initialRichText));
-    }
-  }, [initialRichText]); // eslint-disable-line react-hooks/exhaustive-deps
   const isSharedRecall = params.isSharedRecall === 'true';
   const fromShare = params.fromShare === 'true';
   const openCamera = params.openCamera === 'true';
@@ -583,8 +563,6 @@ export default function NoteEditorScreen() {
         if (cachedNote) {
           console.log('[NoteEditor] ✅ Using CACHED data for instant load');
           
-          const cachedRichText = cachedNote.rich_text ?? plainTextToTiptapDoc(cachedNote.text || '');
-          setInitialRichText(cachedRichText);
           setText(cachedNote.text || '');
           setLocationName(cachedNote.location || '');
           setLocationPrimaryType(cachedNote.location_primary_type || '');
@@ -628,8 +606,6 @@ export default function NoteEditorScreen() {
             if (recallData.updated_at !== cachedNote.updated_at) {
               console.log('[NoteEditor] Data changed, updating from database');
               
-              const freshRichText = recallData.rich_text ?? plainTextToTiptapDoc(recallData.text || '');
-              setInitialRichText(freshRichText);
               setText(recallData.text || '');
               setLocationName(recallData.location || '');
               setLocationPrimaryType(recallData.location_primary_type || '');
@@ -721,8 +697,6 @@ export default function NoteEditorScreen() {
 
         console.log('[NoteEditor] Note loaded from database:', recallData);
 
-        const dbRichText = recallData.rich_text ?? plainTextToTiptapDoc(recallData.text || '');
-        setInitialRichText(dbRichText);
         setText(recallData.text || '');
         setLocationName(recallData.location || '');
         setLocationPrimaryType(recallData.location_primary_type || '');
@@ -1030,25 +1004,11 @@ export default function NoteEditorScreen() {
       setSaving(true);
       console.log('[NoteEditor] ===== STARTING SAVE PROCESS =====');
 
-      // Get rich text JSON from the editor (async bridge call)
-      let richTextDoc: TiptapDoc = emptyTiptapDoc();
-      try {
-        const jsonResult = await editor.getJSON();
-        if (jsonResult && typeof jsonResult === 'object') {
-          richTextDoc = jsonResult as TiptapDoc;
-          console.log('[NoteEditor] Got rich_text JSON from editor');
-        }
-      } catch (editorErr) {
-        console.warn('[NoteEditor] Could not get JSON from editor, using empty doc:', editorErr);
-      }
-
-      // Derive plain text from rich_text for embeddings/search
-      const plainText = tiptapToPlainText(richTextDoc) || text.trim();
-      console.log('[NoteEditor] Derived plain text length:', plainText.length);
+      const plainText = text.trim();
+      console.log('[NoteEditor] Plain text length:', plainText.length);
 
       const noteData = {
         text: plainText,
-        rich_text: richTextDoc,
         latitude: location?.latitude,
         longitude: location?.longitude,
         location: locationName,
@@ -1367,12 +1327,14 @@ export default function NoteEditorScreen() {
     }
   };
 
+  const textInputRef = useRef<any>(null);
+
   const toggleKeyboard = () => {
     console.log('[NoteEditor] toggleKeyboard pressed, keyboardVisible:', keyboardVisible);
     if (keyboardVisible) {
       Keyboard.dismiss();
     } else {
-      editor.focus();
+      textInputRef.current?.focus();
     }
   };
 
@@ -1383,11 +1345,6 @@ export default function NoteEditorScreen() {
   const handleImagePress = (index: number) => {
     setFullScreenImageIndex(index);
     setShowFullScreenImage(true);
-  };
-
-  const handleRichTextPress = () => {
-    console.log('[NoteEditor] Rich text area pressed, focusing editor');
-    editor.focus();
   };
 
   const handleCloseFullScreenImage = useCallback(() => {
@@ -1513,9 +1470,16 @@ export default function NoteEditorScreen() {
       )}
 
       <View style={[styles.richEditorContainer, { height: textInputHeight }]}>
-        <RichText
-          editor={editor}
-          style={styles.richEditorWebView}
+        <TextInput
+          ref={textInputRef}
+          style={styles.textInput}
+          value={text}
+          onChangeText={setText}
+          multiline
+          placeholder="What's on your mind?"
+          placeholderTextColor={colors.textTertiary}
+          autoFocus={!isEditing}
+          textAlignVertical="top"
         />
       </View>
 
@@ -1666,8 +1630,6 @@ export default function NoteEditorScreen() {
         </Animated.View>
       )}
 
-      <Toolbar editor={editor} />
-
       <View style={[
         styles.toolbar,
         keyboardVisible && Platform.OS === 'ios' && { 
@@ -1806,9 +1768,15 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 4,
   },
-  richEditorWebView: {
+  textInput: {
     flex: 1,
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.text,
     backgroundColor: colors.background,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    textAlignVertical: 'top',
   },
   normalText: {
     color: colors.text,

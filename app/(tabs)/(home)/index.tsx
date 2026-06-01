@@ -11,8 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
-import { supabase } from '@/utils/supabase';
-import { uploadImageToDatabase } from '@/utils/supabase';
+import { supabase, uploadImageToDatabase, uploadDocumentToDatabase } from '@/utils/supabase';
 import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 import { ZeroState } from '@/components/ZeroState';
 import { extractUrls, processRecallUrlsAndAwaitScrape } from '@/utils/urlProcessor';
@@ -216,6 +215,7 @@ export default function HomeScreen() {
     data: {
       text: string;
       images: string[];
+      documents?: import('@/types/Document').Document[];
       location?: { latitude: number; longitude: number; name: string; primaryType?: string };
     },
     onProgress?: (stage: string) => void
@@ -424,6 +424,32 @@ export default function HomeScreen() {
           } catch (categoryMatchException) {
             console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception in category matching:`, categoryMatchException);
           }
+        })();
+      }
+
+      if (data.documents && data.documents.length > 0) {
+        console.log(`[handleCreateRecallFromCombined] Uploading ${data.documents.length} documents...`);
+        (async () => {
+          for (let i = 0; i < data.documents!.length; i++) {
+            const doc = data.documents![i];
+            try {
+              const result = await uploadDocumentToDatabase(
+                recallData.id,
+                doc.local_uri!,
+                doc.local_thumbnail_uri,
+                doc.file_name,
+                doc.content_type,
+                doc.file_size ?? 0
+              );
+              if (result?.id) {
+                console.log(`[handleCreateRecallFromCombined] [ASYNC] Document ${i + 1} uploaded with ID:`, result.id);
+                await refreshSingleNote(recallData.id);
+              }
+            } catch (uploadError) {
+              console.error(`[handleCreateRecallFromCombined] [ASYNC] Document ${i + 1} upload exception:`, uploadError);
+            }
+          }
+          console.log(`[handleCreateRecallFromCombined] [ASYNC] All documents processed`);
         })();
       }
 
