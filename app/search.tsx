@@ -25,6 +25,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { MarkdownAnswer } from '@/components/MarkdownAnswer';
 import Toast from 'react-native-toast-message';
 import { donateSearch } from '@/modules/SiriShortcutsModule';
+import { Share as ShareIcon } from 'lucide-react-native';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -735,10 +736,10 @@ export default function SearchScreen() {
                               style={styles.shareAnswerButton}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             >
-                              <IconSymbol 
-                                name="paperplane.fill" 
-                                size={18} 
-                                color={colors.primary} 
+                              <ShareIcon
+                                size={18}
+                                color={colors.primary}
+                                strokeWidth={2.2}
                               />
                             </Pressable>
                           </View>

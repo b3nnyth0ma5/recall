@@ -568,7 +568,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                 <View style={styles.text}>
                   <Text
                     style={styles.noteText}
-                    numberOfLines={isExpanded ? undefined : 6}
+                    numberOfLines={isExpanded ? undefined : 7}
                   >
                     {isExpanded ? note.text : getPreviewText()}
                   </Text>
@@ -588,7 +588,16 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
             ) : null}
 
             <View style={styles.locationTimeContainer}>
-              {note.location && (
+              <View style={styles.timeAgoWrapper}>
+                <TimeAgo 
+                  date={note.created_at} 
+                  style={styles.date}
+                />
+              </View>
+            </View>
+
+            <View style={styles.actionsRowWithLocation}>
+              {note.location ? (
                 <Pressable 
                   onPress={handleLocationPress}
                   style={styles.locationWrapper}
@@ -601,21 +610,16 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                     <IconSymbol name="chevron.right" size={12} color={colors.primary} />
                   </View>
                 </Pressable>
+              ) : (
+                <View style={styles.locationWrapper} />
               )}
-              
-              <View style={styles.timeAgoWrapper}>
-                <TimeAgo 
-                  date={note.created_at} 
-                  style={styles.date}
-                />
-              </View>
-            </View>
 
-            <RecallUtilityBar
-              onAskQuestion={handleAskQuestion}
-              onShare={handleSharePress}
-              hasLocation={Boolean(note.location)}
-            />
+              <RecallUtilityBar
+                onAskQuestion={handleAskQuestion}
+                onShare={handleSharePress}
+                hasLocation={Boolean(note.location)}
+              />
+            </View>
           </View>
         </Swipeable>
       </Pressable>
@@ -831,6 +835,13 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '500',
     flexShrink: 1,
+  },
+  actionsRowWithLocation: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    gap: 8,
   },
   timeAgoWrapper: {
     flex: 0.30,
