@@ -4,12 +4,10 @@ import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { Document } from '@/types/Document';
 import { IconSymbol } from './IconSymbol';
+import { TiptapViewer } from './TiptapViewer';
 import UrlPreviewCard from './UrlPreviewCard';
 import { extractUrls } from '@/utils/urlProcessor';
 import { useNotesContext } from '@/contexts/NotesContext';
-const FullScreenImage = React.lazy(() =>
-  import('./FullScreenImage').then(m => ({ default: m.FullScreenImage }))
-);
 import { TimeAgo } from './TimeAgo';
 import { shareRecall } from '@/utils/shareRecall';
 import { getImageDataUrl } from '@/utils/supabase';
@@ -35,6 +33,10 @@ import { getDocumentColor, getFileExtension } from '@/utils/documentPicker';
 type MediaItem =
   | { kind: 'image'; url: string; id?: string }
   | { kind: 'document'; doc: Document };
+
+const FullScreenImage = React.lazy(() =>
+  import('./FullScreenImage').then(m => ({ default: m.FullScreenImage }))
+);
 
 interface NoteCardProps {
   note: Note;
@@ -564,15 +566,15 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               return null;
             })()}
 
-            {note.text && (
+            {(note.rich_text || note.text) && (
               <Pressable onPress={handleTextPress}>
-                <Text style={styles.text}>
-                  {hasUrl(note.text) ? (
-                    renderTextWithLinks(isExpanded ? note.text : getPreviewText())
-                  ) : (
-                    isExpanded ? note.text : getPreviewText()
-                  )}
-                </Text>
+                <View style={styles.text}>
+                  <TiptapViewer
+                    doc={note.rich_text}
+                    fallbackText={note.text ? (isExpanded ? note.text : getPreviewText()) : undefined}
+                    numberOfLines={isExpanded ? undefined : 6}
+                  />
+                </View>
                 {shouldShowToggle() && (
                   <Pressable 
                     onPress={handleToggleExpand}
@@ -771,9 +773,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   text: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.text,
     marginBottom: 2,
     marginTop: 4,
     marginLeft: 6,

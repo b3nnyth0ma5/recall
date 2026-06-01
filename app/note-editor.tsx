@@ -2,14 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   ScrollView,
   Pressable,
   Image,
   Alert,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
   Keyboard,
   Linking,
@@ -30,6 +28,7 @@ import Animated, {
   runOnJS,
   FadeIn,
 } from 'react-native-reanimated';
+import { RichText, Toolbar, useEditorBridge, DEFAULT_TOOLBAR_ITEMS, TaskListBridge, CoreBridge, TenTapStartKit } from '@10play/tentap-editor';
 import { colors } from '@/styles/commonStyles';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { Note, Person } from '@/types/Note';
@@ -69,6 +68,7 @@ export default function NoteEditorScreen() {
   const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote, getCachedNote, refreshUrlMetadata } = useNotesContext();
 
   const [text, setText] = useState('');
+  const [initialRichText, setInitialRichText] = useState<TiptapDoc | null>(null);
   const [images, setImages] = useState<ImageData[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(false);
@@ -89,14 +89,31 @@ export default function NoteEditorScreen() {
   const [people, setPeople] = useState<Person[]>([]);
   const [initialPeople, setInitialPeople] = useState<Person[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const textInputRef = useRef<TextInput>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
+
+  const isEditing = !!params.id;
+
+  // TenTap rich-text editor
+  const editor = useEditorBridge({
+    autofocus: !isEditing,
+    avoidIosKeyboard: true,
+    bridgeExtensions: [
+      ...TenTapStartKit,
+      TaskListBridge,
+    ],
+  });
 
   const [lazyLoadedImages, setLazyLoadedImages] = useState<ImageData[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
 
-  const isEditing = !!params.id;
+  // When initialRichText is loaded from DB/cache, push it into the editor
+  // editor is a stable bridge ref — intentionally omitted from deps
+  useEffect(() => {
+    if (initialRichText) {
+      console.log('[NoteEditor] Setting editor content from loaded rich_text');
+      editor.setContent(JSON.stringify(initialRichText));
+    }
+  }, [initialRichText]); // eslint-disable-line react-hooks/exhaustive-deps
   const isSharedRecall = params.isSharedRecall === 'true';
   const fromShare = params.fromShare === 'true';
   const openCamera = params.openCamera === 'true';
@@ -566,6 +583,8 @@ export default function NoteEditorScreen() {
         if (cachedNote) {
           console.log('[NoteEditor] ✅ Using CACHED data for instant load');
           
+          const cachedRichText = cachedNote.rich_text ?? plainTextToTiptapDoc(cachedNote.text || '');
+          setInitialRichText(cachedRichText);
           setText(cachedNote.text || '');
           setLocationName(cachedNote.location || '');
           setLocationPrimaryType(cachedNote.location_primary_type || '');
@@ -609,6 +628,8 @@ export default function NoteEditorScreen() {
             if (recallData.updated_at !== cachedNote.updated_at) {
               console.log('[NoteEditor] Data changed, updating from database');
               
+              const freshRichText = recallData.rich_text ?? plainTextToTiptapDoc(recallData.text || '');
+              setInitialRichText(freshRichText);
               setText(recallData.text || '');
               setLocationName(recallData.location || '');
               setLocationPrimaryType(recallData.location_primary_type || '');
@@ -700,6 +721,8 @@ export default function NoteEditorScreen() {
 
         console.log('[NoteEditor] Note loaded from database:', recallData);
 
+        const dbRichText = recallData.rich_text ?? plainTextToTiptapDoc(recallData.text || '');
+        setInitialRichText(dbRichText);
         setText(recallData.text || '');
         setLocationName(recallData.location || '');
         setLocationPrimaryType(recallData.location_primary_type || '');
@@ -1007,15 +1030,32 @@ export default function NoteEditorScreen() {
       setSaving(true);
       console.log('[NoteEditor] ===== STARTING SAVE PROCESS =====');
 
+      // Get rich text JSON from the editor (async bridge call)
+      let richTextDoc: TiptapDoc = emptyTiptapDoc();
+      try {
+        const jsonResult = await editor.getJSON();
+        if (jsonResult && typeof jsonResult === 'object') {
+          richTextDoc = jsonResult as TiptapDoc;
+          console.log('[NoteEditor] Got rich_text JSON from editor');
+        }
+      } catch (editorErr) {
+        console.warn('[NoteEditor] Could not get JSON from editor, using empty doc:', editorErr);
+      }
+
+      // Derive plain text from rich_text for embeddings/search
+      const plainText = tiptapToPlainText(richTextDoc) || text.trim();
+      console.log('[NoteEditor] Derived plain text length:', plainText.length);
+
       const noteData = {
-        text: text.trim(),
+        text: plainText,
+        rich_text: richTextDoc,
         latitude: location?.latitude,
         longitude: location?.longitude,
         location: locationName,
         location_primary_type: locationPrimaryType || null,
       };
 
-      console.log('[NoteEditor] Note data to save:', noteData);
+      console.log('[NoteEditor] Note data to save, text length:', noteData.text.length);
       console.log('[NoteEditor] Current people state:', people);
       console.log('[NoteEditor] People count:', people.length);
 
@@ -1328,10 +1368,11 @@ export default function NoteEditorScreen() {
   };
 
   const toggleKeyboard = () => {
+    console.log('[NoteEditor] toggleKeyboard pressed, keyboardVisible:', keyboardVisible);
     if (keyboardVisible) {
       Keyboard.dismiss();
     } else {
-      textInputRef.current?.focus();
+      editor.focus();
     }
   };
 
@@ -1345,8 +1386,8 @@ export default function NoteEditorScreen() {
   };
 
   const handleRichTextPress = () => {
-    console.log('Rich text pressed, focusing input');
-    textInputRef.current?.focus();
+    console.log('[NoteEditor] Rich text area pressed, focusing editor');
+    editor.focus();
   };
 
   const handleCloseFullScreenImage = useCallback(() => {
@@ -1471,66 +1512,12 @@ export default function NoteEditorScreen() {
         />
       )}
 
-      <ScrollView 
-        ref={scrollViewRef}
-        style={styles.scrollView} 
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        scrollEnabled={true}
-      >
-        <Pressable 
-          onPress={handleRichTextPress}
-          style={[styles.textInputContainer, { height: textInputHeight }]}
-        >
-          {textHasUrl ? (
-            <View style={styles.richTextContainer}>
-              <ScrollView 
-                style={styles.textInputScrollView}
-                nestedScrollEnabled={true}
-                showsVerticalScrollIndicator={true}
-              >
-                <Pressable onPress={handleRichTextPress}>
-                  <Text style={styles.richText}>
-                    {renderTextWithLinks(text)}
-                  </Text>
-                </Pressable>
-              </ScrollView>
-              <TextInput
-                ref={textInputRef}
-                style={[styles.textInput, styles.overlayInput]}
-                placeholder="What do you want to Recall?"
-                placeholderTextColor={colors.textTertiary}
-                value={text}
-                onChangeText={setText}
-                multiline
-                autoFocus={false}
-                scrollEnabled={false}
-                caretHidden={false}
-              />
-            </View>
-          ) : (
-            <ScrollView 
-              style={styles.textInputScrollView}
-              nestedScrollEnabled={true}
-              showsVerticalScrollIndicator={true}
-            >
-              <TextInput
-                ref={textInputRef}
-                style={styles.textInputMultiline}
-                placeholder="What do you want to Recall?"
-                placeholderTextColor={colors.textTertiary}
-                value={text}
-                onChangeText={setText}
-                multiline
-                autoFocus={false}
-                scrollEnabled={false}
-              />
-            </ScrollView>
-          )}
-        </Pressable>
-
-        <View style={styles.spacer} />
-      </ScrollView>
+      <View style={[styles.richEditorContainer, { height: textInputHeight }]}>
+        <RichText
+          editor={editor}
+          style={styles.richEditorWebView}
+        />
+      </View>
 
       <PeopleAvatarsRow 
         people={people} 
@@ -1679,6 +1666,8 @@ export default function NoteEditorScreen() {
         </Animated.View>
       )}
 
+      <Toolbar editor={editor} />
+
       <View style={[
         styles.toolbar,
         keyboardVisible && Platform.OS === 'ios' && { 
@@ -1783,13 +1772,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: 20,
-  },
+
   headerButton: {
     padding: 8,
     marginHorizontal: 8,
@@ -1819,42 +1802,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  textInputContainer: {
-    padding: 20,
-  },
-  textInputScrollView: {
+  richEditorContainer: {
     flex: 1,
+    paddingHorizontal: 4,
   },
-  textInput: {
-    fontSize: 17,
-    lineHeight: 26,
-    color: colors.text,
-    textAlignVertical: 'top',
-    minHeight: 48 * 1.1,
-  },
-  textInputMultiline: {
-    fontSize: 17,
-    lineHeight: 26,
-    color: colors.text,
-    textAlignVertical: 'top',
-  },
-  richTextContainer: {
-    position: 'relative',
+  richEditorWebView: {
     flex: 1,
-  },
-  richText: {
-    fontSize: 17,
-    lineHeight: 26,
-    color: colors.text,
-  },
-  overlayInput: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    color: 'transparent',
-    backgroundColor: 'transparent',
+    backgroundColor: colors.background,
   },
   normalText: {
     color: colors.text,
@@ -1862,9 +1816,6 @@ const styles = StyleSheet.create({
   linkText: {
     color: colors.primary,
     textDecorationLine: 'underline',
-  },
-  spacer: {
-    flex: 1,
   },
   imagesContainer: {
     paddingVertical: 16,

@@ -20,7 +20,20 @@ import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/utils/supabase';
 import { searchPlaces, searchNearbyPlaces, PlaceResult, extractShortLocationName, isGooglePlacesConfigured } from '@/utils/googlePlaces';
 
-export default function LocationSearchScreen() {
+interface LocationSearchScreenProps {
+  visible?: boolean;
+  onClose?: () => void;
+  onSelectLocation?: (selectedLocation: {
+    latitude: number;
+    longitude: number;
+    name: string;
+    primaryType?: string;
+    displayName: string;
+    formattedAddress: string;
+  }) => void;
+}
+
+export default function LocationSearchScreen({ onClose, onSelectLocation }: LocationSearchScreenProps = {}) {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
@@ -214,25 +227,38 @@ export default function LocationSearchScreen() {
         }
       }
 
-      // FIXED: Navigate back first, then set params in a separate event loop tick
-      router.back();
-      
-      // FIXED: Use setTimeout to break the call stack and prevent recursion
-      setTimeout(() => {
-        try {
-          console.log('[LocationSearch] Setting location params');
-          router.setParams({
-            selectedLatitude: location.latitude.toString(),
-            selectedLongitude: location.longitude.toString(),
-            selectedLocationName: formattedLocationName,
-            selectedDisplayName: location.displayName,
-            selectedFullAddress: location.formattedAddress,
-            selectedPrimaryType: location.primaryTypeDisplayName || '',
-          });
-        } catch (error) {
-          console.error('[LocationSearch] Error setting params:', error);
-        }
-      }, 100);
+      if (onSelectLocation) {
+        // Embedded component mode — call the callback directly
+        onSelectLocation({
+          latitude: location.latitude,
+          longitude: location.longitude,
+          name: formattedLocationName,
+          primaryType: location.primaryTypeDisplayName || undefined,
+          displayName: location.displayName,
+          formattedAddress: location.formattedAddress,
+        });
+        if (onClose) onClose();
+      } else {
+        // FIXED: Navigate back first, then set params in a separate event loop tick
+        router.back();
+        
+        // FIXED: Use setTimeout to break the call stack and prevent recursion
+        setTimeout(() => {
+          try {
+            console.log('[LocationSearch] Setting location params');
+            router.setParams({
+              selectedLatitude: location.latitude.toString(),
+              selectedLongitude: location.longitude.toString(),
+              selectedLocationName: formattedLocationName,
+              selectedDisplayName: location.displayName,
+              selectedFullAddress: location.formattedAddress,
+              selectedPrimaryType: location.primaryTypeDisplayName || '',
+            });
+          } catch (error) {
+            console.error('[LocationSearch] Error setting params:', error);
+          }
+        }, 100);
+      }
     } catch (error) {
       console.error('[LocationSearch] Error processing location:', error);
       Alert.alert('Error', 'Failed to process location');

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   ScrollView,
   Pressable,
@@ -30,6 +29,7 @@ import Animated, {
   FadeIn,
   SlideInDown,
 } from 'react-native-reanimated';
+import { RichText, Toolbar, useEditorBridge, TenTapStartKit, TaskListBridge } from '@10play/tentap-editor';
 import { colors } from '@/styles/commonStyles';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { Note, Person } from '@/types/Note';
@@ -75,6 +75,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const { addNote, updateNote, deleteNote, refreshNotes, refreshSingleNote, getCachedNote, refreshUrlMetadata } = useNotesContext();
 
   const [text, setText] = useState('');
+  const [initialRichText, setInitialRichText] = useState<TiptapDoc | null>(null);
   const [images, setImages] = useState<ImageData[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(false);
@@ -92,16 +93,33 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const [showFABs, setShowFABs] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [initialPeople, setInitialPeople] = useState<Person[]>([]);
-  const textInputRef = useRef<TextInput>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
   const imageScrollRef = useRef<ScrollView>(null);
+
+  const isEditing = !!noteId;
+
+  // TenTap rich-text editor
+  const editor = useEditorBridge({
+    autofocus: !isEditing,
+    avoidIosKeyboard: true,
+    bridgeExtensions: [
+      ...TenTapStartKit,
+      TaskListBridge,
+    ],
+  });
+
+  // When initialRichText is loaded from DB/cache, push it into the editor
+  // editor is a stable bridge ref — intentionally omitted from deps
+  useEffect(() => {
+    if (initialRichText) {
+      console.log('[NoteEditorSlideUp] Setting editor content from loaded rich_text');
+      editor.setContent(JSON.stringify(initialRichText));
+    }
+  }, [initialRichText]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [loadedImageIndices, setLoadedImageIndices] = useState<Set<number>>(new Set());
   const [initialImageCount, setInitialImageCount] = useState(0);
 
   const [showLocationSearch, setShowLocationSearch] = useState(false);
-
-  const isEditing = !!noteId;
   
   const canSave = text.trim().length > 0 || images.length > 0 || documents.length > 0;
   const hasImages = images.length > 0;
@@ -218,6 +236,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
         if (cachedNote) {
           console.log('[NoteEditorSlideUp] ✅ Using CACHED data for instant load');
           
+          const cachedRichText = cachedNote.rich_text ?? plainTextToTiptapDoc(cachedNote.text || '');
+          setInitialRichText(cachedRichText);
           setText(cachedNote.text || '');
           setLocationName(cachedNote.location || '');
           setLocationPrimaryType(cachedNote.location_primary_type || '');
@@ -262,6 +282,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
             if (recallData.updated_at !== cachedNote.updated_at) {
               console.log('[NoteEditorSlideUp] Data changed, updating from database');
               
+              const freshRichText = recallData.rich_text ?? plainTextToTiptapDoc(recallData.text || '');
+              setInitialRichText(freshRichText);
               setText(recallData.text || '');
               setLocationName(recallData.location || '');
               setLocationPrimaryType(recallData.location_primary_type || '');
@@ -354,6 +376,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
 
         console.log('[NoteEditorSlideUp] Note loaded from database:', recallData);
 
+        const dbRichText = recallData.rich_text ?? plainTextToTiptapDoc(recallData.text || '');
+        setInitialRichText(dbRichText);
         setText(recallData.text || '');
         setLocationName(recallData.location || '');
         setLocationPrimaryType(recallData.location_primary_type || '');
@@ -785,15 +809,32 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
       setSaving(true);
       console.log('[NoteEditorSlideUp] ===== STARTING SAVE PROCESS =====');
 
+      // Get rich text JSON from the editor (async bridge call)
+      let richTextDoc: TiptapDoc = emptyTiptapDoc();
+      try {
+        const jsonResult = await editor.getJSON();
+        if (jsonResult && typeof jsonResult === 'object') {
+          richTextDoc = jsonResult as TiptapDoc;
+          console.log('[NoteEditorSlideUp] Got rich_text JSON from editor');
+        }
+      } catch (editorErr) {
+        console.warn('[NoteEditorSlideUp] Could not get JSON from editor, using empty doc:', editorErr);
+      }
+
+      // Derive plain text from rich_text for embeddings/search
+      const plainText = tiptapToPlainText(richTextDoc) || text.trim();
+      console.log('[NoteEditorSlideUp] Derived plain text length:', plainText.length);
+
       const noteData = {
-        text: text.trim(),
+        text: plainText,
+        rich_text: richTextDoc,
         latitude: location?.latitude,
         longitude: location?.longitude,
         location: locationName,
         location_primary_type: locationPrimaryType || null,
       };
 
-      console.log('[NoteEditorSlideUp] Note data to save:', noteData);
+      console.log('[NoteEditorSlideUp] Note data to save, text length:', noteData.text.length);
       console.log('[NoteEditorSlideUp] Current people state:', people);
       console.log('[NoteEditorSlideUp] People count:', people.length);
 
@@ -1114,10 +1155,11 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   };
 
   const toggleKeyboard = () => {
+    console.log('[NoteEditorSlideUp] toggleKeyboard pressed, keyboardVisible:', keyboardVisible);
     if (keyboardVisible) {
       Keyboard.dismiss();
     } else {
-      textInputRef.current?.focus();
+      editor.focus();
     }
   };
 
@@ -1131,8 +1173,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   };
 
   const handleRichTextPress = () => {
-    console.log('Rich text pressed, focusing input');
-    textInputRef.current?.focus();
+    console.log('[NoteEditorSlideUp] Rich text area pressed, focusing editor');
+    editor.focus();
   };
 
   const handleCloseFullScreenImage = useCallback(() => {
@@ -1230,66 +1272,13 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                   />
                 )}
 
-                <ScrollView 
-                  ref={scrollViewRef}
-                  style={styles.scrollView} 
-                  contentContainerStyle={styles.scrollContent}
-                  keyboardShouldPersistTaps="handled"
-                  scrollEnabled={true}
-                >
-                  <Pressable 
-                    onPress={handleRichTextPress}
-                    style={[styles.textInputContainer, { height: textInputHeight }]}
-                  >
-                    {textHasUrl ? (
-                      <View style={styles.richTextContainer}>
-                        <ScrollView 
-                          style={styles.textInputScrollView}
-                          nestedScrollEnabled={true}
-                          showsVerticalScrollIndicator={true}
-                        >
-                          <Pressable onPress={handleRichTextPress}>
-                            <Text style={styles.richText}>
-                              {renderTextWithLinks(text)}
-                            </Text>
-                          </Pressable>
-                        </ScrollView>
-                        <TextInput
-                          ref={textInputRef}
-                          style={[styles.textInput, styles.overlayInput]}
-                          placeholder="What do you want to Recall?"
-                          placeholderTextColor={colors.textTertiary}
-                          value={text}
-                          onChangeText={setText}
-                          multiline
-                          autoFocus={false}
-                          scrollEnabled={false}
-                          caretHidden={false}
-                        />
-                      </View>
-                    ) : (
-                      <ScrollView 
-                        style={styles.textInputScrollView}
-                        nestedScrollEnabled={true}
-                        showsVerticalScrollIndicator={true}
-                      >
-                        <TextInput
-                          ref={textInputRef}
-                          style={styles.textInputMultiline}
-                          placeholder="What do you want to Recall?"
-                          placeholderTextColor={colors.textTertiary}
-                          value={text}
-                          onChangeText={setText}
-                          multiline
-                          autoFocus={false}
-                          scrollEnabled={false}
-                        />
-                      </ScrollView>
-                    )}
-                  </Pressable>
+                <View style={[styles.richTextContainer, { height: textInputHeight }]}>
+                  <RichText
+                    editor={editor}
+                  />
+                </View>
 
-                  <View style={styles.spacer} />
-                </ScrollView>
+                <Toolbar editor={editor} />
 
                 <PeopleAvatarsRow 
                   people={people} 
