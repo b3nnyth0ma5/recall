@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Pressable, Platform } from 'react-native';
 import { IconSymbol } from './IconSymbol';
+import { Share as ShareIcon } from 'lucide-react-native';
 import { colors } from '@/styles/commonStyles';
 import * as Haptics from 'expo-haptics';
 import { SharePopover } from './SharePopover';
@@ -102,10 +103,10 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         style={styles.iconButton}
       >
-        <IconSymbol
-          name="paperplane"
+        <ShareIcon
           size={24}
           color={colors.primary}
+          strokeWidth={2.2}
         />
       </Pressable>
 

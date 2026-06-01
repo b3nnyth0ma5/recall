@@ -257,19 +257,21 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     if (!note.text) {
       return '';
     }
+    const stripped = stripUrlsForDisplay(note.text);
     const maxLength = 150;
-    if (note.text.length <= maxLength) {
-      return note.text;
+    if (stripped.length <= maxLength) {
+      return stripped;
     }
-    return note.text.substring(0, maxLength) + '...';
+    return stripped.substring(0, maxLength) + '...';
   };
 
   const shouldShowToggle = () => {
     if (!note.text) {
       return false;
     }
-    const newlineCount = countNewlines(note.text);
-    return note.text.length > 200 || newlineCount > 5;
+    const stripped = stripUrlsForDisplay(note.text);
+    const newlineCount = countNewlines(stripped);
+    return stripped.length > 200 || newlineCount > 5;
   };
 
   const handleImageError = (index: number) => {
@@ -570,7 +572,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                     style={styles.noteText}
                     numberOfLines={isExpanded ? undefined : 7}
                   >
-                    {isExpanded ? note.text : getPreviewText()}
+                    {isExpanded ? stripUrlsForDisplay(note.text) : getPreviewText()}
                   </Text>
                 </View>
                 {shouldShowToggle() && (
@@ -844,7 +846,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   timeAgoWrapper: {
-    flex: 0.30,
+    width: '100%',
     alignItems: 'flex-end',
     justifyContent: 'center',
   },
