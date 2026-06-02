@@ -23,9 +23,8 @@ type Props = {
   onProfilePress: () => void;
 };
 
-const ACTIVE_PILL_BG = 'rgba(255, 107, 122, 0.13)';
-const INACTIVE_ICON_COLOR = colors.textSecondary;
-const ACTIVE_ICON_COLOR = colors.primary;
+const INACTIVE_ICON_COLOR = '#FFFFFF';
+const ACTIVE_ICON_COLOR = '#FFFFFF';
 const BAR_HEIGHT = 60;
 
 function NavButton({
@@ -42,7 +41,7 @@ function NavButton({
   const pillOpacity = useSharedValue(isActive ? 1 : 0);
 
   useEffect(() => {
-    pillOpacity.value = withTiming(isActive ? 1 : 0, { duration: 180 });
+    pillOpacity.value = withTiming(isActive ? 1 : 0, { duration: 150 });
   }, [isActive, pillOpacity]);
 
   const pillStyle = useAnimatedStyle(() => ({
@@ -102,9 +101,9 @@ export function FloatingNavBar({
       <NavButton
         icon={
           <Home
-            size={26}
-            color={activeRoute === 'home' ? ACTIVE_ICON_COLOR : INACTIVE_ICON_COLOR}
-            strokeWidth={activeRoute === 'home' ? 2.2 : 1.8}
+            size={24}
+            color={INACTIVE_ICON_COLOR}
+            strokeWidth={activeRoute === 'home' ? 2.4 : 1.8}
           />
         }
         isActive={activeRoute === 'home'}
@@ -126,9 +125,9 @@ export function FloatingNavBar({
       <NavButton
         icon={
           <Search
-            size={26}
-            color={activeRoute === 'search' ? ACTIVE_ICON_COLOR : INACTIVE_ICON_COLOR}
-            strokeWidth={activeRoute === 'search' ? 2.2 : 1.8}
+            size={24}
+            color={INACTIVE_ICON_COLOR}
+            strokeWidth={activeRoute === 'search' ? 2.4 : 1.8}
           />
         }
         isActive={activeRoute === 'search'}
@@ -138,9 +137,9 @@ export function FloatingNavBar({
       <NavButton
         icon={
           <User
-            size={26}
-            color={activeRoute === 'profile' ? ACTIVE_ICON_COLOR : INACTIVE_ICON_COLOR}
-            strokeWidth={activeRoute === 'profile' ? 2.2 : 1.8}
+            size={24}
+            color={INACTIVE_ICON_COLOR}
+            strokeWidth={activeRoute === 'profile' ? 2.4 : 1.8}
           />
         }
         isActive={activeRoute === 'profile'}
@@ -159,8 +158,12 @@ export function FloatingNavBar({
         animatedStyle,
       ]}
     >
+      {/* Halo glow ring behind the bar */}
+      {Platform.OS === 'ios' && (
+        <View style={styles.haloRing} pointerEvents="none" />
+      )}
       {Platform.OS === 'ios' ? (
-        <BlurView intensity={100} tint="dark" style={styles.blurView}>
+        <BlurView intensity={90} tint="dark" style={styles.blurView}>
           {barContent}
         </BlurView>
       ) : (
@@ -175,19 +178,31 @@ export function FloatingNavBar({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    left: 16,
-    right: 16,
+    alignSelf: 'center',
+    width: '75%',
+    maxWidth: 360,
     height: BAR_HEIGHT,
     borderRadius: 30,
-    overflow: 'hidden',
+    overflow: 'visible',
     zIndex: 1000,
-    elevation: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.06)',
+    elevation: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+  },
+  haloRing: {
+    position: 'absolute',
+    top: -4,
+    left: -4,
+    right: -4,
+    bottom: -4,
+    borderRadius: 34,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'transparent',
   },
   blurView: {
     flex: 1,
@@ -196,14 +211,15 @@ const styles = StyleSheet.create({
   },
   androidFallback: {
     flex: 1,
-    backgroundColor: 'rgba(30, 30, 30, 0.92)',
+    backgroundColor: 'rgba(30, 30, 30, 0.95)',
     borderRadius: 30,
+    overflow: 'hidden',
   },
   innerRow: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     paddingVertical: 10,
   },
   navButton: {
@@ -212,17 +228,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   navButtonInner: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 52,
+    height: 36,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   activePill: {
     position: 'absolute',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: ACTIVE_PILL_BG,
+    width: 52,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
   },
 });

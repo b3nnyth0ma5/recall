@@ -12,6 +12,7 @@ import * as Haptics from 'expo-haptics';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
 import { useCreateRecallUI } from '@/contexts/CreateRecallUIContext';
+import { useScrollToTop } from '@/contexts/ScrollToTopContext';
 import { supabase, uploadImageToDatabase, uploadDocumentToDatabase } from '@/utils/supabase';
 import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 import { ZeroState } from '@/components/ZeroState';
@@ -36,6 +37,15 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const pendingImageUploadsRef = useRef<Map<string, number>>(new Map());
   const { isCreatePanelOpen, closeCreatePanel } = useCreateRecallUI();
+  const { registerScrollToTop } = useScrollToTop();
+
+  useEffect(() => {
+    const unregister = registerScrollToTop('home', () => {
+      console.log('[HomeScreen iOS] Scroll to top triggered');
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    });
+    return unregister;
+  }, [registerScrollToTop]);
 
   useEffect(() => {
     const checkForRecalls = async () => {

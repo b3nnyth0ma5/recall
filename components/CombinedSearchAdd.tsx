@@ -515,19 +515,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
-        {onDismiss && (
-          <Pressable
-            onPress={() => {
-              console.log('[CombinedSearchAdd] Close button pressed');
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onDismiss();
-            }}
-            style={styles.closeButton}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <IconSymbol name="xmark" size={18} color={colors.textSecondary} />
-          </Pressable>
-        )}
         {showDrawer && (
           <Animated.View
             entering={FadeIn.duration(200)}
@@ -669,6 +656,21 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
                     />
                   </View>
                 </Pressable>
+
+                {/* Close button — same row as Create Recall, right-most */}
+                {onDismiss && (
+                  <Pressable
+                    onPress={() => {
+                      console.log('[CombinedSearchAdd] Close button pressed');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      onDismiss();
+                    }}
+                    style={styles.closeButton}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol name="xmark.circle.fill" size={20} color="rgba(255,255,255,0.95)" />
+                  </Pressable>
+                )}
               </View>
             </View>
           </View>
@@ -702,15 +704,7 @@ const styles = StyleSheet.create({
     elevation: 1000,
   },
   closeButton: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 4,
     zIndex: 10,
   },
   floatingActionsContainer: {

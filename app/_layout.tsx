@@ -5,6 +5,7 @@ import { WidgetProvider } from '@/contexts/WidgetContext';
 import { NotesProvider } from '@/contexts/NotesContext';
 import { PeopleGraphProvider, usePeopleGraph } from '@/contexts/PeopleGraphContext';
 import { CreateRecallUIProvider, useCreateRecallUI } from '@/contexts/CreateRecallUIContext';
+import { ScrollToTopProvider, useScrollToTop } from '@/contexts/ScrollToTopContext';
 import { PeopleGraph } from '@/components/PeopleGraph';
 import { FloatingNavBar } from '@/components/FloatingNavBar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -284,6 +285,7 @@ function RootLayoutNav() {
   }, [user, loading, checkingOnboarding, needsOnboarding, segments, router]);
 
   const { isCreatePanelOpen, openCreatePanel } = useCreateRecallUI();
+  const { triggerScrollToTop } = useScrollToTop();
 
   const showNavBar = (() => {
     const seg0 = segments[0] as string | undefined;
@@ -311,18 +313,33 @@ function RootLayoutNav() {
   const navBarVisible = showNavBar && !isCreatePanelOpen;
 
   const handleNavHome = () => {
-    console.log('[FloatingNavBar] Navigate to home');
-    router.push('/(tabs)/(home)');
+    console.log('[FloatingNavBar] Home tapped, activeRoute:', activeRoute);
+    if (activeRoute === 'home') {
+      console.log('[FloatingNavBar] Already on home — scrolling to top');
+      triggerScrollToTop('home');
+    } else {
+      router.push('/(tabs)/(home)');
+    }
   };
 
   const handleNavSearch = () => {
-    console.log('[FloatingNavBar] Navigate to search');
-    router.push('/search');
+    console.log('[FloatingNavBar] Search tapped, activeRoute:', activeRoute);
+    if (activeRoute === 'search') {
+      console.log('[FloatingNavBar] Already on search — scrolling to top');
+      triggerScrollToTop('search');
+    } else {
+      router.push('/search');
+    }
   };
 
   const handleNavProfile = () => {
-    console.log('[FloatingNavBar] Navigate to profile');
-    router.push('/(tabs)/profile');
+    console.log('[FloatingNavBar] Profile tapped, activeRoute:', activeRoute);
+    if (activeRoute === 'profile') {
+      console.log('[FloatingNavBar] Already on profile — scrolling to top');
+      triggerScrollToTop('profile');
+    } else {
+      router.push('/(tabs)/profile');
+    }
   };
 
   const handleNavCreateRecall = () => {
@@ -411,9 +428,11 @@ export default function RootLayout() {
           <WidgetProvider>
             <NotesProvider>
               <PeopleGraphProvider>
-                <CreateRecallUIProvider>
-                  <RootLayoutNav />
-                </CreateRecallUIProvider>
+                <ScrollToTopProvider>
+                  <CreateRecallUIProvider>
+                    <RootLayoutNav />
+                  </CreateRecallUIProvider>
+                </ScrollToTopProvider>
               </PeopleGraphProvider>
             </NotesProvider>
           </WidgetProvider>

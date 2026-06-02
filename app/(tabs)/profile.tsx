@@ -1,19 +1,32 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform, TextInput, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
+import { useScrollToTop } from '@/contexts/ScrollToTopContext';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const scrollViewRef = useRef<ScrollView>(null);
+  const { registerScrollToTop } = useScrollToTop();
   
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  useEffect(() => {
+    const unregister = registerScrollToTop('profile', () => {
+      console.log('[ProfileScreen] Scroll to top triggered');
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    });
+    return unregister;
+  }, [registerScrollToTop]);
 
   // Password change state
   const [showPasswordChange, setShowPasswordChange] = useState(false);
@@ -202,37 +215,13 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerTitle: 'Profile',
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerTintColor: colors.text,
-          headerTitleAlign: 'center',
-          headerTitleStyle: {
-            fontSize: 20,
-            fontWeight: 'bold',
-            color: colors.primary,
-          },
-          headerLeft: () => (
-            <Pressable
-              onPress={handleBackPress}
-              style={styles.backButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <IconSymbol 
-                name="chevron.left" 
-                size={28} 
-                color={colors.primary} 
-              />
-            </Pressable>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 8 }]}
+      >
         {/* User Info Section */}
         <View style={styles.section}>
           <View style={styles.userInfoContainer}>

@@ -14,6 +14,7 @@ import {
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
+import { useScrollToTop } from '@/contexts/ScrollToTopContext';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -210,6 +211,15 @@ export default function SearchScreen() {
 
   const recallRefs = useRef<{ [key: string]: View | null }>({});
   const scrollViewRef = useRef<ScrollView>(null);
+  const { registerScrollToTop } = useScrollToTop();
+
+  useEffect(() => {
+    const unregister = registerScrollToTop('search', () => {
+      console.log('[SearchScreen] Scroll to top triggered');
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    });
+    return unregister;
+  }, [registerScrollToTop]);
 
   const handleRecallLinkPress = useCallback((recallId: string, imageIndex?: number) => {
     console.log('[SearchScreen] Recall link pressed:', recallId, 'imageIndex:', imageIndex);
@@ -517,46 +527,9 @@ export default function SearchScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerTitle: 'Search',
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerTintColor: colors.text,
-          headerLeft: () => (
-            <Pressable 
-              onPress={handleBack} 
-              style={styles.headerButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <IconSymbol 
-                name="chevron.left" 
-                size={24} 
-                color={colors.text} 
-              />
-            </Pressable>
-          ),
-          headerRight: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Pressable 
-                onPress={toggleKeyboard} 
-                style={styles.headerButton}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <IconSymbol 
-                  name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-                  size={24} 
-                  color={colors.text} 
-                />
-              </Pressable>
-            </View>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={styles.searchContainer}>
+      <View style={[styles.searchContainer, { paddingTop: insets.top + 8 }]}>
         <View style={styles.searchBar}>
           <IconSymbol 
             name="magnifyingglass" 

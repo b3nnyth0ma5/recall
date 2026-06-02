@@ -82,11 +82,12 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       return;
     }
 
-    console.log('[CategoryCarousel] Setting up real-time subscription for categories');
+    const channelName = `category-changes-${userId}-${Math.random().toString(36).slice(2, 8)}`;
+    console.log('[CategoryCarousel] Setting up real-time subscription for categories, channel:', channelName);
 
     // Subscribe to changes in recollection_categories table
     const channel = supabase
-      .channel('category-changes')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
