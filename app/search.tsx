@@ -539,7 +539,7 @@ export default function SearchScreen() {
           <TextInput
             ref={searchInputRef}
             style={styles.searchInput}
-            placeholder="Do a smart search..."
+            placeholder="What do you want to search for?"
             placeholderTextColor={colors.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -564,27 +564,6 @@ export default function SearchScreen() {
               />
             </Pressable>
           )}
-          <Pressable 
-            onPress={handleSearch} 
-            style={styles.searchIconButton}
-            disabled={!searchQuery.trim() || isLoadingHistory || isSearching}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <View style={[
-              styles.searchIconContainer,
-              (!searchQuery.trim() || isLoadingHistory || isSearching) && styles.searchIconDisabled
-            ]}>
-              {(isLoadingHistory || isSearching) ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <IconSymbol 
-                  name="sparkles" 
-                  size={18} 
-                  color="#FFFFFF" 
-                />
-              )}
-            </View>
-          </Pressable>
         </View>
       </View>
 
@@ -803,7 +782,7 @@ export default function SearchScreen() {
             router.push('/map-view');
           }
         }}
-        style={[styles.mapFab, { bottom: insets.bottom + 24 }]}
+        style={[styles.mapFab, { bottom: insets.bottom + 48 }]}
       >
         <IconSymbol name="map.fill" size={24} color="#FFFFFF" />
       </Pressable>

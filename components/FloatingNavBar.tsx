@@ -236,9 +236,9 @@ const styles = StyleSheet.create({
   },
   activePill: {
     position: 'absolute',
-    width: 52,
-    height: 36,
-    borderRadius: 12,
+    width: 44,
+    height: 38,
+    borderRadius: 16,
     backgroundColor: colors.primary,
   },
 });
