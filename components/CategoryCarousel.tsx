@@ -23,7 +23,7 @@ interface CategoryCarouselProps {
   refreshTrigger?: number;
 }
 
-const CATEGORY_SIZE = 76;
+const CATEGORY_SIZE = 74;
 const CATEGORY_SPACING = 11;
 
 export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId, refreshTrigger }: CategoryCarouselProps) {
