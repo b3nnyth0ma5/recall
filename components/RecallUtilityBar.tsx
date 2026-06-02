@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Pressable, Platform } from 'react-native';
 import { IconSymbol } from './IconSymbol';
@@ -104,7 +103,7 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
         style={styles.iconButton}
       >
         <ShareIcon
-          size={24}
+          size={20}
           color={colors.primary}
           strokeWidth={1.7}
         />
