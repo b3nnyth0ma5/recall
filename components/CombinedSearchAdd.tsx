@@ -595,7 +595,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
               <TextInput
                 ref={textInputRef}
                 style={styles.textInput}
-                placeholder="Add a Recall or Search..."
+                placeholder="Add a Recall"
                 placeholderTextColor={colors.textTertiary}
                 value={text}
                 onChangeText={handleTextChange}
