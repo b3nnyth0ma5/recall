@@ -343,6 +343,7 @@ export default function SearchScreen() {
   }, [filteredNotes]);
 
   const handleClear = useCallback(() => {
+    console.log('[SearchScreen] handleClear pressed');
     setSearchQuery('');
     setShowHistory(true);
     setHasSearched(false);
@@ -350,9 +351,15 @@ export default function SearchScreen() {
     setIsSearching(false);
     setIsProgressExpanded(true);
     searchNotes('');
-  }, [searchNotes]);
+    // Refresh recent-searches list so the just-completed search is visible
+    // immediately, regardless of realtime timing.
+    getSearchHistory()
+      .then((rows) => setSearchHistory(rows))
+      .catch((err) => console.error('[handleClear] Failed to refresh search history:', err));
+  }, [searchNotes, getSearchHistory]);
 
   const handleBack = useCallback(() => {
+    console.log('[SearchScreen] handleBack pressed');
     setSearchQuery('');
     setShowHistory(true);
     setHasSearched(false);
@@ -360,7 +367,12 @@ export default function SearchScreen() {
     setIsSearching(false);
     setIsProgressExpanded(true);
     searchNotes('');
-    
+    // Refresh recent-searches list so the just-completed search is visible
+    // immediately, regardless of realtime timing.
+    getSearchHistory()
+      .then((rows) => setSearchHistory(rows))
+      .catch((err) => console.error('[handleBack] Failed to refresh search history:', err));
+
     setTimeout(() => {
       try {
         if (router.canGoBack()) {
@@ -377,7 +389,7 @@ export default function SearchScreen() {
         }
       }
     }, 0);
-  }, [searchNotes, router]);
+  }, [searchNotes, router, getSearchHistory]);
 
   const toggleKeyboard = useCallback(() => {
     if (keyboardVisible) {

@@ -94,6 +94,26 @@ function buildMapHtml(): string {
       maxZoom: 19,
     }).setView([20, 0], 2);
 
+    // Reliable mobile double-tap-to-zoom. Leaflet's built-in doubleClickZoom
+    // can be flaky in mobile WebViews because the WebView may swallow the
+    // dblclick event. We track tap timing manually and zoom into the tap point
+    // when two clicks arrive within 300ms at roughly the same screen position.
+    var lastClickTime = 0;
+    var lastClickPos = null;
+    map.on('click', function(e) {
+      var now = Date.now();
+      if (lastClickTime && (now - lastClickTime) < 300 && lastClickPos &&
+          Math.abs(lastClickPos.x - e.containerPoint.x) < 30 &&
+          Math.abs(lastClickPos.y - e.containerPoint.y) < 30) {
+        map.setZoomAround(e.latlng, map.getZoom() + 1);
+        lastClickTime = 0;
+        lastClickPos = null;
+      } else {
+        lastClickTime = now;
+        lastClickPos = e.containerPoint;
+      }
+    });
+
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap &copy; CARTO'
@@ -131,6 +151,11 @@ function buildMapHtml(): string {
       if (userDotMarker) { map.removeLayer(userDotMarker); }
       var dotIcon = L.divIcon({ html: '<div class="user-dot"></div>', className: '', iconSize: [16, 16], iconAnchor: [8, 8] });
       userDotMarker = L.marker([lat, lng], { icon: dotIcon }).addTo(map);
+    };
+
+    // Called from React Native to center the map on a specific lat/lng at a given zoom.
+    window.centerOnLocation = function(lat, lng, zoom) {
+      map.setView([lat, lng], zoom);
     };
 
     // fitToMarkers: called from React Native after data loads in search mode
@@ -208,6 +233,17 @@ export default function MapViewScreen() {
       `window.updateUserLocation(${userLocation.latitude}, ${userLocation.longitude}); true;`
     );
   }, [userLocation, webViewReady]);
+
+  // In "view all" mode, center the map on the user's current location once
+  // it's available. Search mode uses fitToMarkers instead.
+  useEffect(() => {
+    if (searchIds.length > 0) return;          // only in view-all mode
+    if (!userLocation || !webViewReady) return;
+    if (__DEV__) console.log('[MapView] Centering on user location for view-all mode', userLocation);
+    webViewRef.current?.injectJavaScript(
+      `window.centerOnLocation(${userLocation.latitude}, ${userLocation.longitude}, 13); true;`,
+    );
+  }, [userLocation, webViewReady, searchIds.length]);
 
   useEffect(() => {
     if (searchIds.length === 0 && !user?.id) return;
@@ -389,21 +425,21 @@ export default function MapViewScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerTitle: headerTitle,
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerTintColor: colors.text,
-          headerLeft: () => (
-            <Pressable onPress={() => router.back()} style={styles.headerButton}>
-              <IconSymbol name="chevron.left" size={24} color={colors.text} />
-            </Pressable>
-          ),
+      <Stack.Screen options={{ headerShown: false }} />
+
+      <Pressable
+        onPress={() => {
+          console.log('[MapView] Floating back button pressed');
+          if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }
+          router.back();
         }}
-      />
+        style={[styles.floatingBackButton, { top: insets.top + 8 }]}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
+        <IconSymbol name="chevron.left" size={22} color={colors.text} />
+      </Pressable>
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -563,13 +599,28 @@ export default function MapViewScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   map: { flex: 1 },
-  headerButton: { padding: 8, marginHorizontal: 8 },
+  floatingBackButton: {
+    position: 'absolute',
+    left: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
   loadingText: { fontSize: 16, color: colors.textSecondary },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
   emptyTitle: { fontSize: 24, fontWeight: 'bold', color: colors.text, marginTop: 16, marginBottom: 8 },
   emptyText: { fontSize: 16, color: colors.textSecondary, textAlign: 'center' },
-  infoBadge: { position: 'absolute', top: 16, left: 16, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.card, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, elevation: 4 },
+  infoBadge: { position: 'absolute', top: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.card, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, elevation: 4 },
   infoBadgeText: { fontSize: 14, fontWeight: '600', color: colors.text },
   fab: { position: 'absolute', right: 24, width: 60, height: 60, borderRadius: 30, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center', elevation: 8 },
   bottomSheet: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#2A2A2A', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 12, shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 20 },

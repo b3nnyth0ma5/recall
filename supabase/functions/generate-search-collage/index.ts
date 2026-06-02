@@ -3,14 +3,16 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { Image } from 'https://deno.land/x/imagescript@1.2.17/mod.ts';
 
 /**
- * CONTRACT:
+ * CONTRACT: imageUrls represents the primary images of recalls that were
+ * USED IN THE SEARCH'S FINAL ANSWER (not all top-scoring matches), in
+ * match-strength order (highest first). Each entry MUST come from a
+ * distinct recall — i.e. "at most one image per recall in the answer set".
+ * The caller (hooks/useNotes.ts) is responsible for both filters; this
+ * function additionally de-duplicates by URL as a defensive guarantee.
+ *
  *   POST body: { userId, searchText, imageUrls: string[], previousCollageCdnUrl?: string | null }
  *   Success:   { success: true, collageCdnUrl: string }
  *   No-op:     { success: false, reason: string }
- *
- * v3 changes:
- *   - URL deduplication step before fetch (seen Set + dedupedUrls array)
- *   - Guard: if (urls.length === 0) return no_images early
  */
 
 const corsHeaders = {

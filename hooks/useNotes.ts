@@ -833,32 +833,72 @@ export function useNotes() {
           try {
             if (__DEV__) console.log('[searchNotes] Starting collage generation for query:', query.trim());
 
-            const topRecalls = orderedRecalls.slice(0, 4);
+            // Only use recalls that were actually used to construct the answer (not just
+            // top-scoring matches). If no recalls were used in the answer, the IIFE
+            // early-returns and the row keeps its clock icon.
+            const answerRecalls = orderedRecalls.filter((n: any) => n?.used_for_answer === true);
+            const topRecalls = answerRecalls.slice(0, 4);
+
+            if (topRecalls.length === 0) {
+              if (__DEV__) console.log('[searchNotes] No used_for_answer recalls; skipping collage generation');
+              return;
+            }
+
             const recallsMissingImages = topRecalls.filter(
               (n: any) => !n?.images || n.images.length === 0 || !n.images[0]?.cdn_url,
             );
             const recallIdsMissingImages = recallsMissingImages.map((n: any) => n.id).filter(Boolean);
 
-            let imagesByRecallId = new Map<string, string>();
+            const imagesByRecallId = new Map<string, string>();
 
             if (recallIdsMissingImages.length > 0) {
               if (__DEV__) console.log(
-                `[searchNotes] ${recallIdsMissingImages.length} of top-${topRecalls.length} recalls missing images; fetching from recall_images`,
+                `[searchNotes] ${recallIdsMissingImages.length} of top-${topRecalls.length} recalls missing images; fetching fallbacks from recall_images and recall_urls`,
               );
-              const { data: missingImagesData, error: missingImagesError } = await supabase
-                .from('recall_images')
-                .select('recall_id, cdn_url, created_at')
-                .in('recall_id', recallIdsMissingImages)
-                .order('created_at', { ascending: true });
 
-              if (missingImagesError) {
-                console.error('[searchNotes] Error fetching missing images for collage:', missingImagesError);
-              } else if (missingImagesData) {
-                for (const img of missingImagesData) {
-                  if (!imagesByRecallId.has(img.recall_id) && img.cdn_url) {
-                    imagesByRecallId.set(img.recall_id, img.cdn_url);
+              // Run both fallback queries in parallel.
+              const [imagesRes, urlsRes] = await Promise.all([
+                supabase
+                  .from('recall_images')
+                  .select('recall_id, cdn_url, created_at')
+                  .in('recall_id', recallIdsMissingImages)
+                  .order('created_at', { ascending: true }),
+                supabase
+                  .from('recall_urls')
+                  .select('recall_id, og_image_url, created_at')
+                  .in('recall_id', recallIdsMissingImages)
+                  .not('og_image_url', 'is', null)
+                  .order('created_at', { ascending: true }),
+              ]);
+
+              // Build a map of recall_id -> first uploaded photo URL.
+              const photoMap = new Map<string, string>();
+              if (imagesRes.error) {
+                console.error('[searchNotes] Error fetching recall_images for collage fallback:', imagesRes.error);
+              } else if (imagesRes.data) {
+                for (const img of imagesRes.data) {
+                  if (!photoMap.has(img.recall_id) && img.cdn_url) {
+                    photoMap.set(img.recall_id, img.cdn_url as string);
                   }
                 }
+              }
+
+              // Build a map of recall_id -> first OG image URL.
+              const ogMap = new Map<string, string>();
+              if (urlsRes.error) {
+                console.error('[searchNotes] Error fetching recall_urls for collage fallback:', urlsRes.error);
+              } else if (urlsRes.data) {
+                for (const row of urlsRes.data) {
+                  if (!ogMap.has(row.recall_id) && row.og_image_url) {
+                    ogMap.set(row.recall_id, row.og_image_url as string);
+                  }
+                }
+              }
+
+              // Merge — uploaded photo wins; OG image as fallback.
+              for (const id of recallIdsMissingImages) {
+                const url = photoMap.get(id) ?? ogMap.get(id);
+                if (url) imagesByRecallId.set(id, url);
               }
             }
 
@@ -876,7 +916,7 @@ export function useNotes() {
             );
 
             if (topImageUrls.length === 0) {
-              if (__DEV__) console.log('[searchNotes] No image-bearing recalls in top results (after fill-in); skipping collage generation');
+              if (__DEV__) console.log('[searchNotes] No image-bearing recalls in answer set (after fill-in); skipping collage generation');
               return;
             }
 
