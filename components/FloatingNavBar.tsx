@@ -26,7 +26,7 @@ type Props = {
 const ACTIVE_PILL_BG = 'rgba(255, 107, 122, 0.13)';
 const INACTIVE_ICON_COLOR = colors.textSecondary;
 const ACTIVE_ICON_COLOR = colors.primary;
-const BAR_HEIGHT = 64;
+const BAR_HEIGHT = 60;
 
 function NavButton({
   icon,
@@ -95,7 +95,7 @@ export function FloatingNavBar({
     transform: [{ translateY: translateY.value }],
   }));
 
-  const bottomOffset = insets.bottom + 12;
+  const bottomOffset = insets.bottom - 20;
 
   const barContent = (
     <View style={styles.innerRow}>
@@ -160,7 +160,7 @@ export function FloatingNavBar({
       ]}
     >
       {Platform.OS === 'ios' ? (
-        <BlurView intensity={60} tint="dark" style={styles.blurView}>
+        <BlurView intensity={100} tint="dark" style={styles.blurView}>
           {barContent}
         </BlurView>
       ) : (
