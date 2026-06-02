@@ -163,7 +163,7 @@ export function FloatingNavBar({
         <View style={styles.haloRing} pointerEvents="none" />
       )}
       {Platform.OS === 'ios' ? (
-        <BlurView intensity={90} tint="dark" style={styles.blurView}>
+        <BlurView intensity={100} tint="dark" style={styles.blurView}>
           {barContent}
         </BlurView>
       ) : (
@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
   navButtonInner: {
     width: 52,
     height: 36,
-    borderRadius: 12,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
