@@ -546,6 +546,20 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
           </Animated.View>
         )}
 
+        {onDismiss && (
+          <Pressable
+            onPress={() => {
+              console.log('[CombinedSearchAdd] Close button pressed');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onDismiss();
+            }}
+            style={styles.closeButtonOuter}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <IconSymbol name="xmark" size={14} color={colors.primary} />
+          </Pressable>
+        )}
+
         <View style={styles.containerWrapper}>
           <View style={styles.container}>
             <View style={styles.inputContainer}>
@@ -657,20 +671,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
                   </View>
                 </Pressable>
 
-                {/* Close button — same row as Create Recall, right-most */}
-                {onDismiss && (
-                  <Pressable
-                    onPress={() => {
-                      console.log('[CombinedSearchAdd] Close button pressed');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      onDismiss();
-                    }}
-                    style={styles.closeButton}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <IconSymbol name="xmark.circle.fill" size={20} color="rgba(255,255,255,0.95)" />
-                  </Pressable>
-                )}
               </View>
             </View>
           </View>
@@ -703,9 +703,21 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 1000,
   },
-  closeButton: {
-    padding: 4,
-    zIndex: 10,
+  closeButtonOuter: {
+    position: 'absolute',
+    top: -14,
+    right: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1003,
+    boxShadow: '0px 2px 6px rgba(255, 107, 122, 0.35)',
+    elevation: 6,
   },
   floatingActionsContainer: {
     position: 'absolute',

@@ -832,13 +832,51 @@ export function useNotes() {
         (async () => {
           try {
             console.log('[searchNotes] Starting collage generation for query:', query.trim());
-            const topImageUrls = orderedRecalls
-              .filter((n: any) => n?.images && n.images.length > 0 && n.images[0]?.cdn_url)
-              .slice(0, 4)
-              .map((n: any) => n.images[0].cdn_url as string);
+
+            const topRecalls = orderedRecalls.slice(0, 4);
+            const recallsMissingImages = topRecalls.filter(
+              (n: any) => !n?.images || n.images.length === 0 || !n.images[0]?.cdn_url,
+            );
+            const recallIdsMissingImages = recallsMissingImages.map((n: any) => n.id).filter(Boolean);
+
+            let imagesByRecallId = new Map<string, string>();
+
+            if (recallIdsMissingImages.length > 0) {
+              console.log(
+                `[searchNotes] ${recallIdsMissingImages.length} of top-${topRecalls.length} recalls missing images; fetching from recall_images`,
+              );
+              const { data: missingImagesData, error: missingImagesError } = await supabase
+                .from('recall_images')
+                .select('recall_id, cdn_url, created_at')
+                .in('recall_id', recallIdsMissingImages)
+                .order('created_at', { ascending: true });
+
+              if (missingImagesError) {
+                console.error('[searchNotes] Error fetching missing images for collage:', missingImagesError);
+              } else if (missingImagesData) {
+                for (const img of missingImagesData) {
+                  if (!imagesByRecallId.has(img.recall_id) && img.cdn_url) {
+                    imagesByRecallId.set(img.recall_id, img.cdn_url);
+                  }
+                }
+              }
+            }
+
+            const topImageUrls = topRecalls
+              .map((n: any) => {
+                if (n?.images && n.images.length > 0 && n.images[0]?.cdn_url) {
+                  return n.images[0].cdn_url as string;
+                }
+                return imagesByRecallId.get(n.id) ?? null;
+              })
+              .filter((url): url is string => typeof url === 'string' && url.length > 0);
+
+            console.log(
+              `[searchNotes] Collage source URLs prepared: ${topImageUrls.length} of top-${topRecalls.length} recalls`,
+            );
 
             if (topImageUrls.length === 0) {
-              if (__DEV__) console.log('[searchNotes] No image-bearing recalls in top results; skipping collage generation');
+              console.log('[searchNotes] No image-bearing recalls in top results (after fill-in); skipping collage generation');
               return;
             }
 
@@ -851,7 +889,7 @@ export function useNotes() {
               .maybeSingle();
             const previousCollageCdnUrl = prevRow?.collage_cdn_url ?? null;
 
-            if (__DEV__) console.log(`[searchNotes] Generating collage from ${topImageUrls.length} top images`);
+            console.log(`[searchNotes] Generating collage from ${topImageUrls.length} top images`);
 
             const { data: collageResult, error: collageError } = await supabase.functions.invoke(
               'generate-search-collage',
@@ -870,12 +908,12 @@ export function useNotes() {
               return;
             }
             if (!collageResult?.success || !collageResult?.collageCdnUrl) {
-              if (__DEV__) console.log('[searchNotes] Collage edge function returned no-op:', collageResult?.reason);
+              console.log('[searchNotes] Collage edge function returned no-op:', collageResult?.reason);
               return;
             }
 
             await updateSearchHistoryCollage(user.id, query.trim(), collageResult.collageCdnUrl);
-            if (__DEV__) console.log('[searchNotes] Collage saved:', collageResult.collageCdnUrl);
+            console.log('[searchNotes] Collage saved:', collageResult.collageCdnUrl);
           } catch (collageErr) {
             console.error('[searchNotes] Collage generation failed (non-fatal):', collageErr);
           }
