@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Note } from '@/types/Note';
 import { Document } from '@/types/Document';
-import { supabase, getImageDataUrl, saveSearchHistory } from '@/utils/supabase';
+import { supabase, getImageDataUrl, saveSearchHistory, updateSearchHistoryCollage } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
 import { getRecallUrlsForRecalls, triggerScrapeIfMissing, RecallUrlMetadata } from '@/utils/urlProcessor';
@@ -827,6 +827,59 @@ export function useNotes() {
         setNotes(notesWithImages);
         setSearchAnswer(answer);
         setSearchConfidence(confidence);
+
+        // Fire-and-forget: generate a collage for the recent-searches thumbnail.
+        (async () => {
+          try {
+            console.log('[searchNotes] Starting collage generation for query:', query.trim());
+            const topImageUrls = orderedRecalls
+              .filter((n: any) => n?.images && n.images.length > 0 && n.images[0]?.cdn_url)
+              .slice(0, 4)
+              .map((n: any) => n.images[0].cdn_url as string);
+
+            if (topImageUrls.length === 0) {
+              if (__DEV__) console.log('[searchNotes] No image-bearing recalls in top results; skipping collage generation');
+              return;
+            }
+
+            // Look up the previous collage URL so the edge function can clean it up.
+            const { data: prevRow } = await supabase
+              .from('search_history')
+              .select('collage_cdn_url')
+              .eq('user_id', user.id)
+              .eq('search_text', query.trim())
+              .maybeSingle();
+            const previousCollageCdnUrl = prevRow?.collage_cdn_url ?? null;
+
+            if (__DEV__) console.log(`[searchNotes] Generating collage from ${topImageUrls.length} top images`);
+
+            const { data: collageResult, error: collageError } = await supabase.functions.invoke(
+              'generate-search-collage',
+              {
+                body: {
+                  userId: user.id,
+                  searchText: query.trim(),
+                  imageUrls: topImageUrls,
+                  previousCollageCdnUrl,
+                },
+              },
+            );
+
+            if (collageError) {
+              console.error('[searchNotes] Collage edge function error:', collageError);
+              return;
+            }
+            if (!collageResult?.success || !collageResult?.collageCdnUrl) {
+              if (__DEV__) console.log('[searchNotes] Collage edge function returned no-op:', collageResult?.reason);
+              return;
+            }
+
+            await updateSearchHistoryCollage(user.id, query.trim(), collageResult.collageCdnUrl);
+            if (__DEV__) console.log('[searchNotes] Collage saved:', collageResult.collageCdnUrl);
+          } catch (collageErr) {
+            console.error('[searchNotes] Collage generation failed (non-fatal):', collageErr);
+          }
+        })();
       } else {
         setNotes([]);
         setSearchAnswer(answer);

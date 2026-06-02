@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Share,
+  Image,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -577,19 +578,32 @@ export default function SearchScreen() {
               <Pressable
                 key={item.id}
                 style={styles.historyItem}
-                onPress={() => handleHistoryItemPress(item.search_text)}
+                onPress={() => {
+                  console.log('[search] History item pressed:', item.search_text);
+                  handleHistoryItemPress(item.search_text);
+                }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <IconSymbol 
-                  name="clock" 
-                  size={18} 
-                  color={colors.textSecondary} 
-                />
-                <Text style={styles.historyText}>{item.search_text}</Text>
-                <IconSymbol 
-                  name="arrow.up.left" 
-                  size={16} 
-                  color={colors.textTertiary} 
+                {item.collage_cdn_url ? (
+                  <Image
+                    source={{ uri: item.collage_cdn_url }}
+                    style={styles.historyCollage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.historyClockWrapper}>
+                    <IconSymbol
+                      name="clock"
+                      size={18}
+                      color={colors.textSecondary}
+                    />
+                  </View>
+                )}
+                <Text style={styles.historyText} numberOfLines={1}>{item.search_text}</Text>
+                <IconSymbol
+                  name="arrow.up.left"
+                  size={16}
+                  color={colors.textTertiary}
                 />
               </Pressable>
             ))}
@@ -859,15 +873,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     backgroundColor: colors.card,
-    padding: 16 * 1.15,
+    paddingVertical: 10,
+    paddingHorizontal: 16 * 1.15,
     borderRadius: 12,
     marginBottom: 8,
-    minHeight: 56 * 1.1,
+    minHeight: 64,
+  },
+  historyCollage: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: colors.cardDark,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  historyClockWrapper: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.cardDark,
   },
   historyText: {
     flex: 1,
     fontSize: 15,
     color: colors.text,
+    marginLeft: 0,
   },
   historyItemSkeleton: {
     flexDirection: 'row',

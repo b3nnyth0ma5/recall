@@ -39,6 +39,7 @@ export interface SearchHistory {
   search_text: string;
   created_at: string;
   updated_at: string;
+  collage_cdn_url?: string | null;   // Cloudflare Images collage thumbnail
 }
 
 export interface ImageRecord {

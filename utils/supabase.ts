@@ -348,6 +348,25 @@ export async function saveSearchHistory(userId: string, searchText: string): Pro
   }
 }
 
+export async function updateSearchHistoryCollage(
+  userId: string,
+  searchText: string,
+  collageCdnUrl: string,
+): Promise<void> {
+  try {
+    if (!searchText.trim()) return;
+    console.log('[updateSearchHistoryCollage] Updating collage for search:', searchText.trim());
+    const { error } = await supabase
+      .from('search_history')
+      .update({ collage_cdn_url: collageCdnUrl, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('search_text', searchText.trim());
+    if (error) console.error('Error updating search_history collage:', error);
+  } catch (e) {
+    console.error('Exception in updateSearchHistoryCollage:', e);
+  }
+}
+
 export async function fetchNotesWithImagesForReels(userId: string, limit: number = 10): Promise<any[]> {
   try {
     console.log('=== Fetching notes with images for story reels ===');
