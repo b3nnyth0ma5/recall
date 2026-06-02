@@ -2,6 +2,17 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { Image } from 'https://deno.land/x/imagescript@1.2.17/mod.ts';
 
+/**
+ * CONTRACT:
+ *   POST body: { userId, searchText, imageUrls: string[], previousCollageCdnUrl?: string | null }
+ *   Success:   { success: true, collageCdnUrl: string }
+ *   No-op:     { success: false, reason: string }
+ *
+ * v3 changes:
+ *   - URL deduplication step before fetch (seen Set + dedupedUrls array)
+ *   - Guard: if (urls.length === 0) return no_images early
+ */
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -116,8 +127,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    // Deduplicate URLs before processing (v3: seen Set + dedupedUrls array)
+    const seen = new Set<string>();
+    const dedupedUrls: string[] = [];
+    for (const url of imageUrls) {
+      if (typeof url === 'string' && url.length > 0 && !seen.has(url)) {
+        seen.add(url);
+        dedupedUrls.push(url);
+      }
+    }
+
+    if (dedupedUrls.length === 0) {
+      console.log(`${LOG} No valid/unique image URLs after dedupe`);
+      return new Response(
+        JSON.stringify({ success: false, reason: 'no_images' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Clamp to 4
-    const urls = imageUrls.slice(0, 4);
+    const urls = dedupedUrls.slice(0, 4);
 
     // Fetch all images in parallel
     console.log(`${LOG} Fetching ${urls.length} images in parallel`);

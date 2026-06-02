@@ -831,7 +831,7 @@ export function useNotes() {
         // Fire-and-forget: generate a collage for the recent-searches thumbnail.
         (async () => {
           try {
-            console.log('[searchNotes] Starting collage generation for query:', query.trim());
+            if (__DEV__) console.log('[searchNotes] Starting collage generation for query:', query.trim());
 
             const topRecalls = orderedRecalls.slice(0, 4);
             const recallsMissingImages = topRecalls.filter(
@@ -842,7 +842,7 @@ export function useNotes() {
             let imagesByRecallId = new Map<string, string>();
 
             if (recallIdsMissingImages.length > 0) {
-              console.log(
+              if (__DEV__) console.log(
                 `[searchNotes] ${recallIdsMissingImages.length} of top-${topRecalls.length} recalls missing images; fetching from recall_images`,
               );
               const { data: missingImagesData, error: missingImagesError } = await supabase
@@ -871,12 +871,12 @@ export function useNotes() {
               })
               .filter((url): url is string => typeof url === 'string' && url.length > 0);
 
-            console.log(
+            if (__DEV__) console.log(
               `[searchNotes] Collage source URLs prepared: ${topImageUrls.length} of top-${topRecalls.length} recalls`,
             );
 
             if (topImageUrls.length === 0) {
-              console.log('[searchNotes] No image-bearing recalls in top results (after fill-in); skipping collage generation');
+              if (__DEV__) console.log('[searchNotes] No image-bearing recalls in top results (after fill-in); skipping collage generation');
               return;
             }
 
@@ -889,7 +889,7 @@ export function useNotes() {
               .maybeSingle();
             const previousCollageCdnUrl = prevRow?.collage_cdn_url ?? null;
 
-            console.log(`[searchNotes] Generating collage from ${topImageUrls.length} top images`);
+            if (__DEV__) console.log(`[searchNotes] Generating collage from ${topImageUrls.length} top images`);
 
             const { data: collageResult, error: collageError } = await supabase.functions.invoke(
               'generate-search-collage',
@@ -908,12 +908,12 @@ export function useNotes() {
               return;
             }
             if (!collageResult?.success || !collageResult?.collageCdnUrl) {
-              console.log('[searchNotes] Collage edge function returned no-op:', collageResult?.reason);
+              if (__DEV__) console.log('[searchNotes] Collage edge function returned no-op:', collageResult?.reason);
               return;
             }
 
             await updateSearchHistoryCollage(user.id, query.trim(), collageResult.collageCdnUrl);
-            console.log('[searchNotes] Collage saved:', collageResult.collageCdnUrl);
+            if (__DEV__) console.log('[searchNotes] Collage saved:', collageResult.collageCdnUrl);
           } catch (collageErr) {
             console.error('[searchNotes] Collage generation failed (non-fatal):', collageErr);
           }

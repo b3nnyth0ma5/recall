@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Share,
   Image,
+  Animated as RNAnimated,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +29,8 @@ import { MarkdownAnswer } from '@/components/MarkdownAnswer';
 import Toast from 'react-native-toast-message';
 import { donateSearch } from '@/modules/SiriShortcutsModule';
 import { Share as ShareIcon } from 'lucide-react-native';
+import { Swipeable, RectButton } from 'react-native-gesture-handler';
+import { supabase, deleteSearchHistory, cleanupCloudflareCollage } from '@/utils/supabase';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -102,6 +105,53 @@ export default function SearchScreen() {
       keyboardDidShowListener.remove();
     };
   }, [loadSearchHistory]);
+
+  // Realtime subscription: update/delete/insert search_history rows live
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channelName = `search-history-changes-${user.id}-${Math.random().toString(36).slice(2, 8)}`;
+    if (__DEV__) console.log('[SearchScreen] Setting up realtime subscription for search_history, channel:', channelName);
+
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'search_history',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          if (__DEV__) console.log('[SearchScreen] Realtime search_history change:', payload.eventType);
+          if (payload.eventType === 'UPDATE' && payload.new) {
+            const updated = payload.new as SearchHistory;
+            setSearchHistory((prev) =>
+              prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+            );
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            const deletedId = (payload.old as { id?: string }).id;
+            if (deletedId) {
+              setSearchHistory((prev) => prev.filter((item) => item.id !== deletedId));
+            }
+          } else if (payload.eventType === 'INSERT' && payload.new) {
+            const inserted = payload.new as SearchHistory;
+            setSearchHistory((prev) => {
+              // Avoid duplicates if already present (e.g. when our own upsert echoes back)
+              if (prev.some((item) => item.id === inserted.id)) return prev;
+              return [inserted, ...prev];
+            });
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (__DEV__) console.log('[SearchScreen] Cleaning up realtime subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     const queryParam = params.q;
@@ -418,6 +468,52 @@ export default function SearchScreen() {
     }
   }, [searchAnswer, searchQuery]);
 
+  const renderHistoryRightActions = useCallback(
+    (
+      progress: RNAnimated.AnimatedInterpolation<number>,
+      _dragX: RNAnimated.AnimatedInterpolation<number>,
+      onDelete: () => void,
+    ) => {
+      const trans = progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [80, 0],
+        extrapolate: 'clamp',
+      });
+      return (
+        <RNAnimated.View style={[styles.swipeDeleteContainer, { transform: [{ translateX: trans }] }]}>
+          <RectButton style={styles.swipeDeleteButton} onPress={onDelete}>
+            <IconSymbol name="trash" size={20} color="#fff" />
+            <Text style={styles.swipeDeleteText}>Delete</Text>
+          </RectButton>
+        </RNAnimated.View>
+      );
+    },
+    [],
+  );
+
+  const handleDeleteHistoryItem = useCallback(async (item: SearchHistory) => {
+    if (!user?.id) return;
+    console.log('[SearchScreen] Delete history item pressed:', item.search_text);
+    try {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      // Optimistically remove from UI
+      setSearchHistory((prev) => prev.filter((h) => h.id !== item.id));
+      // Persist delete
+      await deleteSearchHistory(user.id, item.id);
+      // Fire-and-forget Cloudflare cleanup of any saved collage
+      cleanupCloudflareCollage(item.collage_cdn_url);
+    } catch (e) {
+      console.error('Failed to delete search history row:', e);
+      // Reload to reconcile state on error
+      try {
+        const refreshed = await getSearchHistory();
+        setSearchHistory(refreshed);
+      } catch {}
+    }
+  }, [user?.id, getSearchHistory]);
+
   const renderHistorySkeletons = useMemo(() => {
     return (
       <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
@@ -575,37 +671,46 @@ export default function SearchScreen() {
           <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
             <Text style={styles.historyTitle}>Recent Searches</Text>
             {searchHistory.map((item) => (
-              <Pressable
+              <Swipeable
                 key={item.id}
-                style={styles.historyItem}
-                onPress={() => {
-                  console.log('[search] History item pressed:', item.search_text);
-                  handleHistoryItemPress(item.search_text);
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                renderRightActions={(progress, dragX) =>
+                  renderHistoryRightActions(progress, dragX, () => handleDeleteHistoryItem(item))
+                }
+                overshootRight={false}
+                friction={2}
+                rightThreshold={40}
               >
-                {item.collage_cdn_url ? (
-                  <Image
-                    source={{ uri: item.collage_cdn_url }}
-                    style={styles.historyCollage}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={styles.historyClockWrapper}>
-                    <IconSymbol
-                      name="clock"
-                      size={18}
-                      color={colors.textSecondary}
+                <Pressable
+                  style={styles.historyItem}
+                  onPress={() => {
+                    console.log('[search] History item pressed:', item.search_text);
+                    handleHistoryItemPress(item.search_text);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  {item.collage_cdn_url ? (
+                    <Image
+                      source={{ uri: item.collage_cdn_url }}
+                      style={styles.historyCollage}
+                      resizeMode="cover"
                     />
-                  </View>
-                )}
-                <Text style={styles.historyText} numberOfLines={1}>{item.search_text}</Text>
-                <IconSymbol
-                  name="arrow.up.left"
-                  size={16}
-                  color={colors.textTertiary}
-                />
-              </Pressable>
+                  ) : (
+                    <View style={styles.historyClockWrapper}>
+                      <IconSymbol
+                        name="clock"
+                        size={18}
+                        color={colors.textSecondary}
+                      />
+                    </View>
+                  )}
+                  <Text style={styles.historyText} numberOfLines={1}>{item.search_text}</Text>
+                  <IconSymbol
+                    name="arrow.up.left"
+                    size={16}
+                    color={colors.textTertiary}
+                  />
+                </Pressable>
+              </Swipeable>
             ))}
           </Animated.View>
         ) : showHistory && searchHistory.length === 0 && !isLoadingHistory ? (
@@ -883,9 +988,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 10,
-    backgroundColor: colors.cardDark,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    backgroundColor: 'transparent',
   },
   historyClockWrapper: {
     width: 48,
@@ -1146,5 +1249,25 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
+  },
+  swipeDeleteContainer: {
+    width: 80,
+    marginBottom: 8,
+    borderTopRightRadius: 12,
+    borderBottomRightRadius: 12,
+    overflow: 'hidden',
+  },
+  swipeDeleteButton: {
+    flex: 1,
+    backgroundColor: '#dc2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  swipeDeleteText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

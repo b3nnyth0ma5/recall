@@ -367,6 +367,59 @@ export async function updateSearchHistoryCollage(
   }
 }
 
+/**
+ * Delete a single search-history row for the given user.
+ * Fire-and-forget cleanup of the associated Cloudflare collage asset (if any)
+ * is handled separately by the caller via the cloudflare-delete edge function.
+ */
+export async function deleteSearchHistory(
+  userId: string,
+  searchHistoryId: string,
+): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('search_history')
+      .delete()
+      .eq('id', searchHistoryId)
+      .eq('user_id', userId);
+    if (error) {
+      console.error('Error deleting search_history row:', error);
+      throw error;
+    }
+  } catch (e) {
+    console.error('Exception in deleteSearchHistory:', e);
+    throw e;
+  }
+}
+
+/**
+ * Fire-and-forget cleanup of a Cloudflare Images asset.
+ * Extracts the image ID from a CDN URL of the form
+ * `https://imagedelivery.net/<accountHash>/<imageId>/<variant>` and invokes
+ * the `cloudflare-delete` edge function. Never throws.
+ */
+export async function cleanupCloudflareCollage(cdnUrl: string | null | undefined): Promise<void> {
+  if (!cdnUrl || typeof cdnUrl !== 'string') return;
+  try {
+    // Extract image ID
+    const parts = cdnUrl.split('/');
+    const idx = parts.findIndex((p) => p === 'imagedelivery.net');
+    if (idx === -1 || parts.length <= idx + 2) return;
+    const imageId = parts[idx + 2];
+    if (!imageId) return;
+
+    // Fire-and-forget call to cloudflare-delete edge function.
+    // Don't await; never let cleanup failures bubble up.
+    supabase.functions.invoke('cloudflare-delete', {
+      body: { imageId },
+    }).catch((err) => {
+      console.warn('[cleanupCloudflareCollage] cloudflare-delete invocation failed (non-fatal):', err);
+    });
+  } catch (e) {
+    console.warn('[cleanupCloudflareCollage] Failed (non-fatal):', e);
+  }
+}
+
 export async function fetchNotesWithImagesForReels(userId: string, limit: number = 10): Promise<any[]> {
   try {
     console.log('=== Fetching notes with images for story reels ===');
