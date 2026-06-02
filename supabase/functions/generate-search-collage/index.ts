@@ -185,10 +185,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       tileSize = 260;
       // Paint in reverse order: tile 3, tile 2, tile 1, tile 0 (tile 0 ends up on top)
       paintOrder = [
-        { imgIndex: 3, dx: 40, dy: 50, rotation: -12 },
-        { imgIndex: 2, dx: 110, dy: 90, rotation: -2 },
-        { imgIndex: 1, dx: 180, dy: 140, rotation: 6 },
-        { imgIndex: 0, dx: 240, dy: 200, rotation: 12 },
+        { imgIndex: 3, dx: 40, dy: 50, rotation: 0 },
+        { imgIndex: 2, dx: 110, dy: 90, rotation: 0 },
+        { imgIndex: 1, dx: 180, dy: 140, rotation: 0 },
+        { imgIndex: 0, dx: 240, dy: 200, rotation: 0 },
       ];
     }
 
