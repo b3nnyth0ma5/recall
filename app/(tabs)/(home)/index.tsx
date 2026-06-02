@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
+import { useCreateRecallUI } from '@/contexts/CreateRecallUIContext';
 import { supabase, uploadImageToDatabase, uploadDocumentToDatabase } from '@/utils/supabase';
 import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 import { ZeroState } from '@/components/ZeroState';
@@ -34,6 +35,7 @@ export default function HomeScreen() {
   const [hasRecalls, setHasRecalls] = useState(false);
   const insets = useSafeAreaInsets();
   const pendingImageUploadsRef = useRef<Map<string, number>>(new Map());
+  const { isCreatePanelOpen, closeCreatePanel } = useCreateRecallUI();
 
   useEffect(() => {
     const checkForRecalls = async () => {
@@ -180,14 +182,6 @@ export default function HomeScreen() {
       router.push(`/note-editor?id=${noteId}`);
     } catch (error) {
       console.error('Error navigating to recall editor:', error);
-    }
-  };
-
-  const handleProfile = () => {
-    try {
-      router.push('/(tabs)/profile');
-    } catch (error) {
-      console.error('Error navigating to profile:', error);
     }
   };
 
@@ -562,17 +556,6 @@ export default function HomeScreen() {
             <Text style={styles.headerTitle}>Recall</Text>
           </Pressable>
 
-          <Pressable 
-            onPress={handleProfile} 
-            style={styles.headerIconButton}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <IconSymbol 
-              name="person.circle.fill" 
-              size={32} 
-              color={colors.text} 
-            />
-          </Pressable>
         </View>
 
         {user && (
@@ -618,10 +601,11 @@ export default function HomeScreen() {
         ) : null}
       </ScrollView>
 
-      {combinedAddSearchEnabled && user && !loadingPreferences && (
+      {combinedAddSearchEnabled && user && !loadingPreferences && isCreatePanelOpen && (
         <CombinedSearchAdd
           onCreateRecall={handleCreateRecallFromCombined}
           userId={user.id}
+          onDismiss={closeCreatePanel}
         />
       )}
 
@@ -691,7 +675,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingBottom: 188,
   },
   scrollContentWithCombined: {
     paddingBottom: 200,

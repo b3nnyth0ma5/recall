@@ -693,6 +693,7 @@ const styles = StyleSheet.create({
   },
   wordCloudContainer: {
     padding: 16,
+    paddingBottom: 104,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,

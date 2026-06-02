@@ -891,7 +891,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 16,
+    paddingBottom: 104,
   },
   historyContainer: {
     width: '100%',

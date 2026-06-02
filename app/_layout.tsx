@@ -4,7 +4,9 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
 import { NotesProvider } from '@/contexts/NotesContext';
 import { PeopleGraphProvider, usePeopleGraph } from '@/contexts/PeopleGraphContext';
+import { CreateRecallUIProvider, useCreateRecallUI } from '@/contexts/CreateRecallUIContext';
 import { PeopleGraph } from '@/components/PeopleGraph';
+import { FloatingNavBar } from '@/components/FloatingNavBar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PortalProvider } from '@gorhom/portal';
 import { StyleSheet, View, Platform, Linking } from 'react-native';
@@ -281,6 +283,60 @@ function RootLayoutNav() {
     }
   }, [user, loading, checkingOnboarding, needsOnboarding, segments, router]);
 
+  const { isCreatePanelOpen, openCreatePanel } = useCreateRecallUI();
+
+  const showNavBar = (() => {
+    const seg0 = segments[0] as string | undefined;
+    const seg1 = segments[1] as string | undefined;
+    const seg2 = segments[2] as string | undefined;
+    const inHomeIndex = seg0 === '(tabs)' && seg1 === '(home)' && (!seg2 || seg2 === 'index');
+    const inCategoryViewer = seg0 === '(tabs)' && seg1 === '(home)' && seg2 === 'category-viewer';
+    const inProfile = seg0 === '(tabs)' && seg1 === 'profile';
+    const inSearch = seg0 === 'search';
+    const inPersonRecalls = seg0 === 'person-recalls';
+    const inPeopleWordCloud = seg0 === 'people-word-cloud';
+    return inHomeIndex || inCategoryViewer || inProfile || inSearch || inPersonRecalls || inPeopleWordCloud;
+  })();
+
+  const activeRoute: 'home' | 'search' | 'profile' | null = (() => {
+    const seg0 = segments[0] as string | undefined;
+    const seg1 = segments[1] as string | undefined;
+    if (seg0 === 'search') return 'search';
+    if (seg0 === '(tabs)' && seg1 === 'profile') return 'profile';
+    if (seg0 === '(tabs)' && seg1 === '(home)') return 'home';
+    if (seg0 === 'person-recalls' || seg0 === 'people-word-cloud') return 'home';
+    return null;
+  })();
+
+  const navBarVisible = showNavBar && !isCreatePanelOpen;
+
+  const handleNavHome = () => {
+    console.log('[FloatingNavBar] Navigate to home');
+    router.push('/(tabs)/(home)');
+  };
+
+  const handleNavSearch = () => {
+    console.log('[FloatingNavBar] Navigate to search');
+    router.push('/search');
+  };
+
+  const handleNavProfile = () => {
+    console.log('[FloatingNavBar] Navigate to profile');
+    router.push('/(tabs)/profile');
+  };
+
+  const handleNavCreateRecall = () => {
+    console.log('[FloatingNavBar] Create recall tapped, seg0:', segments[0], 'seg1:', segments[1]);
+    const seg0 = segments[0] as string | undefined;
+    const seg1 = segments[1] as string | undefined;
+    const seg2 = segments[2] as string | undefined;
+    const isOnHomeIndex = seg0 === '(tabs)' && seg1 === '(home)' && (!seg2 || seg2 === 'index');
+    if (!isOnHomeIndex) {
+      router.push('/(tabs)/(home)');
+    }
+    openCreatePanel();
+  };
+
   return (
     <View style={styles.container}>
       {/* iOS Status Bar Background - Thin black bar */}
@@ -331,6 +387,18 @@ function RootLayoutNav() {
       
       {/* People Graph Overlay - Rendered at the highest level with maximum z-index */}
       <PeopleGraphOverlay />
+
+      {/* Floating Nav Bar */}
+      <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+        <FloatingNavBar
+          visible={navBarVisible}
+          activeRoute={activeRoute}
+          onHomePress={handleNavHome}
+          onCreateRecallPress={handleNavCreateRecall}
+          onSearchPress={handleNavSearch}
+          onProfilePress={handleNavProfile}
+        />
+      </View>
     </View>
   );
 }
@@ -343,7 +411,9 @@ export default function RootLayout() {
           <WidgetProvider>
             <NotesProvider>
               <PeopleGraphProvider>
-                <RootLayoutNav />
+                <CreateRecallUIProvider>
+                  <RootLayoutNav />
+                </CreateRecallUIProvider>
               </PeopleGraphProvider>
             </NotesProvider>
           </WidgetProvider>

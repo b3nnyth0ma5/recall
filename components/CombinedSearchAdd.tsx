@@ -45,6 +45,7 @@ interface CombinedSearchAddProps {
     location?: { latitude: number; longitude: number; name: string; primaryType?: string };
   }, onProgress?: (stage: string) => void) => Promise<void>;
   userId: string;
+  onDismiss?: () => void;
 }
 
 interface ImageState {
@@ -53,7 +54,7 @@ interface ImageState {
   originalUri?: string;
 }
 
-export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddProps) {
+export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: CombinedSearchAddProps) {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [text, setText] = useState('');
@@ -514,6 +515,19 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <Animated.View style={[styles.outerContainer, animatedStyle]}>
+        {onDismiss && (
+          <Pressable
+            onPress={() => {
+              console.log('[CombinedSearchAdd] Close button pressed');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onDismiss();
+            }}
+            style={styles.closeButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <IconSymbol name="xmark" size={18} color={colors.textSecondary} />
+          </Pressable>
+        )}
         {showDrawer && (
           <Animated.View
             entering={FadeIn.duration(200)}
@@ -640,22 +654,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId }: CombinedSearchAddP
 								
                 <View style={styles.iconSpacer} />
 
-                {/* Search Button - Third */}
-                <Pressable
-                  style={styles.searchButtonContainer}
-                  onPress={handleSearchPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <View style={styles.searchButtonBorder}>
-                    <IconSymbol 
-                      name="magnifyingglass" 
-                      size={18} 
-                      color={colors.primary} 
-                    />
-                  </View>
-                </Pressable>
-
-                {/* Up Arrow Button - Fourth (Create Recall) */}
+                {/* Up Arrow Button - Third (Create Recall) */}
                 <Pressable
                   style={[styles.upArrowButtonContainer, isUpArrowDisabled && styles.upArrowButtonDisabled]}
                   onPress={handleCreateRecall}
@@ -701,6 +700,18 @@ const styles = StyleSheet.create({
     right: 10,
     zIndex: 1000,
     elevation: 1000,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
   },
   floatingActionsContainer: {
     position: 'absolute',

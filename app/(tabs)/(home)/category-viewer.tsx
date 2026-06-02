@@ -1630,7 +1630,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 128,
   },
   loadingContainer: {
     flex: 1,
