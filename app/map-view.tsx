@@ -410,7 +410,6 @@ export default function MapViewScreen() {
   const mapCountText = searchIds.length > 0
     ? `${mapNotes.length} of ${searchIds.length} recalls on map`
     : `${visibleNotes.length} visible · ${allLocationNotes.length} total`;
-  const fabBottom = insets.bottom + 24;
   const headerTitle = hasSearchResults ? 'Search Results Map' : 'Recalls Map';
 
   const sheetThumbInitials = selectedNote?.text
@@ -475,13 +474,6 @@ export default function MapViewScreen() {
             <IconSymbol name="map.fill" size={16} color={colors.primary} />
             <Text style={styles.infoBadgeText}>{mapCountText}</Text>
           </View>
-
-          <Pressable
-            onPress={handleBackToSearch}
-            style={[styles.fab, { bottom: fabBottom }]}
-          >
-            <IconSymbol name="list.bullet" size={24} color="#FFFFFF" />
-          </Pressable>
         </>
       )}
 
@@ -622,7 +614,6 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 16, color: colors.textSecondary, textAlign: 'center' },
   infoBadge: { position: 'absolute', top: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.card, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, elevation: 4 },
   infoBadgeText: { fontSize: 14, fontWeight: '600', color: colors.text },
-  fab: { position: 'absolute', right: 24, width: 60, height: 60, borderRadius: 30, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center', elevation: 8 },
   bottomSheet: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#2A2A2A', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 12, shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 20 },
   dragHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#555555', alignSelf: 'center', marginBottom: 16 },
   sheetRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },

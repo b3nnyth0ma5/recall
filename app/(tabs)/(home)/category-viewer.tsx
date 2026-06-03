@@ -28,6 +28,20 @@ interface Category {
 
 type SortOrder = 'Newest' | 'Oldest' | 'Best match';
 
+// Branded header component matching home tab exactly
+function RecallHeader() {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <Image
+        source={require('../../../assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+        style={{ width: 40, height: 40, borderRadius: 10 }}
+        resizeMode="contain"
+      />
+      <Text style={{ fontSize: 22, fontWeight: '700', color: colors.text }}>Recall</Text>
+    </View>
+  );
+}
+
 export default function CategoryViewerScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -75,12 +89,12 @@ export default function CategoryViewerScreen() {
       const uncachedIds: string[] = [];
       const result: { [key: string]: any[] } = {};
       
-      recallIds.forEach(id => {
-        const cached = peopleCache.get(id);
+      recallIds.forEach(rid => {
+        const cached = peopleCache.get(rid);
         if (cached) {
-          result[id] = cached;
+          result[rid] = cached;
         } else {
-          uncachedIds.push(id);
+          uncachedIds.push(rid);
         }
       });
       
@@ -118,11 +132,11 @@ export default function CategoryViewerScreen() {
       });
 
       // Update MemoryCache with cost calculation
-      uncachedIds.forEach(id => {
-        const people = peopleByRecallId[id] || [];
+      uncachedIds.forEach(rid => {
+        const people = peopleByRecallId[rid] || [];
         const cost = CostCalculator.forPeople(people);
-        peopleCache.set(id, people, cost);
-        result[id] = people;
+        peopleCache.set(rid, people, cost);
+        result[rid] = people;
       });
 
       console.log(`[CategoryViewer] Loaded people for ${Object.keys(peopleByRecallId).length} recalls (${uncachedIds.length} from DB, ${recallIds.length - uncachedIds.length} from cache)`);
@@ -468,7 +482,7 @@ export default function CategoryViewerScreen() {
 
         // Sort transformedNotes to match the order of paginatedRecallIds
         const orderedNotes = paginatedRecallIds
-          .map(id => transformedNotes.find(note => note.id === id))
+          .map(nid => transformedNotes.find(note => note.id === nid))
           .filter((note): note is Note => note !== undefined);
 
         console.log(`[CategoryViewer] Loaded ${orderedNotes.length} recalls (${cachedNotes.length} from cache, ${uncachedRecallIds.length} from DB)`);
@@ -771,14 +785,6 @@ export default function CategoryViewerScreen() {
       console.error('[CategoryViewer] Error handling scroll:', error);
     }
   }, [hasMore, isLoadingMore, loading, loadMoreRecalls]);
-
-  const handleBack = useCallback(() => {
-    console.log('[CategoryViewer] User tapped back button');
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    }
-    router.back();
-  }, [router]);
 
   const openMenu = useCallback(() => {
     console.log('[CategoryViewer] User tapped ellipsis menu button');
@@ -1188,7 +1194,7 @@ export default function CategoryViewerScreen() {
     );
   };
 
-  // Render skeleton loaders for initial load - NOW INCLUDING ICON AND DESCRIPTION
+  // Render skeleton loaders for initial load
   const renderSkeletons = () => {
     return (
       <View style={styles.container}>
@@ -1196,47 +1202,38 @@ export default function CategoryViewerScreen() {
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* Top spacing for floating buttons */}
-          <View style={{ height: insets.top + 56 }} />
-
           {/* Category Info Skeleton */}
           <View style={styles.categoryInfoContainer}>
             <View style={styles.categoryTopRow}>
               {/* Category Icon Skeleton */}
               <SkeletonLoader 
-                width={80} 
-                height={80} 
-                borderRadius={40}
+                width={88} 
+                height={88} 
+                borderRadius={16}
                 variant="wave"
               />
               
               {/* Category Text Skeleton */}
               <View style={styles.categoryTextContainer}>
-                {/* Description lines */}
-                <View style={styles.descriptionRow}>
-                  <View style={{ flex: 1 }}>
-                    <SkeletonLoader 
-                      width="100%" 
-                      height={16} 
-                      borderRadius={4}
-                      variant="wave"
-                      style={{ marginBottom: 6 }}
-                    />
-                    <SkeletonLoader 
-                      width="80%" 
-                      height={16} 
-                      borderRadius={4}
-                      variant="wave"
-                    />
-                  </View>
-                </View>
-                {/* Recall count skeleton */}
                 <SkeletonLoader 
-                  width={80} 
-                  height={14} 
+                  width="70%" 
+                  height={22} 
                   borderRadius={4}
                   variant="wave"
-                  style={{ marginTop: 8 }}
+                  style={{ marginBottom: 8 }}
+                />
+                <SkeletonLoader 
+                  width="100%" 
+                  height={16} 
+                  borderRadius={4}
+                  variant="wave"
+                  style={{ marginBottom: 6 }}
+                />
+                <SkeletonLoader 
+                  width="80%" 
+                  height={16} 
+                  borderRadius={4}
+                  variant="wave"
                 />
               </View>
             </View>
@@ -1268,15 +1265,6 @@ export default function CategoryViewerScreen() {
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* Category name heading */}
-          {category && (
-            <View style={{ marginTop: insets.top + 56, paddingHorizontal: 24, paddingBottom: 8 }}>
-              <Text style={styles.categoryHeading} numberOfLines={2} ellipsizeMode="tail">
-                {category.category_name}
-              </Text>
-            </View>
-          )}
-
           {/* Category Info - Real data */}
           {category && (
             <View style={styles.categoryInfoContainer}>
@@ -1290,33 +1278,16 @@ export default function CategoryViewerScreen() {
                       resizeMode="cover"
                     />
                   )}
-                  {/* Edit badge on photo */}
-                  <Pressable 
-                    onPress={handleEditPress} 
-                    style={styles.photoEditBadge}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <IconSymbol 
-                      name="pencil"
-                      size={12} 
-                      color="#FFFFFF" 
-                    />
-                  </Pressable>
                 </View>
                 
-                {/* Search Description and Matching Status */}
+                {/* Name, Description and Matching Status */}
                 <View style={styles.categoryTextContainer}>
-                  <View style={styles.descriptionRow}>
-                    <Text style={styles.categoryDescription}>{category.category_search_description}</Text>
-                    {/* Small Edit Text */}
-                    <Pressable 
-                      onPress={handleEditPress} 
-                      style={styles.editTextButton}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Text style={styles.editText}>edit</Text>
-                    </Pressable>
-                  </View>
+                  <Text style={styles.categoryHeading} numberOfLines={2} ellipsizeMode="tail">
+                    {category.category_name}
+                  </Text>
+                  <Text style={styles.categoryDescription} numberOfLines={3}>
+                    {category.category_search_description}
+                  </Text>
                   {/* Matching status */}
                   <View style={styles.matchingStatusContainer}>
                     <ActivityIndicator size="small" color={colors.primary} />
@@ -1359,18 +1330,21 @@ export default function CategoryViewerScreen() {
     outputRange: [-8, 0],
   });
 
+  // Shared Stack.Screen options with branded header
+  const stackScreenOptions = {
+    headerShown: true,
+    headerTitle: () => <RecallHeader />,
+    headerStyle: { backgroundColor: colors.background },
+    headerShadowVisible: false,
+    headerTintColor: colors.text,
+  };
+
+  const recallCountLabel = `${totalRecallCount} ${totalRecallCount === 1 ? 'Recall' : 'Recalls'}`;
+
   if (loading) {
     return (
       <View style={styles.container}>
-        <Stack.Screen options={{ headerShown: false }} />
-        {/* Floating back button during loading */}
-        <Pressable
-          onPress={handleBack}
-          style={[styles.floatingButton, { top: insets.top + 8, left: 16 }]}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <IconSymbol name="chevron.left" size={20} color={colors.text} />
-        </Pressable>
+        <Stack.Screen options={stackScreenOptions} />
         {renderSkeletons()}
       </View>
     );
@@ -1379,14 +1353,7 @@ export default function CategoryViewerScreen() {
   if (!category) {
     return (
       <View style={styles.container}>
-        <Stack.Screen options={{ headerShown: false }} />
-        <Pressable
-          onPress={handleBack}
-          style={[styles.floatingButton, { top: insets.top + 8, left: 16 }]}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <IconSymbol name="chevron.left" size={20} color={colors.text} />
-        </Pressable>
+        <Stack.Screen options={stackScreenOptions} />
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>Category Not Found</Text>
         </View>
@@ -1396,25 +1363,7 @@ export default function CategoryViewerScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ headerShown: false }} />
-
-      {/* Floating back button */}
-      <Pressable
-        onPress={handleBack}
-        style={[styles.floatingButton, { top: insets.top + 8, left: 16 }]}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <IconSymbol name="chevron.left" size={20} color={colors.text} />
-      </Pressable>
-
-      {/* Floating ellipsis menu button */}
-      <Pressable
-        onPress={openMenu}
-        style={[styles.floatingButton, { top: insets.top + 8, right: 16 }]}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <IconSymbol name="ellipsis" size={20} color={colors.text} />
-      </Pressable>
+      <Stack.Screen options={stackScreenOptions} />
 
       {/* Context menu popover */}
       {isMenuOpen && (
@@ -1424,11 +1373,11 @@ export default function CategoryViewerScreen() {
             style={styles.menuBackdrop}
             onPress={closeMenu}
           />
-          {/* Menu card */}
+          {/* Menu card — anchored to bottom-right of the count/ellipsis row */}
           <Animated.View
             style={[
               styles.menuCard,
-              { top: insets.top + 56, right: 16 },
+              { top: insets.top + 160, right: 16 },
               { opacity: menuOpacity, transform: [{ translateY: menuTranslateY }] },
             ]}
           >
@@ -1477,17 +1426,10 @@ export default function CategoryViewerScreen() {
             />
           }
         >
-          {/* Category name — prominent heading */}
-          <View style={{ marginTop: insets.top + 56, paddingHorizontal: 24, paddingBottom: 8 }}>
-            <Text style={styles.categoryHeading} numberOfLines={2} ellipsizeMode="tail">
-              {category.category_name}
-            </Text>
-          </View>
-
-          {/* Category Info - Updated Layout */}
+          {/* Two-column header: image left, name+description right */}
           <View style={styles.categoryInfoContainer}>
             <View style={styles.categoryTopRow}>
-              {/* Category Icon - 20% smaller and on the left with edit badge */}
+              {/* Category Icon — plain image, no overlay */}
               <View style={styles.iconContainer}>
                 {category.icon_cdn_url && (
                   <Image
@@ -1496,89 +1438,79 @@ export default function CategoryViewerScreen() {
                     resizeMode="cover"
                   />
                 )}
-                {/* Edit badge on photo */}
-                <Pressable 
-                  onPress={handleEditPress} 
-                  style={styles.photoEditBadge}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol 
-                    name="pencil"
-                    size={12} 
-                    color="#FFFFFF" 
-                  />
-                </Pressable>
               </View>
               
-              {/* Search Description and Recall Count - Vertically aligned */}
+              {/* Name + Description stacked to the right */}
               <View style={styles.categoryTextContainer}>
-                <View style={styles.descriptionRow}>
-                  <Text style={styles.categoryDescription}>{category.category_search_description}</Text>
-                  {/* Small Edit Text */}
-                  <Pressable 
-                    onPress={handleEditPress} 
-                    style={styles.editTextButton}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Text style={styles.editText}>edit</Text>
-                  </Pressable>
-                </View>
-                <Text style={styles.recallCount}>
-                  {totalRecallCount} {totalRecallCount === 1 ? 'Recall' : 'Recalls'}
+                <Text style={styles.categoryHeading} numberOfLines={2} ellipsizeMode="tail">
+                  {category.category_name}
+                </Text>
+                <Text style={styles.categoryDescription} numberOfLines={3}>
+                  {category.category_search_description}
                 </Text>
               </View>
             </View>
 
-            {/* Sort By UI */}
+            {/* Sort pills — left-aligned, no label, no separators */}
             <View style={styles.sortContainer}>
-              <Text style={styles.sortLabel}>Sort by:</Text>
-              <View style={styles.sortButtons}>
-                <Pressable
-                  style={[styles.sortButton, sortOrder === 'Newest' && styles.sortButtonActive]}
-                  onPress={() => {
-                    console.log('[CategoryViewer] User tapped "Newest" sort button');
-                    if (Platform.OS !== 'web') {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }
-                    setSortOrder('Newest');
-                  }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={[styles.sortButtonText, sortOrder === 'Newest' && styles.sortButtonTextActive]}>
-                    Newest
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.sortButton, sortOrder === 'Oldest' && styles.sortButtonActive]}
-                  onPress={() => {
-                    console.log('[CategoryViewer] User tapped "Oldest" sort button');
-                    if (Platform.OS !== 'web') {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }
-                    setSortOrder('Oldest');
-                  }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={[styles.sortButtonText, sortOrder === 'Oldest' && styles.sortButtonTextActive]}>
-                    Oldest
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.sortButton, sortOrder === 'Best match' && styles.sortButtonActive]}
-                  onPress={() => {
-                    console.log('[CategoryViewer] User tapped "Best match" sort button');
-                    if (Platform.OS !== 'web') {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }
-                    setSortOrder('Best match');
-                  }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={[styles.sortButtonText, sortOrder === 'Best match' && styles.sortButtonTextActive]}>
-                    Best match
-                  </Text>
-                </Pressable>
-              </View>
+              <Pressable
+                style={[styles.sortButton, sortOrder === 'Newest' && styles.sortButtonActive]}
+                onPress={() => {
+                  console.log('[CategoryViewer] User tapped "Newest" sort button');
+                  if (Platform.OS !== 'web') {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }
+                  setSortOrder('Newest');
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[styles.sortButtonText, sortOrder === 'Newest' && styles.sortButtonTextActive]}>
+                  Newest
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.sortButton, sortOrder === 'Oldest' && styles.sortButtonActive]}
+                onPress={() => {
+                  console.log('[CategoryViewer] User tapped "Oldest" sort button');
+                  if (Platform.OS !== 'web') {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }
+                  setSortOrder('Oldest');
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[styles.sortButtonText, sortOrder === 'Oldest' && styles.sortButtonTextActive]}>
+                  Oldest
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.sortButton, sortOrder === 'Best match' && styles.sortButtonActive]}
+                onPress={() => {
+                  console.log('[CategoryViewer] User tapped "Best match" sort button');
+                  if (Platform.OS !== 'web') {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }
+                  setSortOrder('Best match');
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[styles.sortButtonText, sortOrder === 'Best match' && styles.sortButtonTextActive]}>
+                  Best match
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* Recall count (left) + ellipsis trigger (right) */}
+            <View style={styles.countEllipsisRow}>
+              <Text style={styles.recallCount}>
+                {recallCountLabel}
+              </Text>
+              <Pressable
+                onPress={openMenu}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <IconSymbol name="ellipsis" size={20} color={colors.text} />
+              </Pressable>
             </View>
           </View>
 
@@ -1801,18 +1733,6 @@ const styles = StyleSheet.create({
     padding: 8,
     marginHorizontal: 8,
   },
-  floatingButton: {
-    position: 'absolute',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 100,
-  },
   menuBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -1856,74 +1776,49 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
   },
   categoryHeading: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: '700',
     color: colors.text,
+    marginBottom: 6,
   },
   categoryInfoContainer: {
-    padding: 24,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    padding: 16,
+    paddingBottom: 12,
   },
   categoryTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 16,
+    marginBottom: 16,
   },
   iconContainer: {
     position: 'relative',
   },
   categoryIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-  },
-  photoEditBadge: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    backgroundColor: '#0a7ea4',
-    borderRadius: 11,
-    width: 22,
-    height: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    width: 88,
+    height: 88,
+    borderRadius: 16,
   },
   categoryTextContainer: {
     flex: 1,
-    justifyContent: 'space-between',
-    minHeight: 80,
-  },
-  descriptionRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    flex: 1,
+    justifyContent: 'flex-start',
   },
   categoryDescription: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    lineHeight: 22,
-    flex: 1,
-  },
-  editTextButton: {
-    paddingVertical: 2,
-    paddingHorizontal: 4,
-  },
-  editText: {
     fontSize: 14,
-    color: colors.primary,
-    fontWeight: '600',
+    color: colors.textSecondary,
+    lineHeight: 20,
   },
   recallCount: {
     fontSize: 14,
-    color: colors.primary,
-    fontWeight: '600',
-    alignSelf: 'flex-start',
-    marginTop: 4,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  countEllipsisRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 4,
   },
   matchingStatusContainer: {
     flexDirection: 'row',
@@ -2111,21 +2006,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   sortContainer: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  sortLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  sortButtons: {
-    flexDirection: 'row',
+    justifyContent: 'flex-start',
     gap: 8,
   },
   sortButton: {
