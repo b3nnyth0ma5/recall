@@ -8,6 +8,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/contexts/AuthContext';
+import Toast from 'react-native-toast-message';
 
 export default function CreateCategoryScreen() {
   const router = useRouter();
@@ -69,6 +70,7 @@ export default function CreateCategoryScreen() {
 
     try {
       setIsCreating(true);
+      console.log('[CreateCategory] User tapped Create Category button');
 
       // Upload image to Cloudflare if provided
       let iconUrl: string | null = null;
@@ -83,11 +85,12 @@ export default function CreateCategoryScreen() {
         iconUrl = await uploadImageToCloudflare(base64, fileName, 'image/jpeg');
         
         if (!iconUrl) {
-          console.error('Failed to upload category image');
+          console.error('[CreateCategory] Failed to upload category image');
         }
       }
 
       // Create category in database
+      console.log('[CreateCategory] Inserting category into DB');
       const { data, error } = await supabase
         .from('recollection_categories')
         .insert([{
@@ -95,70 +98,58 @@ export default function CreateCategoryScreen() {
           category_name: categoryName.trim(),
           category_search_description: categoryDescription.trim(),
           icon_cdn_url: iconUrl,
-          is_matching: true, // Set to true while matching is in progress
+          is_matching: false,
         }])
         .select('id')
         .single();
 
       if (error) {
-        console.error('Error creating category:', error);
+        console.error('[CreateCategory] Error creating category:', error);
         Alert.alert('Error', 'Failed to create category');
         return;
       }
 
-      console.log('Category created successfully:', data.id);
+      const newCategoryId = data.id;
+      console.log('[CreateCategory] Category created successfully:', newCategoryId);
+
+      // Clear spinner immediately — INSERT is done
+      setIsCreating(false);
 
       // Haptic feedback
       if (Platform.OS !== 'web') {
         try {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } catch (error) {
-          console.error('Error triggering haptic feedback:', error);
+        } catch (hapticError) {
+          console.error('[CreateCategory] Error triggering haptic feedback:', hapticError);
         }
       }
 
-      // Navigate to the newly created category page
-      console.log('[CreateCategory] Navigating to category page:', data.id);
-      router.replace(`/(tabs)/(home)/category-viewer?id=${data.id}`);
-
-      // Trigger category matching asynchronously (fire and forget)
-      triggerCategoryMatchingForNewCategory(data.id);
-    } catch (error) {
-      console.error('Error creating category:', error);
-      Alert.alert('Error', 'Failed to create category');
-      setIsCreating(false);
-    }
-  };
-
-  const triggerCategoryMatchingForNewCategory = async (categoryId: string) => {
-    try {
-      console.log('Triggering category matching for new category:', categoryId);
-      
-      const { data, error } = await supabase.functions.invoke('new-category-matching', {
-        body: { 
-          categoryId: categoryId
-        },
+      // Show success toast
+      Toast.show({
+        type: 'success',
+        text1: 'Category created — matching recalls in the background…',
+        position: 'bottom',
       });
 
-      if (error) {
-        console.error('Error invoking category matching:', error);
-      } else {
-        console.log('Category matching triggered successfully:', data);
-      }
+      // Navigate back immediately — don't wait for matching
+      console.log('[CreateCategory] Navigating to category page:', newCategoryId);
+      router.replace(`/(tabs)/(home)/category-viewer?id=${newCategoryId}`);
 
-      // Update is_matching flag to false
-      await supabase
-        .from('recollection_categories')
-        .update({ is_matching: false })
-        .eq('id', categoryId);
+      // Fire-and-forget: invoke the async matching edge function
+      console.log('[CreateCategory] Firing match-recalls-to-category-async for:', newCategoryId);
+      (async () => {
+        try {
+          await supabase.functions.invoke('match-recalls-to-category-async', {
+            body: { categoryId: newCategoryId, userId: user.id },
+          });
+        } catch (e) {
+          console.error('[CreateCategory] match-recalls-to-category-async failed:', e);
+        }
+      })();
     } catch (error) {
-      console.error('Exception in triggerCategoryMatchingForNewCategory:', error);
-      
-      // Still update is_matching flag to false
-      await supabase
-        .from('recollection_categories')
-        .update({ is_matching: false })
-        .eq('id', categoryId);
+      console.error('[CreateCategory] Error creating category:', error);
+      Alert.alert('Error', 'Failed to create category');
+      setIsCreating(false);
     }
   };
 

@@ -14,6 +14,7 @@ import { getImageDataUrl } from '@/utils/supabase';
 import { useNotes } from '@/hooks/useNotes';
 import { peopleCache, imageCache, noteCache, CostCalculator } from '@/utils/memoryCache';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
+import Toast from 'react-native-toast-message';
 
 interface Category {
   id: string;
@@ -45,6 +46,8 @@ export default function CategoryViewerScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isMatching, setIsMatching] = useState(false);
+  const [isRematching, setIsRematching] = useState(false);
+  const rematchingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const matchingCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [totalRecallCount, setTotalRecallCount] = useState(0);
   const [sortOrder, setSortOrder] = useState<SortOrder>('Newest');
@@ -653,8 +656,45 @@ export default function CategoryViewerScreen() {
         clearInterval(matchingCheckIntervalRef.current);
         matchingCheckIntervalRef.current = null;
       }
+      if (rematchingTimeoutRef.current) {
+        clearTimeout(rematchingTimeoutRef.current);
+        rematchingTimeoutRef.current = null;
+      }
     };
   }, [id, sortOrder, loadCategoryAndRecalls]); // Reload when sortOrder changes
+
+  // Realtime subscription: refresh recalls as background matching inserts new rows
+  useEffect(() => {
+    if (!id || !user) return;
+
+    const channelSuffix = Math.random().toString(36).slice(2, 8);
+    const channel = supabase
+      .channel(`category-assignments-${user.id}-${id}-${channelSuffix}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'recollections',
+          filter: `category_id=eq.${id}`,
+        },
+        () => {
+          console.log('[CategoryViewer] Realtime: recollections changed, refreshing recalls');
+          // Clear rematching indicator when we get the first update
+          setIsRematching(false);
+          if (rematchingTimeoutRef.current) {
+            clearTimeout(rematchingTimeoutRef.current);
+            rematchingTimeoutRef.current = null;
+          }
+          loadCategoryAndRecalls(1, false);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, user, loadCategoryAndRecalls]);
 
   const handleRefresh = async () => {
     console.log('[CategoryViewer] User initiated refresh');
@@ -886,10 +926,10 @@ export default function CategoryViewerScreen() {
       return;
     }
 
-    try {
-      console.log('[CategoryViewer] User tapped save edit');
-      setIsSaving(true);
+    console.log('[CategoryViewer] User tapped save edit');
+    setIsSaving(true);
 
+    try {
       // Check if name or description changed
       const nameChanged = editName.trim() !== category.category_name;
       const descriptionChanged = editDescription.trim() !== category.category_search_description;
@@ -911,7 +951,8 @@ export default function CategoryViewerScreen() {
         }
       }
 
-      // Update category in database
+      // Await the UPDATE — this is the only thing the user waits for
+      console.log('[CategoryViewer] Updating category in DB');
       const { error } = await supabase
         .from('recollection_categories')
         .update({
@@ -926,65 +967,70 @@ export default function CategoryViewerScreen() {
       if (error) {
         console.error('[CategoryViewer] Error updating category:', error);
         Alert.alert('Error', 'Failed to update category');
+        // Do NOT close the dialog on failure
         return;
       }
 
       console.log('[CategoryViewer] Category updated successfully');
 
-      // Trigger new-category-matching edge function if name or description changed
-      if (nameChanged || descriptionChanged) {
-        console.log('[CategoryViewer] Category name or description changed, triggering new-category-matching...');
-        
-        // Set is_matching to true before triggering
-        await supabase
-          .from('recollection_categories')
-          .update({ is_matching: true })
-          .eq('id', category.id)
-          .eq('user_id', user.id);
-        
-        setIsMatching(true);
-        startMatchingPolling();
-        
-        triggerCategoryMatching(category.id);
-      }
-
       // Haptic feedback
       if (Platform.OS !== 'web') {
         try {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } catch (error) {
-          console.error('[CategoryViewer] Error triggering haptic feedback:', error);
+        } catch (hapticError) {
+          console.error('[CategoryViewer] Error triggering haptic feedback:', hapticError);
         }
       }
 
-      // Reload category data
-      await loadCategoryAndRecalls(1, false);
+      // Close dialog immediately — user should not wait for matching
       setShowEditModal(false);
+
+      // Reload category header data
+      await loadCategoryAndRecalls(1, false);
+
+      // Fire-and-forget matching if description/name changed
+      if (nameChanged || descriptionChanged) {
+        console.log('[CategoryViewer] Description changed — firing match-recalls-to-category-async');
+        setIsRematching(true);
+
+        // 30s fallback: clear the indicator even if no realtime event arrives
+        if (rematchingTimeoutRef.current) {
+          clearTimeout(rematchingTimeoutRef.current);
+        }
+        rematchingTimeoutRef.current = setTimeout(() => {
+          setIsRematching(false);
+          rematchingTimeoutRef.current = null;
+        }, 30000);
+
+        Toast.show({
+          type: 'success',
+          text1: 'Category updated — re-matching recalls…',
+          position: 'bottom',
+        });
+
+        (async () => {
+          try {
+            console.log('[CategoryViewer] Invoking match-recalls-to-category-async for:', category.id);
+            await supabase.functions.invoke('match-recalls-to-category-async', {
+              body: { categoryId: category.id, userId: user.id },
+            });
+          } catch (e) {
+            console.error('[CategoryViewer] match-recalls-to-category-async failed:', e);
+          }
+        })();
+      } else {
+        Toast.show({
+          type: 'success',
+          text1: 'Category updated',
+          position: 'bottom',
+        });
+      }
     } catch (error) {
       console.error('[CategoryViewer] Error updating category:', error);
       Alert.alert('Error', 'Failed to update category');
+      // Do NOT close the dialog on failure
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const triggerCategoryMatching = async (categoryId: string) => {
-    try {
-      console.log('[CategoryViewer] Triggering category matching for updated category:', categoryId);
-      
-      const { data, error } = await supabase.functions.invoke('new-category-matching', {
-        body: { 
-          categoryId: categoryId
-        },
-      });
-
-      if (error) {
-        console.error('[CategoryViewer] Error invoking category matching:', error);
-      } else {
-        console.log('[CategoryViewer] Category matching triggered successfully:', data);
-      }
-    } catch (error) {
-      console.error('[CategoryViewer] Exception in triggerCategoryMatching:', error);
     }
   };
 
@@ -1485,6 +1531,14 @@ export default function CategoryViewerScreen() {
             </View>
           </View>
 
+          {/* Rematching indicator — shown while background matching is in flight */}
+          {isRematching && (
+            <View style={styles.rematchingBanner}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.rematchingBannerText}>matching…</Text>
+            </View>
+          )}
+
           {/* Recalls */}
           {notes.length === 0 ? (
             renderEmptyState()
@@ -1789,6 +1843,25 @@ const styles = StyleSheet.create({
   matchingInfoText: {
     fontSize: 14,
     color: colors.text,
+    fontWeight: '500',
+  },
+  rematchingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: `${colors.primary}12`,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: `${colors.primary}25`,
+  },
+  rematchingBannerText: {
+    fontSize: 13,
+    color: colors.primary,
     fontWeight: '500',
   },
   notesContainer: {
