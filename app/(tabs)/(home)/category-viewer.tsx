@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Alert, TextInput, Image, Modal, KeyboardAvoidingView, Platform, Animated } from 'react-native';
+import RecallHeader from '@/components/RecallHeader';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
@@ -29,19 +30,7 @@ interface Category {
 
 type SortOrder = 'Newest' | 'Oldest' | 'Best match';
 
-// Branded header component matching home tab exactly
-function RecallHeader() {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <Image
-        source={require('../../../assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-        style={{ width: 40, height: 40, borderRadius: 10 }}
-        resizeMode="contain"
-      />
-      <Text style={{ fontSize: 22, fontWeight: '700', color: colors.text }}>Recall</Text>
-    </View>
-  );
-}
+
 
 export default function CategoryViewerScreen() {
   const router = useRouter();

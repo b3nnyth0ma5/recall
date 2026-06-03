@@ -1,6 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform, TextInput, ActivityIndicator, Image } from 'react-native';
+import RecallHeader from '@/components/RecallHeader';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
@@ -11,18 +12,7 @@ import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
 import { useScrollToTop } from '@/contexts/ScrollToTopContext';
 
-function RecallHeader() {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <Image
-        source={require('../../assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-        style={{ width: 40, height: 40, borderRadius: 10 }}
-        resizeMode="contain"
-      />
-      <Text style={{ fontSize: 22, fontWeight: '700', color: colors.text }}>Recall</Text>
-    </View>
-  );
-}
+
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();

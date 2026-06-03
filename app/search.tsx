@@ -262,7 +262,7 @@ export default function SearchScreen() {
 
   const recallRefs = useRef<{ [key: string]: View | null }>({});
   const scrollViewRef = useRef<ScrollView>(null);
-  const { registerScrollToTop } = useScrollToTop();
+  const { registerScrollToTop, registerSearchFocus } = useScrollToTop();
 
   useEffect(() => {
     const unregister = registerScrollToTop('search', () => {
@@ -271,6 +271,14 @@ export default function SearchScreen() {
     });
     return unregister;
   }, [registerScrollToTop]);
+
+  useEffect(() => {
+    const unregister = registerSearchFocus(() => {
+      console.log('[SearchScreen] Search focus triggered — focusing input');
+      searchInputRef.current?.focus();
+    });
+    return unregister;
+  }, [registerSearchFocus]);
 
   const handleRecallLinkPress = useCallback((recallId: string, imageIndex?: number) => {
     console.log('[SearchScreen] Recall link pressed:', recallId, 'imageIndex:', imageIndex);

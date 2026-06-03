@@ -34,6 +34,7 @@ export default function PersonRecallsScreen() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadingPersonInfo, setLoadingPersonInfo] = useState(true);
   const [photoUpdateTrigger, setPhotoUpdateTrigger] = useState(0);
+  const [totalRecallCount, setTotalRecallCount] = useState<number | null>(null);
 
   const personId = params.personId as string;
   const ITEMS_PER_PAGE = 10;
@@ -262,8 +263,24 @@ export default function PersonRecallsScreen() {
         setHasMore(false);
         if (!append) {
           setRecalls([]);
+          setTotalRecallCount(0);
         }
         return;
+      }
+
+      // Fetch true total count on first page load only
+      if (pageNum === 1) {
+        supabase
+          .from('recall_people')
+          .select('recall_id', { count: 'exact', head: true })
+          .eq('person_id', personId)
+          .eq('user_id', user?.id)
+          .then(({ count, error }) => {
+            if (!error && count !== null) {
+              console.log(`[PersonRecalls] Total recall count for person: ${count}`);
+              setTotalRecallCount(count);
+            }
+          });
       }
 
       if (recallPeopleData.length < ITEMS_PER_PAGE) {
@@ -703,7 +720,7 @@ export default function PersonRecallsScreen() {
         ) : (
           <View style={styles.recallsContainer}>
             <Text style={styles.countText}>
-              {recalls.length} {recalls.length === 1 ? 'Recall' : 'Recalls'} mentioning {personName}
+              {(totalRecallCount ?? recalls.length)} {(totalRecallCount ?? recalls.length) === 1 ? 'Recall' : 'Recalls'} mentioning {personName}
             </Text>
             {recalls.map((recall, index) => (
               <NoteCard

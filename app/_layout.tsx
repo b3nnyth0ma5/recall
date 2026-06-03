@@ -285,7 +285,7 @@ function RootLayoutNav() {
   }, [user, loading, checkingOnboarding, needsOnboarding, segments, router]);
 
   const { isCreatePanelOpen, openCreatePanel } = useCreateRecallUI();
-  const { triggerScrollToTop } = useScrollToTop();
+  const { triggerScrollToTop, triggerSearchFocus } = useScrollToTop();
   const pathname = usePathname();
 
   const showNavBar = (() => {
@@ -334,8 +334,9 @@ function RootLayoutNav() {
   const handleNavSearch = () => {
     console.log('[FloatingNavBar] Search tapped, activeRoute:', activeRoute);
     if (activeRoute === 'search') {
-      console.log('[FloatingNavBar] Already on search — scrolling to top');
+      console.log('[FloatingNavBar] Already on search — scrolling to top and focusing input');
       triggerScrollToTop('search');
+      triggerSearchFocus();
     } else {
       router.push('/search');
     }

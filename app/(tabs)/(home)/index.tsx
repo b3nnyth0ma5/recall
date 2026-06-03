@@ -17,6 +17,7 @@ import { supabase, uploadImageToDatabase, uploadDocumentToDatabase } from '@/uti
 import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 import { ZeroState } from '@/components/ZeroState';
 import { extractUrls, processRecallUrlsAndAwaitScrape } from '@/utils/urlProcessor';
+import RecallHeader from '@/components/RecallHeader';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata } = useNotesContext();
@@ -558,12 +559,7 @@ export default function HomeScreen() {
             style={styles.headerLogoGroup}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Image
-              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-              style={styles.headerIcon}
-              resizeMode="contain"
-            />
-            <Text style={styles.headerTitle}>Recall</Text>
+            <RecallHeader />
           </Pressable>
 
         </View>
