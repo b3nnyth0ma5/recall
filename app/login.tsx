@@ -11,8 +11,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Image,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { supabase } from '@/utils/supabase';
 import { colors } from '@/styles/commonStyles';
@@ -122,7 +122,7 @@ export default function LoginScreen() {
             <Image
               source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
               style={styles.appIcon}
-              resizeMode="contain"
+              contentFit="contain"
             />
           </View>
 

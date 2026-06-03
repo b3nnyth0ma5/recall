@@ -12,8 +12,8 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
-  Image,
 } from 'react-native';
+import { Image } from 'expo-image';
 import Animated, { 
   useSharedValue,
   useAnimatedStyle,
@@ -682,7 +682,9 @@ export function FullScreenImage({
                         <Image
                           source={{ uri: thumbUrl }}
                           style={styles.image}
-                          resizeMode="contain"
+                          contentFit="contain"
+                          transition={150}
+                          cachePolicy="memory-disk"
                         />
                       ) : (
                         <View style={[styles.docPlaceholder, { backgroundColor: docColor }]}>

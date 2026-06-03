@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Alert, Platform, RefreshControl } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, Pressable, Alert, Platform, RefreshControl } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -313,7 +313,7 @@ export default function PersonRecallsScreen() {
         
         const { data: recallsData, error: recallsError } = await supabase
           .from('recalls')
-          .select('*')
+          .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
           .in('id', uncachedRecallIds)
           .eq('user_id', user?.id)
           .order('created_at', { ascending: false });
@@ -374,20 +374,10 @@ export default function PersonRecallsScreen() {
     }
   }, [page, hasMore, isLoadingMore, loading, loadRecallsForPerson]);
 
-  const handleScroll = useCallback((event: any) => {
-    try {
-      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-
-      // Load more recalls when near bottom
-      const paddingToBottom = 20;
-      const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
-
-      if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
-        console.log('[PersonRecalls] Loading more recalls...');
-        loadMoreRecalls();
-      }
-    } catch (error) {
-      console.error('[PersonRecalls] Error handling scroll:', error);
+  const handleEndReached = useCallback(() => {
+    if (hasMore && !isLoadingMore && !loading) {
+      console.log('[PersonRecalls] onEndReached — loading more recalls...');
+      loadMoreRecalls();
     }
   }, [hasMore, isLoadingMore, loading, loadMoreRecalls]);
 
@@ -636,6 +626,86 @@ export default function PersonRecallsScreen() {
     );
   };
 
+  const listRef = useRef<FlatList<Note>>(null);
+
+  const renderRecallItem = useCallback(({ item }: { item: Note }) => (
+    <NoteCard
+      key={`${item.id}-${photoUpdateTrigger}`}
+      note={item}
+      onPress={() => handleNotePress(item.id)}
+      loading={false}
+    />
+  ), [photoUpdateTrigger, handleNotePress]);
+
+  const ListHeaderComponent = (
+    <View>
+      {/* Person Avatar Section with Skeleton - UPDATED: Reduced gaps by 10% */}
+      {loadingPersonInfo ? (
+        renderPersonInfoSkeleton()
+      ) : (
+        <View style={styles.avatarSection}>
+          <Pressable
+            onPress={handlePhotoPress}
+            disabled={uploadingPhoto}
+            style={styles.avatarPressable}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <PersonAvatar
+              key={`person-avatar-${photoUpdateTrigger}`}
+              personName={personName}
+              photoUrl={personPhotoUrl}
+              size={100}
+            />
+            {uploadingPhoto && (
+              <View style={styles.uploadingOverlay}>
+                <ActivityIndicator size="large" color={colors.primary} />
+              </View>
+            )}
+            <View style={styles.cameraIconContainer}>
+              <IconSymbol name="camera.fill" size={20} color="#FFFFFF" />
+            </View>
+          </Pressable>
+        </View>
+      )}
+
+      {!loading && recalls.length > 0 && (
+        <View style={styles.recallsContainer}>
+          <Text style={styles.countText}>
+            {(totalRecallCount ?? recalls.length)} {(totalRecallCount ?? recalls.length) === 1 ? 'Recall' : 'Recalls'} mentioning {personName}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const ListEmptyComponent = loading ? (
+    renderSkeletonLoaders()
+  ) : (
+    <View style={styles.emptyContainer}>
+      <IconSymbol
+        ios_icon_name="person.fill.questionmark"
+        android_material_icon_name="person_search"
+        size={80}
+        color={colors.textTertiary}
+      />
+      <Text style={styles.emptyTitle}>No Recalls Found</Text>
+      <Text style={styles.emptyText}>
+        No Recalls mention {personName}
+      </Text>
+    </View>
+  );
+
+  const ListFooterComponent = isLoadingMore ? (
+    <View style={styles.loadingMoreContainer}>
+      <ActivityIndicator size="small" color={colors.primary} />
+      <Text style={styles.loadingMoreText}>Loading more...</Text>
+    </View>
+  ) : !hasMore && recalls.length > 0 ? (
+    <View style={styles.endContainer}>
+      <Text style={styles.endText}>You&apos;ve reached the end</Text>
+    </View>
+  ) : null;
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -653,8 +723,8 @@ export default function PersonRecallsScreen() {
             color: colors.primary,
           },
           headerLeft: () => (
-            <Pressable 
-              onPress={handleBack} 
+            <Pressable
+              onPress={handleBack}
               style={styles.headerButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
@@ -664,11 +734,14 @@ export default function PersonRecallsScreen() {
         }}
       />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        onScroll={handleScroll}
-        scrollEventThrottle={400}
+      <FlatList
+        ref={listRef}
+        data={recalls}
+        keyExtractor={(item) => item.id}
+        renderItem={renderRecallItem}
+        ListHeaderComponent={ListHeaderComponent}
+        ListEmptyComponent={ListEmptyComponent}
+        ListFooterComponent={ListFooterComponent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -677,84 +750,15 @@ export default function PersonRecallsScreen() {
             colors={[colors.primary]}
           />
         }
-      >
-        {/* Person Avatar Section with Skeleton - UPDATED: Reduced gaps by 10% */}
-        {loadingPersonInfo ? (
-          renderPersonInfoSkeleton()
-        ) : (
-          <View style={styles.avatarSection}>
-            <Pressable 
-              onPress={handlePhotoPress}
-              disabled={uploadingPhoto}
-              style={styles.avatarPressable}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <PersonAvatar 
-                key={`person-avatar-${photoUpdateTrigger}`}
-                personName={personName} 
-                photoUrl={personPhotoUrl}
-                size={100}
-              />
-              {uploadingPhoto && (
-                <View style={styles.uploadingOverlay}>
-                  <ActivityIndicator size="large" color={colors.primary} />
-                </View>
-              )}
-              <View style={styles.cameraIconContainer}>
-                <IconSymbol 
-                  name="camera.fill" 
-                  size={20} 
-                  color="#FFFFFF" 
-                />
-              </View>
-            </Pressable>
-          </View>
-        )}
-
-        {loading ? (
-          renderSkeletonLoaders()
-        ) : recalls.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <IconSymbol 
-              ios_icon_name="person.fill.questionmark" 
-              android_material_icon_name="person_search" 
-              size={80} 
-              color={colors.textTertiary} 
-            />
-            <Text style={styles.emptyTitle}>No Recalls Found</Text>
-            <Text style={styles.emptyText}>
-              No Recalls mention {personName}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.recallsContainer}>
-            <Text style={styles.countText}>
-              {(totalRecallCount ?? recalls.length)} {(totalRecallCount ?? recalls.length) === 1 ? 'Recall' : 'Recalls'} mentioning {personName}
-            </Text>
-            {recalls.map((recall, index) => (
-              <NoteCard
-                key={`${recall.id}-${index}-${photoUpdateTrigger}`}
-                note={recall}
-                onPress={() => handleNotePress(recall.id)}
-                loading={false}
-              />
-            ))}
-            
-            {isLoadingMore && (
-              <View style={styles.loadingMoreContainer}>
-                <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={styles.loadingMoreText}>Loading more...</Text>
-              </View>
-            )}
-            
-            {!hasMore && recalls.length > 0 && (
-              <View style={styles.endContainer}>
-                <Text style={styles.endText}>You&apos;ve reached the end</Text>
-              </View>
-            )}
-          </View>
-        )}
-      </ScrollView>
+        onEndReached={!loading ? handleEndReached : undefined}
+        onEndReachedThreshold={0.5}
+        windowSize={10}
+        maxToRenderPerBatch={6}
+        initialNumToRender={8}
+        removeClippedSubviews
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      />
     </View>
   );
 }

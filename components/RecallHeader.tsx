@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet, ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import { colors } from '@/styles/commonStyles';
 
 interface RecallHeaderProps {
@@ -12,7 +13,7 @@ export default function RecallHeader({ style }: RecallHeaderProps) {
       <Image
         source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
         style={styles.icon}
-        resizeMode="contain"
+        contentFit="contain"
       />
       <Text style={styles.title}>Recall</Text>
     </View>
@@ -33,6 +34,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: '700',
-    color: colors.text,
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
   },
 });

@@ -8,7 +8,7 @@ import {
   ScrollView,
   Platform,
 } from 'react-native';
-import { Image } from 'react-native';
+import { Image } from 'expo-image';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { getOptimizedCloudflareUrl } from '@/utils/cloudflareCDN';
@@ -302,11 +302,12 @@ export default function ImageGalleryScreen() {
                     <Image
                       source={{ uri: displayUrl }}
                       style={styles.image}
-                      resizeMode="cover"
-                      onError={(error) => {
+                      contentFit="cover"
+                      transition={150}
+                      cachePolicy="memory-disk"
+                      onError={() => {
                         console.error('[ImageGalleryScreen] Image load error for index', item.index);
                         console.error('[ImageGalleryScreen] Failed URL:', displayUrl);
-                        console.error('[ImageGalleryScreen] Error:', error.nativeEvent.error);
                         setImageLoadErrors(prev => ({ ...prev, [item.index]: true }));
                       }}
                       onLoad={() => {

@@ -6,6 +6,7 @@
  */
 
 import { supabase } from './supabase';
+import { coalesce } from './requestCoalescer';
 
 export interface RecallUrlMetadata {
   id: string;
@@ -229,50 +230,55 @@ export async function getRecallUrlsForRecalls(
     return {};
   }
 
-  try {
-    const BATCH_SIZE = 200;
-    const result: Record<string, RecallUrlMetadata[]> = {};
+  const sortedIds = [...recallIds].sort();
+  const key = `recall_urls:${sortedIds.join(',')}`;
 
-    // Chunk into batches of 200 to avoid Supabase URL length limits
-    for (let i = 0; i < recallIds.length; i += BATCH_SIZE) {
-      const chunk = recallIds.slice(i, i + BATCH_SIZE);
+  return coalesce(key, async () => {
+    try {
+      const BATCH_SIZE = 200;
+      const result: Record<string, RecallUrlMetadata[]> = {};
 
-      const { data, error } = await supabase
-        .from('recall_urls')
-        .select('id, url, url_data, og_title, og_description, og_site_name, og_image_url, scraped_at, created_at, recall_id')
-        .in('recall_id', chunk)
-        .order('created_at', { ascending: true });
+      // Chunk into batches of 200 to avoid Supabase URL length limits
+      for (let i = 0; i < sortedIds.length; i += BATCH_SIZE) {
+        const chunk = sortedIds.slice(i, i + BATCH_SIZE);
 
-      if (error) {
-        console.error('[urlProcessor] Error in getRecallUrlsForRecalls batch:', error);
-        continue;
-      }
+        const { data, error } = await supabase
+          .from('recall_urls')
+          .select('id, url, url_data, og_title, og_description, og_site_name, og_image_url, scraped_at, created_at, recall_id')
+          .in('recall_id', chunk)
+          .order('created_at', { ascending: true });
 
-      for (const row of data || []) {
-        const recallId = (row as any).recall_id as string;
-        if (!result[recallId]) {
-          result[recallId] = [];
+        if (error) {
+          console.error('[urlProcessor] Error in getRecallUrlsForRecalls batch:', error);
+          continue;
         }
-        result[recallId].push({
-          id: row.id,
-          url: row.url,
-          url_data: row.url_data,
-          og_title: row.og_title,
-          og_description: row.og_description,
-          og_site_name: row.og_site_name,
-          og_image_url: row.og_image_url,
-          scraped_at: row.scraped_at,
-          created_at: row.created_at,
-        });
-      }
-    }
 
-    console.log('[urlProcessor] getRecallUrlsForRecalls: fetched metadata for', Object.keys(result).length, 'recalls');
-    return result;
-  } catch (error) {
-    console.error('[urlProcessor] Exception in getRecallUrlsForRecalls:', error);
-    return {};
-  }
+        for (const row of data || []) {
+          const recallId = (row as any).recall_id as string;
+          if (!result[recallId]) {
+            result[recallId] = [];
+          }
+          result[recallId].push({
+            id: row.id,
+            url: row.url,
+            url_data: row.url_data,
+            og_title: row.og_title,
+            og_description: row.og_description,
+            og_site_name: row.og_site_name,
+            og_image_url: row.og_image_url,
+            scraped_at: row.scraped_at,
+            created_at: row.created_at,
+          });
+        }
+      }
+
+      console.log('[urlProcessor] getRecallUrlsForRecalls: fetched metadata for', Object.keys(result).length, 'recalls');
+      return result;
+    } catch (error) {
+      console.error('[urlProcessor] Exception in getRecallUrlsForRecalls:', error);
+      return {};
+    }
+  });
 }
 
 /**

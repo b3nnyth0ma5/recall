@@ -148,7 +148,8 @@
         }
       ],
       "@bacons/apple-targets",
-      "./app.plugin.js"
+      "./app.plugin.js",
+      "expo-asset"
     ],
     "scheme": "recall",
     "experiments": {

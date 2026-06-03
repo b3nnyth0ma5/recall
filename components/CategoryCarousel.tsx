@@ -1,6 +1,9 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, ScrollView, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { debounce } from '@/utils/debounce';
+import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from 'react-native';
+import { Image } from 'expo-image';
+import { cdnVariant } from '@/utils/cdnVariant';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/utils/supabase';
 import { IconSymbol } from './IconSymbol';
@@ -93,8 +96,13 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       return;
     }
 
-    const channelName = `category-changes-${userId}-${Math.random().toString(36).slice(2, 8)}`;
+    const channelName = `realtime:${userId}:recollection_categories`;
     console.log('[CategoryCarousel] Setting up real-time subscription for categories, channel:', channelName);
+
+    const debouncedRefresh = debounce(() => {
+      console.log('[CategoryCarousel] Real-time category change detected — reloading');
+      loadAllUserCategories();
+    }, 300);
 
     // Subscribe to changes in recollection_categories table
     const channel = supabase
@@ -107,16 +115,13 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
           table: 'recollection_categories',
           filter: `user_id=eq.${userId}`,
         },
-        (payload) => {
-          console.log('[CategoryCarousel] Real-time category change detected:', payload);
-          // Reload categories when any change is detected
-          loadAllUserCategories();
-        }
+        debouncedRefresh,
       )
       .subscribe();
 
     return () => {
       console.log('[CategoryCarousel] Cleaning up real-time subscription');
+      debouncedRefresh.cancel();
       supabase.removeChannel(channel);
     };
   }, [userId, loadAllUserCategories]);
@@ -218,10 +223,14 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
                 ]}
               >
                 {category.icon_cdn_url ? (
+                  // cdnVariant 'thumbnail' requires the variant in Cloudflare Images dashboard.
+                  // If absent, cdnVariant is a no-op — still benefits from expo-image caching.
                   <Image
-                    source={{ uri: category.icon_cdn_url }}
+                    source={{ uri: cdnVariant(category.icon_cdn_url, 'thumbnail') as string }}
                     style={styles.categoryImage}
-                    resizeMode="cover"
+                    contentFit="cover"
+                    transition={150}
+                    cachePolicy="memory-disk"
                   />
                 ) : (
                   <View style={styles.categoryPlaceholder}>

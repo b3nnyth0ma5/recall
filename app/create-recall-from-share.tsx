@@ -13,13 +13,14 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Image,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Alert,
   Dimensions,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { cdnVariant } from '@/utils/cdnVariant';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
@@ -548,7 +549,9 @@ export default function CreateRecallFromShareScreen() {
                         <Image
                           source={{ uri: imageUri }}
                           style={styles.carouselImage}
-                          resizeMode="cover"
+                          contentFit="cover"
+                          transition={150}
+                          cachePolicy="memory-disk"
                         />
                         <Pressable
                           style={styles.removeImageButton}
@@ -593,10 +596,14 @@ export default function CreateRecallFromShareScreen() {
                       <View style={styles.urlCard}>
                         <View style={styles.compactCardRow}>
                           {scrapedMetadata.imageUrl ? (
+                            // cdnVariant 'card' requires the variant in Cloudflare Images dashboard.
+                            // Non-Cloudflare OG image URLs pass through unchanged — still cached by expo-image.
                             <Image
-                              source={{ uri: scrapedMetadata.imageUrl }}
+                              source={{ uri: cdnVariant(scrapedMetadata.imageUrl, 'card') as string }}
                               style={styles.compactThumbnail}
-                              resizeMode="cover"
+                              contentFit="cover"
+                              transition={150}
+                              cachePolicy="memory-disk"
                             />
                           ) : (
                             <View style={[styles.compactThumbnail, styles.compactThumbnailFallback]}>
@@ -629,10 +636,14 @@ export default function CreateRecallFromShareScreen() {
                       /* Full card when no images */
                       <View style={styles.urlCard}>
                         {scrapedMetadata.imageUrl ? (
+                          // cdnVariant 'card' requires the variant in Cloudflare Images dashboard.
+                          // Non-Cloudflare OG image URLs pass through unchanged — still cached by expo-image.
                           <Image
-                            source={{ uri: scrapedMetadata.imageUrl }}
+                            source={{ uri: cdnVariant(scrapedMetadata.imageUrl, 'card') as string }}
                             style={styles.heroImage}
-                            resizeMode="cover"
+                            contentFit="cover"
+                            transition={150}
+                            cachePolicy="memory-disk"
                           />
                         ) : null}
                         <View style={styles.urlCardBody}>
