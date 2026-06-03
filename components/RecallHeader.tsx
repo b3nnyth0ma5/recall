@@ -28,10 +28,12 @@ const styles = StyleSheet.create({
   icon: {
     width: 40,
     height: 40,
+    borderRadius: 10,
   },
   title: {
     fontSize: 22,
     fontWeight: '700',
-    color: colors.text,
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
   },
 });
