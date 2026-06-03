@@ -28,6 +28,7 @@ const styles = StyleSheet.create({
   icon: {
     width: 40,
     height: 40,
+    borderRadius: 10,
   },
   title: {
     fontSize: 22,

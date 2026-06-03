@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Alert, TextInput, Image, Modal, KeyboardAvoidingView, Platform, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Alert, TextInput, Image, Modal, KeyboardAvoidingView, Platform, Animated, Dimensions } from 'react-native';
 import RecallHeader from '@/components/RecallHeader';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -61,6 +61,8 @@ export default function CategoryViewerScreen() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuAnim = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
+  const ellipsisButtonRef = useRef<View>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null);
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
@@ -794,20 +796,49 @@ export default function CategoryViewerScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
-    setIsMenuOpen(true);
-    Animated.timing(menuAnim, {
-      toValue: 1,
-      duration: 120,
-      useNativeDriver: true,
-    }).start();
-  }, [menuAnim]);
+
+    const SCREEN_WIDTH = Dimensions.get('window').width;
+    const FALLBACK_ANCHOR = { top: insets.top + 160, right: 16 };
+
+    const doOpen = (anchor: { top: number; right: number }) => {
+      setMenuAnchor(anchor);
+      setIsMenuOpen(true);
+      Animated.timing(menuAnim, {
+        toValue: 1,
+        duration: 120,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    if (ellipsisButtonRef.current) {
+      ellipsisButtonRef.current.measureInWindow((x, y, width, height) => {
+        if (width > 0 && height > 0) {
+          const anchor = {
+            top: y + height + 6,
+            right: SCREEN_WIDTH - (x + width),
+          };
+          console.log('[CategoryViewer] Ellipsis button measured, anchor:', anchor);
+          doOpen(anchor);
+        } else {
+          console.log('[CategoryViewer] Ellipsis measure returned zero size, using fallback anchor');
+          doOpen(FALLBACK_ANCHOR);
+        }
+      });
+    } else {
+      console.log('[CategoryViewer] Ellipsis ref not ready, using fallback anchor');
+      doOpen(FALLBACK_ANCHOR);
+    }
+  }, [menuAnim, insets.top]);
 
   const closeMenu = useCallback(() => {
     Animated.timing(menuAnim, {
       toValue: 0,
       duration: 100,
       useNativeDriver: true,
-    }).start(() => setIsMenuOpen(false));
+    }).start(() => {
+      setIsMenuOpen(false);
+      setMenuAnchor(null);
+    });
   }, [menuAnim]);
 
   const handleNotePress = useCallback((noteId: string) => {
@@ -1372,18 +1403,18 @@ export default function CategoryViewerScreen() {
       <Stack.Screen options={stackScreenOptions} />
 
       {/* Context menu popover */}
-      {isMenuOpen && (
+      {isMenuOpen && menuAnchor && (
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
           {/* Backdrop */}
           <Pressable
             style={styles.menuBackdrop}
             onPress={closeMenu}
           />
-          {/* Menu card — anchored to bottom-right of the count/ellipsis row */}
+          {/* Menu card — anchored to bottom-right of the ellipsis button */}
           <Animated.View
             style={[
               styles.menuCard,
-              { top: insets.top + 160, right: 16 },
+              { top: menuAnchor.top, right: menuAnchor.right },
               { opacity: menuOpacity, transform: [{ translateY: menuTranslateY }] },
             ]}
           >
@@ -1453,13 +1484,15 @@ export default function CategoryViewerScreen() {
                   <Text style={[styles.categoryHeading, { flex: 1 }]} numberOfLines={2} ellipsizeMode="tail">
                     {category.category_name}
                   </Text>
-                  <Pressable
-                    onPress={openMenu}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    style={styles.ellipsisButton}
-                  >
-                    <IconSymbol name="ellipsis" size={20} color={colors.text} />
-                  </Pressable>
+                  <View ref={ellipsisButtonRef} collapsable={false}>
+                    <Pressable
+                      onPress={openMenu}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      style={styles.ellipsisButton}
+                    >
+                      <IconSymbol name="ellipsis" size={20} color={colors.text} />
+                    </Pressable>
+                  </View>
                 </View>
                 <Text style={styles.categoryDescription} numberOfLines={3}>
                   {category.category_search_description}

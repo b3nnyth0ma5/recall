@@ -17,12 +17,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Note } from '@/types/Note';
 import { peopleCache, imageCache, CostCalculator } from '@/utils/memoryCache';
 import { useNotes } from '@/hooks/useNotes';
+import { useNotesContext } from '@/contexts/NotesContext';
 
 export default function PersonRecallsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { user } = useAuth();
   const { getCachedNote } = useNotes();
+  const { refreshUrlMetadata } = useNotesContext();
   const [recalls, setRecalls] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -341,13 +343,20 @@ export default function PersonRecallsScreen() {
       } else {
         setRecalls(transformedNotes);
       }
+
+      // Fire-and-forget: populate URL metadata so NoteCard can render URL previews
+      const loadedIds = transformedNotes.map(n => n.id);
+      if (loadedIds.length > 0) {
+        console.log('[PersonRecalls] Refreshing URL metadata for', loadedIds.length, 'recalls');
+        refreshUrlMetadata(loadedIds);
+      }
     } catch (error) {
       console.error('[PersonRecalls] Error loading recalls for person:', error);
     } finally {
       setLoading(false);
       setIsLoadingMore(false);
     }
-  }, [personId, user, getCachedNote, loadImagesForRecalls]);
+  }, [personId, user, getCachedNote, loadImagesForRecalls, refreshUrlMetadata]);
 
   useEffect(() => {
     if (personId && user) {
