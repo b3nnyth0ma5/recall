@@ -828,6 +828,29 @@ export function useNotes() {
         setSearchAnswer(answer);
         setSearchConfidence(confidence);
 
+        // Fire-and-forget: fetch URL metadata for search result recalls
+        const searchResultIds = notesWithImages.map((n: any) => n.id).filter(Boolean);
+        if (searchResultIds.length > 0) {
+          getRecallUrlsForRecalls(searchResultIds).then(fetched => {
+            setUrlMetadataByRecallId(prev => ({ ...prev, ...fetched }));
+            const unscrapedIds: string[] = [];
+            for (const rows of Object.values(fetched)) {
+              for (const row of rows) {
+                if (row.scraped_at === null) unscrapedIds.push(row.id);
+              }
+            }
+            if (unscrapedIds.length > 0) {
+              unscrapedIds.forEach(id => triggerScrapeIfMissing(id));
+              if (urlRefreshTimerRef.current) clearTimeout(urlRefreshTimerRef.current);
+              urlRefreshTimerRef.current = setTimeout(() => {
+                getRecallUrlsForRecalls(searchResultIds).then(updated => {
+                  setUrlMetadataByRecallId(prev => ({ ...prev, ...updated }));
+                });
+              }, 6000);
+            }
+          });
+        }
+
         // Fire-and-forget: generate a collage for the recent-searches thumbnail.
         (async () => {
           try {

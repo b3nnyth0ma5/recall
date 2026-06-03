@@ -1,5 +1,5 @@
 import { useEffect, useState, memo, useRef } from 'react';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, usePathname } from 'expo-router';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
 import { NotesProvider } from '@/contexts/NotesContext';
@@ -286,6 +286,7 @@ function RootLayoutNav() {
 
   const { isCreatePanelOpen, openCreatePanel } = useCreateRecallUI();
   const { triggerScrollToTop } = useScrollToTop();
+  const pathname = usePathname();
 
   const showNavBar = (() => {
     const seg0 = segments[0] as string | undefined;
@@ -313,8 +314,16 @@ function RootLayoutNav() {
   const navBarVisible = showNavBar && !isCreatePanelOpen;
 
   const handleNavHome = () => {
-    console.log('[FloatingNavBar] Home tapped, activeRoute:', activeRoute);
-    if (activeRoute === 'home') {
+    console.log('[FloatingNavBar] Home tapped, activeRoute:', activeRoute, 'pathname:', pathname);
+    if (pathname.includes('category-viewer')) {
+      console.log('[FloatingNavBar] On category-viewer — dismissing all and replacing to home tab');
+      try {
+        router.dismissAll();
+      } catch (_e) {
+        // nothing to dismiss
+      }
+      router.replace('/(tabs)/(home)');
+    } else if (activeRoute === 'home') {
       console.log('[FloatingNavBar] Already on home — scrolling to top');
       triggerScrollToTop('home');
     } else {

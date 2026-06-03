@@ -231,7 +231,9 @@ export default function ProfileScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: () => <RecallHeader />,
+          headerBackVisible: false,
+          headerLeft: () => <RecallHeader />,
+          headerTitle: '',
           headerStyle: { backgroundColor: colors.background },
           headerShadowVisible: false,
           headerTintColor: colors.text,

@@ -13,6 +13,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { getImageDataUrl } from '@/utils/supabase';
 import { useNotes } from '@/hooks/useNotes';
+import { useNotesContext } from '@/contexts/NotesContext';
 import { peopleCache, imageCache, noteCache, CostCalculator } from '@/utils/memoryCache';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
 import Toast from 'react-native-toast-message';
@@ -47,6 +48,7 @@ export default function CategoryViewerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { getCachedNote } = useNotes();
+  const { refreshUrlMetadata } = useNotesContext();
   const [category, setCategory] = useState<Category | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
@@ -498,6 +500,12 @@ export default function CategoryViewerScreen() {
         } else {
           setNotes(orderedNotes);
         }
+
+        // Fire-and-forget: populate URL metadata in context so NoteCard can render UrlPreviewCard
+        const noteIds = orderedNotes.map(n => n.id);
+        if (noteIds.length > 0) {
+          refreshUrlMetadata(noteIds);
+        }
         
         setLoading(false);
         setIsLoadingMore(false);
@@ -607,6 +615,12 @@ export default function CategoryViewerScreen() {
       } else {
         setNotes(transformedNotes);
       }
+
+      // Fire-and-forget: populate URL metadata in context so NoteCard can render UrlPreviewCard
+      const noteIds = transformedNotes.map(n => n.id);
+      if (noteIds.length > 0) {
+        refreshUrlMetadata(noteIds);
+      }
     } catch (error) {
       console.error('[CategoryViewer] Error loading data:', error);
       Alert.alert('Error', 'Failed to load category data');
@@ -614,7 +628,7 @@ export default function CategoryViewerScreen() {
       setLoading(false);
       setIsLoadingMore(false);
     }
-  }, [id, user, router, getCachedNote, loadImagesForRecalls, sortOrder]);
+  }, [id, user, router, getCachedNote, loadImagesForRecalls, sortOrder, refreshUrlMetadata]);
 
   // Start polling to check if matching is complete
   const startMatchingPolling = useCallback(() => {
@@ -1330,10 +1344,13 @@ export default function CategoryViewerScreen() {
     outputRange: [-8, 0],
   });
 
-  // Shared Stack.Screen options with branded header
+  // Shared Stack.Screen options with branded header flush-left, no back button
   const stackScreenOptions = {
     headerShown: true,
-    headerTitle: () => <RecallHeader />,
+    headerBackVisible: false,
+    headerBackTitleVisible: false,
+    headerLeft: () => <RecallHeader />,
+    headerTitle: '',
     headerStyle: { backgroundColor: colors.background },
     headerShadowVisible: false,
     headerTintColor: colors.text,
@@ -1442,9 +1459,19 @@ export default function CategoryViewerScreen() {
               
               {/* Name + Description stacked to the right */}
               <View style={styles.categoryTextContainer}>
-                <Text style={styles.categoryHeading} numberOfLines={2} ellipsizeMode="tail">
-                  {category.category_name}
-                </Text>
+                {/* Title row: name (flex) + ellipsis button (fixed) */}
+                <View style={styles.categoryTitleRow}>
+                  <Text style={[styles.categoryHeading, { flex: 1 }]} numberOfLines={2} ellipsizeMode="tail">
+                    {category.category_name}
+                  </Text>
+                  <Pressable
+                    onPress={openMenu}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    style={styles.ellipsisButton}
+                  >
+                    <IconSymbol name="ellipsis" size={20} color={colors.text} />
+                  </Pressable>
+                </View>
                 <Text style={styles.categoryDescription} numberOfLines={3}>
                   {category.category_search_description}
                 </Text>
@@ -1500,17 +1527,11 @@ export default function CategoryViewerScreen() {
               </Pressable>
             </View>
 
-            {/* Recall count (left) + ellipsis trigger (right) */}
+            {/* Recall count — left-aligned */}
             <View style={styles.countEllipsisRow}>
               <Text style={styles.recallCount}>
                 {recallCountLabel}
               </Text>
-              <Pressable
-                onPress={openMenu}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <IconSymbol name="ellipsis" size={20} color={colors.text} />
-              </Pressable>
             </View>
           </View>
 
@@ -1775,11 +1796,19 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
   },
+  categoryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
+  ellipsisButton: {
+    paddingLeft: 8,
+    paddingTop: 2,
+  },
   categoryHeading: {
     fontSize: 22,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 6,
   },
   categoryInfoContainer: {
     padding: 16,
