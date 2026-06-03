@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Alert, TextInput, Image, Modal, KeyboardAvoidingView, Platform, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, FlatList, Pressable, ActivityIndicator, RefreshControl, Alert, TextInput, Image, Modal, KeyboardAvoidingView, Platform, Animated, Dimensions } from 'react-native';
 import RecallHeader from '@/components/RecallHeader';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1494,13 +1494,15 @@ export default function CategoryViewerScreen() {
                       <Text style={[styles.categoryHeading, { flex: 1 }]} numberOfLines={2} ellipsizeMode="tail">
                         {category.category_name}
                       </Text>
-                      <Pressable
-                        onPress={openMenu}
-                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                        style={styles.ellipsisButton}
-                      >
-                        <IconSymbol name="ellipsis" size={20} color={colors.text} />
-                      </Pressable>
+                      <View ref={ellipsisButtonRef} collapsable={false}>
+                        <Pressable
+                          onPress={openMenu}
+                          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                          style={styles.ellipsisButton}
+                        >
+                          <IconSymbol name="ellipsis" size={20} color={colors.text} />
+                        </Pressable>
+                      </View>
                     </View>
                     <Text style={styles.categoryDescription} numberOfLines={3}>
                       {category.category_search_description}
@@ -1595,138 +1597,7 @@ export default function CategoryViewerScreen() {
               colors={[colors.primary]}
             />
           }
-        >
-          {/* Two-column header: image left, name+description right */}
-          <View style={styles.categoryInfoContainer}>
-            <View style={styles.categoryTopRow}>
-              {/* Category Icon — plain image, no overlay */}
-              <View style={styles.iconContainer}>
-                {category.icon_cdn_url && (
-                  <Image
-                    source={{ uri: category.icon_cdn_url }}
-                    style={styles.categoryIcon}
-                    resizeMode="cover"
-                  />
-                )}
-              </View>
-              
-              {/* Name + Description stacked to the right */}
-              <View style={styles.categoryTextContainer}>
-                {/* Title row: name (flex) + ellipsis button (fixed) */}
-                <View style={styles.categoryTitleRow}>
-                  <Text style={[styles.categoryHeading, { flex: 1 }]} numberOfLines={2} ellipsizeMode="tail">
-                    {category.category_name}
-                  </Text>
-                  <View ref={ellipsisButtonRef} collapsable={false}>
-                    <Pressable
-                      onPress={openMenu}
-                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                      style={styles.ellipsisButton}
-                    >
-                      <IconSymbol name="ellipsis" size={20} color={colors.text} />
-                    </Pressable>
-                  </View>
-                </View>
-                <Text style={styles.categoryDescription} numberOfLines={3}>
-                  {category.category_search_description}
-                </Text>
-              </View>
-            </View>
-
-            {/* Sort pills — left-aligned, no label, no separators */}
-            <View style={styles.sortContainer}>
-              <Pressable
-                style={[styles.sortButton, sortOrder === 'Newest' && styles.sortButtonActive]}
-                onPress={() => {
-                  console.log('[CategoryViewer] User tapped "Newest" sort button');
-                  if (Platform.OS !== 'web') {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }
-                  setSortOrder('Newest');
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={[styles.sortButtonText, sortOrder === 'Newest' && styles.sortButtonTextActive]}>
-                  Newest
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.sortButton, sortOrder === 'Oldest' && styles.sortButtonActive]}
-                onPress={() => {
-                  console.log('[CategoryViewer] User tapped "Oldest" sort button');
-                  if (Platform.OS !== 'web') {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }
-                  setSortOrder('Oldest');
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={[styles.sortButtonText, sortOrder === 'Oldest' && styles.sortButtonTextActive]}>
-                  Oldest
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.sortButton, sortOrder === 'Best match' && styles.sortButtonActive]}
-                onPress={() => {
-                  console.log('[CategoryViewer] User tapped "Best match" sort button');
-                  if (Platform.OS !== 'web') {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }
-                  setSortOrder('Best match');
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={[styles.sortButtonText, sortOrder === 'Best match' && styles.sortButtonTextActive]}>
-                  Best match
-                </Text>
-              </Pressable>
-            </View>
-
-            {/* Recall count — left-aligned */}
-            <View style={styles.countEllipsisRow}>
-              <Text style={styles.recallCount}>
-                {recallCountLabel}
-              </Text>
-            </View>
-          </View>
-
-          {/* Rematching indicator — shown while background matching is in flight */}
-          {isRematching && (
-            <View style={styles.rematchingBanner}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.rematchingBannerText}>matching…</Text>
-            </View>
-          )}
-
-          {/* Recalls */}
-          {notes.length === 0 ? (
-            renderEmptyState()
-          ) : (
-            <View style={styles.notesContainer}>
-              {notes.map((note, index) => (
-                <NoteCard
-                  key={`${note.id}-${index}`}
-                  note={note}
-                  onPress={() => handleNotePress(note.id)}
-                  onDelete={() => handleDeleteRecall(note.id)}
-                />
-              ))}
-              
-              {isLoadingMore && (
-                <View style={styles.loadingMoreContainer}>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                  <Text style={styles.loadingMoreText}>Loading more...</Text>
-                </View>
-              )}
-              
-              {!hasMore && notes.length > 0 && (
-                <View style={styles.endContainer}>
-                  <Text style={styles.endText}>You&apos;ve reached the end</Text>
-                </View>
-              )}
-            </View>
-          )}
-        </ScrollView>
+        />
       )}
 
       {/* Edit Modal */}
