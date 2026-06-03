@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import Constants from 'expo-constants';
+import { coalesce } from './requestCoalescer';
 
 // Initialize constants at module scope
 const supabaseUrl = (Constants.expoConfig?.extra?.supabaseUrl as string) ?? '';
@@ -421,6 +422,7 @@ export async function cleanupCloudflareCollage(cdnUrl: string | null | undefined
 }
 
 export async function fetchNotesWithImagesForReels(userId: string, limit: number = 10): Promise<any[]> {
+  return coalesce(`reels:${userId}`, async () => {
   try {
     console.log('=== Fetching notes with images for story reels ===');
     console.log('User ID:', userId);
@@ -449,7 +451,7 @@ export async function fetchNotesWithImagesForReels(userId: string, limit: number
     // Fetch the recall details for these IDs
     const { data: recallsData, error: recallDetailsError } = await supabase
       .from('recalls')
-      .select('*')
+      .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
       .in('id', uniqueRecallIds)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
@@ -527,6 +529,7 @@ export async function fetchNotesWithImagesForReels(userId: string, limit: number
     console.error('Exception in fetchNotesWithImagesForReels:', error);
     return [];
   }
+  }); // end coalesce
 }
 
 export async function triggerOCRProcessing(imageId: string): Promise<{ success: boolean; error?: string; data?: any }> {
@@ -1011,23 +1014,25 @@ export async function getDocumentAnalysis(documentId: string): Promise<{
 }
 
 export async function fetchDocumentsForNote(noteId: string): Promise<any[]> {
-  try {
-    console.log('[fetchDocumentsForNote] Fetching documents for note:', noteId);
-    const { data, error } = await supabase
-      .from('recall_documents')
-      .select('*')
-      .eq('recall_id', noteId)
-      .order('created_at', { ascending: true });
-    if (error) {
-      console.error('[fetchDocumentsForNote] Error:', error);
+  return coalesce(`documents:${noteId}`, async () => {
+    try {
+      console.log('[fetchDocumentsForNote] Fetching documents for note:', noteId);
+      const { data, error } = await supabase
+        .from('recall_documents')
+        .select('*')
+        .eq('recall_id', noteId)
+        .order('created_at', { ascending: true });
+      if (error) {
+        console.error('[fetchDocumentsForNote] Error:', error);
+        return [];
+      }
+      console.log('[fetchDocumentsForNote] Found', data?.length ?? 0, 'documents');
+      return data ?? [];
+    } catch (error) {
+      console.error('[fetchDocumentsForNote] Exception:', error);
       return [];
     }
-    console.log('[fetchDocumentsForNote] Found', data?.length ?? 0, 'documents');
-    return data ?? [];
-  } catch (error) {
-    console.error('[fetchDocumentsForNote] Exception:', error);
-    return [];
-  }
+  });
 }
 
 export async function batchUploadImagesToCloudflare(batchSize: number = 100): Promise<{

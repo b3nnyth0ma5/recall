@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Image,
   Alert,
   ActivityIndicator,
   Platform,
@@ -16,6 +15,7 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -640,7 +640,7 @@ export default function NoteEditorScreen() {
           
           const { data: recallData, error: recallError } = await supabase
             .from('recalls')
-            .select('*')
+            .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
             .eq('id', noteId)
             .eq('user_id', user.id)
             .single();
@@ -726,7 +726,7 @@ export default function NoteEditorScreen() {
 
         const { data: recallData, error: recallError } = await supabase
           .from('recalls')
-          .select('*')
+          .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
           .eq('id', noteId)
           .eq('user_id', user.id)
           .single();
@@ -1621,7 +1621,7 @@ export default function NoteEditorScreen() {
                       <Text style={styles.loadingImageText}>Loading...</Text>
                     </View>
                   ) : (
-                    <Image source={{ uri: displayImage.uri }} style={styles.image} resizeMode="cover" />
+                    <Image source={{ uri: displayImage.uri }} style={styles.image} contentFit="cover" transition={150} cachePolicy="memory-disk" />
                   )}
                   <View style={styles.imageActions}>
                     <Pressable

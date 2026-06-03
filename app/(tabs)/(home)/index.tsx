@@ -1,12 +1,11 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Modal, Platform, Alert, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, RefreshControl, Modal, Platform, Alert, Keyboard } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { useNotesContext } from '@/contexts/NotesContext';
-import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
 import { CategoryCarousel } from '@/components/CategoryCarousel';
@@ -18,12 +17,13 @@ import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 import { ZeroState } from '@/components/ZeroState';
 import { extractUrls, processRecallUrlsAndAwaitScrape } from '@/utils/urlProcessor';
 import RecallHeader from '@/components/RecallHeader';
+import { Note } from '@/types/Note';
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata } = useNotesContext();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlatList<Note>>(null);
   const scrollPositionRef = useRef(0);
   const previousNotesCountRef = useRef(notes.length);
   const isFirstFocusRef = useRef(true);
@@ -43,7 +43,7 @@ export default function HomeScreen() {
   useEffect(() => {
     const unregister = registerScrollToTop('home', () => {
       console.log('[HomeScreen] Scroll to top triggered');
-      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      listRef.current?.scrollToOffset({ offset: 0, animated: true });
     });
     return unregister;
   }, [registerScrollToTop]);
@@ -131,9 +131,9 @@ export default function HomeScreen() {
       }
       
       const savedScrollPosition = scrollPositionRef.current;
-      if (savedScrollPosition > 0 && scrollViewRef.current) {
+      if (savedScrollPosition > 0 && listRef.current) {
         setTimeout(() => {
-          scrollViewRef.current?.scrollTo({ y: savedScrollPosition, animated: false });
+          listRef.current?.scrollToOffset({ offset: savedScrollPosition, animated: false });
         }, 100);
       }
       
@@ -163,29 +163,9 @@ export default function HomeScreen() {
   const handleRecallIconPress = async () => {
     console.log('[handleRecallIconPress] Recall icon pressed - reloading');
     
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollTo({ y: 0, animated: true });
-    }
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
     
     await handleRefresh();
-  };
-
-  const handleAddRecall = () => {
-    console.log('[handleAddRecall] Add recall button pressed');
-    
-    if (Platform.OS !== 'web') {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      } catch (error) {
-        console.error('Error triggering haptic feedback:', error);
-      }
-    }
-    
-    try {
-      router.push('/note-editor');
-    } catch (error) {
-      console.error('Error navigating to recall editor:', error);
-    }
   };
 
   const handleNotePress = (noteId: string) => {
@@ -196,25 +176,22 @@ export default function HomeScreen() {
     }
   };
 
+  const handleEndReached = useCallback(() => {
+    if (hasMore && !isLoadingMore && !loading) {
+      console.log('[handleEndReached] Loading more recalls...');
+      loadMoreNotes();
+    }
+  }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
+
   const handleScroll = useCallback((event: any) => {
     try {
-      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-      
+      const { contentOffset } = event.nativeEvent;
       scrollPositionRef.current = contentOffset.y;
-
       Keyboard.dismiss();
-
-      const paddingToBottom = 20;
-      const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
-
-      if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
-        console.log('[handleScroll] Loading more recalls...');
-        loadMoreNotes();
-      }
     } catch (error) {
       console.error('Error handling scroll:', error);
     }
-  }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
+  }, []);
 
   const handleCreateRecallFromCombined = async (
     data: {
@@ -498,34 +475,78 @@ export default function HomeScreen() {
     }
   };
 
-  const renderEmptyState = () => {
-    return (
-      <ZeroState
-        icon="doc.text"
-        title="No Recalls Yet"
-        message="Start capturing your thoughts, memories, and moments"
-        animatedIcon={true}
-      />
-    );
-  };
-
-  const renderSkeletons = () => {
-    return (
-      <View style={styles.allNotesSection}>
-        {[...Array(3)].map((_, index) => (
-          <NoteCardSkeleton key={`skeleton-${index}`} />
-        ))}
-      </View>
-    );
+  const getExpectedImageCount = (noteId: string): number | undefined => {
+    return pendingImageUploadsRef.current.get(noteId);
   };
 
   const shouldShowSkeletons = loading && (!hasCheckedForRecalls || notes.length === 0);
   const shouldShowZeroState = hasCheckedForRecalls && !hasRecalls && notes.length === 0 && !loading;
-  const shouldShowContent = hasCheckedForRecalls && (hasRecalls || notes.length > 0);
 
-  const getExpectedImageCount = (noteId: string): number | undefined => {
-    return pendingImageUploadsRef.current.get(noteId);
-  };
+  const listData = hasRecalls || notes.length > 0 ? notes : [];
+
+  const renderItem = useCallback(({ item }: { item: Note }) => (
+    <NoteCard
+      note={item}
+      onPress={() => handleNotePress(item.id)}
+      onDelete={() => handleDeleteNote(item.id)}
+      loading={false}
+      expectedImageCount={getExpectedImageCount(item.id)}
+    />
+  ), []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ListHeaderComponent = (
+    <View>
+      <View style={[styles.customHeader, { paddingTop: insets.top }]}>
+        <Pressable
+          onPress={handleRecallIconPress}
+          style={styles.headerLogoGroup}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <RecallHeader />
+        </Pressable>
+      </View>
+
+      {user && (
+        <View style={styles.categoryCarouselContainer}>
+          <CategoryCarousel
+            userId={user.id}
+            refreshTrigger={categoryRefreshTrigger}
+          />
+        </View>
+      )}
+    </View>
+  );
+
+  const ListEmptyComponent = shouldShowSkeletons ? (
+    <View style={styles.allNotesSection}>
+      {[...Array(3)].map((_, index) => (
+        <NoteCardSkeleton key={`skeleton-${index}`} />
+      ))}
+    </View>
+  ) : shouldShowZeroState ? (
+    <ZeroState
+      icon="doc.text"
+      title="No Recalls Yet"
+      message="Start capturing your thoughts, memories, and moments"
+      animatedIcon={true}
+    />
+  ) : null;
+
+  const ListFooterComponent = isLoadingMore ? (
+    <View style={styles.loadingMoreContainer}>
+      <ActivityIndicator size="small" color={colors.primary} />
+      <Text style={styles.loadingMoreText}>Loading more...</Text>
+    </View>
+  ) : !hasMore && notes.length > 0 ? (
+    <View style={styles.endContainer}>
+      <Text style={styles.endText}>You&apos;ve reached the end</Text>
+    </View>
+  ) : null;
+
+  const contentContainerStyle = [
+    styles.scrollContent,
+    combinedAddSearchEnabled && styles.scrollContentWithCombined,
+  ];
 
   return (
     <View style={styles.container}>
@@ -535,15 +556,14 @@ export default function HomeScreen() {
         }}
       />
 
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          combinedAddSearchEnabled && styles.scrollContentWithCombined,
-        ]}
-        onScroll={handleScroll}
-        scrollEventThrottle={400}
+      <FlatList
+        ref={listRef}
+        data={listData}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        ListHeaderComponent={ListHeaderComponent}
+        ListEmptyComponent={ListEmptyComponent}
+        ListFooterComponent={ListFooterComponent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -552,60 +572,17 @@ export default function HomeScreen() {
             colors={[colors.primary]}
           />
         }
-      >
-        <View style={[styles.customHeader, { paddingTop: insets.top }]}>
-          <Pressable
-            onPress={handleRecallIconPress}
-            style={styles.headerLogoGroup}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <RecallHeader />
-          </Pressable>
-
-        </View>
-
-        {user && (
-          <View style={styles.categoryCarouselContainer}>
-            <CategoryCarousel
-              userId={user.id}
-              refreshTrigger={categoryRefreshTrigger}
-            />
-          </View>
-        )}
-
-        {shouldShowSkeletons ? (
-          renderSkeletons()
-        ) : shouldShowZeroState ? (
-          renderEmptyState()
-        ) : shouldShowContent ? (
-          <View style={styles.notesContainer}>
-            <View style={styles.allNotesSection}>
-              {notes.map((note, index) => (
-                <NoteCard
-                  key={`${note.id}-${index}`}
-                  note={note}
-                  onPress={() => handleNotePress(note.id)}
-                  onDelete={() => handleDeleteNote(note.id)}
-                  loading={false}
-                  expectedImageCount={getExpectedImageCount(note.id)}
-                />
-              ))}
-            </View>
-
-            {isLoadingMore && (
-              <View style={styles.loadingMoreContainer}>
-                <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={styles.loadingMoreText}>Loading more...</Text>
-              </View>
-            )}
-            {!hasMore && notes.length > 0 && (
-              <View style={styles.endContainer}>
-                <Text style={styles.endText}>You&apos;ve reached the end</Text>
-              </View>
-            )}
-          </View>
-        ) : null}
-      </ScrollView>
+        onEndReached={!loading ? handleEndReached : undefined}
+        onEndReachedThreshold={0.5}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        windowSize={10}
+        maxToRenderPerBatch={6}
+        initialNumToRender={8}
+        removeClippedSubviews
+        contentContainerStyle={contentContainerStyle}
+        style={styles.scrollView}
+      />
 
       {combinedAddSearchEnabled && user && !loadingPreferences && isCreatePanelOpen && (
         <CombinedSearchAdd

@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Image,
   Alert,
   ActivityIndicator,
   Platform,
@@ -17,6 +16,7 @@ import {
   NativeSyntheticEvent,
   Modal,
 } from 'react-native';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
@@ -294,7 +294,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
           
           const { data: recallData, error: recallError } = await supabase
             .from('recalls')
-            .select('*')
+            .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
             .eq('id', noteId)
             .eq('user_id', user.id)
             .single();
@@ -381,7 +381,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
 
         const { data: recallData, error: recallError } = await supabase
           .from('recalls')
-          .select('*')
+          .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
           .eq('id', noteId)
           .eq('user_id', user.id)
           .single();
@@ -1376,7 +1376,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                                 <Text style={styles.loadingImageText}>Loading...</Text>
                               </View>
                             ) : (
-                              <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
+                              <Image source={{ uri: image.uri }} style={styles.image} contentFit="cover" transition={150} cachePolicy="memory-disk" />
                             )}
                             <View style={styles.imageActions}>
                               <Pressable

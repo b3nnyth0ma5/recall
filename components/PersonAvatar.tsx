@@ -1,6 +1,8 @@
 
 import React from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
+import { cdnVariant } from '@/utils/cdnVariant';
 import { colors } from '@/styles/commonStyles';
 
 interface PersonAvatarProps {
@@ -76,14 +78,18 @@ export function PersonAvatar({ personName, photoUrl, size = 40, style }: PersonA
       ]}
     >
       {photoUrl ? (
+        // cdnVariant 'avatar' requires the variant in Cloudflare Images dashboard.
+        // If absent, cdnVariant is a no-op — still benefits from expo-image caching.
         <Image 
-          source={{ uri: photoUrl }} 
+          source={{ uri: cdnVariant(photoUrl, 'avatar') as string }}
           style={{
             width: size,
             height: size,
             borderRadius: size / 2,
           }}
-          resizeMode="cover"
+          contentFit="cover"
+          transition={150}
+          cachePolicy="memory-disk"
         />
       ) : (
         <Text style={[styles.initials, { fontSize }]}>

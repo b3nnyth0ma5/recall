@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { debounce } from '@/utils/debounce';
 import {
   View,
   Text,
   TextInput,
   StyleSheet,
-  ScrollView,
+  FlatList,
   Pressable,
   Keyboard,
   Platform,
@@ -110,8 +111,43 @@ export default function SearchScreen() {
   useEffect(() => {
     if (!user?.id) return;
 
-    const channelName = `search-history-changes-${user.id}-${Math.random().toString(36).slice(2, 8)}`;
+    const channelName = `realtime:${user.id}:search_history`;
     if (__DEV__) console.log('[SearchScreen] Setting up realtime subscription for search_history, channel:', channelName);
+
+    const latestPayloadRef: { current: any } = { current: null };
+
+    const handlePayload = (payload: any) => {
+      if (__DEV__) console.log('[SearchScreen] Realtime search_history change:', payload.eventType);
+      if (payload.eventType === 'UPDATE' && payload.new) {
+        const updated = payload.new as SearchHistory;
+        setSearchHistory((prev) =>
+          prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+        );
+      } else if (payload.eventType === 'DELETE' && payload.old) {
+        const deletedId = (payload.old as { id?: string }).id;
+        if (deletedId) {
+          setSearchHistory((prev) => prev.filter((item) => item.id !== deletedId));
+        }
+      } else if (payload.eventType === 'INSERT' && payload.new) {
+        const inserted = payload.new as SearchHistory;
+        setSearchHistory((prev) => {
+          // Avoid duplicates if already present (e.g. when our own upsert echoes back)
+          if (prev.some((item) => item.id === inserted.id)) return prev;
+          return [inserted, ...prev];
+        });
+      }
+    };
+
+    const debouncedFlush = debounce(() => {
+      const payload = latestPayloadRef.current;
+      latestPayloadRef.current = null;
+      if (payload) handlePayload(payload);
+    }, 300);
+
+    const onChange = (p: any) => {
+      latestPayloadRef.current = p;
+      debouncedFlush();
+    };
 
     const channel = supabase
       .channel(channelName)
@@ -123,32 +159,13 @@ export default function SearchScreen() {
           table: 'search_history',
           filter: `user_id=eq.${user.id}`,
         },
-        (payload) => {
-          if (__DEV__) console.log('[SearchScreen] Realtime search_history change:', payload.eventType);
-          if (payload.eventType === 'UPDATE' && payload.new) {
-            const updated = payload.new as SearchHistory;
-            setSearchHistory((prev) =>
-              prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
-            );
-          } else if (payload.eventType === 'DELETE' && payload.old) {
-            const deletedId = (payload.old as { id?: string }).id;
-            if (deletedId) {
-              setSearchHistory((prev) => prev.filter((item) => item.id !== deletedId));
-            }
-          } else if (payload.eventType === 'INSERT' && payload.new) {
-            const inserted = payload.new as SearchHistory;
-            setSearchHistory((prev) => {
-              // Avoid duplicates if already present (e.g. when our own upsert echoes back)
-              if (prev.some((item) => item.id === inserted.id)) return prev;
-              return [inserted, ...prev];
-            });
-          }
-        },
+        onChange,
       )
       .subscribe();
 
     return () => {
       if (__DEV__) console.log('[SearchScreen] Cleaning up realtime subscription');
+      debouncedFlush.cancel();
       supabase.removeChannel(channel);
     };
   }, [user?.id]);
@@ -261,13 +278,13 @@ export default function SearchScreen() {
   }, [router]);
 
   const recallRefs = useRef<{ [key: string]: View | null }>({});
-  const scrollViewRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlatList>(null);
   const { registerScrollToTop, registerSearchFocus } = useScrollToTop();
 
   useEffect(() => {
     const unregister = registerScrollToTop('search', () => {
       console.log('[SearchScreen] Scroll to top triggered');
-      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      listRef.current?.scrollToOffset({ offset: 0, animated: true });
     });
     return unregister;
   }, [registerScrollToTop]);
@@ -287,51 +304,15 @@ export default function SearchScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     
-    const recallElement = recallRefs.current[recallId];
-    if (recallElement && scrollViewRef.current) {
-      console.log('[SearchScreen] Found recall element, measuring position...');
-      
-      setTimeout(() => {
-        recallElement.measureLayout(
-          scrollViewRef.current as any,
-          (x, y, width, height) => {
-            console.log('[SearchScreen] Recall position:', { x, y, width, height });
-            
-            if (scrollViewRef.current) {
-              // Scroll to ensure the TOP of the recall is visible
-              // Subtract more offset to ensure the entire recall header is visible
-              const scrollY = Math.max(0, y - 80);
-              console.log('[SearchScreen] Scrolling to y:', scrollY);
-              
-              scrollViewRef.current.scrollTo({
-                y: scrollY,
-                animated: true,
-              });
-            }
-          },
-          () => {
-            console.log('[SearchScreen] measureLayout failed, trying measure fallback');
-            recallElement.measure((fx, fy, width, height, px, py) => {
-              console.log('[SearchScreen] Recall absolute position:', { fx, fy, width, height, px, py });
-              
-              if (scrollViewRef.current) {
-                // Scroll to ensure the TOP of the recall is visible
-                const scrollY = Math.max(0, py - 80);
-                console.log('[SearchScreen] Scrolling to y (fallback):', scrollY);
-                
-                scrollViewRef.current.scrollTo({
-                  y: scrollY,
-                  animated: true,
-                });
-              }
-            });
-          }
-        );
-      }, 100);
+    // With FlatList, scroll to the item by index
+    const noteIndex = filteredNotes.findIndex(n => n.id === recallId);
+    if (noteIndex !== -1 && listRef.current) {
+      console.log('[SearchScreen] Scrolling to note index:', noteIndex);
+      listRef.current.scrollToIndex({ index: noteIndex, animated: true, viewOffset: 80 });
     } else {
-      console.log('[SearchScreen] Recall element not found in refs');
+      console.log('[SearchScreen] Recall element not found in list');
     }
-  }, []);
+  }, [filteredNotes]);
 
   const recallReferences = useMemo(() => {
     if (!filteredNotes || filteredNotes.length === 0) {
@@ -642,6 +623,35 @@ export default function SearchScreen() {
     </View>
   ), []);
 
+  const renderSearchResultItem = useCallback(({ item }: { item: import('@/types/Note').Note }) => {
+    const recallRef = recallReferences.find(ref => ref.recallId === item.id);
+    const imageIndex = recallRef?.imageIndex;
+    return (
+      <View
+        style={styles.noteWrapper}
+        ref={(ref) => { recallRefs.current[item.id] = ref; }}
+      >
+        <View style={styles.badgeRow}>
+          <View style={styles.answerSourceBadge}>
+            <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+            <Text style={styles.answerSourceText}>Used for answer</Text>
+          </View>
+        </View>
+        <View style={styles.noteCardContainer}>
+          <NoteCard
+            note={item}
+            onPress={(scrollToImage) => {
+              const finalImageIndex = scrollToImage !== undefined ? scrollToImage : imageIndex;
+              handleNotePress(item.id, finalImageIndex);
+            }}
+            scrollToImageIndex={imageIndex}
+            loading={false}
+          />
+        </View>
+      </View>
+    );
+  }, [recallReferences, handleNotePress]);
+
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -684,230 +694,176 @@ export default function SearchScreen() {
         </View>
       </View>
 
-      <ScrollView ref={scrollViewRef} style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {showHistory && isLoadingHistory ? (
-          renderHistorySkeletons
-        ) : showHistory && searchHistory.length > 0 ? (
-          <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
-            <Text style={styles.historyTitle}>Recent Searches</Text>
-            {searchHistory.map((item) => (
-              <Swipeable
-                key={item.id}
-                renderRightActions={(progress, dragX) =>
-                  renderHistoryRightActions(progress, dragX, () => handleDeleteHistoryItem(item))
-                }
-                overshootRight={false}
-                friction={2}
-                rightThreshold={40}
-              >
-                <Pressable
-                  style={styles.historyItem}
-                  onPress={() => {
-                    console.log('[search] History item pressed:', item.search_text);
-                    handleHistoryItemPress(item.search_text);
-                  }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  {item.collage_cdn_url ? (
-                    <Image
-                      source={{ uri: item.collage_cdn_url }}
-                      style={styles.historyCollage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={styles.historyClockWrapper}>
-                      <IconSymbol
-                        name="clock"
-                        size={18}
-                        color={colors.textSecondary}
-                      />
-                    </View>
-                  )}
-                  <Text style={styles.historyText} numberOfLines={1}>{item.search_text}</Text>
-                  <IconSymbol
-                    name="arrow.up.left"
-                    size={16}
-                    color={colors.textTertiary}
-                  />
-                </Pressable>
-              </Swipeable>
-            ))}
-          </Animated.View>
-        ) : showHistory && searchHistory.length === 0 && !isLoadingHistory ? (
-          <Animated.View entering={FadeIn.duration(600)} style={styles.emptyHistoryContainer}>
-            <View style={styles.emptyHistoryIconContainer}>
-              <IconSymbol 
-                name="clock" 
-                size={48} 
-                color={colors.textTertiary} 
-              />
-            </View>
-            <Text style={styles.emptyHistoryTitle}>No Search History</Text>
-            <Text style={styles.emptyHistoryMessage}>
-              Your recent searches will appear here
-            </Text>
-            {searchTips}
-          </Animated.View>
-        ) : !hasSearched ? (
-          <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-            <IconSymbol 
-              name="photo.on.rectangle" 
-              size={80} 
-              color={colors.textTertiary} 
-            />
-            <Text style={styles.emptyTitle}>
-              Smart Searching
-            </Text>
-            <Text style={styles.emptyText}>
-              Search your Recalls like you&apos;re talking to a friend
-            </Text>
-            {featureList}
-          </Animated.View>
-        ) : (
-          <View style={styles.notesContainer}>
-            {hasSearched && (
-              <SearchProgressIndicator 
-                stage={searchStage} 
-                locationName={searchLocationName}
-                personNames={searchPersonNames}
-                extractedKeywords={searchExtractedKeywords}
-                isExpanded={isProgressExpanded}
-                onToggle={() => setIsProgressExpanded(!isProgressExpanded)}
-                locationInfo={locationInfo}
-                searchTimings={searchTimings}
-                shouldShowTimings={shouldShowSearchTime}
-              />
-            )}
-
-            {isSearching ? (
-              <View style={styles.searchingPlaceholder} />
+      {/* FlatList: data = filteredNotes when searching, empty otherwise.
+          All non-results content (history, empty states, answer, progress) lives in ListHeaderComponent. */}
+      <FlatList
+        ref={listRef}
+        data={hasSearched && !isSearching && filteredNotes.length > 0 ? filteredNotes : []}
+        keyExtractor={(item) => item.id}
+        renderItem={renderSearchResultItem}
+        ListHeaderComponent={
+          <View style={styles.listHeaderContainer}>
+            {showHistory && isLoadingHistory ? (
+              renderHistorySkeletons
+            ) : showHistory && searchHistory.length > 0 ? (
+              <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
+                <Text style={styles.historyTitle}>Recent Searches</Text>
+                {searchHistory.map((item) => (
+                  <Swipeable
+                    key={item.id}
+                    renderRightActions={(progress, dragX) =>
+                      renderHistoryRightActions(progress, dragX, () => handleDeleteHistoryItem(item))
+                    }
+                    overshootRight={false}
+                    friction={2}
+                    rightThreshold={40}
+                  >
+                    <Pressable
+                      style={styles.historyItem}
+                      onPress={() => {
+                        console.log('[search] History item pressed:', item.search_text);
+                        handleHistoryItemPress(item.search_text);
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      {item.collage_cdn_url ? (
+                        <Image
+                          source={{ uri: item.collage_cdn_url }}
+                          style={styles.historyCollage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={styles.historyClockWrapper}>
+                          <IconSymbol name="clock" size={18} color={colors.textSecondary} />
+                        </View>
+                      )}
+                      <Text style={styles.historyText} numberOfLines={1}>{item.search_text}</Text>
+                      <IconSymbol name="arrow.up.left" size={16} color={colors.textTertiary} />
+                    </Pressable>
+                  </Swipeable>
+                ))}
+              </Animated.View>
+            ) : showHistory && searchHistory.length === 0 && !isLoadingHistory ? (
+              <Animated.View entering={FadeIn.duration(600)} style={styles.emptyHistoryContainer}>
+                <View style={styles.emptyHistoryIconContainer}>
+                  <IconSymbol name="clock" size={48} color={colors.textTertiary} />
+                </View>
+                <Text style={styles.emptyHistoryTitle}>No Search History</Text>
+                <Text style={styles.emptyHistoryMessage}>
+                  Your recent searches will appear here
+                </Text>
+                {searchTips}
+              </Animated.View>
+            ) : !hasSearched ? (
+              <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+                <IconSymbol name="photo.on.rectangle" size={80} color={colors.textTertiary} />
+                <Text style={styles.emptyTitle}>Smart Searching</Text>
+                <Text style={styles.emptyText}>
+                  Search your Recalls like you&apos;re talking to a friend
+                </Text>
+                {featureList}
+              </Animated.View>
             ) : (
-              <React.Fragment>
-                {filteredNotes.length === 0 && !searchAnswer && searchStage === 'complete' ? (
-                  <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-                    <IconSymbol 
-                      name="doc.text.magnifyingglass" 
-                      size={80} 
-                      color={colors.textTertiary} 
-                    />
-                    <Text style={styles.emptyTitle}>No Results Found</Text>
-                    <Text style={styles.emptyText}>
-                      {locationInfo 
-                        ? `No recalls found within ${locationInfo.proximity}km of ${locationInfo.resolvedPlace}`
-                        : personInfo && personInfo.matchedNames.length > 0
-                        ? `No recalls found for ${personInfo.matchedNames.join(', ')}`
-                        : 'Try a different search term or add more details'
-                      }
-                    </Text>
-                  </Animated.View>
+              <View style={styles.notesContainer}>
+                {hasSearched && (
+                  <SearchProgressIndicator
+                    stage={searchStage}
+                    locationName={searchLocationName}
+                    personNames={searchPersonNames}
+                    extractedKeywords={searchExtractedKeywords}
+                    isExpanded={isProgressExpanded}
+                    onToggle={() => setIsProgressExpanded(!isProgressExpanded)}
+                    locationInfo={locationInfo}
+                    searchTimings={searchTimings}
+                    shouldShowTimings={shouldShowSearchTime}
+                  />
+                )}
+
+                {isSearching ? (
+                  <View style={styles.searchingPlaceholder} />
                 ) : (
                   <React.Fragment>
-                    {searchAnswer && searchConfidence !== undefined && (
-                      <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
-                        <View style={styles.answerHeader}>
-                          <View style={styles.answerHeaderLeft}>
-                            <IconSymbol 
-                              name="lightbulb.fill" 
-                              size={20} 
-                              color={colors.primary} 
-                            />
-                            <Text style={styles.answerTitle}>Answer</Text>
-                          </View>
-                          <View style={styles.answerHeaderRight}>
-                            <View style={styles.confidenceBadge}>
-                              <IconSymbol 
-                                name="checkmark.seal.fill" 
-                                size={14} 
-                                color={colors.primary} 
-                              />
-                              <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
-                            </View>
-                            <Pressable
-                              onPress={handleShareAnswer}
-                              style={styles.shareAnswerButton}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <ShareIcon
-                                size={18}
-                                color={colors.primary}
-                                strokeWidth={2.2}
-                              />
-                            </Pressable>
-                          </View>
-                        </View>
-                        <View style={styles.answerContent}>
-                          <MarkdownAnswer 
-                            content={isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
-                            recallReferences={recallReferences}
-                            onRecallPress={handleRecallLinkPress}
-                          />
-                        </View>
-                        {shouldShowAnswerToggle(searchAnswer) && (
-                          <Pressable 
-                            onPress={() => setIsAnswerExpanded(!isAnswerExpanded)}
-                            style={styles.answerToggleContainer}
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                          >
-                            <Text style={styles.answerToggleText}>
-                              {isAnswerExpanded ? 'Show less' : 'Show more'}
-                            </Text>
-                          </Pressable>
-                        )}
-                      </Animated.View>
-                    )}
-
-                    {filteredNotes.length > 0 && (
-                      <React.Fragment>
-                        <Text style={styles.resultsText}>
-                          {filteredNotes.length} {filteredNotes.length === 1 ? 'result' : 'results'} used for answer
-                          {locationInfo && ` near ${locationInfo.resolvedPlace}`}
-                          {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
+                    {filteredNotes.length === 0 && !searchAnswer && searchStage === 'complete' ? (
+                      <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
+                        <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
+                        <Text style={styles.emptyTitle}>No Results Found</Text>
+                        <Text style={styles.emptyText}>
+                          {locationInfo
+                            ? `No recalls found within ${locationInfo.proximity}km of ${locationInfo.resolvedPlace}`
+                            : personInfo && personInfo.matchedNames.length > 0
+                            ? `No recalls found for ${personInfo.matchedNames.join(', ')}`
+                            : 'Try a different search term or add more details'
+                          }
                         </Text>
-                        {filteredNotes.map((note) => {
-                          const recallRef = recallReferences.find(ref => ref.recallId === note.id);
-                          const imageIndex = recallRef?.imageIndex;
-                          
-                          return (
-                            <View 
-                              key={note.id} 
-                              style={styles.noteWrapper}
-                              ref={(ref) => {
-                                recallRefs.current[note.id] = ref;
-                              }}
-                            >
-                              <View style={styles.badgeRow}>
-                                <View style={styles.answerSourceBadge}>
-                                  <IconSymbol 
-                                    name="checkmark.seal.fill" 
-                                    size={14} 
-                                    color={colors.primary} 
-                                  />
-                                  <Text style={styles.answerSourceText}>Used for answer</Text>
-                                </View>
+                      </Animated.View>
+                    ) : (
+                      <React.Fragment>
+                        {searchAnswer && searchConfidence !== undefined && (
+                          <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
+                            <View style={styles.answerHeader}>
+                              <View style={styles.answerHeaderLeft}>
+                                <IconSymbol name="lightbulb.fill" size={20} color={colors.primary} />
+                                <Text style={styles.answerTitle}>Answer</Text>
                               </View>
-                              <View style={styles.noteCardContainer}>
-                                <NoteCard
-                                  note={note}
-                                  onPress={(scrollToImage) => {
-                                    const finalImageIndex = scrollToImage !== undefined ? scrollToImage : imageIndex;
-                                    handleNotePress(note.id, finalImageIndex);
-                                  }}
-                                  scrollToImageIndex={imageIndex}
-                                  loading={false}
-                                />
+                              <View style={styles.answerHeaderRight}>
+                                <View style={styles.confidenceBadge}>
+                                  <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                                  <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
+                                </View>
+                                <Pressable
+                                  onPress={handleShareAnswer}
+                                  style={styles.shareAnswerButton}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                  <ShareIcon size={18} color={colors.primary} strokeWidth={2.2} />
+                                </Pressable>
                               </View>
                             </View>
-                          );
-                        })}
+                            <View style={styles.answerContent}>
+                              <MarkdownAnswer
+                                content={isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
+                                recallReferences={recallReferences}
+                                onRecallPress={handleRecallLinkPress}
+                              />
+                            </View>
+                            {shouldShowAnswerToggle(searchAnswer) && (
+                              <Pressable
+                                onPress={() => setIsAnswerExpanded(!isAnswerExpanded)}
+                                style={styles.answerToggleContainer}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                              >
+                                <Text style={styles.answerToggleText}>
+                                  {isAnswerExpanded ? 'Show less' : 'Show more'}
+                                </Text>
+                              </Pressable>
+                            )}
+                          </Animated.View>
+                        )}
+
+                        {filteredNotes.length > 0 && (
+                          <Text style={styles.resultsText}>
+                            {filteredNotes.length} {filteredNotes.length === 1 ? 'result' : 'results'} used for answer
+                            {locationInfo && ` near ${locationInfo.resolvedPlace}`}
+                            {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
+                          </Text>
+                        )}
                       </React.Fragment>
                     )}
                   </React.Fragment>
                 )}
-              </React.Fragment>
+              </View>
             )}
           </View>
-        )}
-      </ScrollView>
+        }
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        windowSize={10}
+        maxToRenderPerBatch={6}
+        initialNumToRender={8}
+        removeClippedSubviews
+        keyboardShouldPersistTaps="handled"
+        onScrollToIndexFailed={() => {}}
+      />
 
       {/* Map FAB — always visible */}
       <Pressable
@@ -983,6 +939,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 104,
+  },
+  listHeaderContainer: {
+    width: '100%',
   },
   historyContainer: {
     width: '100%',

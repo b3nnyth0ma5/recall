@@ -2,11 +2,12 @@ import React, { useState, memo } from 'react';
 import {
   View,
   Text,
-  Image,
   Pressable,
   StyleSheet,
   Linking,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { cdnVariant } from '@/utils/cdnVariant';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { SkeletonLoader } from './SkeletonLoader';
@@ -75,10 +76,14 @@ function UrlPreviewCard({ url, ogTitle, ogDescription, ogSiteName, ogImageUrl, s
       <View style={styles.row}>
         {hasImage && (
           <View style={styles.imageContainer}>
+            {/* cdnVariant 'card' requires the variant in Cloudflare Images dashboard.
+                Non-Cloudflare OG image URLs pass through unchanged — still cached by expo-image. */}
             <Image
-              source={{ uri: ogImageUrl as string }}
+              source={{ uri: cdnVariant(ogImageUrl as string, 'card') as string }}
               style={styles.image}
-              resizeMode="cover"
+              contentFit="cover"
+              transition={150}
+              cachePolicy="memory-disk"
               onError={() => setImageFailed(true)}
             />
           </View>

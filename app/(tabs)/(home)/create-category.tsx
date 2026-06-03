@@ -1,6 +1,7 @@
 
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, TextInput, Alert, Platform, Keyboard, KeyboardAvoidingView, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput, Alert, Platform, Keyboard, KeyboardAvoidingView, ScrollView, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/utils/supabase';
@@ -196,7 +197,7 @@ export default function CreateCategoryScreen() {
             <Text style={styles.sectionLabel}>Category Icon</Text>
             <Pressable onPress={handleSelectImage} style={styles.imageSelector}>
               {categoryImage ? (
-                <Image source={{ uri: categoryImage }} style={styles.selectedImage} resizeMode="cover" />
+                <Image source={{ uri: categoryImage }} style={styles.selectedImage} contentFit="cover" transition={150} />
               ) : (
                 <View style={styles.emptyImagePlaceholder}>
                   <IconSymbol 

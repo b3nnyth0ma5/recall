@@ -13,6 +13,8 @@ import { PortalProvider } from '@gorhom/portal';
 import { StyleSheet, View, Platform, Linking } from 'react-native';
 import { supabase } from '@/utils/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image as ExpoImage } from 'expo-image';
+import { Asset as ExpoAsset } from 'expo-asset';
 
 
 const PeopleGraphOverlay = memo(() => {
@@ -76,6 +78,28 @@ function RootLayoutNav() {
   const lastRouteRef = useRef<string>('');
   // Track share intent that arrived before auth was ready
   const pendingShareIntentRef = useRef(false);
+
+  // One-shot Recall logo prefetch — runs once when the root layout mounts.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        console.log('[RootLayout] Prefetching Recall logo...');
+        const asset = ExpoAsset.fromModule(require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png'));
+        await asset.downloadAsync(); // ensures the asset is available locally
+        if (cancelled) return;
+        // Warm expo-image's memory + disk cache too
+        const uri = asset.localUri || asset.uri;
+        if (uri) {
+          await ExpoImage.prefetch(uri);
+          console.log('[RootLayout] Recall logo prefetch complete');
+        }
+      } catch (e) {
+        console.warn('[RootLayout] Recall logo prefetch failed:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Unified URL handler: share-intent + Siri
   useEffect(() => {

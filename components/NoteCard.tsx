@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, memo, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
+import { cdnVariant } from '@/utils/cdnVariant';
 import { colors } from '@/styles/commonStyles';
 import { Note } from '@/types/Note';
 import { Document } from '@/types/Document';
@@ -484,10 +486,14 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                             <Text style={styles.imageErrorText}>Failed to load image</Text>
                           </View>
                         ) : (
+                          // cdnVariant 'thumbnail' requires the variant to exist in Cloudflare Images dashboard.
+                          // If it doesn't, cdnVariant is a no-op pass-through — still benefits from expo-image caching.
                           <Image
-                            source={{ uri: imageUrl }}
+                            source={{ uri: cdnVariant(imageUrl, 'thumbnail') as string }}
                             style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
-                            resizeMode="cover"
+                            contentFit="cover"
+                            transition={150}
+                            cachePolicy="memory-disk"
                             onLoadStart={() => handleImageLoadStart(index)}
                             onLoad={() => handleImageLoad(index)}
                             onError={() => handleImageError(index)}

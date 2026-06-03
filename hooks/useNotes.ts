@@ -6,6 +6,7 @@ import { supabase, getImageDataUrl, saveSearchHistory, updateSearchHistoryCollag
 import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
 import { getRecallUrlsForRecalls, triggerScrapeIfMissing, RecallUrlMetadata } from '@/utils/urlProcessor';
+import { coalesce } from '@/utils/requestCoalescer';
 
 export type { RecallUrlMetadata };
 
@@ -277,6 +278,69 @@ export function useNotes() {
     return processedNotes;
   }, [loadPeopleForRecalls, updateNoteCache]);
 
+  /**
+   * Fetches one page of the feed via the `get_recall_feed_page` RPC.
+   * Returns notes in the existing Note shape plus a urlMetadataByRecallId map.
+   * In-flight requests with the same key are coalesced via requestCoalescer.
+   */
+  const loadFeedPage = useCallback(async (pageNum: number) => {
+    if (!user) return { notes: [], urlMetadataByRecallId: {} as Record<string, RecallUrlMetadata[]> };
+
+    const limit = ITEMS_PER_PAGE;
+    const offset = (pageNum - 1) * ITEMS_PER_PAGE;
+    const key = `feed:${user.id}:${pageNum}`;
+
+    if (__DEV__) console.log(`[useNotes] loadFeedPage: RPC get_recall_feed_page page=${pageNum} offset=${offset}`);
+
+    const { data, error } = await coalesce(key, () =>
+      Promise.resolve(supabase.rpc('get_recall_feed_page', { p_user_id: user.id, p_limit: limit, p_offset: offset }))
+    );
+
+    if (error) {
+      console.error('[useNotes] loadFeedPage RPC error:', error);
+      return { notes: [], urlMetadataByRecallId: {} as Record<string, RecallUrlMetadata[]> };
+    }
+
+    const urlMetadataByRecallId: Record<string, RecallUrlMetadata[]> = {};
+
+    const notes = ((data ?? []) as any[]).map((row: any) => {
+      const recall = row.recall ?? {};
+
+      // Prime image cache for each image in this row
+      const imageRows: any[] = row.images ?? [];
+      imageRows.forEach((img: any) => {
+        if (img.id && img.cdn_url) {
+          const cost = CostCalculator.forImage(img.cdn_url);
+          imageCache.set(img.id, img.cdn_url, cost);
+        }
+      });
+
+      // Collect URL metadata keyed by recall id
+      if (row.url_metadata && (row.url_metadata as any[]).length > 0) {
+        urlMetadataByRecallId[recall.id] = row.url_metadata as RecallUrlMetadata[];
+      }
+
+      const note: Note = {
+        ...recall,
+        images: imageRows.map((i: any) => i.cdn_url).filter(Boolean),
+        imageIds: imageRows.map((i: any) => i.id),
+        documents: ((row.documents ?? []) as any[]).map((d: any) => ({
+          ...d,
+          upload_state: 'uploaded' as const,
+        })),
+        people: row.people ?? [],
+      };
+
+      // Keep in-memory note cache warm
+      updateNoteCache(note);
+
+      return note;
+    });
+
+    if (__DEV__) console.log(`[useNotes] loadFeedPage: mapped ${notes.length} notes from RPC`);
+    return { notes, urlMetadataByRecallId };
+  }, [user, updateNoteCache]);
+
   const loadNotes = useCallback(async (pageNum: number = 1, append: boolean = false) => {
     if (!user) {
       setNotes([]);
@@ -290,26 +354,12 @@ export function useNotes() {
       } else {
         setIsLoadingMore(true);
       }
-      
-      if (__DEV__) console.log(`Loading notes page ${pageNum} from Supabase for user:`, user.id);
-      
-      const from = (pageNum - 1) * ITEMS_PER_PAGE;
-      const to = from + ITEMS_PER_PAGE - 1;
 
-      // Optimized query using idx_recalls_user_created composite index
-      const { data: recallsData, error: recallsError } = await supabase
-        .from('recalls')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .range(from, to);
+      if (__DEV__) console.log(`[useNotes] loadNotes: page=${pageNum} append=${append}`);
 
-      if (recallsError) {
-        console.error('Error loading recalls:', recallsError);
-        return;
-      }
+      const { notes: pageNotes, urlMetadataByRecallId: pageUrlMeta } = await loadFeedPage(pageNum);
 
-      if (!recallsData || recallsData.length === 0) {
+      if (pageNotes.length === 0) {
         setHasMore(false);
         if (!append) {
           setNotes([]);
@@ -317,79 +367,53 @@ export function useNotes() {
         return;
       }
 
-      if (recallsData.length < ITEMS_PER_PAGE) {
+      if (pageNotes.length < ITEMS_PER_PAGE) {
         setHasMore(false);
       }
 
-      // Split into cached (with images) and uncached
-      const cachedNotes: any[] = [];
-      const uncachedRecalls: any[] = [];
-
-      (recallsData || []).forEach((recall: any) => {
-        const cached = noteCache.get(recall.id);
-        if (cached && cached.images && cached.images.length > 0) {
-          cachedNotes.push(cached);
-        } else {
-          uncachedRecalls.push(recall);
-        }
-      });
-
-      const fetchedNotes = uncachedRecalls.length > 0
-        ? await loadImagesForRecalls(uncachedRecalls)
-        : [];
-
-      // Merge preserving original order from recallsData
-      const notesWithImagesAndPeople = (recallsData || []).map((recall: any) => {
-        return cachedNotes.find(n => n.id === recall.id)
-          || fetchedNotes.find(n => n.id === recall.id)
-          || recall;
-      });
-
       if (append) {
-        // Prevent duplicates by filtering out notes that already exist
         setNotes(prevNotes => {
           const existingIds = new Set(prevNotes.map(note => note.id));
-          const newUniqueNotes = notesWithImagesAndPeople.filter(note => !existingIds.has(note.id));
-          if (__DEV__) console.log(`Adding ${newUniqueNotes.length} new unique notes (filtered ${notesWithImagesAndPeople.length - newUniqueNotes.length} duplicates)`);
+          const newUniqueNotes = pageNotes.filter(note => !existingIds.has(note.id));
+          if (__DEV__) console.log(`[useNotes] Adding ${newUniqueNotes.length} new unique notes (filtered ${pageNotes.length - newUniqueNotes.length} duplicates)`);
           return [...prevNotes, ...newUniqueNotes];
         });
       } else {
-        setNotes(notesWithImagesAndPeople);
+        setNotes(pageNotes);
       }
 
-      // Fire-and-forget URL metadata batch fetch for this page
-      const pageIds = notesWithImagesAndPeople.map((n: any) => n.id);
-      if (pageIds.length > 0) {
-        getRecallUrlsForRecalls(pageIds).then(fetched => {
-          setUrlMetadataByRecallId(prev => ({ ...prev, ...fetched }));
-          // Trigger lazy scrape for unscraped rows
-          const unscrapedIds: string[] = [];
-          for (const rows of Object.values(fetched)) {
-            for (const row of rows) {
-              if (row.scraped_at === null) unscrapedIds.push(row.id);
-            }
-          }
-          if (unscrapedIds.length > 0) {
-            console.log('[useNotes] loadNotes: lazy scrape for', unscrapedIds.length, 'unscraped rows');
-            unscrapedIds.forEach(id => triggerScrapeIfMissing(id));
-            if (urlRefreshTimerRef.current) clearTimeout(urlRefreshTimerRef.current);
-            urlRefreshTimerRef.current = setTimeout(() => {
-              getRecallUrlsForRecalls(pageIds).then(updated => {
-                setUrlMetadataByRecallId(prev => ({ ...prev, ...updated }));
-              });
-            }, 6000);
-          }
-        });
+      // Merge URL metadata from RPC into state
+      if (Object.keys(pageUrlMeta).length > 0) {
+        setUrlMetadataByRecallId(prev => ({ ...prev, ...pageUrlMeta }));
       }
-      
-      if (__DEV__) console.log(`Loaded ${notesWithImagesAndPeople.length} notes for page ${pageNum}`);
+
+      // Trigger lazy scrape for any unscraped URL rows that came back from the RPC
+      const unscrapedIds: string[] = [];
+      for (const rows of Object.values(pageUrlMeta)) {
+        for (const row of rows) {
+          if (row.scraped_at === null) unscrapedIds.push(row.id);
+        }
+      }
+      if (unscrapedIds.length > 0) {
+        console.log('[useNotes] loadNotes: lazy scrape for', unscrapedIds.length, 'unscraped rows');
+        unscrapedIds.forEach(id => triggerScrapeIfMissing(id));
+        if (urlRefreshTimerRef.current) clearTimeout(urlRefreshTimerRef.current);
+        const pageIds = pageNotes.map(n => n.id);
+        urlRefreshTimerRef.current = setTimeout(() => {
+          getRecallUrlsForRecalls(pageIds).then(updated => {
+            setUrlMetadataByRecallId(prev => ({ ...prev, ...updated }));
+          });
+        }, 6000);
+      }
+
+      if (__DEV__) console.log(`[useNotes] loadNotes: loaded ${pageNotes.length} notes for page ${pageNum}`);
     } catch (error) {
-      console.error('Error loading notes:', error);
+      console.error('[useNotes] Error loading notes:', error);
     } finally {
       setLoading(false);
       setIsLoadingMore(false);
     }
-  }, [user, loadImagesForRecalls]);
+  }, [user, loadFeedPage]);
 
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
@@ -438,7 +462,7 @@ export function useNotes() {
       
       const { data: recallData, error: recallError } = await supabase
         .from('recalls')
-        .select('*')
+        .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
         .eq('id', noteId)
         .eq('user_id', user.id)
         .single();
@@ -713,7 +737,7 @@ export function useNotes() {
         // Fallback to basic search
         const { data: recallsData } = await supabase
           .from('recalls')
-          .select('*')
+          .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
           .eq('user_id', user.id)
           .or(`text.ilike.%${query}%,location.ilike.%${query}%`)
           .order('created_at', { ascending: false });
@@ -803,7 +827,7 @@ export function useNotes() {
         if (uncachedIds.length > 0) {
           const { data: recallsData } = await supabase
             .from('recalls')
-            .select('*')
+            .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
             .in('id', uncachedIds)
             .eq('user_id', user.id);
           fetchedRecalls = await loadImagesForRecalls(recallsData || []);

@@ -1,6 +1,9 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Alert, TextInput, Image, Modal, KeyboardAvoidingView, Platform, Animated } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { debounce } from '@/utils/debounce';
+import { View, Text, StyleSheet, FlatList, ScrollView, Pressable, ActivityIndicator, RefreshControl, Alert, TextInput, Modal, KeyboardAvoidingView, Platform, Animated } from 'react-native';
+import { Image } from 'expo-image';
+import { cdnVariant } from '@/utils/cdnVariant';
 import RecallHeader from '@/components/RecallHeader';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -452,7 +455,7 @@ export default function CategoryViewerScreen() {
           
           const { data: recallsData, error: recallsError } = await supabase
             .from('recalls')
-            .select('*')
+            .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
             .in('id', uncachedRecallIds)
             .eq('user_id', user.id);
 
@@ -572,7 +575,7 @@ export default function CategoryViewerScreen() {
         
         const { data: recallsData, error: recallsError } = await supabase
           .from('recalls')
-          .select('*')
+          .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
           .in('id', uncachedRecallIds)
           .eq('user_id', user.id);
 
@@ -689,9 +692,21 @@ export default function CategoryViewerScreen() {
   useEffect(() => {
     if (!id || !user) return;
 
-    const channelSuffix = Math.random().toString(36).slice(2, 8);
+    const channelName = `realtime:${user.id}:recollections:${id}`;
+
+    const debouncedRefresh = debounce(() => {
+      console.log('[CategoryViewer] Realtime: recollections changed, refreshing recalls');
+      // Clear rematching indicator when we get the first update
+      setIsRematching(false);
+      if (rematchingTimeoutRef.current) {
+        clearTimeout(rematchingTimeoutRef.current);
+        rematchingTimeoutRef.current = null;
+      }
+      loadCategoryAndRecalls(1, false);
+    }, 300);
+
     const channel = supabase
-      .channel(`category-assignments-${user.id}-${id}-${channelSuffix}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -700,20 +715,12 @@ export default function CategoryViewerScreen() {
           table: 'recollections',
           filter: `category_id=eq.${id}`,
         },
-        () => {
-          console.log('[CategoryViewer] Realtime: recollections changed, refreshing recalls');
-          // Clear rematching indicator when we get the first update
-          setIsRematching(false);
-          if (rematchingTimeoutRef.current) {
-            clearTimeout(rematchingTimeoutRef.current);
-            rematchingTimeoutRef.current = null;
-          }
-          loadCategoryAndRecalls(1, false);
-        }
+        debouncedRefresh,
       )
       .subscribe();
 
     return () => {
+      debouncedRefresh.cancel();
       supabase.removeChannel(channel);
     };
   }, [id, user, loadCategoryAndRecalls]);
@@ -772,20 +779,10 @@ export default function CategoryViewerScreen() {
     }
   }, [page, hasMore, isLoadingMore, loading, loadCategoryAndRecalls]);
 
-  const handleScroll = useCallback((event: any) => {
-    try {
-      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-
-      // Load more recalls when near bottom
-      const paddingToBottom = 20;
-      const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
-
-      if (isCloseToBottom && hasMore && !isLoadingMore && !loading) {
-        console.log('[CategoryViewer] Near bottom, loading more recalls...');
-        loadMoreRecalls();
-      }
-    } catch (error) {
-      console.error('[CategoryViewer] Error handling scroll:', error);
+  const handleEndReached = useCallback(() => {
+    if (hasMore && !isLoadingMore && !loading) {
+      console.log('[CategoryViewer] onEndReached — loading more recalls...');
+      loadMoreRecalls();
     }
   }, [hasMore, isLoadingMore, loading, loadMoreRecalls]);
 
@@ -1201,61 +1198,65 @@ export default function CategoryViewerScreen() {
   const renderSkeletons = () => {
     return (
       <View style={styles.container}>
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {/* Category Info Skeleton */}
-          <View style={styles.categoryInfoContainer}>
-            <View style={styles.categoryTopRow}>
-              {/* Category Icon Skeleton */}
-              <SkeletonLoader 
-                width={88} 
-                height={88} 
-                borderRadius={16}
-                variant="wave"
-              />
-              
-              {/* Category Text Skeleton */}
-              <View style={styles.categoryTextContainer}>
-                <SkeletonLoader 
-                  width="70%" 
-                  height={22} 
-                  borderRadius={4}
-                  variant="wave"
-                  style={{ marginBottom: 8 }}
-                />
-                <SkeletonLoader 
-                  width="100%" 
-                  height={16} 
-                  borderRadius={4}
-                  variant="wave"
-                  style={{ marginBottom: 6 }}
-                />
-                <SkeletonLoader 
-                  width="80%" 
-                  height={16} 
-                  borderRadius={4}
-                  variant="wave"
-                />
+        <FlatList
+          data={[]}
+          keyExtractor={(item: any) => item.id}
+          renderItem={() => null}
+          ListHeaderComponent={
+            <View>
+              {/* Category Info Skeleton */}
+              <View style={styles.categoryInfoContainer}>
+                <View style={styles.categoryTopRow}>
+                  {/* Category Icon Skeleton */}
+                  <SkeletonLoader
+                    width={88}
+                    height={88}
+                    borderRadius={16}
+                    variant="wave"
+                  />
+
+                  {/* Category Text Skeleton */}
+                  <View style={styles.categoryTextContainer}>
+                    <SkeletonLoader
+                      width="70%"
+                      height={22}
+                      borderRadius={4}
+                      variant="wave"
+                      style={{ marginBottom: 8 }}
+                    />
+                    <SkeletonLoader
+                      width="100%"
+                      height={16}
+                      borderRadius={4}
+                      variant="wave"
+                      style={{ marginBottom: 6 }}
+                    />
+                    <SkeletonLoader
+                      width="80%"
+                      height={16}
+                      borderRadius={4}
+                      variant="wave"
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* Note Cards Skeleton */}
+              <View style={styles.notesContainer}>
+                {[...Array(3)].map((_, index) => (
+                  <NoteCard
+                    key={`skeleton-${index}`}
+                    note={{} as any}
+                    onPress={() => { console.log('Skeleton card pressed'); }}
+                    loading={true}
+                  />
+                ))}
               </View>
             </View>
-          </View>
-
-          {/* Note Cards Skeleton */}
-          <View style={styles.notesContainer}>
-            {[...Array(3)].map((_, index) => (
-              <NoteCard
-                key={`skeleton-${index}`}
-                note={{} as any}
-                onPress={() => {
-                  console.log('Skeleton card pressed');
-                }}
-                loading={true}
-              />
-            ))}
-          </View>
-        </ScrollView>
+          }
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+        />
       </View>
     );
   };
@@ -1264,65 +1265,73 @@ export default function CategoryViewerScreen() {
   const renderMatchingPlaceholders = () => {
     return (
       <View style={styles.container}>
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {/* Category Info - Real data */}
-          {category && (
-            <View style={styles.categoryInfoContainer}>
-              <View style={styles.categoryTopRow}>
-                {/* Category Icon */}
-                <View style={styles.iconContainer}>
-                  {category.icon_cdn_url && (
-                    <Image
-                      source={{ uri: category.icon_cdn_url }}
-                      style={styles.categoryIcon}
-                      resizeMode="cover"
-                    />
-                  )}
-                </View>
-                
-                {/* Name, Description and Matching Status */}
-                <View style={styles.categoryTextContainer}>
-                  <Text style={styles.categoryHeading} numberOfLines={2} ellipsizeMode="tail">
-                    {category.category_name}
-                  </Text>
-                  <Text style={styles.categoryDescription} numberOfLines={3}>
-                    {category.category_search_description}
-                  </Text>
-                  {/* Matching status */}
-                  <View style={styles.matchingStatusContainer}>
-                    <ActivityIndicator size="small" color={colors.primary} />
-                    <Text style={styles.matchingStatusText}>Finding matches...</Text>
+        <FlatList
+          data={[]}
+          keyExtractor={(item: any) => item.id}
+          renderItem={() => null}
+          ListHeaderComponent={
+            <View>
+              {/* Category Info - Real data */}
+              {category && (
+                <View style={styles.categoryInfoContainer}>
+                  <View style={styles.categoryTopRow}>
+                    {/* Category Icon */}
+                    <View style={styles.iconContainer}>
+                      {category.icon_cdn_url && (
+                        // cdnVariant 'thumbnail' requires the variant in Cloudflare Images dashboard.
+                        // If absent, cdnVariant is a no-op — still benefits from expo-image caching.
+                        <Image
+                          source={{ uri: cdnVariant(category.icon_cdn_url, 'thumbnail') as string }}
+                          style={styles.categoryIcon}
+                          contentFit="cover"
+                          transition={150}
+                          cachePolicy="memory-disk"
+                        />
+                      )}
+                    </View>
+
+                    {/* Name, Description and Matching Status */}
+                    <View style={styles.categoryTextContainer}>
+                      <Text style={styles.categoryHeading} numberOfLines={2} ellipsizeMode="tail">
+                        {category.category_name}
+                      </Text>
+                      <Text style={styles.categoryDescription} numberOfLines={3}>
+                        {category.category_search_description}
+                      </Text>
+                      {/* Matching status */}
+                      <View style={styles.matchingStatusContainer}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={styles.matchingStatusText}>Finding matches...</Text>
+                      </View>
+                    </View>
                   </View>
                 </View>
+              )}
+
+              {/* Placeholder Note Cards with shimmer effect */}
+              <View style={styles.notesContainer}>
+                {[...Array(3)].map((_, index) => (
+                  <NoteCard
+                    key={`matching-placeholder-${index}`}
+                    note={{} as any}
+                    onPress={() => { console.log('Matching placeholder card pressed'); }}
+                    loading={true}
+                  />
+                ))}
+              </View>
+
+              {/* Info message */}
+              <View style={styles.matchingInfoContainer}>
+                <IconSymbol name="sparkles" size={20} color={colors.primary} />
+                <Text style={styles.matchingInfoText}>
+                  Analyzing your recalls to find matches...
+                </Text>
               </View>
             </View>
-          )}
-
-          {/* Placeholder Note Cards with shimmer effect */}
-          <View style={styles.notesContainer}>
-            {[...Array(3)].map((_, index) => (
-              <NoteCard
-                key={`matching-placeholder-${index}`}
-                note={{} as any}
-                onPress={() => {
-                  console.log('Matching placeholder card pressed');
-                }}
-                loading={true}
-              />
-            ))}
-          </View>
-          
-          {/* Info message */}
-          <View style={styles.matchingInfoContainer}>
-            <IconSymbol name="sparkles" size={20} color={colors.primary} />
-            <Text style={styles.matchingInfoText}>
-              Analyzing your recalls to find matches...
-            </Text>
-          </View>
-        </ScrollView>
+          }
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+        />
       </View>
     );
   };
@@ -1332,6 +1341,14 @@ export default function CategoryViewerScreen() {
     inputRange: [0, 1],
     outputRange: [-8, 0],
   });
+
+  const renderNoteItem = useCallback(({ item }: { item: Note }) => (
+    <NoteCard
+      note={item}
+      onPress={() => handleNotePress(item.id)}
+      onDelete={() => handleDeleteRecall(item.id)}
+    />
+  ), [handleNotePress, handleDeleteRecall]);
 
   // Shared Stack.Screen options with branded header flush-left, no back button
   const stackScreenOptions = {
@@ -1418,11 +1435,130 @@ export default function CategoryViewerScreen() {
       {isMatching ? (
         renderMatchingPlaceholders()
       ) : (
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          onScroll={handleScroll}
-          scrollEventThrottle={400}
+        <FlatList
+          data={notes}
+          keyExtractor={(item) => item.id}
+          renderItem={renderNoteItem}
+          ListHeaderComponent={
+            <View>
+              {/* Two-column header: image left, name+description right */}
+              <View style={styles.categoryInfoContainer}>
+                <View style={styles.categoryTopRow}>
+                  {/* Category Icon — plain image, no overlay */}
+                  <View style={styles.iconContainer}>
+                    {category.icon_cdn_url && (
+                      // cdnVariant 'thumbnail' requires the variant in Cloudflare Images dashboard.
+                      // If absent, cdnVariant is a no-op — still benefits from expo-image caching.
+                      <Image
+                        source={{ uri: cdnVariant(category.icon_cdn_url, 'thumbnail') as string }}
+                        style={styles.categoryIcon}
+                        contentFit="cover"
+                        transition={150}
+                        cachePolicy="memory-disk"
+                      />
+                    )}
+                  </View>
+
+                  {/* Name + Description stacked to the right */}
+                  <View style={styles.categoryTextContainer}>
+                    {/* Title row: name (flex) + ellipsis button (fixed) */}
+                    <View style={styles.categoryTitleRow}>
+                      <Text style={[styles.categoryHeading, { flex: 1 }]} numberOfLines={2} ellipsizeMode="tail">
+                        {category.category_name}
+                      </Text>
+                      <Pressable
+                        onPress={openMenu}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        style={styles.ellipsisButton}
+                      >
+                        <IconSymbol name="ellipsis" size={20} color={colors.text} />
+                      </Pressable>
+                    </View>
+                    <Text style={styles.categoryDescription} numberOfLines={3}>
+                      {category.category_search_description}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Sort pills — left-aligned, no label, no separators */}
+                <View style={styles.sortContainer}>
+                  <Pressable
+                    style={[styles.sortButton, sortOrder === 'Newest' && styles.sortButtonActive]}
+                    onPress={() => {
+                      console.log('[CategoryViewer] User tapped "Newest" sort button');
+                      if (Platform.OS !== 'web') {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }
+                      setSortOrder('Newest');
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={[styles.sortButtonText, sortOrder === 'Newest' && styles.sortButtonTextActive]}>
+                      Newest
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.sortButton, sortOrder === 'Oldest' && styles.sortButtonActive]}
+                    onPress={() => {
+                      console.log('[CategoryViewer] User tapped "Oldest" sort button');
+                      if (Platform.OS !== 'web') {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }
+                      setSortOrder('Oldest');
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={[styles.sortButtonText, sortOrder === 'Oldest' && styles.sortButtonTextActive]}>
+                      Oldest
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.sortButton, sortOrder === 'Best match' && styles.sortButtonActive]}
+                    onPress={() => {
+                      console.log('[CategoryViewer] User tapped "Best match" sort button');
+                      if (Platform.OS !== 'web') {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }
+                      setSortOrder('Best match');
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={[styles.sortButtonText, sortOrder === 'Best match' && styles.sortButtonTextActive]}>
+                      Best match
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {/* Recall count — left-aligned */}
+                <View style={styles.countEllipsisRow}>
+                  <Text style={styles.recallCount}>
+                    {recallCountLabel}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Rematching indicator — shown while background matching is in flight */}
+              {isRematching && (
+                <View style={styles.rematchingBanner}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.rematchingBannerText}>matching…</Text>
+                </View>
+              )}
+            </View>
+          }
+          ListEmptyComponent={renderEmptyState()}
+          ListFooterComponent={
+            isLoadingMore ? (
+              <View style={styles.loadingMoreContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.loadingMoreText}>Loading more...</Text>
+              </View>
+            ) : !hasMore && notes.length > 0 ? (
+              <View style={styles.endContainer}>
+                <Text style={styles.endText}>You&apos;ve reached the end</Text>
+              </View>
+            ) : null
+          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -1431,136 +1567,15 @@ export default function CategoryViewerScreen() {
               colors={[colors.primary]}
             />
           }
-        >
-          {/* Two-column header: image left, name+description right */}
-          <View style={styles.categoryInfoContainer}>
-            <View style={styles.categoryTopRow}>
-              {/* Category Icon — plain image, no overlay */}
-              <View style={styles.iconContainer}>
-                {category.icon_cdn_url && (
-                  <Image
-                    source={{ uri: category.icon_cdn_url }}
-                    style={styles.categoryIcon}
-                    resizeMode="cover"
-                  />
-                )}
-              </View>
-              
-              {/* Name + Description stacked to the right */}
-              <View style={styles.categoryTextContainer}>
-                {/* Title row: name (flex) + ellipsis button (fixed) */}
-                <View style={styles.categoryTitleRow}>
-                  <Text style={[styles.categoryHeading, { flex: 1 }]} numberOfLines={2} ellipsizeMode="tail">
-                    {category.category_name}
-                  </Text>
-                  <Pressable
-                    onPress={openMenu}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    style={styles.ellipsisButton}
-                  >
-                    <IconSymbol name="ellipsis" size={20} color={colors.text} />
-                  </Pressable>
-                </View>
-                <Text style={styles.categoryDescription} numberOfLines={3}>
-                  {category.category_search_description}
-                </Text>
-              </View>
-            </View>
-
-            {/* Sort pills — left-aligned, no label, no separators */}
-            <View style={styles.sortContainer}>
-              <Pressable
-                style={[styles.sortButton, sortOrder === 'Newest' && styles.sortButtonActive]}
-                onPress={() => {
-                  console.log('[CategoryViewer] User tapped "Newest" sort button');
-                  if (Platform.OS !== 'web') {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }
-                  setSortOrder('Newest');
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={[styles.sortButtonText, sortOrder === 'Newest' && styles.sortButtonTextActive]}>
-                  Newest
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.sortButton, sortOrder === 'Oldest' && styles.sortButtonActive]}
-                onPress={() => {
-                  console.log('[CategoryViewer] User tapped "Oldest" sort button');
-                  if (Platform.OS !== 'web') {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }
-                  setSortOrder('Oldest');
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={[styles.sortButtonText, sortOrder === 'Oldest' && styles.sortButtonTextActive]}>
-                  Oldest
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.sortButton, sortOrder === 'Best match' && styles.sortButtonActive]}
-                onPress={() => {
-                  console.log('[CategoryViewer] User tapped "Best match" sort button');
-                  if (Platform.OS !== 'web') {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }
-                  setSortOrder('Best match');
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={[styles.sortButtonText, sortOrder === 'Best match' && styles.sortButtonTextActive]}>
-                  Best match
-                </Text>
-              </Pressable>
-            </View>
-
-            {/* Recall count — left-aligned */}
-            <View style={styles.countEllipsisRow}>
-              <Text style={styles.recallCount}>
-                {recallCountLabel}
-              </Text>
-            </View>
-          </View>
-
-          {/* Rematching indicator — shown while background matching is in flight */}
-          {isRematching && (
-            <View style={styles.rematchingBanner}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.rematchingBannerText}>matching…</Text>
-            </View>
-          )}
-
-          {/* Recalls */}
-          {notes.length === 0 ? (
-            renderEmptyState()
-          ) : (
-            <View style={styles.notesContainer}>
-              {notes.map((note, index) => (
-                <NoteCard
-                  key={`${note.id}-${index}`}
-                  note={note}
-                  onPress={() => handleNotePress(note.id)}
-                  onDelete={() => handleDeleteRecall(note.id)}
-                />
-              ))}
-              
-              {isLoadingMore && (
-                <View style={styles.loadingMoreContainer}>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                  <Text style={styles.loadingMoreText}>Loading more...</Text>
-                </View>
-              )}
-              
-              {!hasMore && notes.length > 0 && (
-                <View style={styles.endContainer}>
-                  <Text style={styles.endText}>You&apos;ve reached the end</Text>
-                </View>
-              )}
-            </View>
-          )}
-        </ScrollView>
+          onEndReached={!loading ? handleEndReached : undefined}
+          onEndReachedThreshold={0.5}
+          windowSize={10}
+          maxToRenderPerBatch={6}
+          initialNumToRender={8}
+          removeClippedSubviews
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+        />
       )}
 
       {/* Edit Modal */}
@@ -1598,7 +1613,7 @@ export default function CategoryViewerScreen() {
               <Text style={styles.modalLabel}>Category Icon</Text>
               <Pressable onPress={handleSelectImage} style={styles.modalImageSelector}>
                 {editImage ? (
-                  <Image source={{ uri: editImage }} style={styles.modalSelectedImage} resizeMode="cover" />
+                  <Image source={{ uri: editImage }} style={styles.modalSelectedImage} contentFit="cover" transition={150} cachePolicy="memory-disk" />
                 ) : (
                   <View style={styles.modalEmptyImagePlaceholder}>
                     <IconSymbol 

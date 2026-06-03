@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Dimensions, ScrollView, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, ScrollView, Modal, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
+import { cdnVariant } from '@/utils/cdnVariant';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { Note } from '@/types/Note';
@@ -161,10 +163,14 @@ export function StoryReels({ onNotePress, refreshTrigger }: StoryReelsProps) {
                   style={styles.storyGradientBorder}
                 >
                   <View style={styles.storyImageContainer}>
+                    {/* cdnVariant 'thumbnail' requires the variant in Cloudflare Images dashboard.
+                        If absent, cdnVariant is a no-op — still benefits from expo-image caching. */}
                     <Image
-                      source={{ uri: firstImage }}
+                      source={{ uri: cdnVariant(firstImage, 'thumbnail') as string }}
                       style={styles.storyImage}
-                      resizeMode="cover"
+                      contentFit="cover"
+                      transition={150}
+                      cachePolicy="memory-disk"
                     />
                   </View>
                 </LinearGradient>
@@ -234,7 +240,9 @@ export function StoryReels({ onNotePress, refreshTrigger }: StoryReelsProps) {
                 <Image
                   source={{ uri: selectedStory.images[currentImageIndex] }}
                   style={styles.storyFullImage}
-                  resizeMode="contain"
+                  contentFit="contain"
+                  transition={150}
+                  cachePolicy="memory-disk"
                 />
               )}
             </View>
