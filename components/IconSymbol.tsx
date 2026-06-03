@@ -161,6 +161,10 @@ const MAPPING = {
   "line.3.horizontal.decrease": "filter-list",
   "arrow.up.arrow.down": "sort",
 
+  // Overflow / context menus
+  "ellipsis": "more-horiz",
+  "ellipsis.vertical": "more-vert",
+
   // Additional icons
   "note.text": "note",
   "xmark.circle.fill": "cancel",

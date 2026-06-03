@@ -13,6 +13,9 @@ import {
   Keyboard,
   Linking,
   Animated,
+  KeyboardAvoidingView,
+  NativeSyntheticEvent,
+  TextInputKeyPressEventData,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { colors } from '@/styles/commonStyles';
@@ -115,8 +118,14 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [inputHeight, setInputHeight] = useState(40);
   const scrollViewRef = useRef<ScrollView>(null);
   const translateY = useRef(new Animated.Value(0)).current;
+  const sendButtonAnim = useRef(new Animated.Value(0)).current;
+
+  const LINE_HEIGHT = 20;
+  const MAX_LINES = 5;
+  const MAX_INPUT_HEIGHT = LINE_HEIGHT * MAX_LINES + 20; // +20 for vertical padding
 
   const loadChatHistory = useCallback(async () => {
     if (!recall) {
@@ -214,6 +223,34 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
       keyboardWillHideListener.remove();
     };
   }, [translateY]);
+
+  // Animate send button when canSend changes
+  const canSend = inputText.trim().length > 0 && !isLoading;
+  useEffect(() => {
+    Animated.timing(sendButtonAnim, {
+      toValue: canSend ? 1 : 0,
+      duration: 150,
+      useNativeDriver: false,
+    }).start();
+  }, [canSend, sendButtonAnim]);
+
+  const sendButtonBg = sendButtonAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [colors.cardDark, colors.primary],
+  });
+
+  const handleKeyPress = useCallback(
+    (e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
+      if (e.nativeEvent.key === 'Enter') {
+        // Shift+Enter on hardware keyboards inserts newline — handled by OS
+        // Plain Enter submits
+        console.log('[RecallChat] Enter key pressed — submitting message');
+        handleSendMessage();
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inputText, isLoading]
+  );
 
   const handleCopyMessage = useCallback(async (content: string) => {
     console.log('User long-pressed message to copy');
@@ -466,8 +503,6 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     );
   };
 
-  const canSend = inputText.trim().length > 0 && !isLoading;
-
   return (
     <Modal
       visible={visible}
@@ -475,6 +510,10 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
       animationType="fade"
       onRequestClose={handleClose}
     >
+      <KeyboardAvoidingView
+        style={styles.kavWrapper}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <Pressable style={styles.backdrop} onPress={handleBackdropPress}>
         <Pressable style={styles.modalContainer} onPress={(e) => e.stopPropagation()}>
           <Animated.View style={[styles.modalContent, { transform: [{ translateY }] }]}>
@@ -542,38 +581,52 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
 
             {/* Input Area - Fixed at bottom */}
             <Pressable style={styles.inputContainer} onPress={(e) => e.stopPropagation()}>
-              <TextInput
-                style={styles.input}
-                placeholder="Ask a question..."
-                placeholderTextColor={colors.textSecondary}
-                value={inputText}
-                onChangeText={setInputText}
-                multiline
-                maxLength={500}
-                editable={!isLoading}
-                returnKeyType="send"
-                blurOnSubmit={false}
-                onSubmitEditing={handleSendMessage}
-                enablesReturnKeyAutomatically={true}
-              />
-              <Pressable
-                onPressIn={handleSendMessage}
-                disabled={!canSend}
-                style={[
-                  styles.sendButton,
-                  canSend ? styles.sendButtonActive : styles.sendButtonDisabled,
-                ]}
-              >
-                <IconSymbol
-                  name="paperplane.fill"
-                  size={20}
-                  color={canSend ? colors.background : colors.textSecondary}
+              <View style={styles.inputPill}>
+                <TextInput
+                  style={[styles.input, { height: Math.min(inputHeight, MAX_INPUT_HEIGHT) }]}
+                  placeholder="Ask a question..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={inputText}
+                  onChangeText={setInputText}
+                  multiline
+                  maxLength={500}
+                  editable={!isLoading}
+                  returnKeyType="send"
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => {
+                    console.log('[RecallChat] onSubmitEditing fired — submitting message');
+                    handleSendMessage();
+                  }}
+                  submitBehavior="submit"
+                  enablesReturnKeyAutomatically={true}
+                  onKeyPress={handleKeyPress}
+                  onContentSizeChange={(e) => {
+                    setInputHeight(e.nativeEvent.contentSize.height);
+                  }}
                 />
-              </Pressable>
+                <Animated.View style={[styles.sendButtonWrapper, { backgroundColor: sendButtonBg }]}>
+                  <Pressable
+                    onPress={() => {
+                      console.log('[RecallChat] Send button pressed');
+                      handleSendMessage();
+                    }}
+                    disabled={!canSend}
+                    style={styles.sendButton}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol
+                      name="arrow.up"
+                      size={20}
+                      color={canSend ? '#FFFFFF' : colors.textSecondary}
+                    />
+                  </Pressable>
+                </Animated.View>
+              </View>
             </Pressable>
           </Animated.View>
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -756,38 +809,53 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: colors.background,
   },
+  kavWrapper: {
+    flex: 1,
+  },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.card,
+  },
+  inputPill: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    backgroundColor: colors.cardDark,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
     gap: 8,
   },
   input: {
     flex: 1,
-    backgroundColor: colors.background,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
     fontSize: 15,
     color: colors.text,
-    maxHeight: 100,
     minHeight: 40,
+    paddingVertical: 4,
+    lineHeight: 20,
+  },
+  sendButtonWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 2,
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
     justifyContent: 'center',
     alignItems: 'center',
   },
   sendButtonActive: {
-    backgroundColor: colors.primary,
+    // kept for legacy reference — visual state now driven by sendButtonWrapper animation
   },
   sendButtonDisabled: {
-    backgroundColor: colors.cardDark,
+    // kept for legacy reference
   },
 });

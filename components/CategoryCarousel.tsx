@@ -6,6 +6,7 @@ import { supabase } from '@/utils/supabase';
 import { IconSymbol } from './IconSymbol';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { CategoryCarouselSkeleton } from './CategoryCarouselSkeleton';
 
 interface Category {
@@ -75,6 +76,16 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       setLoading(false);
     }
   }, [userId, refreshTrigger, loadAllUserCategories]);
+
+  // Focus-based refetch as a safety net for slow/missed realtime events
+  useFocusEffect(
+    useCallback(() => {
+      if (userId) {
+        console.log('[CategoryCarousel] Screen focused — refetching categories');
+        loadAllUserCategories();
+      }
+    }, [userId, loadAllUserCategories])
+  );
 
   // Set up real-time subscription for category changes
   useEffect(() => {

@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Alert, TextInput, Image, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Alert, TextInput, Image, Modal, KeyboardAvoidingView, Platform, Animated } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -51,6 +52,10 @@ export default function CategoryViewerScreen() {
   const matchingCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [totalRecallCount, setTotalRecallCount] = useState(0);
   const [sortOrder, setSortOrder] = useState<SortOrder>('Newest');
+
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuAnim = useRef(new Animated.Value(0)).current;
+  const insets = useSafeAreaInsets();
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
@@ -769,8 +774,32 @@ export default function CategoryViewerScreen() {
 
   const handleBack = useCallback(() => {
     console.log('[CategoryViewer] User tapped back button');
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
     router.back();
   }, [router]);
+
+  const openMenu = useCallback(() => {
+    console.log('[CategoryViewer] User tapped ellipsis menu button');
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    setIsMenuOpen(true);
+    Animated.timing(menuAnim, {
+      toValue: 1,
+      duration: 120,
+      useNativeDriver: true,
+    }).start();
+  }, [menuAnim]);
+
+  const closeMenu = useCallback(() => {
+    Animated.timing(menuAnim, {
+      toValue: 0,
+      duration: 100,
+      useNativeDriver: true,
+    }).start(() => setIsMenuOpen(false));
+  }, [menuAnim]);
 
   const handleNotePress = useCallback((noteId: string) => {
     try {
@@ -1167,6 +1196,9 @@ export default function CategoryViewerScreen() {
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
         >
+          {/* Top spacing for floating buttons */}
+          <View style={{ height: insets.top + 56 }} />
+
           {/* Category Info Skeleton */}
           <View style={styles.categoryInfoContainer}>
             <View style={styles.categoryTopRow}>
@@ -1236,6 +1268,15 @@ export default function CategoryViewerScreen() {
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
         >
+          {/* Category name heading */}
+          {category && (
+            <View style={{ marginTop: insets.top + 56, paddingHorizontal: 24, paddingBottom: 8 }}>
+              <Text style={styles.categoryHeading} numberOfLines={2} ellipsizeMode="tail">
+                {category.category_name}
+              </Text>
+            </View>
+          )}
+
           {/* Category Info - Real data */}
           {category && (
             <View style={styles.categoryInfoContainer}>
@@ -1312,34 +1353,24 @@ export default function CategoryViewerScreen() {
     );
   };
 
+  const menuOpacity = menuAnim;
+  const menuTranslateY = menuAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-8, 0],
+  });
+
   if (loading) {
     return (
       <View style={styles.container}>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            headerTitle: category?.category_name || 'Category',
-            headerStyle: {
-              backgroundColor: colors.background,
-            },
-            headerTintColor: colors.text,
-            headerTitleAlign: 'center',
-            headerTitleStyle: {
-              fontSize: 20,
-              fontWeight: 'bold',
-              color: colors.primary,
-            },
-            headerLeft: () => (
-              <Pressable 
-                onPress={handleBack} 
-                style={styles.headerButton}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <IconSymbol name="chevron.left" size={24} color={colors.text} />
-              </Pressable>
-            ),
-          }}
-        />
+        <Stack.Screen options={{ headerShown: false }} />
+        {/* Floating back button during loading */}
+        <Pressable
+          onPress={handleBack}
+          style={[styles.floatingButton, { top: insets.top + 8, left: 16 }]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <IconSymbol name="chevron.left" size={20} color={colors.text} />
+        </Pressable>
         {renderSkeletons()}
       </View>
     );
@@ -1348,29 +1379,14 @@ export default function CategoryViewerScreen() {
   if (!category) {
     return (
       <View style={styles.container}>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            headerTitle: 'Category',
-            headerStyle: {
-              backgroundColor: colors.background,
-            },
-            headerTintColor: colors.text,
-            headerTitleAlign: 'center',
-            headerTitleStyle: {
-              color: colors.primary,
-            },
-            headerLeft: () => (
-              <Pressable 
-                onPress={handleBack} 
-                style={styles.headerButton}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <IconSymbol name="chevron.left" size={24} color={colors.text} />
-              </Pressable>
-            ),
-          }}
-        />
+        <Stack.Screen options={{ headerShown: false }} />
+        <Pressable
+          onPress={handleBack}
+          style={[styles.floatingButton, { top: insets.top + 8, left: 16 }]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <IconSymbol name="chevron.left" size={20} color={colors.text} />
+        </Pressable>
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>Category Not Found</Text>
         </View>
@@ -1380,40 +1396,68 @@ export default function CategoryViewerScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerTitle: category.category_name,
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerTintColor: colors.text,
-          headerTitleAlign: 'center',
-          headerTitleStyle: {
-            fontSize: 20,
-            fontWeight: 'bold',
-            color: colors.primary,
-          },
-          headerLeft: () => (
-            <Pressable 
-              onPress={handleBack} 
-              style={styles.headerButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      <Stack.Screen options={{ headerShown: false }} />
+
+      {/* Floating back button */}
+      <Pressable
+        onPress={handleBack}
+        style={[styles.floatingButton, { top: insets.top + 8, left: 16 }]}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <IconSymbol name="chevron.left" size={20} color={colors.text} />
+      </Pressable>
+
+      {/* Floating ellipsis menu button */}
+      <Pressable
+        onPress={openMenu}
+        style={[styles.floatingButton, { top: insets.top + 8, right: 16 }]}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <IconSymbol name="ellipsis" size={20} color={colors.text} />
+      </Pressable>
+
+      {/* Context menu popover */}
+      {isMenuOpen && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          {/* Backdrop */}
+          <Pressable
+            style={styles.menuBackdrop}
+            onPress={closeMenu}
+          />
+          {/* Menu card */}
+          <Animated.View
+            style={[
+              styles.menuCard,
+              { top: insets.top + 56, right: 16 },
+              { opacity: menuOpacity, transform: [{ translateY: menuTranslateY }] },
+            ]}
+          >
+            <Pressable
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+              onPress={() => {
+                console.log('[CategoryViewer] User tapped Edit from popover menu');
+                closeMenu();
+                handleEditPress();
+              }}
             >
-              <IconSymbol name="chevron.left" size={24} color={colors.text} />
+              <IconSymbol name="pencil" size={18} color={colors.text} />
+              <Text style={styles.menuRowText}>Edit</Text>
             </Pressable>
-          ),
-          headerRight: () => (
-            <Pressable 
-              onPress={handleDeletePress} 
-              style={styles.headerButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            <View style={styles.menuDivider} />
+            <Pressable
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+              onPress={() => {
+                console.log('[CategoryViewer] User tapped Delete from popover menu');
+                closeMenu();
+                handleDeletePress();
+              }}
             >
-              <IconSymbol name="trash" size={24} color={colors.error} />
+              <IconSymbol name="trash" size={18} color={colors.error} />
+              <Text style={[styles.menuRowText, styles.menuRowTextDestructive]}>Delete</Text>
             </Pressable>
-          ),
-        }}
-      />
+          </Animated.View>
+        </View>
+      )}
 
       {/* Show matching placeholders if category is being matched */}
       {isMatching ? (
@@ -1433,6 +1477,13 @@ export default function CategoryViewerScreen() {
             />
           }
         >
+          {/* Category name — prominent heading */}
+          <View style={{ marginTop: insets.top + 56, paddingHorizontal: 24, paddingBottom: 8 }}>
+            <Text style={styles.categoryHeading} numberOfLines={2} ellipsizeMode="tail">
+              {category.category_name}
+            </Text>
+          </View>
+
           {/* Category Info - Updated Layout */}
           <View style={styles.categoryInfoContainer}>
             <View style={styles.categoryTopRow}>
@@ -1749,6 +1800,65 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     marginHorizontal: 8,
+  },
+  floatingButton: {
+    position: 'absolute',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    zIndex: 200,
+  },
+  menuCard: {
+    position: 'absolute',
+    width: 180,
+    backgroundColor: colors.cardDark,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 10,
+    zIndex: 300,
+    overflow: 'hidden',
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  menuRowPressed: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  menuRowText: {
+    fontSize: 15,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  menuRowTextDestructive: {
+    color: colors.error,
+  },
+  menuDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+  },
+  categoryHeading: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.text,
   },
   categoryInfoContainer: {
     padding: 24,
