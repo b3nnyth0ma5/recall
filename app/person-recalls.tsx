@@ -1,86 +1,100 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, Pressable, Alert, Platform, RefreshControl, Animated, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Pressable,
+  ActivityIndicator,
+  RefreshControl,
+  Alert,
+  Platform,
+  Animated,
+  Dimensions,
+} from 'react-native';
+import RecallHeader from '@/components/RecallHeader';
+import { ChevronLeft } from 'lucide-react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import * as Haptics from 'expo-haptics';
-import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system/legacy';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
 import { IconSymbol } from '@/components/IconSymbol';
 import { PersonAvatar } from '@/components/PersonAvatar';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase, getImageDataUrl } from '@/utils/supabase';
 import { uploadImageToCloudflare } from '@/utils/cloudflareCDN';
-import { useAuth } from '@/contexts/AuthContext';
 import { Note } from '@/types/Note';
-import { peopleCache, imageCache, CostCalculator } from '@/utils/memoryCache';
+import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useNotes } from '@/hooks/useNotes';
 import { useNotesContext } from '@/contexts/NotesContext';
+import { peopleCache, imageCache, CostCalculator } from '@/utils/memoryCache';
+import { debounce } from '@/utils/debounce';
+
+type SortOrder = 'Newest' | 'Oldest' | 'Best match';
 
 export default function PersonRecallsScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const { personId } = useLocalSearchParams<{ personId: string }>();
   const { user } = useAuth();
   const { getCachedNote } = useNotes();
   const { refreshUrlMetadata } = useNotesContext();
-  const [recalls, setRecalls] = useState<Note[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  // Person data
   const [personName, setPersonName] = useState<string>('');
   const [personPhotoUrl, setPersonPhotoUrl] = useState<string | null>(null);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [personNotFound, setPersonNotFound] = useState(false);
+
+  // Recalls list
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [loadingPersonInfo, setLoadingPersonInfo] = useState(true);
+  const [totalRecallCount, setTotalRecallCount] = useState(0);
+  const [sortOrder, setSortOrder] = useState<SortOrder>('Newest');
+
+  // Photo upload
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoUpdateTrigger, setPhotoUpdateTrigger] = useState(0);
-  const [totalRecallCount, setTotalRecallCount] = useState<number | null>(null);
 
-  const personId = params.personId as string;
-  const ITEMS_PER_PAGE = 10;
-
-  // Ellipsis menu state
-  const [isManageMenuOpen, setIsManageMenuOpen] = useState(false);
-  const manageMenuFade = useRef(new Animated.Value(0)).current;
-  const manageMenuScale = useRef(new Animated.Value(0.9)).current;
+  // Ellipsis menu
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuAnim = useRef(new Animated.Value(0)).current;
+  const menuScaleAnim = useRef(new Animated.Value(0.95)).current;
   const ellipsisButtonRef = useRef<View>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null);
 
-  // Trigger heavy haptic feedback when screen loads
-  useEffect(() => {
-    console.log('[PersonRecalls] Screen loaded - triggering heavy haptic feedback');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-  }, []);
+  const ITEMS_PER_PAGE = 10;
 
-  // Optimized helper function to load people for recalls in batch with caching
+  // ─── People batch loader ────────────────────────────────────────────────────
   const loadPeopleForRecalls = useCallback(async (recallIds: string[]) => {
-    if (!recallIds || recallIds.length === 0) {
-      return {};
-    }
+    if (!recallIds || recallIds.length === 0) return {};
 
     try {
-      // Check MemoryCache first
       const uncachedIds: string[] = [];
       const result: { [key: string]: any[] } = {};
-      
-      recallIds.forEach(id => {
-        const cached = peopleCache.get(id);
+
+      recallIds.forEach(rid => {
+        const cached = peopleCache.get(rid);
         if (cached) {
-          result[id] = cached;
+          result[rid] = cached;
         } else {
-          uncachedIds.push(id);
+          uncachedIds.push(rid);
         }
       });
-      
+
       if (uncachedIds.length === 0) {
-        // All data is cached
         console.log(`[PersonRecalls] All people data cached for ${recallIds.length} recalls`);
         return result;
       }
 
-      // Fetch only uncached data with optimized query using composite index
       const { data: recallPeopleData, error: recallPeopleError } = await supabase
         .from('recall_people')
         .select('recall_id, person_id, persons!inner(id, person_name, photo_url)')
@@ -91,14 +105,11 @@ export default function PersonRecallsScreen() {
         return result;
       }
 
-      // Group people by recall_id
       const peopleByRecallId: { [key: string]: any[] } = {};
-      
       (recallPeopleData || []).forEach((rp: any) => {
         if (!peopleByRecallId[rp.recall_id]) {
           peopleByRecallId[rp.recall_id] = [];
         }
-        
         if (rp.persons) {
           peopleByRecallId[rp.recall_id].push({
             id: rp.persons.id,
@@ -108,12 +119,11 @@ export default function PersonRecallsScreen() {
         }
       });
 
-      // Update MemoryCache with cost calculation
-      uncachedIds.forEach(id => {
-        const people = peopleByRecallId[id] || [];
+      uncachedIds.forEach(rid => {
+        const people = peopleByRecallId[rid] || [];
         const cost = CostCalculator.forPeople(people);
-        peopleCache.set(id, people, cost);
-        result[id] = people;
+        peopleCache.set(rid, people, cost);
+        result[rid] = people;
       });
 
       console.log(`[PersonRecalls] Loaded people for ${Object.keys(peopleByRecallId).length} recalls (${uncachedIds.length} from DB, ${recallIds.length - uncachedIds.length} from cache)`);
@@ -124,13 +134,11 @@ export default function PersonRecallsScreen() {
     }
   }, []);
 
-  // Optimized image loading with lazy loading and caching
+  // ─── Image + people loader ──────────────────────────────────────────────────
   const loadImagesForRecalls = useCallback(async (recalls: any[]) => {
-    // First, load people for all recalls in one batch
     const recallIds = recalls.map(r => r.id);
     const peopleByRecallId = await loadPeopleForRecalls(recallIds);
 
-    // Batch fetch all images for all recalls in one query
     const { data: allImagesData, error: allImagesError } = await supabase
       .from('recall_images')
       .select('id, recall_id, cdn_url')
@@ -141,7 +149,6 @@ export default function PersonRecallsScreen() {
       console.error('[PersonRecalls] Error fetching images:', allImagesError);
     }
 
-    // Group images by recall_id
     const imagesByRecallId = new Map<string, any[]>();
     (allImagesData || []).forEach(img => {
       if (!imagesByRecallId.has(img.recall_id)) {
@@ -150,32 +157,24 @@ export default function PersonRecallsScreen() {
       imagesByRecallId.get(img.recall_id)!.push(img);
     });
 
-    // Process recalls with their images
     const processedNotes = await Promise.all(
       recalls.map(async (recall) => {
         try {
           const recallImages = imagesByRecallId.get(recall.id) || [];
-          
-          // Load first TWO images immediately for better UX (same as landing page)
+
           const imageResults = await Promise.all(
             recallImages.map(async (img, index) => {
               try {
-                // Load first two images, others will be lazy loaded
                 if (index < 2) {
-                  // Check MemoryCache first
                   const cachedImage = imageCache.get(img.id);
-                  if (cachedImage) {
-                    return { url: cachedImage, id: img.id };
-                  }
-                  
-                  // Prefer CDN URL if available (much faster)
+                  if (cachedImage) return { url: cachedImage, id: img.id };
+
                   if (img.cdn_url) {
                     const cost = CostCalculator.forImage(img.cdn_url);
                     imageCache.set(img.id, img.cdn_url, cost);
                     return { url: img.cdn_url, id: img.id };
                   }
-                  
-                  // Fallback to base64 data
+
                   const dataUrl = await getImageDataUrl(img.id);
                   if (dataUrl) {
                     const cost = CostCalculator.forImage(dataUrl);
@@ -184,7 +183,6 @@ export default function PersonRecallsScreen() {
                   }
                   return { url: '', id: img.id };
                 } else {
-                  // Return placeholder for lazy loading
                   return { url: '', id: img.id };
                 }
               } catch (error) {
@@ -194,23 +192,41 @@ export default function PersonRecallsScreen() {
             })
           );
 
-          const validImageUrls = imageResults.map(result => result.url);
-          const imageIds = imageResults.map(result => result.id);
+          const validImageUrls = imageResults.map(r => r.url);
+          const imageIds = imageResults.map(r => r.id);
           const people = peopleByRecallId[recall.id] || [];
 
           return {
-            ...recall,
+            id: recall.id,
+            text: recall.text || '',
+            created_at: recall.created_at,
+            updated_at: recall.updated_at,
+            location: recall.location,
+            latitude: recall.latitude,
+            longitude: recall.longitude,
+            location_primary_type: recall.location_primary_type,
             images: validImageUrls,
             imageIds: imageIds,
+            urls: [],
             people: people,
+            match_score: recall.match_score || 0,
           };
         } catch (error) {
-          console.error(`[PersonRecalls] Error processing recall ${recall.id}:`, error);
+          console.error(`[PersonRecalls] Exception processing recall ${recall.id}:`, error);
           return {
-            ...recall,
+            id: recall.id,
+            text: recall.text || '',
+            created_at: recall.created_at,
+            updated_at: recall.updated_at,
+            location: recall.location,
+            latitude: recall.latitude,
+            longitude: recall.longitude,
+            location_primary_type: recall.location_primary_type,
             images: [],
             imageIds: [],
+            urls: [],
             people: [],
+            match_score: 0,
           };
         }
       })
@@ -219,167 +235,276 @@ export default function PersonRecallsScreen() {
     return processedNotes;
   }, [loadPeopleForRecalls]);
 
-  // Optimized recall loading with batch queries, pagination, and cache usage
-  const loadRecallsForPerson = useCallback(async (pageNum: number = 1, append: boolean = false) => {
+  // ─── Main data loader ───────────────────────────────────────────────────────
+  const loadPersonAndRecalls = useCallback(async (pageNum: number = 1, append: boolean = false) => {
+    if (!personId || !user) {
+      console.log('[PersonRecalls] No personId or user');
+      setLoading(false);
+      return;
+    }
+
     try {
       if (!append) {
         setLoading(true);
       } else {
         setIsLoadingMore(true);
       }
-      
-      console.log(`[PersonRecalls] Loading recalls page ${pageNum} for person:`, personId);
 
-      // First, get the person's name and photo (only on first load)
+      console.log(`[PersonRecalls] Loading person and recalls page ${pageNum} for:`, personId, 'sortOrder:', sortOrder);
+
+      // Fetch person details on first load
       if (pageNum === 1) {
-        setLoadingPersonInfo(true);
         const { data: personData, error: personError } = await supabase
           .from('persons')
           .select('person_name, photo_url')
           .eq('id', personId)
-          .eq('user_id', user?.id)
+          .eq('user_id', user.id)
           .single();
 
-        if (personError) {
+        if (personError || !personData) {
           console.error('[PersonRecalls] Error loading person:', personError);
-          setLoadingPersonInfo(false);
+          setPersonNotFound(true);
+          setLoading(false);
           return;
         }
 
         setPersonName(personData.person_name);
         setPersonPhotoUrl(personData.photo_url || null);
-        setLoadingPersonInfo(false);
+        setPersonNotFound(false);
+        console.log('[PersonRecalls] Person loaded:', personData.person_name);
       }
 
-      // Get recall IDs for this person using optimized index with pagination
-      const from = (pageNum - 1) * ITEMS_PER_PAGE;
-      const to = from + ITEMS_PER_PAGE - 1;
-
-      const { data: recallPeopleData, error: recallPeopleError } = await supabase
-        .from('recall_people')
-        .select('recall_id')
-        .eq('person_id', personId)
-        .eq('user_id', user?.id)
-        .range(from, to);
-
-      if (recallPeopleError) {
-        console.error('[PersonRecalls] Error loading recall_people:', recallPeopleError);
-        return;
-      }
-
-      if (!recallPeopleData || recallPeopleData.length === 0) {
-        console.log('[PersonRecalls] No recalls found for this page');
-        setHasMore(false);
-        if (!append) {
-          setRecalls([]);
-          setTotalRecallCount(0);
-        }
-        return;
-      }
-
-      // Fetch true total count on first page load only
+      // Fetch total count on first load
       if (pageNum === 1) {
-        supabase
+        const { count, error: countError } = await supabase
           .from('recall_people')
           .select('recall_id', { count: 'exact', head: true })
           .eq('person_id', personId)
-          .eq('user_id', user?.id)
-          .then(({ count, error }) => {
-            if (!error && count !== null) {
-              console.log(`[PersonRecalls] Total recall count for person: ${count}`);
-              setTotalRecallCount(count);
-            }
-          });
-      }
+          .eq('user_id', user.id);
 
-      if (recallPeopleData.length < ITEMS_PER_PAGE) {
-        setHasMore(false);
-      }
-
-      const recallIds = recallPeopleData.map(rp => rp.recall_id);
-
-      // Check cache first for recalls (from landing page)
-      const cachedNotes: Note[] = [];
-      const uncachedRecallIds: string[] = [];
-
-      recallIds.forEach(recallId => {
-        const cachedNote = getCachedNote(recallId);
-        if (cachedNote) {
-          console.log(`[PersonRecalls] Using cached Recall for ${recallId}`);
-          cachedNotes.push(cachedNote);
+        if (countError) {
+          console.error('[PersonRecalls] Error fetching total recall count:', countError);
+          setTotalRecallCount(0);
         } else {
-          uncachedRecallIds.push(recallId);
+          setTotalRecallCount(count || 0);
+          console.log('[PersonRecalls] Total recall count:', count);
         }
-      });
+      }
 
-      let transformedNotes: Note[] = [...cachedNotes];
+      const from = (pageNum - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
 
-      // Fetch only uncached recalls
-      if (uncachedRecallIds.length > 0) {
-        console.log(`[PersonRecalls] Fetching ${uncachedRecallIds.length} uncached recalls from DB`);
-        
-        const { data: recallsData, error: recallsError } = await supabase
+      // For date sorting: fetch all recall IDs, sort by recall created_at, then paginate
+      if (sortOrder === 'Newest' || sortOrder === 'Oldest' || sortOrder === 'Best match') {
+        // Get all recall IDs for this person
+        const { data: allRecallPeopleData, error: allRecallPeopleError } = await supabase
+          .from('recall_people')
+          .select('recall_id')
+          .eq('person_id', personId)
+          .eq('user_id', user.id);
+
+        if (allRecallPeopleError) {
+          console.error('[PersonRecalls] Error fetching all recall_people:', allRecallPeopleError);
+          if (!append) setNotes([]);
+          setLoading(false);
+          setIsLoadingMore(false);
+          return;
+        }
+
+        if (!allRecallPeopleData || allRecallPeopleData.length === 0) {
+          console.log('[PersonRecalls] No recalls found for this person');
+          setHasMore(false);
+          if (!append) setNotes([]);
+          setLoading(false);
+          setIsLoadingMore(false);
+          return;
+        }
+
+        const allRecallIds = allRecallPeopleData.map(r => r.recall_id);
+
+        // Fetch created_at for all recalls to sort
+        const { data: allRecallsData, error: allRecallsError } = await supabase
           .from('recalls')
-          .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
-          .in('id', uncachedRecallIds)
-          .eq('user_id', user?.id)
-          .order('created_at', { ascending: false });
+          .select('id, created_at')
+          .in('id', allRecallIds)
+          .eq('user_id', user.id);
 
-        if (recallsError) {
-          console.error('[PersonRecalls] Error loading recalls:', recallsError);
-        } else if (recallsData) {
-          // Optimized image and people loading with lazy loading
-          const processedNotes = await loadImagesForRecalls(recallsData);
-          transformedNotes = [...transformedNotes, ...processedNotes];
+        if (allRecallsError || !allRecallsData || allRecallsData.length === 0) {
+          console.error('[PersonRecalls] Error fetching recalls for sorting:', allRecallsError);
+          if (!append) setNotes([]);
+          setLoading(false);
+          setIsLoadingMore(false);
+          return;
         }
-      }
 
-      // Sort by created_at
-      transformedNotes.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-      console.log(`[PersonRecalls] Loaded ${transformedNotes.length} recalls (${cachedNotes.length} from cache, ${uncachedRecallIds.length} from DB)`);
-      
-      if (append) {
-        // Prevent duplicates by filtering out Recalls that already exist
-        setRecalls(prevRecalls => {
-          const existingIds = new Set(prevRecalls.map(recall => recall.id));
-          const newUniqueRecalls = transformedNotes.filter(recall => !existingIds.has(recall.id));
-          console.log(`[PersonRecalls] Adding ${newUniqueRecalls.length} new unique recalls (filtered ${transformedNotes.length - newUniqueRecalls.length} duplicates)`);
-          return [...prevRecalls, ...newUniqueRecalls];
+        // Sort by created_at (Best match falls back to Newest)
+        const sortedRecalls = allRecallsData.sort((a, b) => {
+          const dateA = new Date(a.created_at).getTime();
+          const dateB = new Date(b.created_at).getTime();
+          if (sortOrder === 'Oldest') {
+            return dateA - dateB;
+          }
+          return dateB - dateA; // Newest and Best match both sort newest-first
         });
-      } else {
-        setRecalls(transformedNotes);
-      }
 
-      // Fire-and-forget: populate URL metadata so NoteCard can render URL previews
-      const loadedIds = transformedNotes.map(n => n.id);
-      if (loadedIds.length > 0) {
-        console.log('[PersonRecalls] Refreshing URL metadata for', loadedIds.length, 'recalls');
-        refreshUrlMetadata(loadedIds);
+        console.log(`[PersonRecalls] Sorted ${sortedRecalls.length} recalls by ${sortOrder}`);
+
+        const paginatedRecalls = sortedRecalls.slice(from, to + 1);
+
+        if (paginatedRecalls.length < ITEMS_PER_PAGE) {
+          setHasMore(false);
+        } else {
+          setHasMore(true);
+        }
+
+        if (paginatedRecalls.length === 0) {
+          setHasMore(false);
+          if (!append) setNotes([]);
+          setLoading(false);
+          setIsLoadingMore(false);
+          return;
+        }
+
+        const paginatedRecallIds = paginatedRecalls.map(r => r.id);
+
+        // Check cache first
+        const cachedNotes: Note[] = [];
+        const uncachedRecallIds: string[] = [];
+
+        paginatedRecallIds.forEach(recallId => {
+          const cachedNote = getCachedNote(recallId);
+          if (cachedNote) {
+            console.log(`[PersonRecalls] Using cached note for ${recallId}`);
+            cachedNotes.push(cachedNote);
+          } else {
+            uncachedRecallIds.push(recallId);
+          }
+        });
+
+        let transformedNotes: Note[] = [...cachedNotes];
+
+        if (uncachedRecallIds.length > 0) {
+          console.log(`[PersonRecalls] Fetching ${uncachedRecallIds.length} uncached recalls from DB`);
+
+          const { data: recallsData, error: recallsError } = await supabase
+            .from('recalls')
+            .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
+            .in('id', uncachedRecallIds)
+            .eq('user_id', user.id);
+
+          if (recallsError) {
+            console.error('[PersonRecalls] Error fetching recalls:', recallsError);
+          } else if (recallsData) {
+            const processedNotes = await loadImagesForRecalls(recallsData);
+            transformedNotes = [...transformedNotes, ...processedNotes];
+          }
+        }
+
+        // Preserve sort order
+        const orderedNotes = paginatedRecallIds
+          .map(nid => transformedNotes.find(note => note.id === nid))
+          .filter((note): note is Note => note !== undefined);
+
+        console.log(`[PersonRecalls] Loaded ${orderedNotes.length} recalls (${cachedNotes.length} from cache, ${uncachedRecallIds.length} from DB)`);
+
+        if (append) {
+          setNotes(prevNotes => {
+            const existingIds = new Set(prevNotes.map(note => note.id));
+            const newUniqueNotes = orderedNotes.filter(note => !existingIds.has(note.id));
+            console.log(`[PersonRecalls] Adding ${newUniqueNotes.length} new unique notes (filtered ${orderedNotes.length - newUniqueNotes.length} duplicates)`);
+            return [...prevNotes, ...newUniqueNotes];
+          });
+        } else {
+          setNotes(orderedNotes);
+        }
+
+        const noteIds = orderedNotes.map(n => n.id);
+        if (noteIds.length > 0) {
+          refreshUrlMetadata(noteIds);
+        }
       }
     } catch (error) {
-      console.error('[PersonRecalls] Error loading recalls for person:', error);
+      console.error('[PersonRecalls] Error loading data:', error);
+      Alert.alert('Error', 'Failed to load person data');
     } finally {
       setLoading(false);
       setIsLoadingMore(false);
     }
-  }, [personId, user, getCachedNote, loadImagesForRecalls, refreshUrlMetadata]);
+  }, [personId, user, getCachedNote, loadImagesForRecalls, sortOrder, refreshUrlMetadata]);
 
+  // ─── Effects ────────────────────────────────────────────────────────────────
   useEffect(() => {
+    console.log('[PersonRecalls] useEffect triggered - personId:', personId, 'sortOrder:', sortOrder);
+    loadPersonAndRecalls(1, false);
+    setPage(1);
+    setHasMore(true);
+  }, [personId, sortOrder, loadPersonAndRecalls]);
+
+  // Realtime subscription for recall_people changes
+  useEffect(() => {
+    if (!personId || !user) return;
+
+    const channelName = `realtime:${user.id}:recall_people:${personId}:${Math.random().toString(36).slice(2, 8)}`;
+
+    const debouncedRefresh = debounce(() => {
+      console.log('[PersonRecalls] Realtime: recall_people changed, refreshing recalls');
+      loadPersonAndRecalls(1, false);
+    }, 300);
+
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'recall_people',
+          filter: `person_id=eq.${personId}`,
+        },
+        debouncedRefresh,
+      )
+      .subscribe();
+
+    return () => {
+      debouncedRefresh.cancel();
+      supabase.removeChannel(channel);
+    };
+  }, [personId, user, loadPersonAndRecalls]);
+
+  // ─── Handlers ───────────────────────────────────────────────────────────────
+  const handleRefresh = async () => {
+    console.log('[PersonRecalls] User initiated refresh');
+    setRefreshing(true);
+    peopleCache.clear();
+    imageCache.clear();
+    setPage(1);
+    setHasMore(true);
+
     if (personId && user) {
-      loadRecallsForPerson(1, false);
-      setPage(1);
-      setHasMore(true);
+      const { count, error: countError } = await supabase
+        .from('recall_people')
+        .select('recall_id', { count: 'exact', head: true })
+        .eq('person_id', personId)
+        .eq('user_id', user.id);
+
+      if (!countError) {
+        setTotalRecallCount(count || 0);
+        console.log('[PersonRecalls] Total recall count refreshed:', count);
+      }
     }
-  }, [personId, user, loadRecallsForPerson]);
+
+    await loadPersonAndRecalls(1, false);
+    setRefreshing(false);
+  };
 
   const loadMoreRecalls = useCallback(() => {
     if (!isLoadingMore && hasMore && !loading) {
       const nextPage = page + 1;
+      console.log('[PersonRecalls] Loading more recalls, page:', nextPage);
       setPage(nextPage);
-      loadRecallsForPerson(nextPage, true);
+      loadPersonAndRecalls(nextPage, true);
     }
-  }, [page, hasMore, isLoadingMore, loading, loadRecallsForPerson]);
+  }, [page, hasMore, isLoadingMore, loading, loadPersonAndRecalls]);
 
   const handleEndReached = useCallback(() => {
     if (hasMore && !isLoadingMore && !loading) {
@@ -388,60 +513,29 @@ export default function PersonRecallsScreen() {
     }
   }, [hasMore, isLoadingMore, loading, loadMoreRecalls]);
 
-  const handleRefresh = useCallback(async () => {
-    console.log('[PersonRecalls] Pull-to-refresh triggered');
-    setRefreshing(true);
-    
-    // Reset pagination
-    setPage(1);
-    setHasMore(true);
-    
-    // Reload first page
-    await loadRecallsForPerson(1, false);
-    
-    setRefreshing(false);
-    
-    // Haptic feedback on refresh complete
-    if (Platform.OS !== 'web') {
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-  }, [loadRecallsForPerson]);
-
-  const handleNotePress = useCallback((noteId: string) => {
-    try {
-      router.push(`/note-editor?id=${noteId}`);
-    } catch (error) {
-      console.error('Error navigating to Recall editor:', error);
-    }
-  }, [router]);
-
-  const handleBack = useCallback(() => {
-    router.back();
-  }, [router]);
-
-  const openManageMenu = useCallback(() => {
+  const openMenu = useCallback(() => {
     console.log('[PersonRecalls] User tapped ellipsis menu button');
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
 
     const SCREEN_WIDTH = Dimensions.get('window').width;
-    const FALLBACK_ANCHOR = { top: 200, right: 16 };
+    const FALLBACK_ANCHOR = { top: insets.top + 160, right: 16 };
 
     const doOpen = (anchor: { top: number; right: number }) => {
       setMenuAnchor(anchor);
-      setIsManageMenuOpen(true);
-      manageMenuFade.setValue(0);
-      manageMenuScale.setValue(0.9);
+      setIsMenuOpen(true);
+      menuAnim.setValue(0);
+      menuScaleAnim.setValue(0.95);
       Animated.parallel([
-        Animated.timing(manageMenuFade, {
+        Animated.timing(menuAnim, {
           toValue: 1,
-          duration: 120,
+          duration: 150,
           useNativeDriver: true,
         }),
-        Animated.timing(manageMenuScale, {
+        Animated.timing(menuScaleAnim, {
           toValue: 1,
-          duration: 120,
+          duration: 150,
           useNativeDriver: true,
         }),
       ]).start();
@@ -454,61 +548,66 @@ export default function PersonRecallsScreen() {
             top: y + height + 6,
             right: SCREEN_WIDTH - (x + width),
           };
+          console.log('[PersonRecalls] Ellipsis button measured, anchor:', anchor);
           doOpen(anchor);
         } else {
+          console.log('[PersonRecalls] Ellipsis measure returned zero size, using fallback anchor');
           doOpen(FALLBACK_ANCHOR);
         }
       });
     } else {
+      console.log('[PersonRecalls] Ellipsis ref not ready, using fallback anchor');
       doOpen(FALLBACK_ANCHOR);
     }
-  }, [manageMenuFade, manageMenuScale]);
+  }, [menuAnim, menuScaleAnim, insets.top]);
 
-  const closeManageMenu = useCallback(() => {
+  const closeMenu = useCallback(() => {
     Animated.parallel([
-      Animated.timing(manageMenuFade, {
+      Animated.timing(menuAnim, {
         toValue: 0,
         duration: 100,
         useNativeDriver: true,
       }),
-      Animated.timing(manageMenuScale, {
-        toValue: 0.9,
+      Animated.timing(menuScaleAnim, {
+        toValue: 0.95,
         duration: 100,
         useNativeDriver: true,
       }),
     ]).start(() => {
-      setIsManageMenuOpen(false);
+      setIsMenuOpen(false);
       setMenuAnchor(null);
     });
-  }, [manageMenuFade, manageMenuScale]);
+  }, [menuAnim, menuScaleAnim]);
 
+  const handleNotePress = useCallback((noteId: string) => {
+    try {
+      console.log('[PersonRecalls] User tapped note:', noteId);
+      router.push(`/note-editor?id=${noteId}`);
+    } catch (error) {
+      console.error('[PersonRecalls] Error navigating to note editor:', error);
+    }
+  }, [router]);
+
+  // ─── Photo upload flow ───────────────────────────────────────────────────────
   const handlePhotoUpload = useCallback(async (uri: string) => {
     try {
       setUploadingPhoto(true);
       console.log('[PersonRecalls] Starting photo upload process');
 
-      // Manipulate image - resize and compress
       const manipulatedImage = await ImageManipulator.manipulateAsync(
         uri,
-        [
-          { resize: { width: 512 } } // Resize to 512px width for avatar
-        ],
-        {
-          compress: 0.8,
-          format: ImageManipulator.SaveFormat.JPEG,
-        }
+        [{ resize: { width: 512 } }],
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
       );
 
       console.log('[PersonRecalls] Image manipulated:', manipulatedImage.uri);
 
-      // Convert to base64
       const base64 = await FileSystem.readAsStringAsync(manipulatedImage.uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
       console.log('[PersonRecalls] Image converted to base64, length:', base64.length);
 
-      // Upload to Cloudflare
       const fileName = `person-${personId}-${Date.now()}.jpg`;
       const cdnUrl = await uploadImageToCloudflare(base64, fileName, 'image/jpeg');
 
@@ -518,35 +617,24 @@ export default function PersonRecallsScreen() {
 
       console.log('[PersonRecalls] Image uploaded to Cloudflare:', cdnUrl);
 
-      // Update person record with photo URL
       const { error: updateError } = await supabase
         .from('persons')
         .update({ photo_url: cdnUrl })
         .eq('id', personId)
         .eq('user_id', user?.id);
 
-      if (updateError) {
-        throw updateError;
-      }
+      if (updateError) throw updateError;
 
       console.log('[PersonRecalls] Person record updated with photo URL');
 
-      // Update local state
       setPersonPhotoUrl(cdnUrl);
-
-      // Clear people cache to ensure updated photo is reflected everywhere
-      console.log('[PersonRecalls] Clearing people cache to update photo everywhere');
       peopleCache.clear();
-
-      // Force re-render of all Recall cards by incrementing trigger
-      console.log('[PersonRecalls] Forcing avatar refresh on all Recall cards');
+      console.log('[PersonRecalls] Clearing people cache to update photo everywhere');
       setPhotoUpdateTrigger(prev => prev + 1);
 
       if (Platform.OS !== 'web') {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
-
-      // Don't show success modal - just haptic feedback
     } catch (error) {
       console.error('[PersonRecalls] Error uploading photo:', error);
       Alert.alert('Error', 'Failed to upload photo. Please try again.');
@@ -560,35 +648,24 @@ export default function PersonRecallsScreen() {
       setUploadingPhoto(true);
       console.log('[PersonRecalls] Removing person photo');
 
-      // Update person record to remove photo URL
       const { error: updateError } = await supabase
         .from('persons')
         .update({ photo_url: null })
         .eq('id', personId)
         .eq('user_id', user?.id);
 
-      if (updateError) {
-        throw updateError;
-      }
+      if (updateError) throw updateError;
 
       console.log('[PersonRecalls] Person photo removed');
 
-      // Update local state
       setPersonPhotoUrl(null);
-
-      // Clear people cache to ensure updated photo is reflected everywhere
-      console.log('[PersonRecalls] Clearing people cache to update photo everywhere');
       peopleCache.clear();
-
-      // Force re-render of all Recall cards by incrementing trigger
-      console.log('[PersonRecalls] Forcing avatar refresh on all Recall cards');
+      console.log('[PersonRecalls] Clearing people cache to update photo everywhere');
       setPhotoUpdateTrigger(prev => prev + 1);
 
       if (Platform.OS !== 'web') {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
-
-      // Don't show success modal - just haptic feedback
     } catch (error) {
       console.error('[PersonRecalls] Error removing photo:', error);
       Alert.alert('Error', 'Failed to remove photo. Please try again.');
@@ -598,8 +675,8 @@ export default function PersonRecallsScreen() {
   }, [personId, user]);
 
   const handlePhotoPress = useCallback(async () => {
+    console.log('[PersonRecalls] User tapped photo / Add/Edit Photo');
     try {
-      // Show action sheet
       Alert.alert(
         'Person Photo',
         'Choose an option',
@@ -607,19 +684,18 @@ export default function PersonRecallsScreen() {
           {
             text: 'Take Photo',
             onPress: async () => {
+              console.log('[PersonRecalls] User chose Take Photo');
               const { status } = await ImagePicker.requestCameraPermissionsAsync();
               if (status !== 'granted') {
                 Alert.alert('Permission needed', 'Please grant camera permissions');
                 return;
               }
-
               const result = await ImagePicker.launchCameraAsync({
                 mediaTypes: ['images'],
                 allowsEditing: true,
                 aspect: [1, 1],
                 quality: 0.9,
               });
-
               if (!result.canceled && result.assets) {
                 await handlePhotoUpload(result.assets[0].uri);
               }
@@ -628,31 +704,34 @@ export default function PersonRecallsScreen() {
           {
             text: 'Choose from Library',
             onPress: async () => {
+              console.log('[PersonRecalls] User chose Choose from Library');
               const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
               if (status !== 'granted') {
                 Alert.alert('Permission needed', 'Please grant photo library permissions');
                 return;
               }
-
               const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ['images'],
                 allowsEditing: true,
                 aspect: [1, 1],
                 quality: 0.9,
               });
-
               if (!result.canceled && result.assets) {
                 await handlePhotoUpload(result.assets[0].uri);
               }
             },
           },
-          ...(personPhotoUrl ? [{
-            text: 'Remove Photo',
-            style: 'destructive' as const,
-            onPress: async () => {
-              await handlePhotoRemove();
-            },
-          }] : []),
+          ...(personPhotoUrl
+            ? [
+                {
+                  text: 'Remove Photo',
+                  style: 'destructive' as const,
+                  onPress: async () => {
+                    await handlePhotoRemove();
+                  },
+                },
+              ]
+            : []),
           {
             text: 'Cancel',
             style: 'cancel' as const,
@@ -660,160 +739,149 @@ export default function PersonRecallsScreen() {
         ]
       );
     } catch (error) {
-      console.error('Error handling photo press:', error);
+      console.error('[PersonRecalls] Error handling photo press:', error);
     }
   }, [personPhotoUrl, handlePhotoUpload, handlePhotoRemove]);
 
-  // Render skeleton loaders during initial load
-  const renderSkeletonLoaders = () => {
-    return (
-      <View style={styles.recallsContainer}>
-        {[...Array(3)].map((_, index) => (
-          <NoteCard
-            key={`skeleton-${index}`}
-            note={{} as any}
-            onPress={() => {}}
-            loading={true}
-          />
-        ))}
-      </View>
-    );
-  };
-
-  // Render skeleton for person info section
-  const renderPersonInfoSkeleton = () => {
-    return (
-      <View style={styles.avatarSection}>
-        <View style={styles.avatarPressable}>
-          <SkeletonLoader 
-            width={100} 
-            height={100} 
-            borderRadius={50}
-            style={{ marginBottom: 0 }}
-          />
-        </View>
-      </View>
-    );
-  };
-
-  const listRef = useRef<FlatList<Note>>(null);
-
-  const renderRecallItem = useCallback(({ item }: { item: Note }) => (
-    <NoteCard
-      key={`${item.id}-${photoUpdateTrigger}`}
-      note={item}
-      onPress={() => handleNotePress(item.id)}
-      loading={false}
-    />
-  ), [photoUpdateTrigger, handleNotePress]);
-
-  const ListHeaderComponent = (
-    <View>
-      {/* Person Avatar Section with Skeleton - UPDATED: Reduced gaps by 10% */}
-      {loadingPersonInfo ? (
-        renderPersonInfoSkeleton()
-      ) : (
-        <View style={styles.avatarSection}>
-          {/* Row: spacer (left) + avatar (center) + ellipsis (right) */}
-          <View style={styles.avatarRow}>
-            <View style={styles.avatarRowSpacer} />
-            <Pressable
-              onPress={handlePhotoPress}
-              disabled={uploadingPhoto}
-              style={styles.avatarPressable}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <PersonAvatar
-                key={`person-avatar-${photoUpdateTrigger}`}
-                personName={personName}
-                photoUrl={personPhotoUrl}
-                size={100}
-              />
-              {uploadingPhoto && (
-                <View style={styles.uploadingOverlay}>
-                  <ActivityIndicator size="large" color={colors.primary} />
+  // ─── Render helpers ──────────────────────────────────────────────────────────
+  const renderSkeletons = () => (
+    <View style={styles.container}>
+      <FlatList
+        data={[]}
+        keyExtractor={(item: any) => item.id}
+        renderItem={() => null}
+        ListHeaderComponent={
+          <View>
+            <View style={styles.titleInfoContainer}>
+              <View style={styles.titleTopRow}>
+                <SkeletonLoader width={88} height={88} borderRadius={16} variant="wave" />
+                <View style={styles.titleTextContainer}>
+                  <SkeletonLoader width="70%" height={22} borderRadius={4} variant="wave" style={{ marginBottom: 8 }} />
                 </View>
-              )}
-              <View style={styles.cameraIconContainer}>
-                <IconSymbol name="camera.fill" size={20} color="#FFFFFF" />
-              </View>
-            </Pressable>
-            <View style={styles.avatarRowSpacer}>
-              <View ref={ellipsisButtonRef} collapsable={false}>
-                <Pressable
-                  onPress={openManageMenu}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  style={styles.ellipsisButton}
-                >
-                  <IconSymbol name="ellipsis" size={20} color={colors.text} />
-                </Pressable>
               </View>
             </View>
+            <View style={styles.notesContainer}>
+              {[...Array(3)].map((_, index) => (
+                <NoteCard
+                  key={`skeleton-${index}`}
+                  note={{} as any}
+                  onPress={() => { console.log('[PersonRecalls] Skeleton card pressed'); }}
+                  loading={true}
+                />
+              ))}
+            </View>
           </View>
-        </View>
-      )}
-
-      {!loading && recalls.length > 0 && (
-        <View style={styles.recallsContainer}>
-          <Text style={styles.countText}>
-            {(totalRecallCount ?? recalls.length)} {(totalRecallCount ?? recalls.length) === 1 ? 'Recall' : 'Recalls'} mentioning {personName}
-          </Text>
-        </View>
-      )}
+        }
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      />
     </View>
   );
 
-  const ListEmptyComponent = loading ? (
-    renderSkeletonLoaders()
-  ) : (
+  const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <IconSymbol
-        ios_icon_name="person.fill.questionmark"
-        android_material_icon_name="person_search"
-        size={80}
-        color={colors.textTertiary}
-      />
-      <Text style={styles.emptyTitle}>No Recalls Found</Text>
+      <View style={styles.emptyIconContainer}>
+        <IconSymbol
+          ios_icon_name="person.fill.questionmark"
+          android_material_icon_name="person_search"
+          size={64}
+          color={colors.textTertiary}
+        />
+      </View>
+      <Text style={styles.emptyTitle}>No Recalls Yet</Text>
       <Text style={styles.emptyText}>
-        No Recalls mention {personName}
+        No recalls mention {personName || 'this person'} yet. Create new recalls and tag them to see them here.
       </Text>
     </View>
   );
 
-  const ListFooterComponent = isLoadingMore ? (
-    <View style={styles.loadingMoreContainer}>
-      <ActivityIndicator size="small" color={colors.primary} />
-      <Text style={styles.loadingMoreText}>Loading more...</Text>
+  const renderNoteItem = useCallback(({ item }: { item: Note }) => (
+    <View style={styles.noteCardRow}>
+      <NoteCard
+        key={`${item.id}-${photoUpdateTrigger}`}
+        note={item}
+        onPress={() => handleNotePress(item.id)}
+        loading={false}
+      />
     </View>
-  ) : !hasMore && recalls.length > 0 ? (
-    <View style={styles.endContainer}>
-      <Text style={styles.endText}>You&apos;ve reached the end</Text>
-    </View>
-  ) : null;
+  ), [photoUpdateTrigger, handleNotePress]);
 
+  // ─── Stack.Screen options ────────────────────────────────────────────────────
+  const stackScreenOptions = {
+    headerShown: true,
+    headerBackVisible: false,
+    headerBackTitleVisible: false,
+    headerLeft: () => (
+      <Pressable
+        onPress={() => {
+          console.log('[PersonRecalls] Back chevron tapped');
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(tabs)/(home)');
+          }
+        }}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        style={{ paddingLeft: 8 }}
+      >
+        <ChevronLeft size={26} color="#FFFFFF" />
+      </Pressable>
+    ),
+    headerTitle: () => <RecallHeader />,
+    headerTitleAlign: 'center' as const,
+    headerStyle: { backgroundColor: colors.background },
+    headerShadowVisible: false,
+    headerTintColor: colors.text,
+  };
+
+  const recallCountLabel = `${totalRecallCount} ${totalRecallCount === 1 ? 'Recall' : 'Recalls'}`;
+
+  // ─── Loading state ───────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Stack.Screen options={stackScreenOptions} />
+        {renderSkeletons()}
+      </View>
+    );
+  }
+
+  // ─── Person not found ────────────────────────────────────────────────────────
+  if (personNotFound) {
+    return (
+      <View style={styles.container}>
+        <Stack.Screen options={stackScreenOptions} />
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>Person Not Found</Text>
+          <Text style={styles.emptyText}>This person could not be found.</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // ─── Main render ─────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
+      <Stack.Screen options={stackScreenOptions} />
+
       {/* Ellipsis menu popover */}
-      {isManageMenuOpen && menuAnchor && (
+      {isMenuOpen && menuAnchor && (
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
           {/* Backdrop */}
-          <Pressable
-            style={styles.menuBackdrop}
-            onPress={closeManageMenu}
-          />
-          {/* Menu card */}
+          <Pressable style={styles.menuBackdrop} onPress={closeMenu} />
+          {/* Menu card anchored to ellipsis button */}
           <Animated.View
             style={[
               styles.menuCard,
               { top: menuAnchor.top, right: menuAnchor.right },
-              { opacity: manageMenuFade, transform: [{ scale: manageMenuScale }] },
+              { opacity: menuAnim, transform: [{ scale: menuScaleAnim }] },
             ]}
           >
             <Pressable
               style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
               onPress={() => {
                 console.log('[PersonRecalls] User tapped "Add/Edit Photo" from ellipsis menu');
-                closeManageMenu();
+                closeMenu();
                 handlePhotoPress();
               }}
             >
@@ -824,40 +892,125 @@ export default function PersonRecallsScreen() {
         </View>
       )}
 
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerTitle: personName || 'Person Recalls',
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerTintColor: colors.text,
-          headerTitleAlign: 'center',
-          headerTitleStyle: {
-            fontSize: 20,
-            fontWeight: 'bold',
-            color: colors.primary,
-          },
-          headerLeft: () => (
-            <Pressable
-              onPress={handleBack}
-              style={styles.headerButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <IconSymbol name="chevron.left" size={24} color={colors.text} />
-            </Pressable>
-          ),
-        }}
-      />
-
       <FlatList
-        ref={listRef}
-        data={recalls}
+        data={notes}
         keyExtractor={(item) => item.id}
-        renderItem={renderRecallItem}
-        ListHeaderComponent={ListHeaderComponent}
-        ListEmptyComponent={ListEmptyComponent}
-        ListFooterComponent={ListFooterComponent}
+        renderItem={renderNoteItem}
+        ListHeaderComponent={
+          <View>
+            {/* Title row: 88×88 image left, name right, ellipsis top-right */}
+            <View style={styles.titleInfoContainer}>
+              <View style={styles.titleTopRow}>
+                {/* Person photo / avatar */}
+                <Pressable
+                  onPress={handlePhotoPress}
+                  disabled={uploadingPhoto}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={styles.titleImageWrapper}
+                >
+                  {personPhotoUrl ? (
+                    <PersonAvatar
+                      key={`person-avatar-${photoUpdateTrigger}`}
+                      personName={personName}
+                      photoUrl={personPhotoUrl}
+                      size={88}
+                      style={styles.titleImage}
+                    />
+                  ) : (
+                    <PersonAvatar
+                      key={`person-avatar-${photoUpdateTrigger}`}
+                      personName={personName}
+                      photoUrl={null}
+                      size={88}
+                      style={styles.titleImage}
+                    />
+                  )}
+                  {uploadingPhoto && (
+                    <View style={styles.uploadingOverlay}>
+                      <ActivityIndicator size="large" color={colors.primary} />
+                    </View>
+                  )}
+                </Pressable>
+
+                {/* Name column + ellipsis */}
+                <View style={styles.titleTextContainer}>
+                  {/* Title row: name (flex) + ellipsis (fixed) */}
+                  <View style={styles.titleNameRow}>
+                    <Text style={[styles.titleHeading, { flex: 1 }]} numberOfLines={2} ellipsizeMode="tail">
+                      {personName}
+                    </Text>
+                    <View ref={ellipsisButtonRef} collapsable={false}>
+                      <Pressable
+                        onPress={openMenu}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        style={styles.ellipsisButton}
+                      >
+                        <IconSymbol name="ellipsis" size={20} color={colors.text} />
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* Sort pills */}
+              <View style={styles.sortContainer}>
+                <Pressable
+                  style={[styles.sortButton, sortOrder === 'Newest' && styles.sortButtonActive]}
+                  onPress={() => {
+                    console.log('[PersonRecalls] User tapped "Newest" sort button');
+                    if (Platform.OS !== 'web') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    setSortOrder('Newest');
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.sortButtonText, sortOrder === 'Newest' && styles.sortButtonTextActive]}>
+                    Newest
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.sortButton, sortOrder === 'Oldest' && styles.sortButtonActive]}
+                  onPress={() => {
+                    console.log('[PersonRecalls] User tapped "Oldest" sort button');
+                    if (Platform.OS !== 'web') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    setSortOrder('Oldest');
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.sortButtonText, sortOrder === 'Oldest' && styles.sortButtonTextActive]}>
+                    Oldest
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.sortButton, sortOrder === 'Best match' && styles.sortButtonActive]}
+                  onPress={() => {
+                    console.log('[PersonRecalls] User tapped "Best match" sort button');
+                    if (Platform.OS !== 'web') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    setSortOrder('Best match');
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.sortButtonText, sortOrder === 'Best match' && styles.sortButtonTextActive]}>
+                    Best match
+                  </Text>
+                </Pressable>
+              </View>
+
+              {/* Count row */}
+              <View style={styles.countEllipsisRow}>
+                <Text style={styles.recallCount}>
+                  {recallCountLabel}
+                </Text>
+              </View>
+            </View>
+          </View>
+        }
+        ListEmptyComponent={renderEmptyState()}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -868,6 +1021,18 @@ export default function PersonRecallsScreen() {
         }
         onEndReached={!loading ? handleEndReached : undefined}
         onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          isLoadingMore ? (
+            <View style={styles.loadingMoreContainer}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.loadingMoreText}>Loading more...</Text>
+            </View>
+          ) : !hasMore && notes.length > 0 ? (
+            <View style={styles.endContainer}>
+              <Text style={styles.endText}>You&apos;ve reached the end</Text>
+            </View>
+          ) : null
+        }
         windowSize={10}
         maxToRenderPerBatch={6}
         initialNumToRender={8}
@@ -889,16 +1054,43 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 128,
-    paddingHorizontal: 16,
   },
-  avatarSection: {
-    alignItems: 'center',
-    paddingVertical: 19.2, // Reduced by 10% from 24 to 21.6, rounded to 19.2
-    paddingTop: 28.8, // Reduced by 10% from 32 to 28.8
+  // ─── Title row (mirrors categoryInfoContainer / categoryTopRow) ──────────────
+  titleInfoContainer: {
+    padding: 16,
+    paddingBottom: 12,
   },
-  avatarPressable: {
+  titleTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+    marginBottom: 16,
+  },
+  titleImageWrapper: {
     position: 'relative',
-    marginBottom: 0, // Removed gap - was 12, now 0
+  },
+  titleImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 16,
+  },
+  titleTextContainer: {
+    flex: 1,
+    justifyContent: 'flex-start',
+  },
+  titleNameRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
+  titleHeading: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  ellipsisButton: {
+    paddingLeft: 8,
+    paddingTop: 2,
   },
   uploadingOverlay: {
     position: 'absolute',
@@ -907,77 +1099,111 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 50,
+    borderRadius: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cameraIconContainer: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  // ─── Sort pills (mirrors sortContainer / sortButton) ─────────────────────────
+  sortContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 8,
+  },
+  sortButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sortButtonActive: {
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  sortButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  sortButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  // ─── Count row (mirrors countEllipsisRow / recallCount) ──────────────────────
+  countEllipsisRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 4,
+  },
+  recallCount: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  // ─── Note card row ────────────────────────────────────────────────────────────
+  notesContainer: {
+    paddingTop: 16,
+  },
+  noteCardRow: {
+    paddingHorizontal: 16,
+  },
+  // ─── Loading more / end ───────────────────────────────────────────────────────
+  loadingMoreContainer: {
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.background,
+    paddingVertical: 20,
+    gap: 12,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  loadingMoreText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  endContainer: {
+    paddingVertical: 20,
     alignItems: 'center',
-    paddingTop: 100,
   },
+  endText: {
+    fontSize: 14,
+    color: colors.textTertiary,
+    fontStyle: 'italic',
+  },
+  // ─── Empty state ──────────────────────────────────────────────────────────────
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 100,
+    paddingTop: 60,
+    paddingHorizontal: 32,
+  },
+  emptyIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: `${colors.textTertiary}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
   },
   emptyTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
-    marginTop: 16,
     marginBottom: 8,
+    textAlign: 'center',
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 15,
     color: colors.textSecondary,
     textAlign: 'center',
-    paddingHorizontal: 32,
+    lineHeight: 22,
+    marginBottom: 32,
+    maxWidth: 300,
   },
-  recallsContainer: {
-    paddingTop: 14.4, // Reduced by 10% from 16 to 14.4
-  },
-  countText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: 14.4, // Reduced by 10% from 16 to 14.4
-    textAlign: 'center',
-  },
-  headerButton: {
-    padding: 8,
-    marginHorizontal: 8,
-  },
-  avatarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-  },
-  avatarRowSpacer: {
-    flex: 1,
-    alignItems: 'flex-end',
-    paddingRight: 16,
-  },
-  ellipsisButton: {
-    paddingLeft: 8,
-    paddingTop: 2,
-  },
+  // ─── Ellipsis menu popover (mirrors menuBackdrop / menuCard / menuRow) ────────
   menuBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -1012,25 +1238,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
     fontWeight: '500',
-  },
-  loadingMoreContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 20,
-    gap: 12,
-  },
-  loadingMoreText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  endContainer: {
-    paddingVertical: 20,
-    alignItems: 'center',
-  },
-  endText: {
-    fontSize: 14,
-    color: colors.textTertiary,
-    fontStyle: 'italic',
   },
 });
