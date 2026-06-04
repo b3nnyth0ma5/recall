@@ -823,6 +823,7 @@ export default function PersonRecallsScreen() {
         }}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         style={{ marginLeft: 8 }}
+        android_ripple={null}
       >
         <View
           style={{
@@ -833,7 +834,6 @@ export default function PersonRecallsScreen() {
             borderColor: 'rgba(255,255,255,0.25)',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: 'rgba(255,255,255,0.06)',
           }}
         >
           <ChevronLeft size={20} color="#FFFFFF" />
