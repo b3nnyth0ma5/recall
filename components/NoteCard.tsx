@@ -488,10 +488,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                             <Text style={styles.imageErrorText}>Failed to load image</Text>
                           </View>
                         ) : (
-                          // cdnVariant 'thumbnail' requires the variant to exist in Cloudflare Images dashboard.
-                          // If it doesn't, cdnVariant is a no-op pass-through — still benefits from expo-image caching.
+                          // Use the 'public' Cloudflare variant (full resolution). The carousel cell is ~1053px on retina devices; smaller variants would visibly upscale. expo-image still caches with cachePolicy="memory-disk".
                           <Image
-                            source={{ uri: cdnVariant(imageUrl, 'thumbnail') as string }}
+                            source={{ uri: cdnVariant(imageUrl, 'public') as string }}
                             style={[styles.image, { width: IMAGE_WIDTH, height: IMAGE_HEIGHT }]}
                             contentFit="cover"
                             transition={150}

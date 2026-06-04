@@ -10,7 +10,6 @@ import {
   ScrollView,
   Platform,
   ActivityIndicator,
-  Keyboard,
   Linking,
   Animated,
   KeyboardAvoidingView,
@@ -119,9 +118,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [inputHeight, setInputHeight] = useState(40);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
-  const translateY = useRef(new Animated.Value(0)).current;
   const sendButtonAnim = useRef(new Animated.Value(0)).current;
 
   const LINE_HEIGHT = 20;
@@ -200,42 +197,6 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
       }, 100);
     }
   }, [messages]);
-
-  // Keyboard handling — platform-specific strategy
-  // iOS: KeyboardAvoidingView with behavior="padding" handles it; we also animate translateY for the modal content
-  // Android: KAV is unreliable inside Modals; use Keyboard listeners to track height and apply paddingBottom
-  useEffect(() => {
-    if (Platform.OS === 'android') {
-      // Android: track keyboard height in state, apply as paddingBottom on input container
-      const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
-        console.log('Keyboard showing (Android), height:', e.endCoordinates.height);
-        setKeyboardHeight(e.endCoordinates.height);
-      });
-      const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-        console.log('Keyboard hiding (Android)');
-        setKeyboardHeight(0);
-      });
-      return () => {
-        showSub.remove();
-        hideSub.remove();
-      };
-    }
-
-    // iOS: animate the modal content up to stay above keyboard
-    const keyboardWillShowListener = Keyboard.addListener('keyboardWillShow', (e) => {
-      console.log('Keyboard showing (iOS), height:', e.endCoordinates.height);
-      Animated.timing(translateY, { toValue: -(e.endCoordinates.height - 10), duration: 250, useNativeDriver: true }).start();
-    });
-    const keyboardWillHideListener = Keyboard.addListener('keyboardWillHide', () => {
-      console.log('Keyboard hiding (iOS)');
-      Animated.timing(translateY, { toValue: 0, duration: 250, useNativeDriver: true }).start();
-    });
-
-    return () => {
-      keyboardWillShowListener.remove();
-      keyboardWillHideListener.remove();
-    };
-  }, [translateY]);
 
   // Animate send button when canSend changes
   const canSend = inputText.trim().length > 0 && !isLoading;
@@ -525,12 +486,12 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     >
       <KeyboardAvoidingView
         style={styles.kavWrapper}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
       <Pressable style={styles.backdrop} onPress={handleBackdropPress}>
         <Pressable style={styles.modalContainer} onPress={(e) => e.stopPropagation()}>
-          <Animated.View style={[styles.modalContent, { transform: [{ translateY }] }]}>
+          <View style={styles.modalContent}>
             {/* Header */}
             <View style={styles.header}>
               <View style={styles.headerLeft}>
@@ -595,12 +556,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
 
             {/* Input Area - Fixed at bottom */}
             <Pressable
-              style={[
-                styles.inputContainer,
-                Platform.OS === 'android' && keyboardHeight > 0
-                  ? { paddingBottom: keyboardHeight + 12 }
-                  : undefined,
-              ]}
+              style={styles.inputContainer}
               onPress={(e) => e.stopPropagation()}
             >
               <View style={styles.inputPill}>
@@ -645,7 +601,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                 </Animated.View>
               </View>
             </Pressable>
-          </Animated.View>
+          </View>
         </Pressable>
       </Pressable>
       </KeyboardAvoidingView>
