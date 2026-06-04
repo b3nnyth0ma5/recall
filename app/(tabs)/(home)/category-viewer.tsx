@@ -1374,11 +1374,13 @@ export default function CategoryViewerScreen() {
   });
 
   const renderNoteItem = useCallback(({ item }: { item: Note }) => (
-    <NoteCard
-      note={item}
-      onPress={() => handleNotePress(item.id)}
-      onDelete={() => handleDeleteRecall(item.id)}
-    />
+    <View style={styles.noteCardRow}>
+      <NoteCard
+        note={item}
+        onPress={() => handleNotePress(item.id)}
+        onDelete={() => handleDeleteRecall(item.id)}
+      />
+    </View>
   ), [handleNotePress, handleDeleteRecall]);
 
   // Shared Stack.Screen options with centered branded header and back chevron
@@ -1592,6 +1594,16 @@ export default function CategoryViewerScreen() {
             </View>
           }
           ListEmptyComponent={renderEmptyState()}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+          onEndReached={!loading ? handleEndReached : undefined}
+          onEndReachedThreshold={0.5}
           ListFooterComponent={
             isLoadingMore ? (
               <View style={styles.loadingMoreContainer}>
@@ -1603,14 +1615,6 @@ export default function CategoryViewerScreen() {
                 <Text style={styles.endText}>You&apos;ve reached the end</Text>
               </View>
             ) : null
-          }
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
-            />
           }
         />
       )}
@@ -1940,8 +1944,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   notesContainer: {
-    paddingHorizontal: 16,
     paddingTop: 16,
+  },
+  noteCardRow: {
+    paddingHorizontal: 16,
   },
   loadingMoreContainer: {
     flexDirection: 'row',

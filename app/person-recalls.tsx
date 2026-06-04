@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, Pressable, Alert, Platform, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, Pressable, Alert, Platform, RefreshControl, Animated, Dimensions } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -40,6 +40,13 @@ export default function PersonRecallsScreen() {
 
   const personId = params.personId as string;
   const ITEMS_PER_PAGE = 10;
+
+  // Ellipsis menu state
+  const [isManageMenuOpen, setIsManageMenuOpen] = useState(false);
+  const manageMenuFade = useRef(new Animated.Value(0)).current;
+  const manageMenuScale = useRef(new Animated.Value(0.9)).current;
+  const ellipsisButtonRef = useRef<View>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null);
 
   // Trigger heavy haptic feedback when screen loads
   useEffect(() => {
@@ -412,6 +419,69 @@ export default function PersonRecallsScreen() {
     router.back();
   }, [router]);
 
+  const openManageMenu = useCallback(() => {
+    console.log('[PersonRecalls] User tapped ellipsis menu button');
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+
+    const SCREEN_WIDTH = Dimensions.get('window').width;
+    const FALLBACK_ANCHOR = { top: 200, right: 16 };
+
+    const doOpen = (anchor: { top: number; right: number }) => {
+      setMenuAnchor(anchor);
+      setIsManageMenuOpen(true);
+      manageMenuFade.setValue(0);
+      manageMenuScale.setValue(0.9);
+      Animated.parallel([
+        Animated.timing(manageMenuFade, {
+          toValue: 1,
+          duration: 120,
+          useNativeDriver: true,
+        }),
+        Animated.timing(manageMenuScale, {
+          toValue: 1,
+          duration: 120,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    };
+
+    if (ellipsisButtonRef.current) {
+      ellipsisButtonRef.current.measureInWindow((x, y, width, height) => {
+        if (width > 0 && height > 0) {
+          const anchor = {
+            top: y + height + 6,
+            right: SCREEN_WIDTH - (x + width),
+          };
+          doOpen(anchor);
+        } else {
+          doOpen(FALLBACK_ANCHOR);
+        }
+      });
+    } else {
+      doOpen(FALLBACK_ANCHOR);
+    }
+  }, [manageMenuFade, manageMenuScale]);
+
+  const closeManageMenu = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(manageMenuFade, {
+        toValue: 0,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(manageMenuScale, {
+        toValue: 0.9,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setIsManageMenuOpen(false);
+      setMenuAnchor(null);
+    });
+  }, [manageMenuFade, manageMenuScale]);
+
   const handlePhotoUpload = useCallback(async (uri: string) => {
     try {
       setUploadingPhoto(true);
@@ -644,27 +714,42 @@ export default function PersonRecallsScreen() {
         renderPersonInfoSkeleton()
       ) : (
         <View style={styles.avatarSection}>
-          <Pressable
-            onPress={handlePhotoPress}
-            disabled={uploadingPhoto}
-            style={styles.avatarPressable}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <PersonAvatar
-              key={`person-avatar-${photoUpdateTrigger}`}
-              personName={personName}
-              photoUrl={personPhotoUrl}
-              size={100}
-            />
-            {uploadingPhoto && (
-              <View style={styles.uploadingOverlay}>
-                <ActivityIndicator size="large" color={colors.primary} />
+          {/* Row: spacer (left) + avatar (center) + ellipsis (right) */}
+          <View style={styles.avatarRow}>
+            <View style={styles.avatarRowSpacer} />
+            <Pressable
+              onPress={handlePhotoPress}
+              disabled={uploadingPhoto}
+              style={styles.avatarPressable}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <PersonAvatar
+                key={`person-avatar-${photoUpdateTrigger}`}
+                personName={personName}
+                photoUrl={personPhotoUrl}
+                size={100}
+              />
+              {uploadingPhoto && (
+                <View style={styles.uploadingOverlay}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                </View>
+              )}
+              <View style={styles.cameraIconContainer}>
+                <IconSymbol name="camera.fill" size={20} color="#FFFFFF" />
               </View>
-            )}
-            <View style={styles.cameraIconContainer}>
-              <IconSymbol name="camera.fill" size={20} color="#FFFFFF" />
+            </Pressable>
+            <View style={styles.avatarRowSpacer}>
+              <View ref={ellipsisButtonRef} collapsable={false}>
+                <Pressable
+                  onPress={openManageMenu}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={styles.ellipsisButton}
+                >
+                  <IconSymbol name="ellipsis" size={20} color={colors.text} />
+                </Pressable>
+              </View>
             </View>
-          </Pressable>
+          </View>
         </View>
       )}
 
@@ -708,6 +793,37 @@ export default function PersonRecallsScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Ellipsis menu popover */}
+      {isManageMenuOpen && menuAnchor && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          {/* Backdrop */}
+          <Pressable
+            style={styles.menuBackdrop}
+            onPress={closeManageMenu}
+          />
+          {/* Menu card */}
+          <Animated.View
+            style={[
+              styles.menuCard,
+              { top: menuAnchor.top, right: menuAnchor.right },
+              { opacity: manageMenuFade, transform: [{ scale: manageMenuScale }] },
+            ]}
+          >
+            <Pressable
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+              onPress={() => {
+                console.log('[PersonRecalls] User tapped "Add/Edit Photo" from ellipsis menu');
+                closeManageMenu();
+                handlePhotoPress();
+              }}
+            >
+              <IconSymbol name="camera.fill" size={18} color={colors.text} />
+              <Text style={styles.menuRowText}>Add/Edit Photo</Text>
+            </Pressable>
+          </Animated.View>
+        </View>
+      )}
+
       <Stack.Screen
         options={{
           headerShown: true,
@@ -846,6 +962,56 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     marginHorizontal: 8,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  avatarRowSpacer: {
+    flex: 1,
+    alignItems: 'flex-end',
+    paddingRight: 16,
+  },
+  ellipsisButton: {
+    paddingLeft: 8,
+    paddingTop: 2,
+  },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    zIndex: 200,
+  },
+  menuCard: {
+    position: 'absolute',
+    width: 180,
+    backgroundColor: colors.cardDark,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 10,
+    zIndex: 300,
+    overflow: 'hidden',
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  menuRowPressed: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  menuRowText: {
+    fontSize: 15,
+    color: colors.text,
+    fontWeight: '500',
   },
   loadingMoreContainer: {
     flexDirection: 'row',
