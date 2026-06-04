@@ -111,7 +111,7 @@ export default function SearchScreen() {
   useEffect(() => {
     if (!user?.id) return;
 
-    const channelName = `realtime:${user.id}:search_history`;
+    const channelName = `realtime:${user.id}:search_history:${Math.random().toString(36).slice(2, 8)}`;
     if (__DEV__) console.log('[SearchScreen] Setting up realtime subscription for search_history, channel:', channelName);
 
     const latestPayloadRef: { current: any } = { current: null };

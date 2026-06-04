@@ -96,7 +96,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       return;
     }
 
-    const channelName = `realtime:${userId}:recollection_categories`;
+    const channelName = `realtime:${userId}:recollection_categories:${Math.random().toString(36).slice(2, 8)}`;
     console.log('[CategoryCarousel] Setting up real-time subscription for categories, channel:', channelName);
 
     const debouncedRefresh = debounce(() => {

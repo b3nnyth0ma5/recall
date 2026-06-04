@@ -17,6 +17,7 @@ import { getImageDataUrl } from '@/utils/supabase';
 import { useNotes } from '@/hooks/useNotes';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { peopleCache, imageCache, noteCache, CostCalculator } from '@/utils/memoryCache';
+import { debounce } from '@/utils/debounce';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
 import Toast from 'react-native-toast-message';
 
@@ -692,7 +693,7 @@ export default function CategoryViewerScreen() {
   useEffect(() => {
     if (!id || !user) return;
 
-    const channelName = `realtime:${user.id}:recollections:${id}`;
+    const channelName = `realtime:${user.id}:recollections:${id}:${Math.random().toString(36).slice(2, 8)}`;
 
     const debouncedRefresh = debounce(() => {
       console.log('[CategoryViewer] Realtime: recollections changed, refreshing recalls');

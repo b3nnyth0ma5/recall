@@ -485,13 +485,15 @@ export default function HomeScreen() {
   const listData = hasRecalls || notes.length > 0 ? notes : [];
 
   const renderItem = useCallback(({ item }: { item: Note }) => (
-    <NoteCard
-      note={item}
-      onPress={() => handleNotePress(item.id)}
-      onDelete={() => handleDeleteNote(item.id)}
-      loading={false}
-      expectedImageCount={getExpectedImageCount(item.id)}
-    />
+    <View style={styles.noteCardRow}>
+      <NoteCard
+        note={item}
+        onPress={() => handleNotePress(item.id)}
+        onDelete={() => handleDeleteNote(item.id)}
+        loading={false}
+        expectedImageCount={getExpectedImageCount(item.id)}
+      />
+    </View>
   ), []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const ListHeaderComponent = (
@@ -731,5 +733,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     fontWeight: '600',
+  },
+  noteCardRow: {
+    paddingHorizontal: 16,
   },
 });
