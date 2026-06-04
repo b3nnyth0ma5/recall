@@ -234,9 +234,22 @@ export default function ProfileScreen() {
                 }
               }}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              style={{ paddingLeft: 8 }}
+              style={{ marginLeft: 8 }}
             >
-              <ChevronLeft size={26} color="#FFFFFF" />
+              <View
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.25)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'rgba(255,255,255,0.06)',
+                }}
+              >
+                <ChevronLeft size={20} color="#FFFFFF" />
+              </View>
             </Pressable>
           ),
           headerTitle: () => <RecallHeader />,

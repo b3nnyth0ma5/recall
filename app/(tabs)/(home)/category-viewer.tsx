@@ -13,6 +13,9 @@ import { supabase } from '@/utils/supabase';
 import { Note } from '@/types/Note';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system/legacy';
+import { uploadImageToCloudflare } from '@/utils/cloudflareCDN';
 import { getImageDataUrl } from '@/utils/supabase';
 import { useNotes } from '@/hooks/useNotes';
 import { useNotesContext } from '@/contexts/NotesContext';
@@ -61,6 +64,8 @@ export default function CategoryViewerScreen() {
   const [totalRecallCount, setTotalRecallCount] = useState(0);
   const [sortOrder, setSortOrder] = useState<SortOrder>('Newest');
 
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuAnim = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
@@ -103,7 +108,7 @@ export default function CategoryViewerScreen() {
       // Fetch only uncached data with optimized query using composite index
       const { data: recallPeopleData, error: recallPeopleError } = await supabase
         .from('recall_people')
-        .select('recall_id, person_id, persons!inner(id, person_name)')
+        .select('recall_id, person_id, persons!inner(id, person_name, photo_url)')
         .in('recall_id', uncachedIds);
 
       if (recallPeopleError) {
@@ -123,6 +128,7 @@ export default function CategoryViewerScreen() {
           peopleByRecallId[rp.recall_id].push({
             id: rp.persons.id,
             person_name: rp.persons.person_name,
+            photo_url: rp.persons.photo_url,
           });
         }
       });
@@ -671,6 +677,13 @@ export default function CategoryViewerScreen() {
   // Keep the ref in sync so loadCategoryAndRecalls can call it without a circular dep
   startMatchingPollingRef.current = startMatchingPolling;
 
+  // Bust the in-memory people cache once on mount so any stale entries that
+  // were cached without photo_url (before this fix) are evicted immediately.
+  useEffect(() => {
+    console.log('[CategoryViewer] Clearing peopleCache on mount to evict stale entries missing photo_url');
+    peopleCache.clear();
+  }, []);
+
   useEffect(() => {
     console.log('[CategoryViewer] useEffect triggered - category:', id, 'sortOrder:', sortOrder);
     loadCategoryAndRecalls(1, false);
@@ -952,6 +965,156 @@ export default function CategoryViewerScreen() {
       }
     }
   };
+
+  const handleCategoryPhotoUpload = useCallback(async (uri: string) => {
+    if (!category || !user) return;
+    try {
+      setUploadingPhoto(true);
+      console.log('[CategoryViewer] Starting category photo upload');
+
+      const manipulatedImage = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 512 } }],
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+      );
+
+      console.log('[CategoryViewer] Image manipulated:', manipulatedImage.uri);
+
+      const base64 = await FileSystem.readAsStringAsync(manipulatedImage.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      console.log('[CategoryViewer] Image converted to base64, length:', base64.length);
+
+      const fileName = `category-${category.id}-${Date.now()}.jpg`;
+      const cdnUrl = await uploadImageToCloudflare(base64, fileName, 'image/jpeg');
+
+      if (!cdnUrl) {
+        throw new Error('Failed to upload image to Cloudflare');
+      }
+
+      console.log('[CategoryViewer] Image uploaded to Cloudflare:', cdnUrl);
+
+      const { error: updateError } = await supabase
+        .from('recollection_categories')
+        .update({ icon_cdn_url: cdnUrl })
+        .eq('id', category.id)
+        .eq('user_id', user.id);
+
+      if (updateError) throw updateError;
+
+      console.log('[CategoryViewer] Category record updated with photo URL');
+
+      setCategory(prev => prev ? { ...prev, icon_cdn_url: cdnUrl } : prev);
+
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.error('[CategoryViewer] Error uploading category photo:', error);
+      Alert.alert('Error', 'Failed to upload photo. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }, [category, user]);
+
+  const handleCategoryPhotoRemove = useCallback(async () => {
+    if (!category || !user) return;
+    try {
+      setUploadingPhoto(true);
+      console.log('[CategoryViewer] Removing category photo');
+
+      const { error: updateError } = await supabase
+        .from('recollection_categories')
+        .update({ icon_cdn_url: null })
+        .eq('id', category.id)
+        .eq('user_id', user.id);
+
+      if (updateError) throw updateError;
+
+      console.log('[CategoryViewer] Category photo removed');
+
+      setCategory(prev => prev ? { ...prev, icon_cdn_url: null } : prev);
+
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.error('[CategoryViewer] Error removing category photo:', error);
+      Alert.alert('Error', 'Failed to remove photo. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }, [category, user]);
+
+  const handleCategoryPhotoPress = useCallback(async () => {
+    console.log('[CategoryViewer] User tapped category photo / Add/Edit Photo');
+    try {
+      Alert.alert(
+        'Category Photo',
+        'Choose an option',
+        [
+          {
+            text: 'Take Photo',
+            onPress: async () => {
+              console.log('[CategoryViewer] User chose Take Photo for category');
+              const { status } = await ImagePicker.requestCameraPermissionsAsync();
+              if (status !== 'granted') {
+                Alert.alert('Permission needed', 'Please grant camera permissions');
+                return;
+              }
+              const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.9,
+              });
+              if (!result.canceled && result.assets) {
+                await handleCategoryPhotoUpload(result.assets[0].uri);
+              }
+            },
+          },
+          {
+            text: 'Choose from Library',
+            onPress: async () => {
+              console.log('[CategoryViewer] User chose Choose from Library for category');
+              const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+              if (status !== 'granted') {
+                Alert.alert('Permission needed', 'Please grant photo library permissions');
+                return;
+              }
+              const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.9,
+              });
+              if (!result.canceled && result.assets) {
+                await handleCategoryPhotoUpload(result.assets[0].uri);
+              }
+            },
+          },
+          ...(category?.icon_cdn_url
+            ? [
+                {
+                  text: 'Remove Photo',
+                  style: 'destructive' as const,
+                  onPress: async () => {
+                    await handleCategoryPhotoRemove();
+                  },
+                },
+              ]
+            : []),
+          {
+            text: 'Cancel',
+            style: 'cancel' as const,
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('[CategoryViewer] Error handling category photo press:', error);
+    }
+  }, [category, handleCategoryPhotoUpload, handleCategoryPhotoRemove]);
 
   const handleSelectImage = async () => {
     try {
@@ -1395,9 +1558,22 @@ export default function CategoryViewerScreen() {
           router.back();
         }}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        style={{ paddingLeft: 8 }}
+        style={{ marginLeft: 8 }}
       >
-        <ChevronLeft size={26} color="#FFFFFF" />
+        <View
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.25)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(255,255,255,0.06)',
+          }}
+        >
+          <ChevronLeft size={20} color="#FFFFFF" />
+        </View>
       </Pressable>
     ),
     headerTitle: () => <RecallHeader />,
@@ -1452,6 +1628,18 @@ export default function CategoryViewerScreen() {
             <Pressable
               style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
               onPress={() => {
+                console.log('[CategoryViewer] User tapped Add/Edit Photo from popover menu');
+                closeMenu();
+                handleCategoryPhotoPress();
+              }}
+            >
+              <IconSymbol name="camera.fill" size={18} color={colors.text} />
+              <Text style={styles.menuRowText}>Add/Edit Photo</Text>
+            </Pressable>
+            <View style={styles.menuDivider} />
+            <Pressable
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+              onPress={() => {
                 console.log('[CategoryViewer] User tapped Edit from popover menu');
                 closeMenu();
                 handleEditPress();
@@ -1489,9 +1677,14 @@ export default function CategoryViewerScreen() {
               {/* Two-column header: image left, name+description right */}
               <View style={styles.categoryInfoContainer}>
                 <View style={styles.categoryTopRow}>
-                  {/* Category Icon — plain image, no overlay */}
-                  <View style={styles.iconContainer}>
-                    {category.icon_cdn_url && (
+                  {/* Category Icon — tappable to add/edit photo */}
+                  <Pressable
+                    onPress={handleCategoryPhotoPress}
+                    disabled={uploadingPhoto}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={styles.iconContainer}
+                  >
+                    {category.icon_cdn_url ? (
                       // cdnVariant 'thumbnail' requires the variant in Cloudflare Images dashboard.
                       // If absent, cdnVariant is a no-op — still benefits from expo-image caching.
                       <Image
@@ -1501,8 +1694,17 @@ export default function CategoryViewerScreen() {
                         transition={150}
                         cachePolicy="memory-disk"
                       />
+                    ) : (
+                      <View style={[styles.categoryIcon, styles.categoryIconPlaceholder]}>
+                        <IconSymbol name="camera.fill" size={28} color={colors.textTertiary} />
+                      </View>
                     )}
-                  </View>
+                    {uploadingPhoto && (
+                      <View style={styles.uploadingOverlay}>
+                        <ActivityIndicator size="large" color={colors.primary} />
+                      </View>
+                    )}
+                  </Pressable>
 
                   {/* Name + Description stacked to the right */}
                   <View style={styles.categoryTextContainer}>
@@ -1872,6 +2074,24 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 16,
+  },
+  categoryIconPlaceholder: {
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   categoryTextContainer: {
     flex: 1,
