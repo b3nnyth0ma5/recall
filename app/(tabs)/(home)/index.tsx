@@ -499,7 +499,6 @@ export default function HomeScreen() {
       <View style={[styles.customHeader, { paddingTop: insets.top }]}>
         <Pressable
           onPress={handleRecallIconPress}
-          style={styles.headerLogoGroup}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <RecallHeader />
@@ -629,15 +628,10 @@ const styles = StyleSheet.create({
   customHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     backgroundColor: colors.background,
     paddingHorizontal: 20,
     paddingBottom: 12,
-  },
-  headerLogoGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
   },
   headerTitle: {
     fontSize: 22,

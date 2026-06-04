@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, FlatList, Pressable, ActivityIndicator, RefreshControl, Alert, TextInput, Image, Modal, KeyboardAvoidingView, Platform, Animated, Dimensions } from 'react-native';
 import RecallHeader from '@/components/RecallHeader';
+import { ChevronLeft } from 'lucide-react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
@@ -1378,13 +1379,25 @@ export default function CategoryViewerScreen() {
     />
   ), [handleNotePress, handleDeleteRecall]);
 
-  // Shared Stack.Screen options with branded header flush-left, no back button
+  // Shared Stack.Screen options with centered branded header and back chevron
   const stackScreenOptions = {
     headerShown: true,
     headerBackVisible: false,
     headerBackTitleVisible: false,
-    headerLeft: () => <RecallHeader />,
-    headerTitle: '',
+    headerLeft: () => (
+      <Pressable
+        onPress={() => {
+          console.log('[CategoryViewer] Back chevron tapped');
+          router.back();
+        }}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        style={{ paddingLeft: 8 }}
+      >
+        <ChevronLeft size={26} color="#FFFFFF" />
+      </Pressable>
+    ),
+    headerTitle: () => <RecallHeader />,
+    headerTitleAlign: 'center' as const,
     headerStyle: { backgroundColor: colors.background },
     headerShadowVisible: false,
     headerTintColor: colors.text,

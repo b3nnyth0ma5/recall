@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform, TextInput, ActivityIndicator } from 'react-native';
 import RecallHeader from '@/components/RecallHeader';
+import { ChevronLeft } from 'lucide-react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
@@ -222,8 +223,24 @@ export default function ProfileScreen() {
         options={{
           headerShown: true,
           headerBackVisible: false,
-          headerLeft: () => <RecallHeader />,
-          headerTitle: '',
+          headerLeft: () => (
+            <Pressable
+              onPress={() => {
+                console.log('[Profile] Back chevron tapped');
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace('/(tabs)/(home)');
+                }
+              }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={{ paddingLeft: 8 }}
+            >
+              <ChevronLeft size={26} color="#FFFFFF" />
+            </Pressable>
+          ),
+          headerTitle: () => <RecallHeader />,
+          headerTitleAlign: 'center',
           headerStyle: { backgroundColor: colors.background },
           headerShadowVisible: false,
           headerTintColor: colors.text,

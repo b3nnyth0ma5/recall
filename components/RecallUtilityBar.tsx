@@ -85,7 +85,7 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
       {/* Chat Icon (formerly "Ask a Question") - Non-filled version */}
       <Pressable
         onPress={handleAskQuestion}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
         style={styles.iconButton}
       >
         <IconSymbol
@@ -99,7 +99,7 @@ export const RecallUtilityBar: React.FC<RecallUtilityBarProps> = ({
       <Pressable
         ref={shareButtonRef}
         onPress={handleShare}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
         style={styles.iconButton}
       >
         <ShareIcon

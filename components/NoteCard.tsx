@@ -380,6 +380,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         <Pressable
           style={styles.deleteAction}
           onPress={handleDelete}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
           <IconSymbol name="trash.fill" size={24} color="#FFFFFF" />
           <Text style={styles.deleteActionText}>Delete</Text>
@@ -458,6 +459,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                     key={`${note.id}-image-${index}`}
                     onPress={() => handleImagePress(index)}
                     style={styles.imageWrapper}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     {!imageUrl ? (
                       <View style={styles.imageLoadingContainer}>
@@ -585,7 +587,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                   <Pressable 
                     onPress={handleToggleExpand}
                     style={styles.toggleContainer}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
                   >
                     <Text style={styles.toggleText}>
                       {isExpanded ? 'Show less' : 'Show more'}
@@ -609,6 +611,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                 <Pressable 
                   onPress={handleLocationPress}
                   style={styles.locationWrapper}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
                   <IconSymbol name="location.fill" size={14} color={colors.primary} />
                   <View style={styles.locationTextChevronWrapper}>

@@ -14,6 +14,7 @@ export default function RecallHeader({ style }: RecallHeaderProps) {
         source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
         style={styles.icon}
         contentFit="contain"
+        cachePolicy="memory-disk"
       />
       <Text style={styles.title}>Recall</Text>
     </View>
