@@ -18,6 +18,7 @@ import { useNotes } from '@/hooks/useNotes';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { peopleCache, imageCache, noteCache, CostCalculator } from '@/utils/memoryCache';
 import { debounce } from '@/utils/debounce';
+import { cdnVariant } from '@/utils/cdnVariant';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
 import Toast from 'react-native-toast-message';
 
