@@ -271,7 +271,18 @@ export default function ProfileScreen() {
             <View style={styles.avatarContainer}>
               <IconSymbol name="person.circle.fill" size={80} color={colors.primary} />
             </View>
-            <Text style={styles.userEmail}>{user?.email || 'Not signed in'}</Text>
+            {(() => {
+              const fullName = (user?.user_metadata?.full_name || user?.user_metadata?.display_name || '').trim();
+              if (fullName) {
+                return (
+                  <>
+                    <Text style={styles.userName}>{fullName}</Text>
+                    {user?.email && <Text style={styles.userEmailSecondary}>{user.email}</Text>}
+                  </>
+                );
+              }
+              return <Text style={styles.userEmail}>{user?.email || 'Not signed in'}</Text>;
+            })()}
           </View>
         </View>
 
@@ -480,6 +491,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
+  },
+  userName: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  userEmailSecondary: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
   },
   passwordToggleButton: {
     flexDirection: 'row',

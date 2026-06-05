@@ -23,6 +23,7 @@ import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { AUTH_REDIRECT_URLS } from '@/constants/config';
 import * as Haptics from 'expo-haptics';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import {
   MapPin,
   Tags,
@@ -609,13 +610,21 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
 
   // Auth state (step 4)
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
 
   // Stable random 3 use-case cards — lazy initialiser runs once
   const [selectedCards] = useState<UseCase[]>(() => pickThreeRandom());
+
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => setAppleAvailable(false));
+    }
+  }, []);
 
   // ── Haptics helpers ──────────────────────────────────────────────────────
   const hapticLight = () => {
@@ -726,8 +735,92 @@ export default function OnboardingScreen() {
     }
   };
 
+  // ── Apple sign-in ────────────────────────────────────────────────────────
+  const handleAppleSignIn = async () => {
+    console.log('[Onboarding] Apple sign-in button pressed');
+    try {
+      setAuthLoading(true);
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      if (!credential.identityToken) {
+        console.log('[Apple] No identity token returned');
+        Alert.alert('Sign In Error', 'No identity token returned from Apple');
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+      });
+
+      if (error) {
+        console.error('[Apple] Supabase sign-in error:', error.message);
+        Alert.alert('Sign In Error', error.message);
+        return;
+      }
+
+      if (data.user) {
+        console.log('[Onboarding] Apple sign-in successful:', data.user.id);
+
+        // Apple only returns fullName on FIRST sign-in. Persist it.
+        const appleFullName = [credential.fullName?.givenName, credential.fullName?.familyName]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+
+        if (appleFullName && !data.user.user_metadata?.full_name) {
+          console.log('[Apple] Persisting full_name to Supabase user_metadata:', appleFullName);
+          const { error: updateError } = await supabase.auth.updateUser({
+            data: { full_name: appleFullName },
+          });
+          if (updateError) {
+            console.error('[Apple] Failed to persist full_name:', updateError.message);
+          } else {
+            console.log('[Apple] full_name persisted successfully');
+          }
+        }
+
+        hapticHeavy();
+        await logLogin(data.user.id);
+
+        if (isCompleting) return;
+        setIsCompleting(true);
+
+        try {
+          await markOnboardingComplete(data.user.id);
+          await new Promise(resolve => setTimeout(resolve, 500));
+          console.log('[Onboarding] Apple sign-in: navigating to home screen');
+          router.replace('/(tabs)/(home)');
+        } catch (navErr) {
+          console.error('[Onboarding] Error completing onboarding after Apple sign-in:', navErr);
+          router.replace('/(tabs)/(home)');
+        } finally {
+          setIsCompleting(false);
+        }
+      }
+    } catch (e: any) {
+      if (e?.code === 'ERR_REQUEST_CANCELED') {
+        console.log('[Onboarding] Apple sign-in cancelled by user');
+        return;
+      }
+      console.error('[Onboarding] Apple sign-in error:', e);
+      Alert.alert('Error', 'An unexpected error occurred during Apple sign-in');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   // ── Auth handler ─────────────────────────────────────────────────────────
   const handleAuth = async () => {
+    if (isSignUp && !name.trim()) {
+      Alert.alert('Error', 'Please enter your name');
+      return;
+    }
     if (!email || !password) {
       Alert.alert('Error', 'Please enter both email and password');
       return;
@@ -742,7 +835,10 @@ export default function OnboardingScreen() {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: AUTH_REDIRECT_URLS.EMAIL_CONFIRMED },
+          options: {
+            emailRedirectTo: AUTH_REDIRECT_URLS.EMAIL_CONFIRMED,
+            data: name.trim() ? { full_name: name.trim() } : undefined,
+          },
         });
 
         if (error) {
@@ -991,6 +1087,29 @@ export default function OnboardingScreen() {
             <Text style={styles.authSubtitle}>{authSubtitle}</Text>
 
             {/* Inputs */}
+            {isSignUp && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Full name</Text>
+                <View style={styles.inputWrapper}>
+                  <IconSymbol
+                    name="person.fill"
+                    size={18}
+                    color={colors.textSecondary}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Your name"
+                    placeholderTextColor={colors.textTertiary}
+                    value={name}
+                    onChangeText={setName}
+                    autoCapitalize="words"
+                    autoComplete="name"
+                    returnKeyType="next"
+                  />
+                </View>
+              </View>
+            )}
+
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Email</Text>
               <View style={styles.inputWrapper}>
@@ -1073,6 +1192,25 @@ export default function OnboardingScreen() {
             >
               <Text style={styles.switchText}>{switchLabel}</Text>
             </AnimatedPressable>
+
+            {/* Apple sign-in */}
+            {appleAvailable && Platform.OS === 'ios' && (
+              <>
+                <View style={styles.appleDividerContainer}>
+                  <View style={styles.appleDividerLine} />
+                  <Text style={styles.appleDividerText}>or continue with</Text>
+                  <View style={styles.appleDividerLine} />
+                </View>
+
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                  cornerRadius={10}
+                  style={styles.appleButton}
+                  onPress={handleAppleSignIn}
+                />
+              </>
+            )}
 
             <View style={{ height: 40 }} />
           </ScrollView>
@@ -1300,5 +1438,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: '500',
+  },
+  appleDividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginVertical: 4,
+  },
+  appleDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#3A3A3A',
+  },
+  appleDividerText: {
+    fontSize: 13,
+    color: '#B0B0B0',
+    marginHorizontal: 12,
+    fontWeight: '500',
+  },
+  appleButton: {
+    width: '100%',
+    height: 48,
   },
 });

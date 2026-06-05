@@ -22,6 +22,7 @@ import { AUTH_REDIRECT_URLS } from '@/constants/config';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -57,6 +58,10 @@ export default function LoginScreen() {
 
   const handlePasswordAuth = async () => {
     console.log('[Login] Password auth button pressed, isSignUp:', isSignUp);
+    if (isSignUp && !name.trim()) {
+      Alert.alert('Error', 'Please enter your name');
+      return;
+    }
     if (!email || !password) {
       Alert.alert('Error', 'Please enter both email and password');
       return;
@@ -70,8 +75,9 @@ export default function LoginScreen() {
           email,
           password,
           options: {
-            emailRedirectTo: AUTH_REDIRECT_URLS.EMAIL_CONFIRMED
-          }
+            emailRedirectTo: AUTH_REDIRECT_URLS.EMAIL_CONFIRMED,
+            data: name.trim() ? { full_name: name.trim() } : undefined,
+          },
         });
 
         if (error) {
@@ -115,6 +121,7 @@ export default function LoginScreen() {
       });
 
       if (!credential.identityToken) {
+        console.log('[Apple] No identity token returned');
         Alert.alert('Sign In Error', 'No identity token returned from Apple');
         return;
       }
@@ -126,9 +133,32 @@ export default function LoginScreen() {
       });
 
       if (error) {
+        console.error('[Apple] Supabase sign-in error:', error.message);
         Alert.alert('Sign In Error', error.message);
-      } else if (data.user) {
+        return;
+      }
+
+      if (data.user) {
         console.log('[Login] Apple sign-in successful:', data.user.id);
+
+        // Apple only returns fullName on FIRST sign-in. Persist it.
+        const appleFullName = [credential.fullName?.givenName, credential.fullName?.familyName]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+
+        if (appleFullName && !data.user.user_metadata?.full_name) {
+          console.log('[Apple] Persisting full_name to Supabase user_metadata:', appleFullName);
+          const { error: updateError } = await supabase.auth.updateUser({
+            data: { full_name: appleFullName },
+          });
+          if (updateError) {
+            console.error('[Apple] Failed to persist full_name:', updateError.message);
+          } else {
+            console.log('[Apple] full_name persisted successfully');
+          }
+        }
+
         await logLogin(data.user.id);
         // _layout.tsx handles routing on auth state change
       }
@@ -181,6 +211,27 @@ export default function LoginScreen() {
 
           {/* Input Fields */}
           <View style={styles.inputContainer}>
+            {isSignUp && (
+              <View style={styles.inputWrapper}>
+                <IconSymbol
+                  ios_icon_name="person.fill"
+                  android_material_icon_name="person"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Your name"
+                  placeholderTextColor={colors.textTertiary}
+                  value={name}
+                  onChangeText={setName}
+                  autoCapitalize="words"
+                  autoComplete="name"
+                  returnKeyType="next"
+                />
+              </View>
+            )}
+
             <View style={styles.inputWrapper}>
               <IconSymbol
                 ios_icon_name="envelope.fill"
@@ -251,7 +302,7 @@ export default function LoginScreen() {
             <Pressable
               onPress={() => {
                 console.log('[Login] Toggle sign-up mode:', !isSignUp);
-                setIsSignUp(!isSignUp);
+                setIsSignUp(prev => !prev);
               }}
               disabled={loading}
               style={styles.switchButton}
@@ -409,6 +460,6 @@ const styles = StyleSheet.create({
   },
   appleButton: {
     width: '100%',
-    height: 52 * 1.15,
+    height: 48,
   },
 });

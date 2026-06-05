@@ -88,7 +88,9 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
-        const currentLocation = await Location.getCurrentPositionAsync({});
+        const currentLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
         const location = {
           latitude: currentLocation.coords.latitude,
           longitude: currentLocation.coords.longitude,

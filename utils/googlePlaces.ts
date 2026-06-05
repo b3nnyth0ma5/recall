@@ -131,6 +131,8 @@ export async function searchNearbyPlaces(
     const data = await invokeProxy('nearbysearch', {
       location: { lat: userLocation.latitude, lng: userLocation.longitude },
       maxResults,
+      radius: 2000,
+      rankPreference: 'DISTANCE',
     });
 
     console.log('[googlePlaces] nearbysearch response:', JSON.stringify(data, null, 2));
