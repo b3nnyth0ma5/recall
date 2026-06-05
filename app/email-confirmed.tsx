@@ -92,7 +92,7 @@ export default function EmailConfirmedScreen() {
               router.replace('/update-password');
             }, 1500);
           } else if (type === 'signup' || type === 'email') {
-            // For email confirmation, redirect to home
+            // For email confirmation, refresh session so email_confirmed_at is set, then let layout decide
             setStatus('success');
             setMessage('Email confirmed! Welcome to Recall.');
             
@@ -111,11 +111,13 @@ export default function EmailConfirmedScreen() {
               }),
             ]).start();
             
-            setTimeout(() => {
-              router.replace('/(tabs)/(home)');
+            setTimeout(async () => {
+              console.log('[EmailConfirmed] Refreshing session before redirect');
+              await supabase.auth.refreshSession();
+              router.replace('/onboarding');
             }, 1500);
           } else if (type === 'magiclink') {
-            // For magic link, redirect to home
+            // For magic link, refresh session then let layout decide
             setStatus('success');
             setMessage('Signed in successfully!');
             
@@ -134,8 +136,10 @@ export default function EmailConfirmedScreen() {
               }),
             ]).start();
             
-            setTimeout(() => {
-              router.replace('/(tabs)/(home)');
+            setTimeout(async () => {
+              console.log('[EmailConfirmed] Refreshing session before redirect');
+              await supabase.auth.refreshSession();
+              router.replace('/onboarding');
             }, 1500);
           } else {
             // Unknown type, redirect to home

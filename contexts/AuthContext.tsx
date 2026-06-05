@@ -9,6 +9,7 @@ interface AuthContextType {
   session: Session | null;
   user: User | null;
   loading: boolean;
+  emailVerified: boolean;
   signOut: () => Promise<void>;
 }
 
@@ -176,10 +177,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Apple / OAuth users are considered verified; email/password users must have email_confirmed_at.
+  const provider = user?.app_metadata?.provider as string | undefined;
+  const isEmailProvider = !provider || provider === 'email';
+  const emailVerified = !user
+    ? false
+    : !isEmailProvider
+      ? true
+      : Boolean((user as any).email_confirmed_at || (user as any).confirmed_at);
+
   const value = {
     session,
     user,
     loading,
+    emailVerified,
     signOut,
   };
 

@@ -77,12 +77,8 @@ export default function LoginScreen() {
         if (error) {
           Alert.alert('Sign Up Error', error.message);
         } else if (data.user) {
-          Alert.alert(
-            'Success',
-            'Account created! Please check your email to verify your account before signing in.',
-            [{ text: 'OK' }]
-          );
-          setIsSignUp(false);
+          console.log('[Login] Sign-up successful for:', data.user.id, '— routing handled by _layout.tsx');
+          // _layout.tsx will detect the unverified session and route to /verify-email automatically.
         }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({

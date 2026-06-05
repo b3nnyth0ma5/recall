@@ -67,7 +67,7 @@ const IOSStatusBarBackground = memo(() => {
 IOSStatusBarBackground.displayName = 'IOSStatusBarBackground';
 
 function RootLayoutNav() {
-  const { user, loading } = useAuth();
+  const { user, loading, emailVerified } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
@@ -228,11 +228,13 @@ function RootLayoutNav() {
     const inModalScreens = currentSegment === 'modal' || currentSegment === 'formsheet' || currentSegment === 'transparent-modal';
     const inPasswordResetScreens = currentSegment === 'reset-password' || currentSegment === 'update-password';
     const inEmailConfirmedScreen = currentSegment === 'email-confirmed';
+    const inVerifyEmailScreen = currentSegment === 'verify-email';
     const inShareScreen = currentSegment === 'create-recall-from-share';
     const inOtherScreens = currentSegment === 'search' || currentSegment === 'location-search' || currentSegment === 'map-view' || currentSegment === 'shared-recall' || currentSegment === 'person-recalls' || currentSegment === 'people-word-cloud';
 
     console.log('[Routing] Current state:', { 
       user: !!user, 
+      emailVerified,
       inAuthGroup, 
       inOnboardingGroup, 
       inTabsGroup,
@@ -240,6 +242,7 @@ function RootLayoutNav() {
       inModalScreens,
       inPasswordResetScreens,
       inEmailConfirmedScreen,
+      inVerifyEmailScreen,
       inShareScreen,
       inOtherScreens,
       needsOnboarding,
@@ -250,7 +253,7 @@ function RootLayoutNav() {
 
     // Don't redirect if user is on special screens (they can navigate freely)
     // This is critical for password reset flow and share intent to work properly
-    if (inNoteEditor || inModalScreens || inPasswordResetScreens || inEmailConfirmedScreen || inShareScreen || inOtherScreens) {
+    if (inNoteEditor || inModalScreens || inPasswordResetScreens || inEmailConfirmedScreen || inVerifyEmailScreen || inShareScreen || inOtherScreens) {
       console.log('[Routing] User on special screen, not redirecting');
       return;
     }
@@ -264,9 +267,24 @@ function RootLayoutNav() {
         targetRoute = '/onboarding';
         console.log('[Routing] Need to redirect to onboarding (no user)');
       }
+    } else if (!emailVerified) {
+      // User is authenticated but email not yet verified — gate them
+      if (!inAuthGroup) {
+        targetRoute = '/verify-email';
+        console.log('[Routing] Email not verified — redirecting to verify-email');
+      }
     } else {
-      // User is authenticated
-      if (inAuthGroup) {
+      // User is authenticated and email is verified
+      // If they were on the verify-email screen, move them along
+      if (inVerifyEmailScreen) {
+        if (needsOnboarding === true) {
+          targetRoute = '/onboarding';
+          console.log('[Routing] Email now verified — redirecting to onboarding');
+        } else if (needsOnboarding === false) {
+          targetRoute = '/(tabs)/(home)';
+          console.log('[Routing] Email now verified — redirecting to home');
+        }
+      } else if (inAuthGroup) {
         // On login screen but authenticated
         if (needsOnboarding === true) {
           targetRoute = '/onboarding';
@@ -306,7 +324,7 @@ function RootLayoutNav() {
       hasInitializedRef.current = true;
       console.log('[Routing] No navigation needed, marking as initialized');
     }
-  }, [user, loading, checkingOnboarding, needsOnboarding, segments, router]);
+  }, [user, loading, emailVerified, checkingOnboarding, needsOnboarding, segments, router]);
 
   const { isCreatePanelOpen, openCreatePanel } = useCreateRecallUI();
   const { triggerScrollToTop, triggerSearchFocus } = useScrollToTop();
@@ -405,6 +423,7 @@ function RootLayoutNav() {
         <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         <Stack.Screen name="update-password" options={{ headerShown: false }} />
         <Stack.Screen name="email-confirmed" options={{ headerShown: false }} />
+        <Stack.Screen name="verify-email" options={{ headerShown: false }} />
         <Stack.Screen name="note-editor" options={{ headerShown: false }} />
         <Stack.Screen name="search" options={{ headerShown: false }} />
         <Stack.Screen name="location-search" options={{ headerShown: false }} />

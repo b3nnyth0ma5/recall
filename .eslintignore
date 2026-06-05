@@ -13,3 +13,6 @@ node_modules/
 
 # Ignore Supabase Edge Functions (Deno environment)
 supabase/functions/
+
+# Ignore email templates (HTML files, not JS/TS)
+email-templates/
