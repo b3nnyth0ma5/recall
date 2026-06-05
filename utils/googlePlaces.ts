@@ -129,8 +129,7 @@ export async function searchNearbyPlaces(
     console.log('[googlePlaces] searchNearbyPlaces at:', userLocation);
     
     const data = await invokeProxy('nearbysearch', {
-      latitude: userLocation.latitude,
-      longitude: userLocation.longitude,
+      location: { lat: userLocation.latitude, lng: userLocation.longitude },
       maxResults,
     });
 
@@ -205,8 +204,7 @@ export async function searchPlaces(
     const data = await invokeProxy('textsearch', {
       query,
       ...(userLocation && {
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
+        location: { lat: userLocation.latitude, lng: userLocation.longitude },
       }),
     });
 
