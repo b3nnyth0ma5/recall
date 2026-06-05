@@ -209,6 +209,26 @@ export default function LoginScreen() {
             {isSignUp ? 'Create your account' : 'Welcome back'}
           </Text>
 
+          {/* Apple Sign In — Apple HIG Guideline 4.8: must be first social option */}
+          {appleAvailable && (
+            <View style={styles.appleSection}>
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={isSignUp
+                  ? AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP
+                  : AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                cornerRadius={12}
+                style={styles.appleButton}
+                onPress={handleAppleSignIn}
+              />
+              <View style={styles.dividerContainer}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or continue with email</Text>
+                <View style={styles.dividerLine} />
+              </View>
+            </View>
+          )}
+
           {/* Input Fields */}
           <View style={styles.inputContainer}>
             {isSignUp && (
@@ -315,23 +335,7 @@ export default function LoginScreen() {
               </Text>
             </Pressable>
 
-            {appleAvailable && (
-              <>
-                <View style={styles.dividerContainer}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>or</Text>
-                  <View style={styles.dividerLine} />
-                </View>
 
-                <AppleAuthentication.AppleAuthenticationButton
-                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-                  cornerRadius={12}
-                  style={styles.appleButton}
-                  onPress={handleAppleSignIn}
-                />
-              </>
-            )}
           </View>
         </View>
       </ScrollView>
@@ -457,6 +461,11 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginHorizontal: 12,
     fontWeight: '500',
+  },
+  appleSection: {
+    width: '100%',
+    marginBottom: 24,
+    gap: 16,
   },
   appleButton: {
     width: '100%',

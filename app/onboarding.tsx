@@ -1086,6 +1086,26 @@ export default function OnboardingScreen() {
             <Text style={styles.authTitle}>{authTitle}</Text>
             <Text style={styles.authSubtitle}>{authSubtitle}</Text>
 
+            {/* Apple Sign In — Apple HIG Guideline 4.8: must be first social option */}
+            {appleAvailable && Platform.OS === 'ios' && (
+              <View style={styles.appleSection}>
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={isSignUp
+                    ? AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP
+                    : AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                  cornerRadius={10}
+                  style={styles.appleButton}
+                  onPress={handleAppleSignIn}
+                />
+                <View style={styles.appleDividerContainer}>
+                  <View style={styles.appleDividerLine} />
+                  <Text style={styles.appleDividerText}>or continue with email</Text>
+                  <View style={styles.appleDividerLine} />
+                </View>
+              </View>
+            )}
+
             {/* Inputs */}
             {isSignUp && (
               <View style={styles.inputGroup}>
@@ -1193,24 +1213,7 @@ export default function OnboardingScreen() {
               <Text style={styles.switchText}>{switchLabel}</Text>
             </AnimatedPressable>
 
-            {/* Apple sign-in */}
-            {appleAvailable && Platform.OS === 'ios' && (
-              <>
-                <View style={styles.appleDividerContainer}>
-                  <View style={styles.appleDividerLine} />
-                  <Text style={styles.appleDividerText}>or continue with</Text>
-                  <View style={styles.appleDividerLine} />
-                </View>
 
-                <AppleAuthentication.AppleAuthenticationButton
-                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-                  cornerRadius={10}
-                  style={styles.appleButton}
-                  onPress={handleAppleSignIn}
-                />
-              </>
-            )}
 
             <View style={{ height: 40 }} />
           </ScrollView>
@@ -1455,6 +1458,11 @@ const styles = StyleSheet.create({
     color: '#B0B0B0',
     marginHorizontal: 12,
     fontWeight: '500',
+  },
+  appleSection: {
+    width: '100%',
+    marginBottom: 24,
+    gap: 12,
   },
   appleButton: {
     width: '100%',
