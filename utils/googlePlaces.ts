@@ -29,19 +29,15 @@ function extractSuburbAndLocality(addressComponents: any[]): SuburbLocalityResul
   let suburb: string | undefined;
   let locality: string | undefined;
 
-  console.log('Extracting suburb and locality from address components:', JSON.stringify(addressComponents, null, 2));
-
   for (const component of addressComponents) {
     const types = component.types || [];
     
     if (!suburb && (types.includes('sublocality') || types.includes('sublocality_level_1') || types.includes('neighborhood'))) {
       suburb = component.longText || component.long_name;
-      console.log('Found suburb:', suburb, 'from types:', types);
     }
     
     if (!locality && types.includes('locality')) {
       locality = component.longText || component.long_name;
-      console.log('Found locality:', locality, 'from types:', types);
     }
     
     if (suburb && locality) {
@@ -49,7 +45,6 @@ function extractSuburbAndLocality(addressComponents: any[]): SuburbLocalityResul
     }
   }
 
-  console.log('Extracted suburb:', suburb, 'locality:', locality);
   return { suburb, locality };
 }
 
@@ -80,7 +75,6 @@ export async function getPlaceDetails(placeId: string): Promise<{
   try {
     console.log('[googlePlaces] getPlaceDetails for:', placeId);
     const data = await invokeProxy('details', { placeId });
-    console.log('[googlePlaces] place details response:', JSON.stringify(data, null, 2));
 
     const { suburb, locality } = extractSuburbAndLocality(data.addressComponents || []);
 
@@ -135,8 +129,6 @@ export async function searchNearbyPlaces(
       rankPreference: 'DISTANCE',
     });
 
-    console.log('[googlePlaces] nearbysearch response:', JSON.stringify(data, null, 2));
-
     if (!data.places || data.places.length === 0) {
       console.log('[googlePlaces] No nearby places found');
       return [];
@@ -153,9 +145,6 @@ export async function searchNearbyPlaces(
         longitude
       );
 
-      console.log('[googlePlaces] Processing place:', place.displayName?.text);
-      console.log('[googlePlaces] Address components:', JSON.stringify(place.addressComponents, null, 2));
-      
       const { suburb, locality } = extractSuburbAndLocality(place.addressComponents || []);
 
       return {
@@ -177,10 +166,7 @@ export async function searchNearbyPlaces(
       return distA - distB;
     });
 
-    console.log(`[googlePlaces] Found ${results.length} nearby places with suburb/locality data`);
-    results.forEach(r => {
-      console.log(`- ${r.displayName}: suburb=${r.suburb}, locality=${r.locality}`);
-    });
+    console.log(`[googlePlaces] Found ${results.length} nearby places`);
     
     return results;
   } catch (error) {
@@ -210,8 +196,6 @@ export async function searchPlaces(
       }),
     });
 
-    console.log('[googlePlaces] textsearch response:', JSON.stringify(data, null, 2));
-
     if (!data.places || data.places.length === 0) {
       console.log('[googlePlaces] No places found');
       return [];
@@ -231,9 +215,6 @@ export async function searchPlaces(
         );
       }
 
-      console.log('[googlePlaces] Processing place:', place.displayName?.text);
-      console.log('[googlePlaces] Address components:', JSON.stringify(place.addressComponents, null, 2));
-      
       const { suburb, locality } = extractSuburbAndLocality(place.addressComponents || []);
 
       return {
@@ -257,10 +238,7 @@ export async function searchPlaces(
       });
     }
 
-    console.log(`[googlePlaces] Found ${results.length} places with suburb/locality data`);
-    results.forEach(r => {
-      console.log(`- ${r.displayName}: suburb=${r.suburb}, locality=${r.locality}`);
-    });
+    console.log(`[googlePlaces] Found ${results.length} places`);
 
     return results.slice(0, 5);
   } catch (error) {

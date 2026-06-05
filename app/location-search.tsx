@@ -18,7 +18,7 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/utils/supabase';
-import { searchPlaces, searchNearbyPlaces, PlaceResult, extractShortLocationName, isGooglePlacesConfigured } from '@/utils/googlePlaces';
+import { searchPlaces, searchNearbyPlaces, PlaceResult, extractShortLocationName } from '@/utils/googlePlaces';
 
 interface LocationSearchScreenProps {
   visible?: boolean;
@@ -33,6 +33,20 @@ interface LocationSearchScreenProps {
   }) => void;
 }
 
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+const MIN_DISTANCE_DELTA_KM = 0.05; // 50m — only refresh if fresh fix moves us this much
+
 export default function LocationSearchScreen({ onClose, onSelectLocation }: LocationSearchScreenProps = {}) {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -41,74 +55,112 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
   const [loading, setLoading] = useState(false);
   const [loadingNearby, setLoadingNearby] = useState(false);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [apiConfigured, setApiConfigured] = useState(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const searchInputRef = React.useRef<TextInput>(null);
 
-  const checkApiConfiguration = useCallback(() => {
-    const configured = isGooglePlacesConfigured();
-    setApiConfigured(configured);
-    
-    if (!configured) {
-      Alert.alert(
-        'Google Places API Not Configured',
-        'Please add your Google Places API key in utils/googlePlaces.ts to use location search.\n\n' +
-        'Steps:\n' +
-        '1. Go to Google Cloud Console\n' +
-        '2. Enable Places API (New) and Geocoding API\n' +
-        '3. Create an API key\n' +
-        '4. Add the key to utils/googlePlaces.ts',
-        [{ text: 'OK' }]
-      );
+  const loadNearbyPlaces = useCallback(async (
+    location: { latitude: number; longitude: number },
+    options?: { silent?: boolean }
+  ) => {
+    try {
+      if (!options?.silent) setLoadingNearby(true);
+      console.log('[LocationSearch] Loading nearby places for location:', location);
+
+      const places = await searchNearbyPlaces(location);
+
+      console.log('[LocationSearch] Nearby places loaded:', places.length);
+      setResults(places);
+    } catch (error) {
+      console.error('[LocationSearch] Error loading nearby places:', error);
+      setResults([]);
+    } finally {
+      if (!options?.silent) setLoadingNearby(false);
     }
   }, []);
 
-  const loadNearbyPlaces = useCallback(async (location: { latitude: number; longitude: number }) => {
-    if (!apiConfigured) {
-      return;
-    }
-
-    try {
-      setLoadingNearby(true);
-      console.log('Loading nearby places for location:', location);
-
-      const places = await searchNearbyPlaces(location);
-      
-      console.log('Nearby places loaded:', places.length);
-      setResults(places);
-    } catch (error) {
-      console.error('Error loading nearby places:', error);
-      setResults([]);
-    } finally {
-      setLoadingNearby(false);
-    }
-  }, [apiConfigured]);
-
   const getUserLocation = useCallback(async () => {
     try {
+      console.log('[LocationSearch] Requesting foreground location permission');
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const currentLocation = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
+      if (status !== 'granted') {
+        console.log('[LocationSearch] Location permission denied');
+        return;
+      }
+
+      // STAGE 1: Use cached last-known position immediately if available.
+      // This typically returns in <50ms and gives us a fix accurate enough for
+      // distance-ranked nearby search.
+      let initialLocation: { latitude: number; longitude: number } | null = null;
+      try {
+        const cached = await Location.getLastKnownPositionAsync({
+          maxAge: 5 * 60 * 1000, // 5 minutes
+          requiredAccuracy: 200, // metres
         });
-        const location = {
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
+        if (cached) {
+          initialLocation = {
+            latitude: cached.coords.latitude,
+            longitude: cached.coords.longitude,
+          };
+          console.log('[LocationSearch] Using cached fix — firing immediate nearby search');
+          setUserLocation(initialLocation);
+          // Fire the nearby search immediately — don't await
+          loadNearbyPlaces(initialLocation);
+        } else {
+          console.log('[LocationSearch] No cached fix available');
+        }
+      } catch (e) {
+        console.log('[LocationSearch] Cached fix lookup failed, will fall back to fresh fix:', e);
+      }
+
+      // STAGE 2: Get a fresh fix in the background. Use Balanced (~100m, ~1-2s)
+      // for first refresh; this is a good tradeoff between speed and accuracy
+      // since Google's distance-ranked search absorbs the difference.
+      try {
+        const fresh = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        const freshLocation = {
+          latitude: fresh.coords.latitude,
+          longitude: fresh.coords.longitude,
         };
-        setUserLocation(location);
-        console.log('User location obtained for proximity sorting');
-        
-        // Automatically load nearby places when location is obtained
-        loadNearbyPlaces(location);
+
+        if (!initialLocation) {
+          // No cached fix was available — this is the first paint. Show results now.
+          console.log('[LocationSearch] First paint — firing nearby search with fresh fix');
+          setUserLocation(freshLocation);
+          loadNearbyPlaces(freshLocation);
+        } else {
+          // Compare with the cached fix; only refresh if user has moved meaningfully.
+          const deltaKm = haversineKm(
+            initialLocation.latitude,
+            initialLocation.longitude,
+            freshLocation.latitude,
+            freshLocation.longitude,
+          );
+          if (deltaKm > MIN_DISTANCE_DELTA_KM) {
+            console.log(`[LocationSearch] Fresh fix moved by ${deltaKm.toFixed(3)}km — silently refreshing list`);
+            setUserLocation(freshLocation);
+            loadNearbyPlaces(freshLocation, { silent: true });
+          } else {
+            console.log(`[LocationSearch] Fresh fix within ${(deltaKm * 1000).toFixed(0)}m of cached — keeping current results`);
+            // Still update userLocation so subsequent typed searches use the fresh fix
+            setUserLocation(freshLocation);
+          }
+        }
+      } catch (e) {
+        console.error('[LocationSearch] Failed to get fresh fix:', e);
+        // If we already showed cached results, the user gets results — fine.
+        // If we didn't (no cache + permission granted but GPS failed), the screen
+        // will sit on the empty state. That's an edge case worth a Sentry log but
+        // not a UX block.
       }
     } catch (error) {
-      console.error('Error getting user location:', error);
+      console.error('[LocationSearch] Error getting user location:', error);
     }
   }, [loadNearbyPlaces]);
 
   useEffect(() => {
     getUserLocation();
-    checkApiConfiguration();
 
     // Listen to keyboard events
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
@@ -122,7 +174,7 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
       keyboardDidHideListener.remove();
       keyboardDidShowListener.remove();
     };
-  }, [getUserLocation, checkApiConfiguration]);
+  }, [getUserLocation]);
 
   const performSearch = useCallback(async (searchText: string) => {
     if (!searchText.trim()) {
@@ -135,30 +187,25 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
       return;
     }
 
-    if (!apiConfigured) {
-      Alert.alert('API Not Configured', 'Please configure your Google Places API key first.');
-      return;
-    }
-
     try {
       setLoading(true);
-      console.log('Searching for locations with Google Places API:', searchText);
+      console.log('[LocationSearch] Searching for locations with Google Places API:', searchText);
 
       const places = await searchPlaces(searchText, userLocation || undefined);
-      
-      console.log('Search results:', places.length);
+
+      console.log('[LocationSearch] Search results:', places.length);
       setResults(places);
     } catch (error) {
-      console.error('Error searching location:', error);
+      console.error('[LocationSearch] Error searching location:', error);
       Alert.alert(
         'Search Error',
-        'Failed to search locations. Please check your API key and internet connection.'
+        'Failed to search locations. Please check your internet connection.'
       );
       setResults([]);
     } finally {
       setLoading(false);
     }
-  }, [userLocation, apiConfigured, loadNearbyPlaces]);
+  }, [userLocation, loadNearbyPlaces]);
 
   useEffect(() => {
     if (params.query && typeof params.query === 'string') {
@@ -192,7 +239,7 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
         location.suburb,
         location.locality
       );
-      
+
       console.log('[LocationSearch] Selected location data:', {
         latitude: location.latitude,
         longitude: location.longitude,
@@ -243,7 +290,7 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
       } else {
         // FIXED: Navigate back first, then set params in a separate event loop tick
         router.back();
-        
+
         // FIXED: Use setTimeout to break the call stack and prevent recursion
         setTimeout(() => {
           try {
@@ -268,6 +315,7 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
   };
 
   const handleSubmitEditing = () => {
+    console.log('[LocationSearch] Submit editing — searching:', searchQuery);
     performSearch(searchQuery);
   };
 
@@ -294,8 +342,8 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
           },
           headerTintColor: colors.text,
           headerLeft: () => (
-            <Pressable 
-              onPress={() => router.back()} 
+            <Pressable
+              onPress={() => router.back()}
               style={styles.headerButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
@@ -318,27 +366,26 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
               onChangeText={setSearchQuery}
               returnKeyType="search"
               onSubmitEditing={handleSubmitEditing}
-              editable={apiConfigured}
               selectTextOnFocus={true}
               autoFocus={false}
             />
             {searchQuery.length > 0 && (
-              <Pressable 
+              <Pressable
                 onPress={() => setSearchQuery('')}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
               </Pressable>
             )}
-            <Pressable 
-              onPress={toggleKeyboard} 
+            <Pressable
+              onPress={toggleKeyboard}
               style={styles.keyboardToggle}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol 
-                name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-                size={20} 
-                color={colors.primary} 
+              <IconSymbol
+                name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"}
+                size={20}
+                color={colors.primary}
               />
             </Pressable>
           </View>
@@ -357,25 +404,7 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
           contentContainerStyle={styles.resultsContent}
           keyboardShouldPersistTaps="handled"
         >
-          {!apiConfigured ? (
-            <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
-              <IconSymbol name="exclamationmark.triangle" size={60} color={colors.error} />
-              <Text style={styles.emptyTitle}>API Not Configured</Text>
-              <Text style={styles.emptyText}>
-                Please configure your Google Places API key in utils/googlePlaces.ts
-              </Text>
-              <View style={styles.instructionsContainer}>
-                <Text style={styles.instructionsTitle}>Setup Instructions:</Text>
-                <Text style={styles.instructionsText}>
-                  1. Go to Google Cloud Console{'\n'}
-                  2. Enable Places API (New){'\n'}
-                  3. Enable Geocoding API{'\n'}
-                  4. Create an API key{'\n'}
-                  5. Add key to utils/googlePlaces.ts
-                </Text>
-              </View>
-            </Animated.View>
-          ) : (loading || loadingNearby) ? (
+          {(loading || loadingNearby) ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={styles.loadingText}>
@@ -420,7 +449,7 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
                       </Text>
                       {result.distance !== undefined && (
                         <Text style={styles.distanceText}>
-                          {result.distance < 1 
+                          {result.distance < 1
                             ? `${Math.round(result.distance * 1000)}m away`
                             : `${result.distance.toFixed(1)}km away`}
                         </Text>
@@ -457,13 +486,6 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
             </Animated.View>
           )}
         </ScrollView>
-
-        <View style={styles.noteContainer}>
-          <IconSymbol name="info.circle" size={16} color={colors.textTertiary} />
-          <Text style={styles.noteText}>
-            Powered by Google Places API
-          </Text>
-        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -632,20 +654,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     lineHeight: 22,
-  },
-  noteContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  noteText: {
-    fontSize: 12,
-    color: colors.textTertiary,
-    textAlign: 'center',
-    fontStyle: 'italic',
   },
 });
