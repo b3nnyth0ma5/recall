@@ -45,6 +45,9 @@ This step does not block template rollout — the templates work with Supabase's
 
 ## Section 2 — Per-template paste guide
 
+> **Templates re-skinned — re-paste required.**
+> The templates have been re-skinned to the Recall coral brand (`#FF6B7A`) and modernised with a hero band, eyebrow labels, info chips, dark-mode support, and mobile-responsive layout. If you previously pasted earlier versions into the Supabase dashboard, please re-paste the latest content from `email-templates/<file>.html` for each template — Supabase does not auto-pull from the repo.
+
 For each template below:
 1. Open the Supabase Dashboard → **Authentication → Email Templates**.
 2. Select the template listed.
