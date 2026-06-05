@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { supabase } from '@/utils/supabase';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -25,6 +26,13 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => setAppleAvailable(false));
+    }
+  }, []);
 
   const logLogin = async (userId: string) => {
     try {
@@ -48,6 +56,7 @@ export default function LoginScreen() {
   };
 
   const handlePasswordAuth = async () => {
+    console.log('[Login] Password auth button pressed, isSignUp:', isSignUp);
     if (!email || !password) {
       Alert.alert('Error', 'Please enter both email and password');
       return;
@@ -98,7 +107,49 @@ export default function LoginScreen() {
     }
   };
 
+  const handleAppleSignIn = async () => {
+    console.log('[Login] Apple sign-in button pressed');
+    try {
+      setLoading(true);
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      if (!credential.identityToken) {
+        Alert.alert('Sign In Error', 'No identity token returned from Apple');
+        return;
+      }
+
+      console.log('[Login] Apple credential received, exchanging with Supabase');
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+      });
+
+      if (error) {
+        Alert.alert('Sign In Error', error.message);
+      } else if (data.user) {
+        console.log('[Login] Apple sign-in successful:', data.user.id);
+        await logLogin(data.user.id);
+        // _layout.tsx handles routing on auth state change
+      }
+    } catch (e: any) {
+      if (e?.code === 'ERR_REQUEST_CANCELED') {
+        console.log('[Login] Apple sign-in cancelled by user');
+        return;
+      }
+      console.error('[Login] Apple sign-in error:', e);
+      Alert.alert('Error', 'An unexpected error occurred during Apple sign-in');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleForgotPassword = () => {
+    console.log('[Login] Forgot password pressed');
     router.push('/reset-password');
   };
 
@@ -202,7 +253,10 @@ export default function LoginScreen() {
             </Pressable>
 
             <Pressable
-              onPress={() => setIsSignUp(!isSignUp)}
+              onPress={() => {
+                console.log('[Login] Toggle sign-up mode:', !isSignUp);
+                setIsSignUp(!isSignUp);
+              }}
               disabled={loading}
               style={styles.switchButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -213,6 +267,24 @@ export default function LoginScreen() {
                   : "Don't have an account? Sign Up"}
               </Text>
             </Pressable>
+
+            {appleAvailable && (
+              <>
+                <View style={styles.dividerContainer}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>or</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                  cornerRadius={12}
+                  style={styles.appleButton}
+                  onPress={handleAppleSignIn}
+                />
+              </>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -321,5 +393,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: '500',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginVertical: 4,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginHorizontal: 12,
+    fontWeight: '500',
+  },
+  appleButton: {
+    width: '100%',
+    height: 52 * 1.15,
   },
 });
