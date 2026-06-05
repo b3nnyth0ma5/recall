@@ -280,8 +280,8 @@ export async function reverseGeocodeGoogle(
   try {
     console.log('[googlePlaces] reverseGeocodeGoogle:', { latitude, longitude });
 
-    const data = await invokeProxy('details', {
-      // The proxy's 'details' kind accepts a geocode sub-kind via latlng
+    // Reverse-geocode via the proxy's 'geocode' kind (Google Geocoding API)
+    const data = await invokeProxy('geocode', {
       latlng: `${latitude},${longitude}`,
       resultType: 'street_address|premise|subpremise|route',
     });
