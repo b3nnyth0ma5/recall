@@ -459,7 +459,7 @@ function RootLayoutNav() {
       <PeopleGraphOverlay />
 
       {/* Floating Nav Bar */}
-      <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+      <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 24 }]}>
         <FloatingNavBar
           visible={navBarVisible}
           activeRoute={activeRoute}

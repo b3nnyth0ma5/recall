@@ -70,7 +70,7 @@ export default function CategoryViewerScreen() {
   const menuAnim = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
   const ellipsisButtonRef = useRef<View>(null);
-  const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
 
   const nameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
@@ -808,9 +808,11 @@ export default function CategoryViewerScreen() {
     }
 
     const SCREEN_WIDTH = Dimensions.get('window').width;
-    const FALLBACK_ANCHOR = { top: insets.top + 160, right: 16 };
+    const MENU_WIDTH = 180;
+    const SCREEN_MARGIN = 12;
+    const FALLBACK_ANCHOR = { top: insets.top + 160, left: SCREEN_WIDTH - MENU_WIDTH - SCREEN_MARGIN };
 
-    const doOpen = (anchor: { top: number; right: number }) => {
+    const doOpen = (anchor: { top: number; left: number }) => {
       setMenuAnchor(anchor);
       setIsMenuOpen(true);
       Animated.timing(menuAnim, {
@@ -823,9 +825,16 @@ export default function CategoryViewerScreen() {
     if (ellipsisButtonRef.current) {
       ellipsisButtonRef.current.measureInWindow((x, y, width, height) => {
         if (width > 0 && height > 0) {
+          // Center horizontally on the ellipsis
+          const centeredLeft = x + width / 2 - MENU_WIDTH / 2;
+          // Clamp to keep menu fully on-screen with a 12px margin
+          const clampedLeft = Math.max(
+            SCREEN_MARGIN,
+            Math.min(centeredLeft, SCREEN_WIDTH - MENU_WIDTH - SCREEN_MARGIN)
+          );
           const anchor = {
             top: y + height + 6,
-            right: SCREEN_WIDTH - (x + width),
+            left: clampedLeft,
           };
           console.log('[CategoryViewer] Ellipsis button measured, anchor:', anchor);
           doOpen(anchor);
@@ -1621,7 +1630,7 @@ export default function CategoryViewerScreen() {
           <Animated.View
             style={[
               styles.menuCard,
-              { top: menuAnchor.top, right: menuAnchor.right },
+              { top: menuAnchor.top, left: menuAnchor.left },
               { opacity: menuOpacity, transform: [{ translateY: menuTranslateY }] },
             ]}
           >

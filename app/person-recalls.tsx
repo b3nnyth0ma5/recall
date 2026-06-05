@@ -69,7 +69,7 @@ export default function PersonRecallsScreen() {
   const menuAnim = useRef(new Animated.Value(0)).current;
   const menuScaleAnim = useRef(new Animated.Value(0.95)).current;
   const ellipsisButtonRef = useRef<View>(null);
-  const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
 
   const ITEMS_PER_PAGE = 10;
 
@@ -520,9 +520,11 @@ export default function PersonRecallsScreen() {
     }
 
     const SCREEN_WIDTH = Dimensions.get('window').width;
-    const FALLBACK_ANCHOR = { top: insets.top + 160, right: 16 };
+    const MENU_WIDTH = 180;
+    const SCREEN_MARGIN = 12;
+    const FALLBACK_ANCHOR = { top: insets.top + 160, left: SCREEN_WIDTH - MENU_WIDTH - SCREEN_MARGIN };
 
-    const doOpen = (anchor: { top: number; right: number }) => {
+    const doOpen = (anchor: { top: number; left: number }) => {
       setMenuAnchor(anchor);
       setIsMenuOpen(true);
       menuAnim.setValue(0);
@@ -544,9 +546,16 @@ export default function PersonRecallsScreen() {
     if (ellipsisButtonRef.current) {
       ellipsisButtonRef.current.measureInWindow((x, y, width, height) => {
         if (width > 0 && height > 0) {
+          // Center horizontally on the ellipsis
+          const centeredLeft = x + width / 2 - MENU_WIDTH / 2;
+          // Clamp to keep menu fully on-screen with a 12px margin
+          const clampedLeft = Math.max(
+            SCREEN_MARGIN,
+            Math.min(centeredLeft, SCREEN_WIDTH - MENU_WIDTH - SCREEN_MARGIN)
+          );
           const anchor = {
             top: y + height + 6,
-            right: SCREEN_WIDTH - (x + width),
+            left: clampedLeft,
           };
           console.log('[PersonRecalls] Ellipsis button measured, anchor:', anchor);
           doOpen(anchor);
@@ -886,7 +895,7 @@ export default function PersonRecallsScreen() {
           <Animated.View
             style={[
               styles.menuCard,
-              { top: menuAnchor.top, right: menuAnchor.right },
+              { top: menuAnchor.top, left: menuAnchor.left },
               { opacity: menuAnim, transform: [{ scale: menuScaleAnim }] },
             ]}
           >

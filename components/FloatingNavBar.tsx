@@ -25,7 +25,7 @@ type Props = {
 
 const INACTIVE_ICON_COLOR = '#FFFFFF';
 const ACTIVE_ICON_COLOR = '#FFFFFF';
-const BAR_HEIGHT = 60;
+const BAR_HEIGHT = 68;
 
 function NavButton({
   icon,
@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
   },
   navButtonInner: {
     width: 52,
-    height: 36,
+    height: 44,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
   activePill: {
     position: 'absolute',
     width: 44,
-    height: 38,
+    height: 44,
     borderRadius: 16,
     backgroundColor: colors.primary,
   },
