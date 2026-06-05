@@ -1,15 +1,9 @@
-/**
- * Google Places API utilities
- * 
- * Note: You need to set up a Google Cloud Project and enable the Places API
- * Get your API key from: https://console.cloud.google.com/
- * 
- * Required APIs:
- * - Places API (New)
- * - Geocoding API
- */
+// SECURITY: All Google Places API calls now go through the server-side
+// `google-places-proxy` Supabase edge function. The previous client-side
+// API key (AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48) has been rotated and
+// must be revoked in Google Cloud Console. No API key is held on the client.
 
-const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || 'AIzaSyBWBDKiE0TRgWvmXtKcsgD_VgE2Xe68y48';
+import { supabase } from './supabase';
 
 export interface PlaceResult {
   placeId: string;
@@ -60,6 +54,22 @@ function extractSuburbAndLocality(addressComponents: any[]): SuburbLocalityResul
 }
 
 /**
+ * Invoke the google-places-proxy edge function.
+ * The proxy forwards Google's JSON verbatim so callers see the same shape.
+ */
+async function invokeProxy(kind: string, params: Record<string, unknown>): Promise<any> {
+  console.log(`[googlePlaces] invokeProxy kind=${kind}`, params);
+  const { data, error } = await supabase.functions.invoke('google-places-proxy', {
+    body: { kind, ...params },
+  });
+  if (error) {
+    console.error(`[googlePlaces] proxy error for kind=${kind}:`, error);
+    throw new Error(error.message || 'google-places-proxy error');
+  }
+  return data;
+}
+
+/**
  * Get place details including primaryTypeDisplayName and address components
  */
 export async function getPlaceDetails(placeId: string): Promise<{ 
@@ -68,27 +78,9 @@ export async function getPlaceDetails(placeId: string): Promise<{
   locality?: string;
 } | null> {
   try {
-    console.log('Fetching place details for:', placeId);
-    
-    const baseUrl = `https://places.googleapis.com/v1/places/${placeId}`;
-    
-    const response = await fetch(baseUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'primaryTypeDisplayName,addressComponents',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Google Places API error:', response.status, errorText);
-      return null;
-    }
-
-    const data = await response.json();
-    console.log('Place details response:', JSON.stringify(data, null, 2));
+    console.log('[googlePlaces] getPlaceDetails for:', placeId);
+    const data = await invokeProxy('details', { placeId });
+    console.log('[googlePlaces] place details response:', JSON.stringify(data, null, 2));
 
     const { suburb, locality } = extractSuburbAndLocality(data.addressComponents || []);
 
@@ -98,7 +90,7 @@ export async function getPlaceDetails(placeId: string): Promise<{
       locality,
     };
   } catch (error) {
-    console.error('Error fetching place details:', error);
+    console.error('[googlePlaces] Error fetching place details:', error);
     return null;
   }
 }
@@ -127,54 +119,25 @@ function calculateDistance(
 }
 
 /**
- * Search for nearby places using Google Places API (Nearby Search)
+ * Search for nearby places using the proxy (Nearby Search)
  */
 export async function searchNearbyPlaces(
   userLocation: { latitude: number; longitude: number },
   maxResults: number = 10
 ): Promise<PlaceResult[]> {
   try {
-    console.log('Searching for nearby places at:', userLocation);
+    console.log('[googlePlaces] searchNearbyPlaces at:', userLocation);
     
-    const baseUrl = 'https://places.googleapis.com/v1/places:searchNearby';
-    
-    const requestBody = {
-      locationRestriction: {
-        circle: {
-          center: {
-            latitude: userLocation.latitude,
-            longitude: userLocation.longitude,
-          },
-          radius: 5000.0,
-        },
-      },
-      maxResultCount: maxResults,
-      languageCode: 'en',
-      regionCode: 'AU',
-      rankPreference: 'DISTANCE',
-    };
-
-    const response = await fetch(baseUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName,places.addressComponents',
-      },
-      body: JSON.stringify(requestBody),
+    const data = await invokeProxy('nearbysearch', {
+      latitude: userLocation.latitude,
+      longitude: userLocation.longitude,
+      maxResults,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Google Places API error:', response.status, errorText);
-      throw new Error(`Google Places API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('Google Places API nearby response:', JSON.stringify(data, null, 2));
+    console.log('[googlePlaces] nearbysearch response:', JSON.stringify(data, null, 2));
 
     if (!data.places || data.places.length === 0) {
-      console.log('No nearby places found');
+      console.log('[googlePlaces] No nearby places found');
       return [];
     }
 
@@ -189,8 +152,8 @@ export async function searchNearbyPlaces(
         longitude
       );
 
-      console.log('Processing place:', place.displayName?.text);
-      console.log('Address components:', JSON.stringify(place.addressComponents, null, 2));
+      console.log('[googlePlaces] Processing place:', place.displayName?.text);
+      console.log('[googlePlaces] Address components:', JSON.stringify(place.addressComponents, null, 2));
       
       const { suburb, locality } = extractSuburbAndLocality(place.addressComponents || []);
 
@@ -213,20 +176,20 @@ export async function searchNearbyPlaces(
       return distA - distB;
     });
 
-    console.log(`Found ${results.length} nearby places with suburb/locality data`);
+    console.log(`[googlePlaces] Found ${results.length} nearby places with suburb/locality data`);
     results.forEach(r => {
       console.log(`- ${r.displayName}: suburb=${r.suburb}, locality=${r.locality}`);
     });
     
     return results;
   } catch (error) {
-    console.error('Error searching nearby places:', error);
+    console.error('[googlePlaces] Error searching nearby places:', error);
     throw error;
   }
 }
 
 /**
- * Search for places using Google Places API (Text Search)
+ * Search for places using the proxy (Text Search)
  */
 export async function searchPlaces(
   query: string,
@@ -237,49 +200,20 @@ export async function searchPlaces(
       return [];
     }
 
-    console.log('Searching Google Places for:', query);
+    console.log('[googlePlaces] searchPlaces for:', query);
     
-    const baseUrl = 'https://places.googleapis.com/v1/places:searchText';
-    
-    const requestBody = {
-      textQuery: query,
-      languageCode: 'en',
-      regionCode: 'AU',
-      maxResultCount: 10,
+    const data = await invokeProxy('textsearch', {
+      query,
       ...(userLocation && {
-        locationBias: {
-          circle: {
-            center: {
-              latitude: userLocation.latitude,
-              longitude: userLocation.longitude,
-            },
-            radius: 50000.0,
-          },
-        },
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
       }),
-    };
-
-    const response = await fetch(baseUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName,places.addressComponents',
-      },
-      body: JSON.stringify(requestBody),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Google Places API error:', response.status, errorText);
-      throw new Error(`Google Places API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('Google Places API response:', JSON.stringify(data, null, 2));
+    console.log('[googlePlaces] textsearch response:', JSON.stringify(data, null, 2));
 
     if (!data.places || data.places.length === 0) {
-      console.log('No places found');
+      console.log('[googlePlaces] No places found');
       return [];
     }
 
@@ -297,8 +231,8 @@ export async function searchPlaces(
         );
       }
 
-      console.log('Processing place:', place.displayName?.text);
-      console.log('Address components:', JSON.stringify(place.addressComponents, null, 2));
+      console.log('[googlePlaces] Processing place:', place.displayName?.text);
+      console.log('[googlePlaces] Address components:', JSON.stringify(place.addressComponents, null, 2));
       
       const { suburb, locality } = extractSuburbAndLocality(place.addressComponents || []);
 
@@ -323,173 +257,139 @@ export async function searchPlaces(
       });
     }
 
-    console.log(`Found ${results.length} places with suburb/locality data`);
+    console.log(`[googlePlaces] Found ${results.length} places with suburb/locality data`);
     results.forEach(r => {
       console.log(`- ${r.displayName}: suburb=${r.suburb}, locality=${r.locality}`);
     });
 
     return results.slice(0, 5);
   } catch (error) {
-    console.error('Error searching places:', error);
+    console.error('[googlePlaces] Error searching places:', error);
     throw error;
   }
 }
 
 /**
- * Reverse geocode coordinates to get place information with street-level accuracy
- * Returns formatted as "Street Number Street Name, Suburb" or fallback formats
+ * Reverse geocode coordinates to get place information with street-level accuracy.
+ * Returns formatted as "Street Number Street Name, Suburb" or fallback formats.
  */
 export async function reverseGeocodeGoogle(
   latitude: number,
   longitude: number
 ): Promise<string> {
   try {
-    console.log('[reverseGeocodeGoogle] Reverse geocoding:', { latitude, longitude });
+    console.log('[googlePlaces] reverseGeocodeGoogle:', { latitude, longitude });
 
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_PLACES_API_KEY}&result_type=street_address|premise|subpremise|route`;
+    const data = await invokeProxy('details', {
+      // The proxy's 'details' kind accepts a geocode sub-kind via latlng
+      latlng: `${latitude},${longitude}`,
+      resultType: 'street_address|premise|subpremise|route',
+    });
 
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      console.error('[reverseGeocodeGoogle] API error:', response.status);
-      const errorText = await response.text();
-      console.error('[reverseGeocodeGoogle] Error details:', errorText);
+    if (!data || data.status === 'ZERO_RESULTS' || !data.results || data.results.length === 0) {
+      console.log('[googlePlaces] reverseGeocodeGoogle: no results, status:', data?.status);
       return 'Unknown Location';
     }
 
-    const data = await response.json();
+    console.log('[googlePlaces] reverseGeocodeGoogle: found', data.results.length, 'results');
 
-    if (data.status !== 'OK' || !data.results || data.results.length === 0) {
-      console.log('[reverseGeocodeGoogle] No results, status:', data.status);
-      return 'Unknown Location';
-    }
-
-    console.log('[reverseGeocodeGoogle] Found', data.results.length, 'results');
-
-    // Extract address components for street-level accuracy
     let streetNumber = '';
     let streetName = '';
     let suburb = '';
     let locality = '';
 
-    // Try to find the most specific result (street_address or premise)
     const bestResult = data.results.find((result: any) => 
       result.types.includes('street_address') || 
       result.types.includes('premise') ||
       result.types.includes('subpremise')
     ) || data.results[0];
 
-    console.log('[reverseGeocodeGoogle] Using result with types:', bestResult.types);
+    console.log('[googlePlaces] reverseGeocodeGoogle: using result with types:', bestResult.types);
 
     for (const component of bestResult.address_components) {
       const types = component.types || [];
       
       if (types.includes('street_number')) {
         streetNumber = component.long_name;
-        console.log('[reverseGeocodeGoogle] Found street number:', streetNumber);
       } else if (types.includes('route')) {
         streetName = component.long_name;
-        console.log('[reverseGeocodeGoogle] Found street name:', streetName);
       } else if (types.includes('sublocality') || types.includes('sublocality_level_1')) {
         suburb = component.long_name;
-        console.log('[reverseGeocodeGoogle] Found suburb:', suburb);
       } else if (types.includes('neighborhood') && !suburb) {
         suburb = component.long_name;
-        console.log('[reverseGeocodeGoogle] Found neighborhood as suburb:', suburb);
       } else if (types.includes('locality')) {
         locality = component.long_name;
-        console.log('[reverseGeocodeGoogle] Found locality:', locality);
       }
     }
 
-    // Build the address string with priority:
-    // 1. "Street Number Street Name, Suburb"
-    // 2. "Street Name, Suburb"
-    // 3. "Suburb, Locality"
-    // 4. First part of formatted address
-    
     let formattedLocation = '';
 
     if (streetNumber && streetName && suburb) {
       formattedLocation = `${streetNumber} ${streetName}, ${suburb}`;
-      console.log('[reverseGeocodeGoogle] Format 1 (full street):', formattedLocation);
     } else if (streetName && suburb) {
       formattedLocation = `${streetName}, ${suburb}`;
-      console.log('[reverseGeocodeGoogle] Format 2 (street + suburb):', formattedLocation);
     } else if (streetNumber && streetName && locality) {
       formattedLocation = `${streetNumber} ${streetName}, ${locality}`;
-      console.log('[reverseGeocodeGoogle] Format 3 (street + locality):', formattedLocation);
     } else if (streetName && locality) {
       formattedLocation = `${streetName}, ${locality}`;
-      console.log('[reverseGeocodeGoogle] Format 4 (street + locality):', formattedLocation);
     } else if (suburb && locality) {
       formattedLocation = `${suburb}, ${locality}`;
-      console.log('[reverseGeocodeGoogle] Format 5 (suburb + locality):', formattedLocation);
     } else if (suburb) {
       formattedLocation = suburb;
-      console.log('[reverseGeocodeGoogle] Format 6 (suburb only):', formattedLocation);
     } else if (locality) {
       formattedLocation = locality;
-      console.log('[reverseGeocodeGoogle] Format 7 (locality only):', formattedLocation);
     } else if (bestResult.formatted_address) {
-      // Fallback: use first two parts of formatted address
       const parts = bestResult.formatted_address.split(',');
       if (parts.length >= 2) {
         formattedLocation = `${parts[0].trim()}, ${parts[1].trim()}`;
-        console.log('[reverseGeocodeGoogle] Format 8 (formatted fallback):', formattedLocation);
       } else {
         formattedLocation = parts[0].trim();
-        console.log('[reverseGeocodeGoogle] Format 9 (first part only):', formattedLocation);
       }
     }
 
     if (!formattedLocation) {
-      console.log('[reverseGeocodeGoogle] No formatted location, returning Unknown Location');
+      console.log('[googlePlaces] reverseGeocodeGoogle: no formatted location');
       return 'Unknown Location';
     }
 
-    console.log('[reverseGeocodeGoogle] Final location:', formattedLocation);
+    console.log('[googlePlaces] reverseGeocodeGoogle: final location:', formattedLocation);
     return formattedLocation;
   } catch (error) {
-    console.error('[reverseGeocodeGoogle] Exception:', error);
-    if (error instanceof Error) {
-      console.error('[reverseGeocodeGoogle] Error message:', error.message);
-      console.error('[reverseGeocodeGoogle] Error stack:', error.stack);
-    }
+    console.error('[googlePlaces] reverseGeocodeGoogle exception:', error);
     return 'Unknown Location';
   }
 }
 
 /**
- * Extract a short location name from a place result
- * Formats as "DisplayName, Suburb" or "DisplayName, Locality"
+ * Extract a short location name from a place result.
+ * Formats as "DisplayName, Suburb" or "DisplayName, Locality".
  */
 export function extractShortLocationName(
   displayName: string,
   suburb?: string,
   locality?: string
 ): string {
-  console.log('extractShortLocationName called with:', { displayName, suburb, locality });
+  console.log('[googlePlaces] extractShortLocationName:', { displayName, suburb, locality });
   
   if (suburb) {
     const formatted = `${displayName}, ${suburb}`;
-    console.log('Formatted location with suburb:', formatted);
+    console.log('[googlePlaces] formatted with suburb:', formatted);
     return formatted;
   }
   
   if (locality) {
     const formatted = `${displayName}, ${locality}`;
-    console.log('Formatted location with locality:', formatted);
+    console.log('[googlePlaces] formatted with locality:', formatted);
     return formatted;
   }
   
-  console.log('Formatted location (no suburb/locality):', displayName);
+  console.log('[googlePlaces] formatted (no suburb/locality):', displayName);
   return displayName;
 }
 
 /**
- * Check if Google Places API key is configured
+ * Check if the Google Places proxy is available (always true — key is server-side).
  */
 export function isGooglePlacesConfigured(): boolean {
-  return !!GOOGLE_PLACES_API_KEY && GOOGLE_PLACES_API_KEY !== 'YOUR_GOOGLE_PLACES_API_KEY';
+  return true;
 }
