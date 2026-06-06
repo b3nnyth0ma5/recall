@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -831,7 +830,7 @@ export default function PersonRecallsScreen() {
           }
         }}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        style={{ marginLeft: 8 }}
+        style={{ marginLeft: 0}}
         android_ripple={null}
       >
         <View
@@ -844,7 +843,7 @@ export default function PersonRecallsScreen() {
             justifyContent: 'center',
           }}
         >
-          <ChevronLeft size={24} color="#FFFFFF" strokeWidth={2} />
+          <ChevronLeft size={28} color="#FFFFFF" strokeWidth={2} />
         </View>
       </Pressable>
     ),

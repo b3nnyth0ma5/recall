@@ -234,21 +234,21 @@ export default function ProfileScreen() {
                 }
               }}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              style={{ marginLeft: 8 }}
+              style={{ marginLeft: 0 }}
               android_ripple={null}
             >
               <View
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
+                  width: 38,
+                  height: 36,
+                  borderRadius: 20,
                   borderWidth: 1,
                   borderColor: 'rgba(255,255,255,0.25)',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <ChevronLeft size={20} color="#FFFFFF" />
+                <ChevronLeft size={28} color="#FFFFFF" />
               </View>
             </Pressable>
           ),
