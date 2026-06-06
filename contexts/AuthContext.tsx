@@ -15,7 +15,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-async function writeTokenToAppGroup(newSession: Session | null) {
+export async function writeTokenToAppGroup(newSession: Session | null) {
   const hasSession = newSession !== null;
   console.log(
     '[AuthContext] writeTokenToAppGroup called — has session:',
@@ -66,6 +66,31 @@ async function writeTokenToAppGroup(newSession: Session | null) {
       );
       await FileSystem.writeAsStringAsync(tokenPath, payload);
       console.log('[AuthContext] Token file written successfully');
+
+      // Verify the write actually landed where the share extension will read.
+      try {
+        const { verifyAppGroupContainer } = await import('@/modules/AppGroupModule');
+        const verify = await verifyAppGroupContainer();
+        console.log(
+          '[AuthContext] Post-write verify:',
+          JSON.stringify({
+            tokenFileExists: verify?.tokenFileExists ?? null,
+            tokenFileSize: verify?.tokenFileSize ?? null,
+            expectedSize: payload.length,
+            sizeMatches: verify?.tokenFileSize === payload.length,
+            containerPath: verify?.containerPath ?? null,
+          })
+        );
+        if (!verify?.tokenFileExists) {
+          console.error('[AuthContext] Post-write verify FAILED — file not found after write. Container path may differ between JS write and Swift read.');
+        } else if (verify.tokenFileSize !== payload.length) {
+          console.error(
+            `[AuthContext] Post-write verify SIZE MISMATCH — wrote ${payload.length} bytes, Swift sees ${verify.tokenFileSize} bytes.`
+          );
+        }
+      } catch (verifyErr) {
+        console.warn('[AuthContext] Post-write verify threw:', String(verifyErr));
+      }
     } else {
       console.log('[AuthContext] Deleting token file at:', tokenPath);
       await FileSystem.deleteAsync(tokenPath, { idempotent: true });

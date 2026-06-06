@@ -134,3 +134,46 @@ export async function getDiagnostics(): Promise<AppGroupDiagnostics> {
     tokenFileModifiedTimestamp: verification?.tokenFileModifiedTimestamp ?? null,
   };
 }
+
+/**
+ * Read the last share extension error/success record from the App Group.
+ * Written by ShareViewController whenever loadAuthToken() fails or succeeds.
+ * Returns null on Android, if the module is unavailable, or if no record exists yet.
+ */
+export async function readLastShareExtensionError(): Promise<Record<string, any> | null> {
+  if (Platform.OS !== 'ios') return null;
+  const mod = getNativeModule();
+  if (!mod) {
+    console.warn('[AppGroupModule] readLastShareExtensionError — native module unavailable');
+    return null;
+  }
+  try {
+    const result = await mod.readLastShareExtensionError(APP_GROUP_ID);
+    console.log('[AppGroupModule] readLastShareExtensionError result:', JSON.stringify(result));
+    return result ?? null;
+  } catch (e: any) {
+    console.warn('[AppGroupModule] readLastShareExtensionError threw:', String(e));
+    return null;
+  }
+}
+
+/**
+ * Delete the last share extension error record from the App Group.
+ * Returns true if the file was removed, false otherwise.
+ */
+export async function clearLastShareExtensionError(): Promise<boolean> {
+  if (Platform.OS !== 'ios') return false;
+  const mod = getNativeModule();
+  if (!mod) {
+    console.warn('[AppGroupModule] clearLastShareExtensionError — native module unavailable');
+    return false;
+  }
+  try {
+    const result = await mod.clearLastShareExtensionError(APP_GROUP_ID);
+    console.log('[AppGroupModule] clearLastShareExtensionError result:', result);
+    return result ?? false;
+  } catch (e: any) {
+    console.warn('[AppGroupModule] clearLastShareExtensionError threw:', String(e));
+    return false;
+  }
+}

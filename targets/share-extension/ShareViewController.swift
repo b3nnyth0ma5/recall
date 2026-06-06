@@ -809,16 +809,158 @@ class ShareViewController: UIViewController {
 
     // MARK: - Auth Token
 
-    private func loadAuthToken() -> (accessToken: String, refreshToken: String, userId: String)? {
-        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else { return nil }
+    private enum TokenLoadFailure {
+        case containerUnavailable
+        case fileMissing(path: String)
+        case fileUnreadable(path: String, error: String)
+        case jsonInvalid(path: String, bytes: Int, snippet: String)
+        case missingFields(path: String, hasAccess: Bool, hasRefresh: Bool, hasUserId: Bool)
+    }
+
+    private enum TokenLoadResult {
+        case success(accessToken: String, refreshToken: String, userId: String, expiresAt: Double)
+        case failure(TokenLoadFailure)
+    }
+
+    private func userFacingMessageFor(_ failure: TokenLoadFailure) -> String {
+        switch failure {
+        case .containerUnavailable:
+            return "Share extension can't access shared storage. Try reinstalling Recall."
+        case .fileMissing:
+            return "Open Recall once to enable sharing."
+        case .fileUnreadable:
+            return "Couldn't read sign-in info. Open Recall and try again."
+        case .jsonInvalid:
+            return "Sign-in info is corrupted. Open Recall to refresh."
+        case .missingFields:
+            return "Sign-in info is incomplete. Open Recall to refresh."
+        }
+    }
+
+    private func persistLastFailure(_ failure: TokenLoadFailure) {
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
+            print("[ShareViewController] persistLastFailure — container unavailable, can't persist")
+            return
+        }
+        let errorURL = containerURL.appendingPathComponent("share-ext-last-error.json")
+        var payload: [String: Any] = [
+            "timestamp": Date().timeIntervalSince1970,
+            "appGroupID": appGroupID,
+        ]
+        switch failure {
+        case .containerUnavailable:
+            payload["stage"] = "containerUnavailable"
+            payload["message"] = "FileManager.containerURL returned nil"
+        case .fileMissing(let path):
+            payload["stage"] = "fileMissing"
+            payload["path"] = path
+        case .fileUnreadable(let path, let error):
+            payload["stage"] = "fileUnreadable"
+            payload["path"] = path
+            payload["error"] = error
+        case .jsonInvalid(let path, let bytes, let snippet):
+            payload["stage"] = "jsonInvalid"
+            payload["path"] = path
+            payload["bytes"] = bytes
+            payload["snippet"] = snippet
+        case .missingFields(let path, let hasAccess, let hasRefresh, let hasUserId):
+            payload["stage"] = "missingFields"
+            payload["path"] = path
+            payload["hasAccess"] = hasAccess
+            payload["hasRefresh"] = hasRefresh
+            payload["hasUserId"] = hasUserId
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) {
+            do {
+                try data.write(to: errorURL, options: .atomic)
+                print("[ShareViewController] persistLastFailure — wrote \(data.count) bytes to \(errorURL.path)")
+            } catch {
+                print("[ShareViewController] persistLastFailure — write failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func persistSuccess(userId: String) {
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else { return }
+        let errorURL = containerURL.appendingPathComponent("share-ext-last-error.json")
+        let payload: [String: Any] = [
+            "stage": "success",
+            "timestamp": Date().timeIntervalSince1970,
+            "appGroupID": appGroupID,
+            "userId": userId,
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) {
+            try? data.write(to: errorURL, options: .atomic)
+            print("[ShareViewController] persistSuccess — wrote success marker for userId=\(userId)")
+        }
+    }
+
+    private func loadAuthToken() -> TokenLoadResult {
+        // Stage 1 — App Group container
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
+            print("[ShareViewController] loadAuthToken stage 1 FAILED — App Group containerURL is nil for groupID=\(appGroupID)")
+            return .failure(.containerUnavailable)
+        }
+        print("[ShareViewController] loadAuthToken stage 1 OK — containerURL=\(containerURL.path)")
+
         let tokenURL = containerURL.appendingPathComponent("auth-token.json")
-        guard let data = try? Data(contentsOf: tokenURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let token = json["access_token"] as? String,
+        let tokenPath = tokenURL.path
+
+        // Stage 2 — file exists
+        guard FileManager.default.fileExists(atPath: tokenPath) else {
+            print("[ShareViewController] loadAuthToken stage 2 FAILED — auth-token.json does not exist at \(tokenPath)")
+            return .failure(.fileMissing(path: tokenPath))
+        }
+
+        var fileSize: Int = 0
+        var fileMtime: TimeInterval = 0
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: tokenPath) {
+            fileSize = (attrs[.size] as? Int) ?? 0
+            fileMtime = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        }
+        print("[ShareViewController] loadAuthToken stage 2 OK — auth-token.json exists, size=\(fileSize) bytes, mtime=\(fileMtime)")
+
+        // Stage 3 — read file
+        let data: Data
+        do {
+            data = try Data(contentsOf: tokenURL)
+        } catch {
+            print("[ShareViewController] loadAuthToken stage 3 FAILED — Data(contentsOf:) error: \(error.localizedDescription)")
+            return .failure(.fileUnreadable(path: tokenPath, error: error.localizedDescription))
+        }
+        print("[ShareViewController] loadAuthToken stage 3 OK — read \(data.count) bytes")
+
+        // Stage 4 — JSON parse
+        let json: [String: Any]
+        do {
+            let parsed = try JSONSerialization.jsonObject(with: data)
+            guard let dict = parsed as? [String: Any] else {
+                let snippet = String(data: data, encoding: .utf8).map { String($0.prefix(120)) } ?? "<not-utf8>"
+                print("[ShareViewController] loadAuthToken stage 4 FAILED — top-level JSON is not a dict. snippet=\(snippet)")
+                return .failure(.jsonInvalid(path: tokenPath, bytes: data.count, snippet: snippet))
+            }
+            json = dict
+        } catch {
+            let snippet = String(data: data, encoding: .utf8).map { String($0.prefix(120)) } ?? "<not-utf8>"
+            print("[ShareViewController] loadAuthToken stage 4 FAILED — JSON parse error: \(error.localizedDescription). snippet=\(snippet)")
+            return .failure(.jsonInvalid(path: tokenPath, bytes: data.count, snippet: snippet))
+        }
+
+        let hasAccess = json["access_token"] is String
+        let hasRefresh = json["refresh_token"] is String
+        let hasUserId = json["user_id"] is String
+        print("[ShareViewController] loadAuthToken stage 4 OK — keys present: access=\(hasAccess) refresh=\(hasRefresh) userId=\(hasUserId)")
+
+        // Stage 5 — required fields
+        guard let token = json["access_token"] as? String,
               let refreshToken = json["refresh_token"] as? String,
-              let userId = json["user_id"] as? String else { return nil }
-        // Don't check expiry here — we'll refresh if needed
-        return (token, refreshToken, userId)
+              let userId = json["user_id"] as? String else {
+            print("[ShareViewController] loadAuthToken stage 5 FAILED — required field missing")
+            return .failure(.missingFields(path: tokenPath, hasAccess: hasAccess, hasRefresh: hasRefresh, hasUserId: hasUserId))
+        }
+        let expiresAt = (json["expires_at"] as? Double) ?? 0
+        print("[ShareViewController] loadAuthToken stage 5 OK — userId=\(userId) expiresAt=\(expiresAt)")
+        return .success(accessToken: token, refreshToken: refreshToken, userId: userId, expiresAt: expiresAt)
     }
 
     private func refreshAccessToken(refreshToken: String, completion: @escaping (String?) -> Void) {
@@ -922,47 +1064,52 @@ class ShareViewController: UIViewController {
         saveButton.setTitle("", for: .normal)
         saveSpinner.startAnimating()
 
-        // THE PRIMARY BUG FIX: if there is no auth token, show an error — never show success
-        guard let auth = loadAuthToken() else {
-            print("[ShareViewController] No auth token found in App Group — cannot save")
+        switch loadAuthToken() {
+        case .success(let accessToken, let refreshToken, let userId, _):
+            // Write success marker so debug screen reflects the freshest state
+            persistSuccess(userId: userId)
+
+            // Attempt to refresh the token first to ensure it's valid
+            refreshAccessToken(refreshToken: refreshToken) { [weak self] freshToken in
+                guard let self = self else { return }
+
+                // If refresh failed, we'll try the stored token once.
+                // If that also fails with 401/403, showErrorState will be called from insertRecall.
+                let finalAccessToken: String
+                if let fresh = freshToken {
+                    print("[ShareViewController] Using refreshed access token")
+                    finalAccessToken = fresh
+                } else {
+                    print("[ShareViewController] Token refresh failed — attempting insert with stored access token")
+                    finalAccessToken = accessToken
+                }
+
+                let noteText = self.noteTextView.text ?? ""
+                var parts: [String] = []
+                if !noteText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    parts.append(noteText.trimmingCharacters(in: .whitespaces))
+                }
+                var metaParts: [String] = []
+                if let t = self.scrapedTitle, !t.isEmpty { metaParts.append(t) }
+                if let d = self.scrapedDescription, !d.isEmpty { metaParts.append(d) }
+                if !metaParts.isEmpty { parts.append(metaParts.joined(separator: "\n")) }
+                if !self.parsedURLs.isEmpty { parts.append(self.parsedURLs.joined(separator: "\n")) }
+                let nonURLTexts = self.parsedTexts.filter { !$0.hasPrefix("http") }
+                if !nonURLTexts.isEmpty { parts.append(nonURLTexts.joined(separator: "\n\n")) }
+                let finalText = parts.joined(separator: "\n\n")
+
+                print("[ShareViewController] Inserting recall — userId: \(userId), textLength: \(finalText.count), tokenSource: \(freshToken != nil ? "refreshed" : "stored")")
+                self.insertRecall(text: finalText, urls: self.parsedURLs, imagePaths: self.parsedImagePaths, userId: userId, accessToken: finalAccessToken)
+            }
+
+        case .failure(let stageFail):
+            let userMessage = userFacingMessageFor(stageFail)
+            persistLastFailure(stageFail)
+            print("[ShareViewController] No auth token — \(stageFail). Showing user message: \(userMessage)")
             writeRecoveryPayloadToAppGroup()
             DispatchQueue.main.async { [weak self] in
-                self?.showErrorState(message: "Open Recall app to sign in")
+                self?.showErrorState(message: userMessage)
             }
-            return
-        }
-
-        // Attempt to refresh the token first to ensure it's valid
-        refreshAccessToken(refreshToken: auth.refreshToken) { [weak self] freshToken in
-            guard let self = self else { return }
-
-            // If refresh failed, we'll try the stored token once.
-            // If that also fails with 401/403, showErrorState will be called from insertRecall.
-            let accessToken: String
-            if let fresh = freshToken {
-                print("[ShareViewController] Using refreshed access token")
-                accessToken = fresh
-            } else {
-                print("[ShareViewController] Token refresh failed — attempting insert with stored access token")
-                accessToken = auth.accessToken
-            }
-
-            let noteText = self.noteTextView.text ?? ""
-            var parts: [String] = []
-            if !noteText.trimmingCharacters(in: .whitespaces).isEmpty {
-                parts.append(noteText.trimmingCharacters(in: .whitespaces))
-            }
-            var metaParts: [String] = []
-            if let t = self.scrapedTitle, !t.isEmpty { metaParts.append(t) }
-            if let d = self.scrapedDescription, !d.isEmpty { metaParts.append(d) }
-            if !metaParts.isEmpty { parts.append(metaParts.joined(separator: "\n")) }
-            if !self.parsedURLs.isEmpty { parts.append(self.parsedURLs.joined(separator: "\n")) }
-            let nonURLTexts = self.parsedTexts.filter { !$0.hasPrefix("http") }
-            if !nonURLTexts.isEmpty { parts.append(nonURLTexts.joined(separator: "\n\n")) }
-            let finalText = parts.joined(separator: "\n\n")
-
-            print("[ShareViewController] Inserting recall — userId: \(auth.userId), textLength: \(finalText.count), tokenSource: \(freshToken != nil ? "refreshed" : "stored")")
-            self.insertRecall(text: finalText, urls: self.parsedURLs, imagePaths: self.parsedImagePaths, userId: auth.userId, accessToken: accessToken)
         }
     }
 

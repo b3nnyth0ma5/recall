@@ -49,5 +49,35 @@ public class AppGroupModule: Module {
 
       return result
     }
+
+    AsyncFunction("readLastShareExtensionError") { (groupID: String) -> [String: Any]? in
+      guard let containerURL = FileManager.default.containerURL(
+        forSecurityApplicationGroupIdentifier: groupID
+      ) else {
+        return nil
+      }
+      let errorURL = containerURL.appendingPathComponent("share-ext-last-error.json")
+      guard FileManager.default.fileExists(atPath: errorURL.path),
+            let data = try? Data(contentsOf: errorURL),
+            let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return nil
+      }
+      return parsed
+    }
+
+    AsyncFunction("clearLastShareExtensionError") { (groupID: String) -> Bool in
+      guard let containerURL = FileManager.default.containerURL(
+        forSecurityApplicationGroupIdentifier: groupID
+      ) else {
+        return false
+      }
+      let errorURL = containerURL.appendingPathComponent("share-ext-last-error.json")
+      do {
+        try FileManager.default.removeItem(at: errorURL)
+        return true
+      } catch {
+        return false
+      }
+    }
   }
 }
