@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   container: {
-    marginBottom: 0,
+    marginBottom: 12,
     paddingTop: 0,
   },
   scrollContent: {
