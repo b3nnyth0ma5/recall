@@ -554,7 +554,7 @@ export default function PersonRecallsScreen() {
             Math.min(centeredLeft, SCREEN_WIDTH - MENU_WIDTH - SCREEN_MARGIN)
           );
           const anchor = {
-            top: y + height + 6,
+            top: y,
             left: clampedLeft,
           };
           console.log('[PersonRecalls] Ellipsis button measured, anchor:', anchor);
@@ -836,16 +836,15 @@ export default function PersonRecallsScreen() {
       >
         <View
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 16,
-            borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.25)',
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: '#242424',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <ChevronLeft size={20} color="#FFFFFF" />
+          <ChevronLeft size={24} color="#FFFFFF" strokeWidth={2} />
         </View>
       </Pressable>
     ),

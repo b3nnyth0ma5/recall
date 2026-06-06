@@ -69,20 +69,16 @@ export default function SearchScreen() {
   const shouldShowSearchTime = user?.email === 'benny_thomas21@yahoo.co.in';
 
   const filteredNotes = useMemo(() => {
-    const hasUsedForAnswerFlag = notes.some(note => note.used_for_answer !== undefined);
-    
-    if (!hasUsedForAnswerFlag) {
-      return notes;
+    // If a search has completed, ONLY show notes flagged as used_for_answer.
+    // Never fall back to "all notes" — that would mask zero-result searches.
+    if (hasSearched && searchStage === 'complete') {
+      return notes.filter(note => note.used_for_answer === true);
     }
-    
-    const filtered = notes.filter(note => note.used_for_answer === true);
-    
-    if (filtered.length === 0 && notes.length > 0) {
-      return notes;
-    }
-    
-    return filtered;
-  }, [notes]);
+    // Before any search has run, or while searching, the list shouldn't render
+    // any cards anyway (FlatList data prop already guards this), so just pass
+    // notes through.
+    return notes;
+  }, [notes, hasSearched, searchStage]);
 
   const loadSearchHistory = useCallback(async () => {
     setIsLoadingHistory(true);

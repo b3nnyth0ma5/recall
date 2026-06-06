@@ -58,7 +58,7 @@ function NavButton({
     <Pressable
       onPress={handlePress}
       style={styles.navButton}
-      hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
+      hitSlop={{ top: 12, bottom: 12, left: 6, right: 6 }}
       accessibilityLabel={label}
     >
       {({ pressed }) => (
@@ -236,6 +236,8 @@ const styles = StyleSheet.create({
   },
   activePill: {
     position: 'absolute',
+    top: 0,
+    alignSelf: 'center',
     width: 44,
     height: 44,
     borderRadius: 16,
