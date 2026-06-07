@@ -272,10 +272,8 @@ export default function HomeScreen() {
         setSavingStage('Detecting People...');
         console.log('[handleCreateRecallFromCombined] Stage: Detecting people...');
         
-        // Stage 4: Matching Categories (shown before image upload for better UX)
-        if (onProgress) onProgress('Matching Categories...');
-        setSavingStage('Matching Categories...');
-        console.log('[handleCreateRecallFromCombined] Stage: Matching categories...');
+        // Stage 4: Matching Categories — handled by backend; card pill shows progress
+        console.log('[handleCreateRecallFromCombined] Stage: Matching categories (background)...');
         
         // NOTE: Removed "Uploading Images" stage from progress indicator for better UX
         // Images are still uploaded in the background
@@ -356,10 +354,7 @@ export default function HomeScreen() {
         setSavingStage('Detecting People...');
         console.log(`[handleCreateRecallFromCombined] Stage: Detecting people (text-only)...`);
         
-        // Stage 4: Matching Categories
-        if (onProgress) onProgress('Matching Categories...');
-        setSavingStage('Matching Categories...');
-        
+        // Stage 4: Matching Categories — handled by backend; card pill shows progress
         // Category matching is handled by the backend after embeddings complete
         console.log(`[handleCreateRecallFromCombined] Category matching will be triggered by backend for recall ${recallData.id}`);
       }

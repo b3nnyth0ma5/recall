@@ -50,7 +50,23 @@ export function useNotes() {
   const urlRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { user } = useAuth();
 
+  // Always-current ref so callbacks don't capture a stale user from a closed-over render.
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
+
   const ITEMS_PER_PAGE = 7;
+
+  // Returns the active user ID from the ref (always current) or falls back to a
+  // direct Supabase session check to cover the brief AuthContext hydration window.
+  const getActiveUserId = useCallback(async (): Promise<string | null> => {
+    if (userRef.current?.id) return userRef.current.id;
+    try {
+      const { data } = await supabase.auth.getUser();
+      return data.user?.id ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   // Function to get cached note data using MemoryCache
   const getCachedNote = useCallback((noteId: string): Note | null => {
@@ -502,8 +518,9 @@ export function useNotes() {
   }, [loadNotes, notes]);
 
   const refreshSingleNote = useCallback(async (noteId: string) => {
-    if (!user) {
-      console.error('No user logged in');
+    const userId = await getActiveUserId();
+    if (!userId) {
+      console.error('[useNotes] refreshSingleNote: no active user');
       return;
     }
 
@@ -514,7 +531,7 @@ export function useNotes() {
         .from('recalls')
         .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
         .eq('id', noteId)
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .single();
 
       if (recallError || !recallData) {
@@ -543,7 +560,7 @@ export function useNotes() {
     } catch (error) {
       console.error('Error refreshing single note:', error);
     }
-  }, [user, loadImagesForRecalls]);
+  }, [getActiveUserId, loadImagesForRecalls]);
 
   const addNote = useCallback(async (note: Omit<Note, 'id' | 'created_at' | 'updated_at'>) => {
     if (!user) {
@@ -587,8 +604,9 @@ export function useNotes() {
   }, [refreshNotes, user]);
 
   const updateNote = useCallback(async (noteId: string, updates: Partial<Note>) => {
-    if (!user) {
-      console.error('No user logged in');
+    const userId = await getActiveUserId();
+    if (!userId) {
+      console.error('[useNotes] updateNote: no active user');
       return;
     }
 
@@ -612,7 +630,7 @@ export function useNotes() {
         .from('recalls')
         .update(updatePayload)
         .eq('id', noteId)
-        .eq('user_id', user.id);
+        .eq('user_id', userId);
 
       if (recallError) {
         console.error('Error updating recall:', recallError);
@@ -630,11 +648,12 @@ export function useNotes() {
       console.error('Error updating recall:', error);
       throw error;
     }
-  }, [refreshSingleNote, user]);
+  }, [getActiveUserId, refreshSingleNote]);
 
   const deleteNote = useCallback(async (noteId: string) => {
-    if (!user) {
-      console.error('No user logged in');
+    const userId = await getActiveUserId();
+    if (!userId) {
+      console.error('[useNotes] deleteNote: no active user');
       return;
     }
 
@@ -688,7 +707,7 @@ export function useNotes() {
             .from('recalls')
             .delete()
             .eq('id', noteId)
-            .eq('user_id', user.id);
+            .eq('user_id', userId);
 
           if (error) {
             console.error('[useNotes] [ASYNC] Error deleting recall:', error);
@@ -708,11 +727,12 @@ export function useNotes() {
       console.error('[useNotes] Error initiating recall deletion:', error);
       throw error;
     }
-  }, [user]);
+  }, [getActiveUserId]);
 
   const searchNotes = useCallback(async (query: string, useV2: boolean = false) => {
-    if (!user) {
-      console.error('No user logged in');
+    const userId = await getActiveUserId();
+    if (!userId) {
+      console.error('[useNotes] searchNotes: no active user');
       return;
     }
 
@@ -756,7 +776,7 @@ export function useNotes() {
       setSearchTimings({});
       
       // Save search history
-      saveSearchHistory(user.id, query);
+      saveSearchHistory(userId, query);
       
       // Get current session
       const { data: { session } } = await supabase.auth.getSession();
@@ -788,7 +808,7 @@ export function useNotes() {
         const { data: recallsData } = await supabase
           .from('recalls')
           .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .or(`text.ilike.%${query}%,location.ilike.%${query}%`)
           .order('created_at', { ascending: false });
 
@@ -879,7 +899,7 @@ export function useNotes() {
             .from('recalls')
             .select('id, user_id, text, latitude, longitude, location, location_primary_type, created_at, updated_at')
             .in('id', uncachedIds)
-            .eq('user_id', user.id);
+            .eq('user_id', userId);
           fetchedRecalls = await loadImagesForRecalls(recallsData || []);
         }
 
@@ -1021,7 +1041,7 @@ export function useNotes() {
             const { data: prevRow } = await supabase
               .from('search_history')
               .select('collage_cdn_url')
-              .eq('user_id', user.id)
+              .eq('user_id', userId)
               .eq('search_text', query.trim())
               .maybeSingle();
             const previousCollageCdnUrl = prevRow?.collage_cdn_url ?? null;
@@ -1032,7 +1052,7 @@ export function useNotes() {
               'generate-search-collage',
               {
                 body: {
-                  userId: user.id,
+                  userId: userId,
                   searchText: query.trim(),
                   imageUrls: topImageUrls,
                   previousCollageCdnUrl,
@@ -1049,7 +1069,7 @@ export function useNotes() {
               return;
             }
 
-            await updateSearchHistoryCollage(user.id, query.trim(), collageResult.collageCdnUrl);
+            await updateSearchHistoryCollage(userId, query.trim(), collageResult.collageCdnUrl);
             if (__DEV__) console.log('[searchNotes] Collage saved:', collageResult.collageCdnUrl);
           } catch (collageErr) {
             console.error('[searchNotes] Collage generation failed (non-fatal):', collageErr);
@@ -1096,7 +1116,7 @@ export function useNotes() {
         setSearchStage('idle');
       }, 1000);
     }
-  }, [refreshNotes, user, loadImagesForRecalls]);
+  }, [getActiveUserId, refreshNotes, loadImagesForRecalls]);
 
   /**
    * Fetch URL metadata for the given recall IDs (or all current notes if omitted)

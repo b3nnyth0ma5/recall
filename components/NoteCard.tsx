@@ -460,11 +460,13 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const hasImages = displayImages && displayImages.length > 0;
   const hasMedia = displayMedia.length > 0;
 
-  const isMatching = !!note.category_matching_at &&
-    (!note.category_matched_at ||
-      new Date(note.category_matching_at).getTime() > new Date(note.category_matched_at).getTime());
+  const isMatching =
+    note.category_matching_at != null &&
+    (note.category_matched_at == null ||
+      new Date(note.category_matching_at) > new Date(note.category_matched_at));
 
-  const isCardProcessing = isUploadingImages || isMatching;
+  // Image-counter spinner is driven only by upload state, not by category matching.
+  const isCardProcessing = isUploadingImages;
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
@@ -580,6 +582,13 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                 />
               </View>
             )}
+
+            {isMatching && (
+              <View style={styles.matchingPill} pointerEvents="none">
+                <ActivityIndicator size="small" color="#FFFFFF" style={styles.matchingPillSpinner} />
+                <Text style={styles.matchingPillText}>Matching categories…</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -593,8 +602,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         >
           <View style={styles.cardContent}>
             {!hasMedia && isMatching && (
-              <View style={styles.matchingSpinnerRow} pointerEvents="none">
-                <ActivityIndicator size="small" color={colors.textSecondary} />
+              <View style={styles.matchingPillNoMedia} pointerEvents="none">
+                <ActivityIndicator size="small" color="#FFFFFF" style={styles.matchingPillSpinner} />
+                <Text style={styles.matchingPillText}>Matching categories…</Text>
               </View>
             )}
             {!hasImages && hasPeople && (
@@ -944,11 +954,39 @@ const styles = StyleSheet.create({
   deletePill: {
     backgroundColor: colors.error,
   },
-  matchingSpinnerRow: {
+  matchingPill: {
     position: 'absolute',
     top: 8,
-    right: 8,
+    left: CARD_PADDING + IMAGE_SPACING,
     zIndex: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 6,
+  },
+  matchingPillNoMedia: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 6,
+    marginTop: 4,
+    marginLeft: 4,
+    marginBottom: 4,
+  },
+  matchingPillSpinner: {
+    // no extra margin needed; gap handles spacing
+  },
+  matchingPillText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
 
 });

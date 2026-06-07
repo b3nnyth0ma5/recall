@@ -124,6 +124,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
     return () => {
       console.log('[CategoryCarousel] Cleaning up real-time subscription');
       debouncedRefresh.cancel();
+      channel.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, [userId, loadAllUserCategories]);

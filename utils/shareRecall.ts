@@ -58,7 +58,54 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
   try {
     console.log('User tapped Share button for recall:', recall.id);
     console.log('Current image index:', currentImageIndex);
-    console.log('Total images:', recall.images?.length || 0);
+    console.log('Total images (in-memory):', recall.images?.length || 0);
+
+    // Fetch the authoritative image list from the database so we always share ALL images,
+    // not just the subset that was lazy-loaded into memory.
+    console.log('[shareRecall] Fetching authoritative image list from DB for recall:', recall.id);
+    const { data: dbImages, error: dbImagesError } = await supabase
+      .from('recall_images')
+      .select('id, cdn_url, created_at')
+      .eq('recall_id', recall.id)
+      .order('created_at', { ascending: true });
+
+    if (dbImagesError) {
+      console.warn('[shareRecall] Failed to fetch authoritative image list, falling back to in-memory:', dbImagesError);
+    }
+
+    const authoritativeImages: string[] = (dbImages ?? [])
+      .map((row: { id: string; cdn_url: string | null; created_at: string }) => row.cdn_url)
+      .filter((url): url is string => typeof url === 'string' && url.length > 0);
+
+    console.log('[shareRecall] Authoritative image count from DB:', authoritativeImages.length);
+
+    // If DB fetch returned nothing but in-memory has images, fall back to in-memory
+    const imagesToShare: string[] =
+      authoritativeImages.length > 0
+        ? authoritativeImages
+        : (recall.images ?? []).filter((url): url is string => typeof url === 'string' && url.length > 0);
+
+    // If the caller specified a currentImageIndex that maps to a URL in the in-memory list,
+    // find that URL in the authoritative list and move it to position 0 so the user-selected
+    // image stays primary.
+    if (
+      currentImageIndex > 0 &&
+      recall.images &&
+      recall.images[currentImageIndex] &&
+      authoritativeImages.length > 0
+    ) {
+      const primaryUrl = recall.images[currentImageIndex];
+      const authIdx = authoritativeImages.indexOf(primaryUrl);
+      if (authIdx > 0) {
+        const reordered = [...authoritativeImages];
+        reordered.splice(authIdx, 1);
+        reordered.unshift(primaryUrl);
+        imagesToShare.splice(0, imagesToShare.length, ...reordered);
+        console.log('[shareRecall] Moved user-selected image to position 0:', primaryUrl);
+      }
+    }
+
+    console.log('[shareRecall] Total images to share:', imagesToShare.length);
 
     // Build comprehensive share message with recall text, location, and image info
     let shareMessage = '';
@@ -105,50 +152,19 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
     console.log('Share message prepared:', shareMessage.substring(0, 100) + '...');
 
     // If there are images, download them and share with the message
-    if (recall.images && recall.images.length > 0 && Platform.OS !== 'web' && Share) {
-      console.log(`Starting download process for ${recall.images?.length ?? 0} image(s)`);
+    if (imagesToShare.length > 0 && Platform.OS !== 'web' && Share) {
+      console.log(`Starting download process for ${imagesToShare.length} image(s)`);
       
       try {
-        // Pre-resolve any missing image URLs (images beyond index 1 may be empty strings
-        // due to lazy-loading optimisation in loadImagesForRecalls)
-        const resolvedImages = [...(recall.images ?? [])];
-
-        const missingIndices: number[] = [];
-        resolvedImages.forEach((url, index) => {
-          if (!url && recall.imageIds?.[index]) {
-            missingIndices.push(index);
-          }
-        });
-
-        if (missingIndices.length > 0) {
-          console.log(`Pre-resolving ${missingIndices.length} missing image URL(s) from Supabase`);
-          const missingIds = missingIndices.map(i => recall.imageIds![i]);
-          const { data: imageData } = await supabase
-            .from('recall_images')
-            .select('id, cdn_url')
-            .in('id', missingIds);
-
-          if (imageData) {
-            const urlById = new Map(imageData.map((img: { id: string; cdn_url: string }) => [img.id, img.cdn_url]));
-            missingIndices.forEach(index => {
-              const id = recall.imageIds![index];
-              const url = urlById.get(id);
-              if (url) resolvedImages[index] = url;
-            });
-          }
-        }
-
-        console.log(`Starting download process for ${resolvedImages.length} image(s)`);
-
         // Download all images to temporary locations
-        const downloadPromises = resolvedImages.map(async (imageUrl, index) => {
+        const downloadPromises = imagesToShare.map(async (imageUrl, index) => {
           const fileExtension = getImageExtensionFromUrl(imageUrl);
           const timestamp = Date.now();
           const randomSuffix = Math.random().toString(36).substring(7);
           const fileName = `share_recall_${recall.id}_${index}_${timestamp}_${randomSuffix}.${fileExtension}`;
           const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
           
-          console.log(`[Image ${index + 1}/${resolvedImages.length}] Starting download`);
+          console.log(`[Image ${index + 1}/${imagesToShare.length}] Starting download`);
           console.log(`[Image ${index + 1}] Source URL:`, imageUrl);
           console.log(`[Image ${index + 1}] Target path:`, fileUri);
           
@@ -198,7 +214,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
         // Filter out failed downloads
         const validUris = downloadResults.filter((uri): uri is string => uri !== null);
         
-        console.log(`Download summary: ${validUris.length} successful out of ${resolvedImages.length} total`);
+        console.log(`Download summary: ${validUris.length} successful out of ${imagesToShare.length} total`);
         console.log('Valid URIs:', validUris);
         
         // If we successfully downloaded at least one image, share them using react-native-share
