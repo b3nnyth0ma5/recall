@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, FlatList, Pressable, ActivityIndicator, RefreshControl, Alert, TextInput, Image, Modal, KeyboardAvoidingView, Platform, Animated, Dimensions } from 'react-native';
 import RecallHeader from '@/components/RecallHeader';
-import { ChevronLeft } from 'lucide-react-native';
+
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
@@ -1566,22 +1566,10 @@ export default function CategoryViewerScreen() {
           console.log('[CategoryViewer] Back chevron tapped');
           router.back();
         }}
-        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        style={{ marginLeft: 0 }}
-        android_ripple={null}
+        style={styles.headerButton}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <View
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            backgroundColor: '#242424',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <ChevronLeft size={28} color="#FFFFFF" strokeWidth={2} />
-        </View>
+        <IconSymbol name="chevron.left" size={24} color={colors.text} />
       </Pressable>
     ),
     headerTitle: () => <RecallHeader />,
@@ -1938,6 +1926,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  headerButton: {
+    padding: 8,
+    marginHorizontal: 8,
   },
   scrollView: {
     flex: 1,

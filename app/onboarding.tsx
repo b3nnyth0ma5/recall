@@ -461,7 +461,7 @@ function TopBar({ currentStep, onLoginPress }: TopBarProps) {
   const topPadding = insets.top > 0 ? insets.top : (Platform.OS === 'android' ? 28 : 44);
 
   return (
-    <View style={[topBarStyles.container, { paddingTop: topPadding }]}>
+    <View style={[topBarStyles.container, { paddingTop: topPadding }, currentStep === 0 && { justifyContent: 'flex-start' }]}>
       {/* Logo + wordmark */}
       <View style={topBarStyles.logoRow}>
         <Image
@@ -472,8 +472,8 @@ function TopBar({ currentStep, onLoginPress }: TopBarProps) {
         <Text style={topBarStyles.wordmark}>Recall</Text>
       </View>
 
-      {/* Login/Signup pill — hidden on auth step */}
-      {currentStep < 3 ? (
+      {/* Login/Signup pill — only on intermediate steps (not landing, not auth step) */}
+      {currentStep >= 1 && currentStep < 3 ? (
         <Pressable
           onPress={onLoginPress}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -481,9 +481,7 @@ function TopBar({ currentStep, onLoginPress }: TopBarProps) {
         >
           <Text style={topBarStyles.loginButtonText}>Login / Sign up</Text>
         </Pressable>
-      ) : (
-        <View style={topBarStyles.loginButtonSpacer} />
-      )}
+      ) : null}
     </View>
   );
 }

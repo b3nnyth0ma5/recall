@@ -95,7 +95,9 @@ export function PeopleWordCloud({
         mention_count: mentionCounts[p.id] || 0,
       }));
 
-      peopleWithCounts.sort((a, b) => b.mention_count - a.mention_count);
+      peopleWithCounts.sort((a, b) =>
+        a.person_name.localeCompare(b.person_name, undefined, { sensitivity: 'base' })
+      );
 
       console.log(`[PeopleWordCloud] Loaded ${peopleWithCounts.length} people with mention counts`);
       setAllPeople(peopleWithCounts);

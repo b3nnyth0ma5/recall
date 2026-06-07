@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform, TextInput, ActivityIndicator } from 'react-native';
 import RecallHeader from '@/components/RecallHeader';
-import { ChevronLeft } from 'lucide-react-native';
+
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
@@ -233,23 +233,10 @@ export default function ProfileScreen() {
                   router.replace('/(tabs)/(home)');
                 }
               }}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              style={{ marginLeft: 0 }}
-              android_ripple={null}
+              style={styles.headerButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <View
-                style={{
-                  width: 38,
-                  height: 36,
-                  borderRadius: 20,
-                  borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.25)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <ChevronLeft size={28} color="#FFFFFF" />
-              </View>
+              <IconSymbol name="chevron.left" size={24} color={colors.text} />
             </Pressable>
           ),
           headerTitle: () => <RecallHeader />,
@@ -445,6 +432,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  headerButton: {
+    padding: 8,
+    marginHorizontal: 8,
   },
   backButton: {
     paddingLeft: 16,
