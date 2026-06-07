@@ -464,18 +464,14 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     (!note.category_matched_at ||
       new Date(note.category_matching_at).getTime() > new Date(note.category_matched_at).getTime());
 
+  const isCardProcessing = isUploadingImages || isMatching;
+
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
       <Pressable 
         onPress={handleCardPress}
         style={styles.entireCardTouchArea}
       >
-        {isMatching && (
-          <View style={styles.matchingPill} pointerEvents="none">
-            <ActivityIndicator size="small" color="#FFFFFF" />
-            <Text style={styles.matchingPillText}>Matching categories…</Text>
-          </View>
-        )}
         {hasMedia && (
           <View style={styles.imagesContainer}>
             <ScrollView
@@ -561,7 +557,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
             </ScrollView>
             {displayMedia.length > 0 && (
               <View style={styles.imageCounter}>
-                {isUploadingImages && (
+                {isCardProcessing && (
                   <ActivityIndicator 
                     size="small" 
                     color="#FFFFFF" 
@@ -596,6 +592,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           containerStyle={styles.swipeableContainer}
         >
           <View style={styles.cardContent}>
+            {!hasMedia && isMatching && (
+              <View style={styles.matchingSpinnerRow} pointerEvents="none">
+                <ActivityIndicator size="small" color={colors.textSecondary} />
+              </View>
+            )}
             {!hasImages && hasPeople && (
               <View style={styles.peopleAvatarsContainerNoImages}>
                 <PeopleAvatars 
@@ -943,22 +944,11 @@ const styles = StyleSheet.create({
   deletePill: {
     backgroundColor: colors.error,
   },
-  matchingPill: {
+  matchingSpinnerRow: {
     position: 'absolute',
     top: 8,
-    left: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    right: 8,
     zIndex: 3,
   },
-  matchingPillText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '500',
-    marginLeft: 6,
-  },
+
 });

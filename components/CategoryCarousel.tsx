@@ -194,14 +194,16 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
           onPress={handleCreatePress}
           style={[styles.categoryItem, styles.categoryItemFirst]}
         >
-          <View style={[styles.categoryImageContainer, styles.createCategoryContainer]}>
-            {/* Transparent background with plus icon in primary color */}
-            <View style={styles.createCategoryBackground}>
-              <IconSymbol 
-                name="plus" 
-                size={32} 
-                color={colors.primary} 
-              />
+          <View style={styles.categoryImageWrapper}>
+            <View style={[styles.categoryImageContainer, styles.createCategoryContainer]}>
+              {/* Transparent background with plus icon in primary color */}
+              <View style={styles.createCategoryBackground}>
+                <IconSymbol 
+                  name="plus" 
+                  size={32} 
+                  color={colors.primary} 
+                />
+              </View>
             </View>
           </View>
           <Text style={styles.categoryName} numberOfLines={1}>

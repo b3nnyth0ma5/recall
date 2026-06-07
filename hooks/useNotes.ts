@@ -426,10 +426,15 @@ export function useNotes() {
 
   // Realtime subscription: patch category_matching_at / category_matched_at into
   // in-memory notes so NoteCard spinners react live without a full reload.
+  // Use a unique channel name per mount to avoid the "cannot add postgres_changes
+  // callbacks after subscribe()" crash under StrictMode / Fast Refresh.
+  const categoryMatchingChannelRef = useRef<string>(
+    `recalls:category_matching:${Math.random().toString(36).slice(2)}`
+  );
   useEffect(() => {
     if (!user) return;
 
-    const channelName = `realtime:${user.id}:recalls:category_matching`;
+    const channelName = `realtime:${user.id}:${categoryMatchingChannelRef.current}`;
     console.log('[useNotes] Setting up realtime subscription for recall category matching, channel:', channelName);
 
     const channel = supabase
@@ -464,6 +469,7 @@ export function useNotes() {
 
     return () => {
       console.log('[useNotes] Cleaning up realtime recall category matching subscription');
+      channel.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, [user?.id]);
