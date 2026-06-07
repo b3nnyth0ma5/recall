@@ -4,6 +4,8 @@ module.exports = (config) => ({
   name: "ShareExtension",
   bundleIdentifier: "com.b3nny1nc.recall.ShareExtension",
   deploymentTarget: "15.1",
+  version: config.version,
+  buildNumber: String(config.ios?.buildNumber ?? "1"),
   entitlements: {
     "com.apple.security.application-groups":
       config.ios.entitlements["com.apple.security.application-groups"],
