@@ -27,6 +27,18 @@ const INACTIVE_ICON_COLOR = '#FFFFFF';
 const ACTIVE_ICON_COLOR = '#FFFFFF';
 const BAR_HEIGHT = 68;
 
+// Pressable dimensions — must exceed Apple HIG 44pt minimum
+const BUTTON_WIDTH = 56;
+const BUTTON_HEIGHT = 52;
+const BUTTON_BORDER_RADIUS = 18;
+
+// Active pill dimensions — centred inside the Pressable
+// left = (BUTTON_WIDTH - PILL_SIZE) / 2 = (56 - 44) / 2 = 6
+// top  = (BUTTON_HEIGHT - PILL_SIZE) / 2 = (52 - 44) / 2 = 4
+const PILL_SIZE = 44;
+const PILL_LEFT = (BUTTON_WIDTH - PILL_SIZE) / 2;   // 6
+const PILL_TOP  = (BUTTON_HEIGHT - PILL_SIZE) / 2;  // 4
+
 function NavButton({
   icon,
   isActive,
@@ -55,19 +67,22 @@ function NavButton({
   };
 
   return (
-    <Pressable
-      onPress={handlePress}
-      style={styles.navButton}
-      hitSlop={{ top: 12, bottom: 12, left: 6, right: 6 }}
-      accessibilityLabel={label}
-    >
-      {({ pressed }) => (
-        <View style={[styles.navButtonInner, { opacity: pressed ? 0.7 : 1 }]}>
-          <Animated.View style={[styles.activePill, pillStyle]} />
+    // Outer column: flex layout spacer — does NOT absorb taps
+    <View style={styles.navColumn} pointerEvents="box-none">
+      <Pressable
+        onPress={handlePress}
+        style={({ pressed }) => [styles.navButton, { opacity: pressed ? 0.7 : 1 }]}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityLabel={label}
+      >
+        {/* Active pill — absolute, behind the icon */}
+        <Animated.View style={[styles.activePill, pillStyle]} />
+        {/* Icon — explicitly above the pill */}
+        <View style={styles.iconWrapper}>
           {icon}
         </View>
-      )}
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
@@ -97,7 +112,8 @@ export function FloatingNavBar({
   const bottomOffset = insets.bottom - 20;
 
   const barContent = (
-    <View style={styles.innerRow}>
+    // innerRow passes taps through to the Pressables inside each navColumn
+    <View style={styles.innerRow} pointerEvents="box-none">
       <NavButton
         icon={
           <Home
@@ -163,11 +179,12 @@ export function FloatingNavBar({
         <View style={styles.haloRing} pointerEvents="none" />
       )}
       {Platform.OS === 'ios' ? (
-        <BlurView intensity={100} tint="dark" style={styles.blurView}>
+        // pointerEvents="box-none" so the BlurView background never swallows taps
+        <BlurView intensity={100} tint="dark" style={styles.blurView} pointerEvents="box-none">
           {barContent}
         </BlurView>
       ) : (
-        <View style={styles.androidFallback}>
+        <View style={styles.androidFallback} pointerEvents="box-none">
           {barContent}
         </View>
       )}
@@ -222,25 +239,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 10,
   },
-  navButton: {
+  // Outer flex column — layout spacer only, never absorbs taps
+  navColumn: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  navButtonInner: {
-    width: 52,
-    height: 44,
-    borderRadius: 16,
+  // The actual tap surface — explicit size, centred in the column
+  navButton: {
+    width: BUTTON_WIDTH,
+    height: BUTTON_HEIGHT,
+    borderRadius: BUTTON_BORDER_RADIUS,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 2,
   },
+  // Active pill — absolutely positioned and precisely centred inside navButton
   activePill: {
     position: 'absolute',
-    top: 0,
-    alignSelf: 'center',
-    width: 44,
-    height: 44,
+    top: PILL_TOP,
+    left: PILL_LEFT,
+    width: PILL_SIZE,
+    height: PILL_SIZE,
     borderRadius: 16,
     backgroundColor: colors.primary,
+  },
+  // Icon wrapper — sits above the pill in the stacking order
+  iconWrapper: {
+    zIndex: 1,
   },
 });
