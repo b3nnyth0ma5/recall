@@ -1,9 +1,6 @@
 {
-  "name": "recall-native",
-  "version": "1.0.0",
-  "platforms": ["ios"],
-  "ios": {
-    "modules": ["AppGroupModule", "SiriShortcutsModule"],
-    "podspecPath": "recall-native.podspec"
+  "platforms": ["apple"],
+  "apple": {
+    "modules": ["AppGroupModule", "SiriShortcutsModule"]
   }
 }
