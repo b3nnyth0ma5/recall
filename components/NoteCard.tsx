@@ -895,6 +895,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 6,
     gap: 8,
+		
   },
   timeAgoWrapper: {
     width: '100%',
@@ -911,13 +912,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 12,
+    gap: 14,
     paddingRight: 12,
-    paddingLeft: 8,
+    paddingLeft: 12,
     width: 140,
-    backgroundColor: '#262626',
-    borderTopRightRadius: 16,
-    borderBottomRightRadius: 16,
+		backgroundColor: '#333232',
   },
   actionPill: {
     width: 48,
