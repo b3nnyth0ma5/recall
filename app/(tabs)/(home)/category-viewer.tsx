@@ -45,6 +45,19 @@ export default function CategoryViewerScreen() {
   const { getCachedNote } = useNotes();
   const { refreshUrlMetadata } = useNotesContext();
   const [category, setCategory] = useState<Category | null>(null);
+
+  // Fire-and-forget: mark category as viewed so the unseen dot clears
+  useEffect(() => {
+    if (!id || !user) return;
+    console.log('[CategoryViewer] Marking category as viewed, id:', id);
+    supabase
+      .from('recollection_categories')
+      .update({ last_viewed_at: new Date().toISOString() })
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.error('[CategoryViewer] Failed to update last_viewed_at:', error);
+      });
+  }, [id, user]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

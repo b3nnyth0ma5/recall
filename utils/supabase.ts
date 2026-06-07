@@ -248,20 +248,6 @@ export async function deleteImageRecord(imageId: string): Promise<boolean> {
 
     console.log('Image record deleted successfully');
 
-    // Trigger category matching after image deletion
-    if (recallId) {
-      console.log('Triggering category matching after image deletion for recall:', recallId);
-      triggerCategoryMatching(recallId).then(result => {
-        if (result.success) {
-          console.log('Category matching triggered successfully after image deletion');
-        } else {
-          console.error('Failed to trigger category matching:', result.error);
-        }
-      }).catch(err => {
-        console.error('Exception while triggering category matching:', err);
-      });
-    }
-
     return true;
   } catch (error) {
     console.error('Error in deleteImageRecord:', error);
@@ -684,41 +670,6 @@ export async function retryOCRProcessing(imageId: string): Promise<{ success: bo
     return await triggerOCRProcessing(imageId);
   } catch (error) {
     console.error('Exception in retryOCRProcessing:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    };
-  }
-}
-
-export async function triggerCategoryMatching(recallId: string): Promise<{ success: boolean; error?: string; data?: any }> {
-  try {
-    console.log('=== Triggering category matching ===');
-    console.log('Recall ID:', recallId);
-
-    const { data, error } = await supabase.functions.invoke('match-recollection-category', {
-      body: { 
-        recallId: recallId 
-      },
-    });
-
-    if (error) {
-      console.error('Error invoking category matching function:', error);
-      return { 
-        success: false, 
-        error: error.message || 'Failed to invoke category matching function' 
-      };
-    }
-
-    console.log('Category matching function invoked successfully');
-    console.log('Response:', data);
-    
-    return { 
-      success: true, 
-      data 
-    };
-  } catch (error) {
-    console.error('Exception in triggerCategoryMatching:', error);
     return { 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 

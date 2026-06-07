@@ -406,27 +406,9 @@ export default function CreateRecallFromShareScreen() {
               }
             }
 
-            console.log('[CreateRecallFromShare] Triggering category matching...');
-            try {
-              await supabase.functions.invoke('match-recollection-category', {
-                body: { recallId: recallData.id },
-              });
-            } catch (error) {
-              console.error('[CreateRecallFromShare] Error in category matching:', error);
-            }
+            console.log('[CreateRecallFromShare] All images uploaded, background processing complete');
           })();
         }
-      } else {
-        (async () => {
-          console.log('[CreateRecallFromShare] Triggering category matching (no images)...');
-          try {
-            await supabase.functions.invoke('match-recollection-category', {
-              body: { recallId: recallData.id },
-            });
-          } catch (error) {
-            console.error('[CreateRecallFromShare] Error in category matching:', error);
-          }
-        })();
       }
 
       setSavingStage('Finalizing...');

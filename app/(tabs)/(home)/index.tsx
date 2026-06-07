@@ -338,21 +338,7 @@ export default function HomeScreen() {
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Final refresh of note ${recallData.id}`);
             await refreshSingleNote(recallData.id);
             
-            // Run category matching in background
-            console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id}...`);
-            try {
-              const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
-                body: { recallId: recallData.id },
-              });
-              
-              if (categoryMatchError) {
-                console.error(`[handleCreateRecallFromCombined] [ASYNC] Error in category matching:`, categoryMatchError);
-              } else {
-                console.log(`[handleCreateRecallFromCombined] [ASYNC] Category matching completed successfully`);
-              }
-            } catch (categoryMatchException) {
-              console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception in category matching:`, categoryMatchException);
-            }
+            console.log(`[handleCreateRecallFromCombined] [ASYNC] All images uploaded, background processing complete for recall ${recallData.id}`);
           })();
         } else {
           pendingImageUploadsRef.current.delete(recallData.id);
@@ -361,22 +347,6 @@ export default function HomeScreen() {
           (async () => {
             // Stage 5: Analysing Images
             console.log(`[handleCreateRecallFromCombined] [ASYNC] Analysing image...`);
-            
-            // Run category matching in background
-            console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id}...`);
-            try {
-              const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
-                body: { recallId: recallData.id },
-              });
-              
-              if (categoryMatchError) {
-                console.error(`[handleCreateRecallFromCombined] [ASYNC] Error in category matching:`, categoryMatchError);
-              } else {
-                console.log(`[handleCreateRecallFromCombined] [ASYNC] Category matching completed successfully`);
-              }
-            } catch (categoryMatchException) {
-              console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception in category matching:`, categoryMatchException);
-            }
           })();
         }
       } else {
@@ -390,23 +360,8 @@ export default function HomeScreen() {
         if (onProgress) onProgress('Matching Categories...');
         setSavingStage('Matching Categories...');
         
-        // Run category matching immediately in background
-        (async () => {
-          console.log(`[handleCreateRecallFromCombined] [ASYNC] Running category matching for recall ${recallData.id} (no images)...`);
-          try {
-            const { error: categoryMatchError } = await supabase.functions.invoke('match-recollection-category', {
-              body: { recallId: recallData.id },
-            });
-            
-            if (categoryMatchError) {
-              console.error(`[handleCreateRecallFromCombined] [ASYNC] Error in category matching:`, categoryMatchError);
-            } else {
-              console.log(`[handleCreateRecallFromCombined] [ASYNC] Category matching completed successfully`);
-            }
-          } catch (categoryMatchException) {
-            console.error(`[handleCreateRecallFromCombined] [ASYNC] Exception in category matching:`, categoryMatchException);
-          }
-        })();
+        // Category matching is handled by the backend after embeddings complete
+        console.log(`[handleCreateRecallFromCombined] Category matching will be triggered by backend for recall ${recallData.id}`);
       }
 
       if (data.documents && data.documents.length > 0) {

@@ -18,6 +18,8 @@ interface Category {
   icon_cdn_url: string | null;
   recollection_count?: number;
   created_at: string;
+  last_match_at: string | null;
+  last_viewed_at: string | null;
 }
 
 interface CategoryCarouselProps {
@@ -50,7 +52,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
       // Fetch all categories for this user, sorted by most recent first
       const { data: categoriesData, error: categoriesError } = await supabase
         .from('recollection_categories')
-        .select('id, category_name, icon_cdn_url, created_at')
+        .select('id, category_name, icon_cdn_url, created_at, last_match_at, last_viewed_at')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
@@ -209,6 +211,10 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
 
         {categories.map((category) => {
           const isSelected = selectedCategoryId === category.id;
+          const hasUnseen = !!category.last_match_at && (
+            !category.last_viewed_at ||
+            new Date(category.last_match_at) > new Date(category.last_viewed_at)
+          );
           
           return (
             <Pressable
@@ -216,29 +222,32 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
               onPress={() => handleCategoryPress(category)}
               style={styles.categoryItem}
             >
-              <View
-                style={[
-                  styles.categoryImageContainer,
-                  isSelected && styles.categoryImageContainerSelected,
-                ]}
-              >
-                {category.icon_cdn_url ? (
-                  // cdnVariant 'thumbnail' requires the variant in Cloudflare Images dashboard.
-                  // If absent, cdnVariant is a no-op — still benefits from expo-image caching.
-                  <Image
-                    source={{ uri: cdnVariant(category.icon_cdn_url, 'thumbnail') as string }}
-                    style={styles.categoryImage}
-                    contentFit="cover"
-                    transition={150}
-                    cachePolicy="memory-disk"
-                  />
-                ) : (
-                  <View style={styles.categoryPlaceholder}>
-                    <Text style={styles.categoryPlaceholderText}>
-                      {category.category_name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                )}
+              <View style={styles.categoryImageWrapper}>
+                <View
+                  style={[
+                    styles.categoryImageContainer,
+                    isSelected && styles.categoryImageContainerSelected,
+                  ]}
+                >
+                  {category.icon_cdn_url ? (
+                    // cdnVariant 'thumbnail' requires the variant in Cloudflare Images dashboard.
+                    // If absent, cdnVariant is a no-op — still benefits from expo-image caching.
+                    <Image
+                      source={{ uri: cdnVariant(category.icon_cdn_url, 'thumbnail') as string }}
+                      style={styles.categoryImage}
+                      contentFit="cover"
+                      transition={150}
+                      cachePolicy="memory-disk"
+                    />
+                  ) : (
+                    <View style={styles.categoryPlaceholder}>
+                      <Text style={styles.categoryPlaceholderText}>
+                        {category.category_name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                {hasUnseen && <View style={styles.unseenDot} />}
               </View>
               <Text
                 style={[
@@ -319,6 +328,11 @@ const styles = StyleSheet.create({
   categoryItemFirst: {
     marginLeft: 8,
   },
+  categoryImageWrapper: {
+    width: CATEGORY_SIZE,
+    height: CATEGORY_SIZE,
+    marginBottom: 6,
+  },
   categoryImageContainer: {
     width: CATEGORY_SIZE,
     height: CATEGORY_SIZE,
@@ -326,10 +340,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardBackground,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 6,
     borderWidth: 3,
     borderColor: colors.borderLight,
     overflow: 'hidden',
+  },
+  unseenDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#FF8A8A',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    zIndex: 2,
   },
   createCategoryContainer: {
     borderColor: colors.primary,
