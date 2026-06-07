@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
   customHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     backgroundColor: colors.background,
     paddingHorizontal: 20,
     paddingBottom: 12,

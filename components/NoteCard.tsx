@@ -703,8 +703,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     prevProps.note.updated_at === nextProps.note.updated_at &&
     prevProps.note.images?.length === nextProps.note.images?.length &&
     prevProps.note.imageIds?.length === nextProps.note.imageIds?.length &&
-    prevProps.note.people?.length === nextProps.note.people?.length &&
-    prevProps.note.documents?.length === nextProps.note.documents?.length &&
+    (prevProps.note.people || []).map(p => p.id).join('|') === (nextProps.note.people || []).map(p => p.id).join('|') &&
+    (prevProps.note.documents || []).map(d => d.id).join('|') === (nextProps.note.documents || []).map(d => d.id).join('|') &&
     prevProps.loading === nextProps.loading &&
     prevProps.expectedImageCount === nextProps.expectedImageCount &&
     prevProps.scrollToImageIndex === nextProps.scrollToImageIndex
@@ -915,6 +915,9 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     paddingLeft: 8,
     width: 140,
+    backgroundColor: '#262626',
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
   },
   actionPill: {
     width: 48,
