@@ -424,6 +424,50 @@ export function useNotes() {
   }, [user?.id]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
+  // Realtime subscription: patch category_matching_at / category_matched_at into
+  // in-memory notes so NoteCard spinners react live without a full reload.
+  useEffect(() => {
+    if (!user) return;
+
+    const channelName = `realtime:${user.id}:recalls:category_matching`;
+    console.log('[useNotes] Setting up realtime subscription for recall category matching, channel:', channelName);
+
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'recalls',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as any;
+          if (!updated?.id) return;
+          console.log('[useNotes] Realtime UPDATE on recall:', updated.id, '— category_matching_at:', updated.category_matching_at, 'category_matched_at:', updated.category_matched_at);
+          setNotes(prev =>
+            prev.map(note =>
+              note.id === updated.id
+                ? {
+                    ...note,
+                    ...(updated.category_matching_at !== undefined && { category_matching_at: updated.category_matching_at }),
+                    ...(updated.category_matched_at !== undefined && { category_matched_at: updated.category_matched_at }),
+                    ...(updated.updated_at !== undefined && { updated_at: updated.updated_at }),
+                  }
+                : note,
+            ),
+          );
+        },
+      )
+      .subscribe();
+
+    return () => {
+      console.log('[useNotes] Cleaning up realtime recall category matching subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
+
   const loadMoreNotes = useCallback(() => {
     if (!isLoadingMore && hasMore && !loading) {
       const nextPage = page + 1;

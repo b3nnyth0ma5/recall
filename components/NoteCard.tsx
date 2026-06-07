@@ -460,12 +460,22 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const hasImages = displayImages && displayImages.length > 0;
   const hasMedia = displayMedia.length > 0;
 
+  const isMatching = !!note.category_matching_at &&
+    (!note.category_matched_at ||
+      new Date(note.category_matching_at).getTime() > new Date(note.category_matched_at).getTime());
+
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
       <Pressable 
         onPress={handleCardPress}
         style={styles.entireCardTouchArea}
       >
+        {isMatching && (
+          <View style={styles.matchingPill} pointerEvents="none">
+            <ActivityIndicator size="small" color="#FFFFFF" />
+            <Text style={styles.matchingPillText}>Matching categories…</Text>
+          </View>
+        )}
         {hasMedia && (
           <View style={styles.imagesContainer}>
             <ScrollView
@@ -707,7 +717,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     (prevProps.note.documents || []).map(d => d.id).join('|') === (nextProps.note.documents || []).map(d => d.id).join('|') &&
     prevProps.loading === nextProps.loading &&
     prevProps.expectedImageCount === nextProps.expectedImageCount &&
-    prevProps.scrollToImageIndex === nextProps.scrollToImageIndex
+    prevProps.scrollToImageIndex === nextProps.scrollToImageIndex &&
+    prevProps.note.category_matching_at === nextProps.note.category_matching_at &&
+    prevProps.note.category_matched_at === nextProps.note.category_matched_at
   );
 });
 
@@ -930,5 +942,23 @@ const styles = StyleSheet.create({
   },
   deletePill: {
     backgroundColor: colors.error,
+  },
+  matchingPill: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    zIndex: 3,
+  },
+  matchingPillText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '500',
+    marginLeft: 6,
   },
 });

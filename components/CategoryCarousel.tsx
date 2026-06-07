@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
     width: CATEGORY_SIZE,
   },
   categoryItemFirst: {
-    marginLeft: 8,
+    // No asymmetric marginLeft — scrollContent paddingHorizontal provides the leading inset
   },
   categoryImageWrapper: {
     width: CATEGORY_SIZE,
@@ -394,9 +394,9 @@ const styles = StyleSheet.create({
   },
   categoryName: {
     fontSize: 12,
-     color: colors.text,
-		//color: colors.textSecondary,
+    color: colors.text,
     textAlign: 'center',
+    width: CATEGORY_SIZE,
     maxWidth: CATEGORY_SIZE,
     fontWeight: '500',
   },

@@ -19,6 +19,8 @@ export interface Note {
   people?: Person[]; // People mentioned in this recall
   documents?: Document[]; // Documents attached to this recall
   documentIds?: string[]; // Array of document record IDs
+  category_matching_at?: string | null; // Set when category matching starts
+  category_matched_at?: string | null;  // Set when category matching completes
 }
 
 export interface Person {
