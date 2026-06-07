@@ -37,7 +37,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
 import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
 import { DocumentTile } from '@/components/DocumentTile';
-import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerCategoryMatching, triggerRecallEmbedding, triggerPeopleFinder, uploadDocumentToDatabase, deleteDocumentRecord, fetchDocumentsForNote } from '@/utils/supabase';
+import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerRecallEmbedding, triggerPeopleFinder, uploadDocumentToDatabase, deleteDocumentRecord, fetchDocumentsForNote } from '@/utils/supabase';
 import { processRecallUrls, processRecallUrlsAndAwaitScrape, extractUrls } from '@/utils/urlProcessor';
 import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1343,18 +1343,6 @@ export default function NoteEditorScreen() {
           console.error('[NoteEditor] [ASYNC] Error processing URLs:', error);
         });
       }
-
-      setTimeout(() => {
-        triggerCategoryMatching(recallId).then(result => {
-          if (result.success) {
-            console.log('[NoteEditor] [ASYNC] Category matching triggered successfully after note save');
-          } else {
-            console.error('[NoteEditor] [ASYNC] Failed to trigger category matching:', result.error);
-          }
-        }).catch(error => {
-          console.error('[NoteEditor] [ASYNC] Error triggering category matching:', error);
-        });
-      }, 500);
 
       setTimeout(() => {
         triggerRecallEmbedding(
