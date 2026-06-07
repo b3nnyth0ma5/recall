@@ -228,6 +228,9 @@ importers:
       react-timeago:
         specifier: ^8.3.0
         version: 8.3.0(react@19.1.0)
+      recall-native:
+        specifier: file:./modules/recall-native
+        version: file:modules/recall-native
       slick-carousel:
         specifier: ^1.8.1
         version: 1.8.1(jquery@4.0.0)
@@ -5906,6 +5909,9 @@ packages:
   readdirp@3.6.0:
     resolution: {integrity: sha512-hOS089on8RduqdbhvQ5Z37A0ESjsqz6qnRcffsMU3495FuTdqSm+7bhJ29JvIOsBDEEnan5DPu9t3To9VRlMzA==}
     engines: {node: '>=8.10.0'}
+
+  recall-native@file:modules/recall-native:
+    resolution: {directory: modules/recall-native, type: directory}
 
   rechoir@0.8.0:
     resolution: {integrity: sha512-/vxpCXddiX8NGfGO/mTafwjq4aFa/71pvamip0++IQk3zG8cbCj0fifNPrjjF1XMXUne91jL9OoxmdykoEtifQ==}
@@ -13666,6 +13672,8 @@ snapshots:
   readdirp@3.6.0:
     dependencies:
       picomatch: 2.3.2
+
+  recall-native@file:modules/recall-native: {}
 
   rechoir@0.8.0:
     dependencies:
