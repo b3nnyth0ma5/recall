@@ -490,6 +490,7 @@ export default function HomeScreen() {
         note={item}
         onPress={() => handleNotePress(item.id)}
         onDelete={() => handleDeleteNote(item.id)}
+        onPeopleUpdated={(noteId) => refreshSingleNote(noteId)}
         loading={false}
         expectedImageCount={getExpectedImageCount(item.id)}
       />

@@ -149,6 +149,7 @@ const MAPPING = {
   "person.circle": "account-circle",
   "person.crop.circle.fill": "account-circle",
   "person.crop.circle": "account-circle",
+  "person.crop.circle.badge.plus": "person-add",
 
   // Sharing & Export
   "square.and.arrow.up": "share",

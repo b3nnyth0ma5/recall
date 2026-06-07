@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, memo, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator } from 'react-native';
+import { useRouter, usePathname } from 'expo-router';
 import { Image } from 'expo-image';
 import { cdnVariant } from '@/utils/cdnVariant';
 import { colors } from '@/styles/commonStyles';
@@ -44,6 +45,7 @@ interface NoteCardProps {
   onPress: (imageIndex?: number) => void;
   onImagePress?: () => void;
   onDelete?: () => void;
+  onPeopleUpdated?: (noteId: string) => void;
   loading?: boolean;
   expectedImageCount?: number;
   scrollToImageIndex?: number;
@@ -69,8 +71,12 @@ const countNewlines = (text: string): number => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, loading = false, expectedImageCount, scrollToImageIndex }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, onPeopleUpdated, loading = false, expectedImageCount, scrollToImageIndex }: NoteCardProps) {
   const { getUrlMetadataForRecall } = useNotesContext();
+  const router = useRouter();
+  const pathname = usePathname();
+  const prevPathnameRef = useRef(pathname);
+  const pendingPeopleRefreshRef = useRef(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
@@ -183,6 +189,17 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       }, 300);
     }
   }, [scrollToImageIndex, note.images]);
+
+  // Watch pathname to refresh card after returning from people-word-cloud
+  useEffect(() => {
+    const wasOnPeopleScreen = prevPathnameRef.current.includes('people-word-cloud');
+    const nowAway = !pathname.includes('people-word-cloud');
+    if (wasOnPeopleScreen && nowAway && pendingPeopleRefreshRef.current) {
+      pendingPeopleRefreshRef.current = false;
+      onPeopleUpdated?.(note.id);
+    }
+    prevPathnameRef.current = pathname;
+  }, [pathname, note.id, onPeopleUpdated]);
 
   // Show skeleton if loading
   if (loading) {
@@ -374,16 +391,42 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     });
   };
 
+  const handleTagPeople = async () => {
+    console.log('[NoteCard] User tapped Tag People on recall:', note.id);
+    swipeableRef.current?.close();
+    if (Platform.OS !== 'web') {
+      try {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch (e) {
+        console.error('[NoteCard] haptic failed', e);
+      }
+    }
+    pendingPeopleRefreshRef.current = true;
+    router.push({
+      pathname: '/people-word-cloud',
+      params: {
+        recallId: note.id,
+        initialSelectedPeople: JSON.stringify(note.people || []),
+      },
+    });
+  };
+
   const renderRightActions = () => {
     return (
-      <View style={styles.deleteActionContainer}>
+      <View style={styles.swipeActionsRow}>
         <Pressable
-          style={styles.deleteAction}
+          style={[styles.actionPill, styles.tagPeoplePill]}
+          onPress={handleTagPeople}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <IconSymbol name="person.crop.circle.badge.plus" size={22} color="#FFFFFF" />
+        </Pressable>
+        <Pressable
+          style={[styles.actionPill, styles.deletePill]}
           onPress={handleDelete}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <IconSymbol name="trash.fill" size={24} color="#FFFFFF" />
-          <Text style={styles.deleteActionText}>Delete</Text>
+          <IconSymbol name="trash.fill" size={22} color="#FFFFFF" />
         </Pressable>
       </View>
     );
@@ -539,7 +582,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           renderRightActions={renderRightActions}
           overshootRight={false}
           friction={2}
-          rightThreshold={40}
+          rightThreshold={60}
           containerStyle={styles.swipeableContainer}
         >
           <View style={styles.cardContent}>
@@ -864,26 +907,26 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'right',
   },
-  deleteActionContainer: {
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    paddingRight: 0,
-    width: '25%',
+  swipeActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+    paddingRight: 12,
+    paddingLeft: 8,
+    width: 140,
   },
-  deleteAction: {
-    backgroundColor: colors.error,
+  actionPill: {
+    width: 56,
+    height: 52,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
-    width: 90,
-    height: '100%',
-    borderTopRightRadius: 16,
-    borderBottomRightRadius: 16,
-    paddingHorizontal: 16,
   },
-  deleteActionText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 4,
+  tagPeoplePill: {
+    backgroundColor: '#FF8A8A',
+  },
+  deletePill: {
+    backgroundColor: colors.error,
   },
 });
