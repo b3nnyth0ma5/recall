@@ -23,6 +23,14 @@ type Props = {
   onProfilePress: () => void;
 };
 
+type NavButtonProps = {
+  icon: React.ReactNode;
+  isActive: boolean;
+  onPress: () => void;
+  label: string;
+  testID: string;
+};
+
 const INACTIVE_ICON_COLOR = '#FFFFFF';
 const ACTIVE_ICON_COLOR = '#FFFFFF';
 const BAR_HEIGHT = 68;
@@ -44,12 +52,8 @@ function NavButton({
   isActive,
   onPress,
   label,
-}: {
-  icon: React.ReactNode;
-  isActive: boolean;
-  onPress: () => void;
-  label: string;
-}) {
+  testID,
+}: NavButtonProps) {
   const pillOpacity = useSharedValue(isActive ? 1 : 0);
 
   useEffect(() => {
@@ -70,15 +74,16 @@ function NavButton({
     // Outer column: flex layout spacer — does NOT absorb taps
     <View style={styles.navColumn} pointerEvents="box-none">
       <Pressable
+        testID={testID}
         onPress={handlePress}
         style={({ pressed }) => [styles.navButton, { opacity: pressed ? 0.7 : 1 }]}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         accessibilityLabel={label}
       >
         {/* Active pill — absolute, behind the icon */}
-        <Animated.View style={[styles.activePill, pillStyle]} />
+        <Animated.View testID={`${testID}-pill`} style={[styles.activePill, pillStyle]} />
         {/* Icon — explicitly above the pill */}
-        <View style={styles.iconWrapper}>
+        <View testID={`${testID}-icon`} style={styles.iconWrapper}>
           {icon}
         </View>
       </Pressable>
@@ -115,6 +120,7 @@ export function FloatingNavBar({
     // innerRow passes taps through to the Pressables inside each navColumn
     <View style={styles.innerRow} pointerEvents="box-none">
       <NavButton
+        testID="navbar-home"
         icon={
           <Home
             size={24}
@@ -127,6 +133,7 @@ export function FloatingNavBar({
         label="Home"
       />
       <NavButton
+        testID="navbar-create"
         icon={
           <Plus
             size={26}
@@ -139,6 +146,7 @@ export function FloatingNavBar({
         label="Create Recall"
       />
       <NavButton
+        testID="navbar-search"
         icon={
           <Search
             size={24}
@@ -151,6 +159,7 @@ export function FloatingNavBar({
         label="Search"
       />
       <NavButton
+        testID="navbar-profile"
         icon={
           <User
             size={24}
@@ -192,6 +201,18 @@ export function FloatingNavBar({
   );
 }
 
+// ─── Style invariants — DO NOT break these ───────────────────────────────────
+// 1. navButton must be at least 44×44 (Apple HIG minimum tap target).
+//    Current: BUTTON_WIDTH=56, BUTTON_HEIGHT=52 ✅
+// 2. activePill must be a CHILD of navButton (Pressable), never a sibling.
+//    This ensures the pill cannot intercept taps from outside the button.
+// 3. navColumn, innerRow, BlurView, and androidFallback must all use
+//    pointerEvents="box-none" so taps fall through to the Pressable.
+// 4. navColumn must be flex:1 so all 4 buttons occupy equal-width columns
+//    and centre uniformly regardless of bar width.
+// 5. activePill is precisely centred inside navButton:
+//    left = (BUTTON_WIDTH - PILL_SIZE) / 2, top = (BUTTON_HEIGHT - PILL_SIZE) / 2
+// ─────────────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',

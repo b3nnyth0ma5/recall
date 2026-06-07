@@ -349,6 +349,15 @@ export default function ShareExtensionDebugScreen() {
         <View style={styles.card}>
           <Text style={styles.mono}>{diagnosticsText}</Text>
         </View>
+        {diagnostics?.moduleLoadError != null && (
+          <>
+            <Text style={styles.sectionTitle}>Module Load Error</Text>
+            <View style={[styles.card, styles.errorCard]}>
+              <Text style={styles.moduleLoadErrorLabel}>requireNativeModule('AppGroupModule') threw:</Text>
+              <Text style={styles.moduleLoadErrorText}>{diagnostics.moduleLoadError}</Text>
+            </View>
+          </>
+        )}
 
         {/* ── Section A: Last Share Extension Error ── */}
         <Text style={styles.sectionTitle}>Last Share Extension Error</Text>
@@ -557,5 +566,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: 'Courier',
     lineHeight: 17,
+  },
+  errorCard: {
+    borderColor: colors.appleRed,
+    borderWidth: 1.5,
+  },
+  moduleLoadErrorLabel: {
+    fontFamily: 'Courier',
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginBottom: 6,
+  },
+  moduleLoadErrorText: {
+    fontFamily: 'Courier',
+    fontSize: 12,
+    color: colors.appleRed,
+    lineHeight: 18,
   },
 });

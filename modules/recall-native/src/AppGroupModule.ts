@@ -5,6 +5,7 @@ const APP_GROUP_ID = 'group.com.b3nny1nc.recall';
 
 let _module: any = null;
 let _moduleLoadAttempted = false;
+let _moduleLoadError: string | null = null;
 
 function getNativeModule() {
   if (_moduleLoadAttempted) return _module;
@@ -14,9 +15,10 @@ function getNativeModule() {
     console.log('[AppGroupModule] requireNativeModule succeeded — module loaded');
   } catch (e: any) {
     _module = null;
+    _moduleLoadError = String(e);
     console.warn(
       '[AppGroupModule] requireNativeModule FAILED:',
-      String(e),
+      _moduleLoadError,
       '| isNativeModuleError:',
       e?.code ?? 'no code',
       '| type:',
@@ -81,6 +83,7 @@ export interface AppGroupDiagnostics {
   moduleAvailable: boolean;
   containerPath: string | null;
   error: string | null;
+  moduleLoadError: string | null;
   containerExists: boolean | null;
   tokenFileExists: boolean | null;
   tokenFileSize: number | null;
@@ -119,7 +122,8 @@ export async function getDiagnostics(): Promise<AppGroupDiagnostics> {
         console.error('[AppGroupModule] getDiagnostics — verifyContainer error:', verifyErr);
       }
     } else {
-      error = 'Native module AppGroupModule is not available in this build';
+      // Use the captured load error if available, fall back to generic message
+      error = _moduleLoadError ?? 'Native module AppGroupModule is not available in this build';
     }
   }
 
@@ -128,6 +132,7 @@ export async function getDiagnostics(): Promise<AppGroupDiagnostics> {
     moduleAvailable,
     containerPath,
     error,
+    moduleLoadError: _moduleLoadError,
     containerExists: verification?.containerExists ?? null,
     tokenFileExists: verification?.tokenFileExists ?? null,
     tokenFileSize: verification?.tokenFileSize ?? null,

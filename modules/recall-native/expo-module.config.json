@@ -1,6 +1,7 @@
 {
   "platforms": ["apple"],
   "apple": {
-    "modules": ["AppGroupModule", "SiriShortcutsModule"]
+    "modules": ["AppGroupModule", "SiriShortcutsModule"],
+    "podspecPath": "RecallNative.podspec"
   }
 }
