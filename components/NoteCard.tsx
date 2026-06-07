@@ -419,7 +419,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           onPress={handleTagPeople}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <IconSymbol name="person.crop.circle.badge.plus" size={22} color="#FFFFFF" />
+          <IconSymbol name="person.crop.circle.badge.plus" size={28} color="#FFFFFF" />
         </Pressable>
         <Pressable
           style={[styles.actionPill, styles.deletePill]}
@@ -911,14 +911,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 8,
+    gap: 12,
     paddingRight: 12,
     paddingLeft: 8,
     width: 140,
   },
   actionPill: {
-    width: 56,
-    height: 52,
+    width: 48,
+    height: 48,
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
