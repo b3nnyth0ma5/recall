@@ -1,8 +1,0 @@
-{
-  "name": "recall-native-modules",
-  "version": "1.0.0",
-  "platforms": ["ios"],
-  "ios": {
-    "modules": ["AppGroupModule", "SiriShortcutsModule"]
-  }
-}

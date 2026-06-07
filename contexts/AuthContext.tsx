@@ -30,7 +30,7 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
   }
 
   try {
-    const { getAppGroupContainerPath } = await import('@/modules/AppGroupModule');
+    const { getAppGroupContainerPath } = await import('recall-native');
     const containerPath = await getAppGroupContainerPath();
 
     console.log(
@@ -69,7 +69,7 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
 
       // Verify the write actually landed where the share extension will read.
       try {
-        const { verifyAppGroupContainer } = await import('@/modules/AppGroupModule');
+        const { verifyAppGroupContainer } = await import('recall-native');
         const verify = await verifyAppGroupContainer();
         console.log(
           '[AuthContext] Post-write verify:',
@@ -164,7 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Run App Group diagnostics on every foreground so we can see the
         // native module state in device logs without needing Xcode.
         try {
-          const { getDiagnostics } = await import('@/modules/AppGroupModule');
+          const { getDiagnostics } = await import('recall-native');
           const diagnostics = await getDiagnostics();
           console.log('[AuthContext] App Group diagnostics:', JSON.stringify(diagnostics));
         } catch (diagErr) {

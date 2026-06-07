@@ -16,7 +16,7 @@ import {
   readLastShareExtensionError,
   clearLastShareExtensionError,
   type AppGroupDiagnostics,
-} from '@/modules/AppGroupModule';
+} from 'recall-native';
 import { writeTokenToAppGroup } from '@/contexts/AuthContext';
 import * as FileSystem from 'expo-file-system/legacy';
 

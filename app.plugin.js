@@ -1,11 +1,14 @@
-const { createRunOncePlugin, withPodfile, withXcodeProject } = require('@expo/config-plugins');
-const path = require('path');
+const { createRunOncePlugin, withPodfile } = require('@expo/config-plugins');
 
 /**
  * Expo Config Plugin for Recall App
  *
- * 1. Injects FOLLY_CFG_NO_COROUTINES=1 compiler flag (fixes folly/coro/Coroutine.h build error)
- * 2. Adds AppGroupModule.swift and SiriShortcutsModule.swift to the Xcode project compile sources
+ * Injects FOLLY_CFG_NO_COROUTINES=1 compiler flag (fixes folly/coro/Coroutine.h build error).
+ *
+ * Note: AppGroupModule and SiriShortcutsModule are now registered as a proper local Expo Module
+ * package under modules/recall-native/ and are picked up automatically by expo-modules-autolinking
+ * via the `expo.autolinking.nativeModulesDir` setting in package.json. No manual Xcode injection
+ * is needed.
  */
 
 const withFollyNoCoroutines = (config) => {
@@ -39,66 +42,8 @@ const withFollyNoCoroutines = (config) => {
   });
 };
 
-const withNativeModules = (config) => {
-  return withXcodeProject(config, (config) => {
-    const xcodeProject = config.modResults;
-    const swiftFiles = ['AppGroupModule.swift', 'SiriShortcutsModule.swift'];
-
-    // Find the main app group key to add files into (the group named after the app slug)
-    // Fall back to any top-level group that isn't Products/Frameworks/Plugins
-    const appName = config.modRequest.projectName || 'recall';
-    let mainGroupKey = xcodeProject.findPBXGroupKey({ name: appName });
-    if (!mainGroupKey) {
-      // Try common fallback names
-      mainGroupKey = xcodeProject.findPBXGroupKey({ name: 'recall' });
-    }
-    if (!mainGroupKey) {
-      // Last resort: use the root project's main group
-      const rootProject = xcodeProject.getFirstProject();
-      mainGroupKey = rootProject && rootProject.firstProject && rootProject.firstProject.mainGroup;
-    }
-
-    if (!mainGroupKey) {
-      console.warn('[withNativeModules] Could not find main group key — skipping Swift file injection');
-      return config;
-    }
-
-    const targetUuid = xcodeProject.getFirstTarget().uuid;
-
-    swiftFiles.forEach((filename) => {
-      // Idempotency: check if already present in PBXFileReference section
-      const fileRefSection = xcodeProject.pbxFileReferenceSection();
-      const alreadyAdded = fileRefSection && Object.values(fileRefSection).some(
-        (ref) => ref && typeof ref === 'object' && ref.path &&
-          (ref.path === `../modules/${filename}` ||
-           ref.path === `"../modules/${filename}"` ||
-           String(ref.path).replace(/"/g, '').endsWith(filename))
-      );
-
-      if (alreadyAdded) {
-        console.log(`[withNativeModules] ${filename} already in Xcode project, skipping`);
-        return;
-      }
-
-      // Use addSourceFile with an explicit group key so it goes through addFile()
-      // rather than addPluginFile() (which requires a Plugins group to exist).
-      const filePath = path.join('..', 'modules', filename);
-      const file = xcodeProject.addSourceFile(filePath, { target: targetUuid }, mainGroupKey);
-
-      if (file) {
-        console.log(`[withNativeModules] Added ${filename} to Xcode compile sources`);
-      } else {
-        console.warn(`[withNativeModules] Failed to add ${filename} to Xcode project`);
-      }
-    });
-
-    return config;
-  });
-};
-
 const withRecallConfig = (config) => {
   config = withFollyNoCoroutines(config);
-  config = withNativeModules(config);
   return config;
 };
 

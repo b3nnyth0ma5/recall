@@ -1,0 +1,10 @@
+{
+  "name": "recall-native",
+  "version": "1.0.0",
+  "description": "Local Expo native modules for Recall (AppGroupModule, SiriShortcutsModule)",
+  "main": "index.ts",
+  "private": true,
+  "keywords": [],
+  "repository": {},
+  "license": "UNLICENSED"
+}

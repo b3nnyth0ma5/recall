@@ -28,7 +28,7 @@ import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
 import { MarkdownAnswer } from '@/components/MarkdownAnswer';
 import Toast from 'react-native-toast-message';
-import { donateSearch } from '@/modules/SiriShortcutsModule';
+import { donateSearch } from 'recall-native';
 import { Share as ShareIcon } from 'lucide-react-native';
 import { Swipeable, RectButton } from 'react-native-gesture-handler';
 import { supabase, deleteSearchHistory, cleanupCloudflareCollage } from '@/utils/supabase';

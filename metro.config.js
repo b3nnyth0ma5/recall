@@ -7,6 +7,14 @@ const config = getDefaultConfig(__dirname);
 
 config.resolver.unstable_enablePackageExports = true;
 
+// Resolve the local recall-native module so Metro can find it without it
+// being in node_modules. This is needed for web bundling; iOS/Android use
+// autolinking + CocoaPods for the native side.
+config.resolver.extraNodeModules = {
+  ...config.resolver.extraNodeModules,
+  'recall-native': path.resolve(__dirname, 'modules/recall-native'),
+};
+
 // Use turborepo to restore the cache when possible
 config.cacheStores = [
     new FileStore({ root: path.join(__dirname, 'node_modules', '.cache', 'metro') }),

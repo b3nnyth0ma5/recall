@@ -36,6 +36,7 @@ module.exports = function (api) {
             "@hooks": "./hooks",
             "@types": "./types",
             "@contexts": "./contexts",
+            "recall-native": "./modules/recall-native/index.ts",
           },
         },
       ],
