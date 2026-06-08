@@ -1,6 +1,7 @@
 
 import { Platform, Share as RNShare } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import Toast from 'react-native-toast-message';
 import { Note } from '@/types/Note';
@@ -220,17 +221,34 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
         // If we successfully downloaded at least one image, share them using react-native-share
         if (validUris.length > 0) {
           console.log('Preparing to share with react-native-share');
-          
-          // Use react-native-share which properly supports multiple files on both iOS and Android
+
+          // Copy recall text to clipboard so the user can paste it into Messages/Mail/etc.
+          // iOS Messages drops file attachments when both `message` and `urls` are in the
+          // same share payload (react-native-share v12 known issue), so we intentionally
+          // omit `message` from the share options and hand the text off via clipboard instead.
+          try {
+            await Clipboard.setStringAsync(shareMessage.trim());
+            console.log('Share text copied to clipboard');
+            Toast.show({
+              type: 'info',
+              text1: 'Recall text copied',
+              text2: 'Paste it into your message after sharing',
+              position: 'bottom',
+              visibilityTime: 2500,
+            });
+          } catch (clipErr) {
+            console.warn('Failed to copy share text to clipboard:', clipErr);
+          }
+
+          // Share files only — no `message` field so iOS Messages reliably attaches all URLs
           const shareOptions: any = {
-            title: 'Share Recall',
-            message: shareMessage.trim(),
-            urls: validUris, // react-native-share supports multiple files on both platforms
+            title: 'Recall',
+            urls: validUris,
+            // intentionally no `message` — iOS Messages drops files when both are present
           };
           
           console.log('Share options:', {
             title: shareOptions.title,
-            messageLength: shareOptions.message.length,
             urlCount: shareOptions.urls.length,
             urls: shareOptions.urls,
           });

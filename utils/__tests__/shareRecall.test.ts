@@ -28,6 +28,13 @@ jest.mock('react-native-share', () => {
 });
 
 // ---------------------------------------------------------------------------
+// expo-clipboard mock
+// ---------------------------------------------------------------------------
+jest.mock('expo-clipboard', () => ({
+  setStringAsync: jest.fn().mockResolvedValue(undefined),
+}));
+
+// ---------------------------------------------------------------------------
 // expo-file-system/legacy mock
 // ---------------------------------------------------------------------------
 const mockDownloadAsync = jest.fn();
@@ -79,6 +86,8 @@ jest.mock('@/utils/supabase', () => ({
 // Retrieve the hoisted spy from the mocked module
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mockShareOpen: jest.Mock = require('react-native-share').default.open;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const mockClipboardSet: jest.Mock = require('expo-clipboard').setStringAsync;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -142,10 +151,16 @@ describe('shareRecall', () => {
     // downloadAsync called 3 times (once per DB image)
     expect(mockDownloadAsync).toHaveBeenCalledTimes(3);
 
-    // Share.open called with urls of length 3
+    // Share.open called with urls of length 3 and NO message field
     expect(mockShareOpen).toHaveBeenCalledTimes(1);
     const shareCall = mockShareOpen.mock.calls[0][0];
     expect(shareCall.urls).toHaveLength(3);
+    expect(shareCall.message).toBeUndefined();
+
+    // Clipboard should have received the share text
+    expect(mockClipboardSet).toHaveBeenCalledTimes(1);
+    expect(typeof mockClipboardSet.mock.calls[0][0]).toBe('string');
+    expect(mockClipboardSet.mock.calls[0][0].length).toBeGreaterThan(0);
   });
 
   it('Test 2: currentImageIndex=2 → user-selected URL moved to position 0', async () => {
@@ -170,6 +185,10 @@ describe('shareRecall', () => {
     expect(mockShareOpen).toHaveBeenCalledTimes(1);
     const shareCall = mockShareOpen.mock.calls[0][0];
     expect(shareCall.urls).toHaveLength(3);
+    expect(shareCall.message).toBeUndefined();
+
+    // Clipboard should have been called with the share text
+    expect(mockClipboardSet).toHaveBeenCalledTimes(1);
 
     // The download order reflects the reordered array: img3 first, then img1, img2.
     // downloadAsync is called in the order of imagesToShare, so call[0] is img3.
@@ -194,6 +213,10 @@ describe('shareRecall', () => {
     expect(mockShareOpen).toHaveBeenCalledTimes(1);
     const shareCall = mockShareOpen.mock.calls[0][0];
     expect(shareCall.urls).toHaveLength(2);
+    expect(shareCall.message).toBeUndefined();
+
+    // Clipboard should have been called with the share text
+    expect(mockClipboardSet).toHaveBeenCalledTimes(1);
   });
 
   it('Test 4: DB empty + in-memory empty → Share.open NOT called with urls', async () => {
@@ -212,6 +235,11 @@ describe('shareRecall', () => {
     if (mockShareOpen.mock.calls.length > 0) {
       const shareCall = mockShareOpen.mock.calls[0][0];
       expect(shareCall.urls).toBeUndefined();
+      // Text-only path: message IS passed directly (no clipboard copy needed)
+      expect(typeof shareCall.message).toBe('string');
     }
+
+    // Clipboard must NOT be called on the text-only path
+    expect(mockClipboardSet).not.toHaveBeenCalled();
   });
 });
