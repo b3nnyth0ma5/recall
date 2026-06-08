@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { debounce } from '@/utils/debounce';
-import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, FlatList, Platform, ViewToken } from 'react-native';
 import { Image } from 'expo-image';
 import { cdnVariant } from '@/utils/cdnVariant';
 import { colors } from '@/styles/commonStyles';
@@ -36,6 +36,9 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
   const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const flatListRef = useRef<FlatList<Category>>(null);
+  const viewableItemsRef = useRef<Set<number>>(new Set());
 
   const loadAllUserCategories = useCallback(async () => {
     if (!userId) {
@@ -101,11 +104,6 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
     const channelName = `realtime:${userId}:recollection_categories:${Math.random().toString(36).slice(2, 8)}`;
     console.log('[CategoryCarousel] Setting up real-time subscription for categories, channel:', channelName);
 
-    const debouncedRefresh = debounce(() => {
-      console.log('[CategoryCarousel] Real-time category change detected — reloading');
-      loadAllUserCategories();
-    }, 300);
-
     // Subscribe to changes in recollection_categories table
     const channel = supabase
       .channel(channelName)
@@ -117,19 +115,107 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
           table: 'recollection_categories',
           filter: `user_id=eq.${userId}`,
         },
-        debouncedRefresh,
+        (payload: any) => {
+          const eventType = payload.eventType ?? payload.type;
+
+          if (eventType === 'UPDATE') {
+            const updated = payload.new as Partial<Category> & { id: string };
+            if (!updated?.id) {
+              console.log('[CategoryCarousel] Real-time UPDATE missing id, reloading');
+              loadAllUserCategories();
+              return;
+            }
+
+            setCategories(prev => {
+              const index = prev.findIndex(c => c.id === updated.id);
+              if (index === -1) {
+                // Unknown category — reload to pick it up
+                loadAllUserCategories();
+                return prev;
+              }
+
+              const prevCategory = prev[index];
+              const newLastMatchAt = updated.last_match_at !== undefined
+                ? updated.last_match_at
+                : prevCategory.last_match_at;
+
+              // Detect whether last_match_at actually changed / became newer
+              const prevMatchAt = prevCategory.last_match_at;
+              const matchAtChanged =
+                newLastMatchAt !== null &&
+                (prevMatchAt === null ||
+                  new Date(newLastMatchAt) > new Date(prevMatchAt));
+
+              const merged: Category = {
+                ...prevCategory,
+                ...(updated.last_match_at !== undefined && { last_match_at: updated.last_match_at }),
+                ...(updated.last_viewed_at !== undefined && { last_viewed_at: updated.last_viewed_at }),
+                ...(updated.category_name !== undefined && { category_name: updated.category_name }),
+                ...(updated.icon_cdn_url !== undefined && { icon_cdn_url: updated.icon_cdn_url }),
+              };
+
+              const next = [...prev];
+              next[index] = merged;
+
+              if (matchAtChanged) {
+                console.log('[CategoryCarousel] last_match_at updated for category:', updated.id, '— checking visibility');
+                setTimeout(() => {
+                  if (!viewableItemsRef.current.has(index)) {
+                    console.log('[CategoryCarousel] Category not visible, scrolling to index:', index);
+                    flatListRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: true });
+                  } else {
+                    console.log('[CategoryCarousel] Category already visible, no scroll needed');
+                  }
+                }, 300);
+              }
+
+              return next;
+            });
+          } else {
+            // INSERT or DELETE — reload
+            console.log('[CategoryCarousel] Real-time category change detected — reloading');
+            const debouncedRefresh = debounce(() => {
+              loadAllUserCategories();
+            }, 300);
+            debouncedRefresh();
+          }
+        },
       )
       .subscribe();
 
     return () => {
       console.log('[CategoryCarousel] Cleaning up real-time subscription');
-      debouncedRefresh.cancel();
       channel.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, [userId, loadAllUserCategories]);
 
+  // Stable viewability config and callback pair (must not change between renders)
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
+
+  const onViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      const newSet = new Set<number>();
+      viewableItems.forEach(item => {
+        if (item.index !== null && item.index !== undefined) {
+          newSet.add(item.index);
+        }
+      });
+      viewableItemsRef.current = newSet;
+    },
+    [],
+  );
+
+  const viewabilityConfigCallbackPairs = useRef([
+    { viewabilityConfig, onViewableItemsChanged },
+  ]);
+
+  const handleScrollToIndexFailed = useCallback(() => {
+    // No-op: FlatList sometimes fires this for offscreen indices
+  }, []);
+
   const handleCategoryPress = (category: Category) => {
+    console.log('User tapped category:', category.id, category.category_name);
     // Haptic feedback
     if (Platform.OS !== 'web') {
       try {
@@ -144,6 +230,7 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
   };
 
   const handleCreatePress = () => {
+    console.log('User tapped Create Category button');
     // Haptic feedback
     if (Platform.OS !== 'web') {
       try {
@@ -184,87 +271,96 @@ export function CategoryCarousel({ onCategorySelect, selectedCategoryId, userId,
     );
   }
 
+  const createButton = (
+    <Pressable
+      onPress={handleCreatePress}
+      style={[styles.categoryItem, styles.categoryItemFirst]}
+    >
+      <View style={styles.categoryImageWrapper}>
+        <View style={[styles.categoryImageContainer, styles.createCategoryContainer]}>
+          {/* Transparent background with plus icon in primary color */}
+          <View style={styles.createCategoryBackground}>
+            <IconSymbol 
+              name="plus" 
+              size={32} 
+              color={colors.primary} 
+            />
+          </View>
+        </View>
+      </View>
+      <Text style={styles.categoryName} numberOfLines={1}>
+        New Category
+      </Text>
+    </Pressable>
+  );
+
+  const renderCategory = ({ item: category }: { item: Category }) => {
+    const isSelected = selectedCategoryId === category.id;
+    const hasUnseen = !!category.last_match_at && (
+      !category.last_viewed_at ||
+      new Date(category.last_match_at) > new Date(category.last_viewed_at)
+    );
+    
+    return (
+      <Pressable
+        key={category.id}
+        onPress={() => handleCategoryPress(category)}
+        style={styles.categoryItem}
+      >
+        <View style={styles.categoryImageWrapper}>
+          <View
+            style={[
+              styles.categoryImageContainer,
+              isSelected && styles.categoryImageContainerSelected,
+            ]}
+          >
+            {category.icon_cdn_url ? (
+              // cdnVariant 'thumbnail' requires the variant in Cloudflare Images dashboard.
+              // If absent, cdnVariant is a no-op — still benefits from expo-image caching.
+              <Image
+                source={{ uri: cdnVariant(category.icon_cdn_url, 'thumbnail') as string }}
+                style={styles.categoryImage}
+                contentFit="cover"
+                transition={150}
+                cachePolicy="memory-disk"
+              />
+            ) : (
+              <View style={styles.categoryPlaceholder}>
+                <Text style={styles.categoryPlaceholderText}>
+                  {category.category_name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </View>
+          {hasUnseen && <View testID={`unseen-dot-${category.id}`} style={styles.unseenDot} />}
+        </View>
+        <Text
+          style={[
+            styles.categoryName,
+            isSelected && styles.categoryNameSelected,
+          ]}
+          numberOfLines={1}
+        >
+          {category.category_name}
+        </Text>
+      </Pressable>
+    );
+  };
+
   return (
     <View style={styles.container}>
-      <ScrollView
+      <FlatList
+        ref={flatListRef}
+        data={categories}
+        keyExtractor={item => item.id}
+        renderItem={renderCategory}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
-      >
-        <Pressable
-          onPress={handleCreatePress}
-          style={[styles.categoryItem, styles.categoryItemFirst]}
-        >
-          <View style={styles.categoryImageWrapper}>
-            <View style={[styles.categoryImageContainer, styles.createCategoryContainer]}>
-              {/* Transparent background with plus icon in primary color */}
-              <View style={styles.createCategoryBackground}>
-                <IconSymbol 
-                  name="plus" 
-                  size={32} 
-                  color={colors.primary} 
-                />
-              </View>
-            </View>
-          </View>
-          <Text style={styles.categoryName} numberOfLines={1}>
-            New Category
-          </Text>
-        </Pressable>
-
-        {categories.map((category) => {
-          const isSelected = selectedCategoryId === category.id;
-          const hasUnseen = !!category.last_match_at && (
-            !category.last_viewed_at ||
-            new Date(category.last_match_at) > new Date(category.last_viewed_at)
-          );
-          
-          return (
-            <Pressable
-              key={category.id}
-              onPress={() => handleCategoryPress(category)}
-              style={styles.categoryItem}
-            >
-              <View style={styles.categoryImageWrapper}>
-                <View
-                  style={[
-                    styles.categoryImageContainer,
-                    isSelected && styles.categoryImageContainerSelected,
-                  ]}
-                >
-                  {category.icon_cdn_url ? (
-                    // cdnVariant 'thumbnail' requires the variant in Cloudflare Images dashboard.
-                    // If absent, cdnVariant is a no-op — still benefits from expo-image caching.
-                    <Image
-                      source={{ uri: cdnVariant(category.icon_cdn_url, 'thumbnail') as string }}
-                      style={styles.categoryImage}
-                      contentFit="cover"
-                      transition={150}
-                      cachePolicy="memory-disk"
-                    />
-                  ) : (
-                    <View style={styles.categoryPlaceholder}>
-                      <Text style={styles.categoryPlaceholderText}>
-                        {category.category_name.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                {hasUnseen && <View style={styles.unseenDot} />}
-              </View>
-              <Text
-                style={[
-                  styles.categoryName,
-                  isSelected && styles.categoryNameSelected,
-                ]}
-                numberOfLines={1}
-              >
-                {category.category_name}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+        ListHeaderComponent={createButton}
+        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs.current}
+        onScrollToIndexFailed={handleScrollToIndexFailed}
+      />
     </View>
   );
 }

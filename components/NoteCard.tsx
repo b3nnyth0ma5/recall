@@ -584,7 +584,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
             )}
 
             {isMatching && (
-              <View style={styles.matchingPill} pointerEvents="none">
+              <View testID="matching-pill" style={styles.matchingPill} pointerEvents="none">
                 <ActivityIndicator size="small" color="#FFFFFF" style={styles.matchingPillSpinner} />
                 <Text style={styles.matchingPillText}>Matching categories…</Text>
               </View>
@@ -602,7 +602,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         >
           <View style={styles.cardContent}>
             {!hasMedia && isMatching && (
-              <View style={styles.matchingPillNoMedia} pointerEvents="none">
+              <View testID="matching-pill" style={styles.matchingPillNoMedia} pointerEvents="none">
                 <ActivityIndicator size="small" color="#FFFFFF" style={styles.matchingPillSpinner} />
                 <Text style={styles.matchingPillText}>Matching categories…</Text>
               </View>
