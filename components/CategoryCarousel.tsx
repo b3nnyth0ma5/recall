@@ -449,7 +449,7 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 10,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.appleRed,
     //borderWidth: 2,
     //borderColor: '#FFFFFF',
     zIndex: 2,
