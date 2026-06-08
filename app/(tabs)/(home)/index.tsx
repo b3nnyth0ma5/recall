@@ -399,6 +399,7 @@ export default function HomeScreen() {
       await refreshNotes();
 
       console.log('[handleCreateRecallFromCombined] Recall creation complete!');
+      closeCreatePanel();
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }

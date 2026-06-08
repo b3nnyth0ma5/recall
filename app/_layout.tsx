@@ -340,7 +340,7 @@ function RootLayoutNav() {
     const inSearch = seg0 === 'search';
     const inPersonRecalls = seg0 === 'person-recalls';
     const inPeopleWordCloud = seg0 === 'people-word-cloud';
-    return inHomeIndex || inCategoryViewer || inProfile || inSearch || inPersonRecalls || inPeopleWordCloud;
+    return inHomeIndex || inProfile || inSearch || inPeopleWordCloud;
   })();
 
   const activeRoute: 'home' | 'search' | 'profile' | null = (() => {
