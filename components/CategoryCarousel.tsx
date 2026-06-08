@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { debounce } from '@/utils/debounce';
 import { View, Text, StyleSheet, Pressable, FlatList, Platform, ViewToken } from 'react-native';
@@ -447,12 +446,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 4,
     right: 4,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#FF8A8A',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    width: 18,
+    height: 18,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    //borderWidth: 2,
+    //borderColor: '#FFFFFF',
     zIndex: 2,
   },
   createCategoryContainer: {
