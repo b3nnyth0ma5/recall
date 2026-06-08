@@ -444,6 +444,9 @@ export function useNotes() {
   // in-memory notes so NoteCard spinners react live without a full reload.
   // Use a unique channel name per mount to avoid the "cannot add postgres_changes
   // callbacks after subscribe()" crash under StrictMode / Fast Refresh.
+  // Safety timer map: noteId -> timeout handle. Fires category_matched_at if backend never stamps it.
+  const categoryMatchTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
   const categoryMatchingChannelRef = useRef<string>(
     `recalls:category_matching:${Math.random().toString(36).slice(2)}`
   );
@@ -466,10 +469,11 @@ export function useNotes() {
         (payload) => {
           const updated = payload.new as any;
           if (!updated?.id) return;
-          console.log('[useNotes] Realtime UPDATE on recall:', updated.id, '— category_matching_at:', updated.category_matching_at, 'category_matched_at:', updated.category_matched_at);
+          const noteId: string = updated.id;
+          console.log('[useNotes] Realtime UPDATE on recall:', noteId, '— category_matching_at:', updated.category_matching_at, 'category_matched_at:', updated.category_matched_at);
           setNotes(prev =>
             prev.map(note =>
-              note.id === updated.id
+              note.id === noteId
                 ? {
                     ...note,
                     ...(updated.category_matching_at !== undefined && { category_matching_at: updated.category_matching_at }),
@@ -479,6 +483,40 @@ export function useNotes() {
                 : note,
             ),
           );
+
+          // Safety timer logic
+          const matchingAt: string | null = updated.category_matching_at ?? null;
+          const matchedAt: string | null = updated.category_matched_at ?? null;
+
+          if (matchedAt) {
+            // Backend completed — cancel any pending safety timer
+            const existing = categoryMatchTimeoutsRef.current.get(noteId);
+            if (existing !== undefined) {
+              clearTimeout(existing);
+              categoryMatchTimeoutsRef.current.delete(noteId);
+              console.log('[useNotes] Safety timer cancelled (backend stamped category_matched_at) for', noteId);
+            }
+          } else if (matchingAt) {
+            // Matching started but not yet completed — arm a 5s safety timer
+            const existing = categoryMatchTimeoutsRef.current.get(noteId);
+            if (existing !== undefined) {
+              clearTimeout(existing);
+            }
+            const handle = setTimeout(async () => {
+              console.log('[useNotes] Safety timer force-stamping category_matched_at for', noteId);
+              categoryMatchTimeoutsRef.current.delete(noteId);
+              try {
+                await supabase
+                  .from('recalls')
+                  .update({ category_matched_at: new Date().toISOString() })
+                  .eq('id', noteId)
+                  .is('category_matched_at', null);
+              } catch (err) {
+                console.error('[useNotes] Safety timer stamp failed for', noteId, err);
+              }
+            }, 5000);
+            categoryMatchTimeoutsRef.current.set(noteId, handle);
+          }
         },
       )
       .subscribe();
@@ -487,6 +525,9 @@ export function useNotes() {
       console.log('[useNotes] Cleaning up realtime recall category matching subscription');
       channel.unsubscribe();
       supabase.removeChannel(channel);
+      // Clear all pending safety timers
+      categoryMatchTimeoutsRef.current.forEach(clearTimeout);
+      categoryMatchTimeoutsRef.current.clear();
     };
   }, [user?.id]);
 
@@ -1196,6 +1237,41 @@ export function useNotes() {
     }
   }, [user]);
 
+  /**
+   * Optimistically prepend a new note to local state so the card renders
+   * immediately after DB insert, before images/URLs are uploaded.
+   * The realtime INSERT subscription and subsequent refreshNotes() will
+   * reconcile the canonical version.
+   */
+  const addNoteOptimistic = useCallback((note: Partial<Note> & { id: string; user_id: string }) => {
+    console.log('[useNotes] addNoteOptimistic: prepending note', note.id);
+    setNotes(prev => {
+      const existing = prev.find(n => n.id === note.id);
+      const baseNote: Note = {
+        id: note.id,
+        user_id: note.user_id,
+        text: note.text ?? '',
+        created_at: note.created_at ?? new Date().toISOString(),
+        updated_at: note.updated_at ?? new Date().toISOString(),
+        latitude: note.latitude,
+        longitude: note.longitude,
+        location: note.location,
+        location_primary_type: note.location_primary_type,
+        images: [],
+        imageIds: [],
+        people: [],
+        documents: [],
+        category_matching_at: note.category_matching_at,
+        category_matched_at: note.category_matched_at,
+      };
+      if (existing) {
+        return prev.map(n => n.id === note.id ? { ...n, ...baseNote } : n);
+      }
+      // Prepend (newest first)
+      return [baseNote, ...prev];
+    });
+  }, []);
+
   return {
     notes,
     loading,
@@ -1215,6 +1291,7 @@ export function useNotes() {
     searchTimings,
     urlMetadataByRecallId,
     addNote,
+    addNoteOptimistic,
     updateNote,
     deleteNote,
     searchNotes,

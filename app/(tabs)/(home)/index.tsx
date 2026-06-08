@@ -20,7 +20,7 @@ import RecallHeader from '@/components/RecallHeader';
 import { Note } from '@/types/Note';
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata } = useNotesContext();
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata, addNoteOptimistic } = useNotesContext();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const listRef = useRef<FlatList<Note>>(null);
@@ -251,6 +251,14 @@ export default function HomeScreen() {
       console.log('[handleCreateRecallFromCombined] Recall created with ID:', recallData.id);
       setCreatingRecallId(recallData.id);
 
+      // Show the card and dismiss the panel immediately — background work continues
+      console.log('[handleCreateRecallFromCombined] Optimistic insert + early dismiss');
+      addNoteOptimistic(recallData);
+      closeCreatePanel();
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
       // Stage 2: Scraping URL (if text contains a URL)
       const urlsInText = extractUrls(data.text);
       if (urlsInText.length > 0) {
@@ -400,12 +408,6 @@ export default function HomeScreen() {
       console.log('[handleCreateRecallFromCombined] Step 3: Refreshing recalls list...');
       await refreshNotes();
 
-      console.log('[handleCreateRecallFromCombined] Recall creation complete!');
-      closeCreatePanel();
-      if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-      
       console.log('[handleCreateRecallFromCombined] Background processing (OCR, people finder, category matching) will run asynchronously');
       
     } catch (error) {

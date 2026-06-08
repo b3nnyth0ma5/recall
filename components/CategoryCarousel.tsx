@@ -444,14 +444,14 @@ const styles = StyleSheet.create({
   },
   unseenDot: {
     position: 'absolute',
-    top: 4,
+    top: 0,
     right: 4,
     width: 18,
     height: 18,
     borderRadius: 10,
     backgroundColor: colors.appleRed,
-    //borderWidth: 2,
-    //borderColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#000000',
     zIndex: 2,
   },
   createCategoryContainer: {

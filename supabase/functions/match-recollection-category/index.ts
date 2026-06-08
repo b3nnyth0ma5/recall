@@ -757,18 +757,54 @@ Deno.serve(async (req) => {
     console.log('Processing recall:', actualRecallId);
     console.log('Trigger type:', type || 'manual');
 
-    return await matchRecallAgainstCategories(
-      actualRecallId,
-      supabaseUrl,
-      supabaseServiceKey,
-      openaiApiKey,
-      corsHeaders,
-      startTime
-    );
+    // Create a separate supabase client for stamping (matchRecallAgainstCategories has its own internal client)
+    const stampClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    // Stamp category_matching_at = now(), category_matched_at = null at the START
+    try {
+      await stampClient.from('recalls').update({
+        category_matching_at: new Date().toISOString(),
+        category_matched_at: null, // reset so pill shows on re-match
+      }).eq('id', actualRecallId);
+      console.log('[match-recollection-category] Stamped category_matching_at for', actualRecallId);
+    } catch (err) {
+      console.error('[match-recollection-category] Failed to stamp category_matching_at:', err);
+      // Don't abort
+    }
+
+    try {
+      const response = await matchRecallAgainstCategories(
+        actualRecallId,
+        supabaseUrl,
+        supabaseServiceKey,
+        openaiApiKey,
+        corsHeaders,
+        startTime
+      );
+      return response;
+    } catch (err) {
+      console.error('[match-recollection-category] Unhandled error:', err);
+      return new Response(JSON.stringify({ error: 'Internal error', details: (err as any)?.message }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    } finally {
+      // ALWAYS stamp category_matched_at, regardless of outcome
+      try {
+        await stampClient.from('recalls').update({
+          category_matched_at: new Date().toISOString(),
+        }).eq('id', actualRecallId);
+        console.log('[match-recollection-category] Stamped category_matched_at for', actualRecallId);
+      } catch (err) {
+        console.error('[match-recollection-category] Failed to stamp category_matched_at:', err);
+      }
+    }
   } catch (error) {
     const processingTime = Date.now() - startTime;
     console.error('=== Error in Match Recollection Category Edge Function ===');
-    console.error('Error type:', error?.constructor?.name);
+    console.error('Error type:', (error as any)?.constructor?.name);
     console.error('Error message:', error instanceof Error ? error.message : 'Unknown error');
     console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     console.error('Processing time before error:', processingTime, 'ms');
