@@ -507,7 +507,7 @@ Analyze each category and provide your response in JSON format:
   ]
 }
 
-Only include categories with confidence >= 55. If no categories meet this threshold, return an empty matches array.`;
+Only include categories with confidence >= 40. If no categories meet this threshold, return an empty matches array.`;
 
   const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
