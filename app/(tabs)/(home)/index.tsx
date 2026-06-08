@@ -12,7 +12,7 @@ import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
 import { useCreateRecallUI } from '@/contexts/CreateRecallUIContext';
 import { useScrollToTop } from '@/contexts/ScrollToTopContext';
-import { supabase, uploadImageToDatabase, uploadDocumentToDatabase } from '@/utils/supabase';
+import { supabase, uploadImageToDatabase, uploadDocumentToDatabase, triggerRecallEmbedding } from '@/utils/supabase';
 import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 import { ZeroState } from '@/components/ZeroState';
 import { extractUrls, processRecallUrlsAndAwaitScrape } from '@/utils/urlProcessor';
@@ -258,6 +258,18 @@ export default function HomeScreen() {
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
+
+      // Fire-and-forget: generate the recall text embedding
+      // (the create flow has no DB trigger for this, unlike OCR/people-finder)
+      console.log('[handleCreateRecallFromCombined] Triggering recall embedding for:', recallData.id);
+      triggerRecallEmbedding(
+        recallData.id,
+        recallData.text ?? undefined,
+        recallData.location ?? undefined,
+        recallData.location_primary_type ?? undefined,
+      ).catch((err) => {
+        console.warn('[handleCreateRecallFromCombined] triggerRecallEmbedding failed:', err);
+      });
 
       // Stage 2: Scraping URL (if text contains a URL)
       const urlsInText = extractUrls(data.text);
