@@ -49,6 +49,7 @@ interface NoteCardProps {
   loading?: boolean;
   expectedImageCount?: number;
   scrollToImageIndex?: number;
+  processingStage?: string;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -71,7 +72,7 @@ const countNewlines = (text: string): number => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, onPeopleUpdated, loading = false, expectedImageCount, scrollToImageIndex }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, onPeopleUpdated, loading = false, expectedImageCount, scrollToImageIndex, processingStage }: NoteCardProps) {
   const { getUrlMetadataForRecall } = useNotesContext();
   const router = useRouter();
   const pathname = usePathname();
@@ -465,8 +466,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     (note.category_matched_at == null ||
       new Date(note.category_matching_at) > new Date(note.category_matched_at));
 
-  // Image-counter spinner is driven only by upload state, not by category matching.
-  const isCardProcessing = isUploadingImages;
+  // Image-counter spinner is driven by upload state or an active processing stage.
+  const isCardProcessing = isUploadingImages || !!processingStage;
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
@@ -567,7 +568,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                   />
                 )}
                 <Text style={styles.imageCounterText}>
-                  {displayMedia.length > 1 ? `${currentImageIndex + 1} / ${displayMedia.length}` : `1 / ${displayMedia.length}`}
+                  {processingStage ? processingStage : (displayMedia.length > 1 ? `${currentImageIndex + 1} / ${displayMedia.length}` : `1 / ${displayMedia.length}`)}
                 </Text>
               </View>
             )}
@@ -605,6 +606,12 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               <View testID="matching-pill" style={styles.matchingPillNoMedia} pointerEvents="none">
                 <ActivityIndicator size="small" color="#FFFFFF" style={styles.matchingPillSpinner} />
                 <Text style={styles.matchingPillText}>Matching categories…</Text>
+              </View>
+            )}
+            {!hasMedia && !!processingStage && (
+              <View style={styles.processingStageRow} pointerEvents="none">
+                <ActivityIndicator size="small" color="#FFFFFF" style={styles.matchingPillSpinner} />
+                <Text style={styles.matchingPillText}>{processingStage}</Text>
               </View>
             )}
             {!hasImages && hasPeople && (
@@ -729,6 +736,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     prevProps.loading === nextProps.loading &&
     prevProps.expectedImageCount === nextProps.expectedImageCount &&
     prevProps.scrollToImageIndex === nextProps.scrollToImageIndex &&
+    prevProps.processingStage === nextProps.processingStage &&
     prevProps.note.category_matching_at === nextProps.note.category_matching_at &&
     prevProps.note.category_matched_at === nextProps.note.category_matched_at
   );
@@ -987,6 +995,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+  processingStageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 6,
+    marginTop: 4,
+    marginLeft: 4,
+    marginBottom: 4,
   },
 
 });

@@ -30,6 +30,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [savingStage, setSavingStage] = useState<string>('');
+  const [creatingRecallId, setCreatingRecallId] = useState<string | null>(null);
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
   const [combinedAddSearchEnabled, setCombinedAddSearchEnabled] = useState(true);
   const [loadingPreferences, setLoadingPreferences] = useState(true);
@@ -248,6 +249,7 @@ export default function HomeScreen() {
       }
 
       console.log('[handleCreateRecallFromCombined] Recall created with ID:', recallData.id);
+      setCreatingRecallId(recallData.id);
 
       // Stage 2: Scraping URL (if text contains a URL)
       const urlsInText = extractUrls(data.text);
@@ -412,6 +414,7 @@ export default function HomeScreen() {
     } finally {
       setIsSaving(false);
       setSavingStage('');
+      setCreatingRecallId(null);
     }
   };
 
@@ -444,9 +447,10 @@ export default function HomeScreen() {
         onPeopleUpdated={(noteId) => refreshSingleNote(noteId)}
         loading={false}
         expectedImageCount={getExpectedImageCount(item.id)}
+        processingStage={creatingRecallId === item.id ? savingStage : undefined}
       />
     </View>
-  ), []);  // eslint-disable-line react-hooks/exhaustive-deps
+  ), [creatingRecallId, savingStage]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const ListHeaderComponent = (
     <View>
@@ -558,18 +562,6 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      <Modal
-        visible={isSaving}
-        transparent={true}
-        animationType="fade"
-      >
-        <View style={styles.deletionModalContainer}>
-          <View style={styles.deletionModalContent}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.deletionModalText}>{savingStage || 'Saving recall...'}</Text>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
