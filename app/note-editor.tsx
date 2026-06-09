@@ -1125,14 +1125,6 @@ export default function NoteEditorScreen() {
 
         // Trigger embedding regeneration for updated recall
         console.log('[NoteEditor] Triggering embedding regeneration for updated recall:', recallId);
-        // Initialise embedding jobs counter before invoking embedding function
-        supabase
-          .from('recalls')
-          .update({ pending_embedding_jobs: 1, embedding_jobs_initialized: true })
-          .eq('id', recallId)
-          .then(({ error: counterError }) => {
-            if (counterError) console.error('[NoteEditor] Failed to set pending_embedding_jobs:', counterError);
-          });
         setTimeout(() => {
           triggerRecallEmbedding(
             recallId,
@@ -1352,14 +1344,6 @@ export default function NoteEditorScreen() {
         });
       }
 
-      // Initialise embedding jobs counter before invoking embedding function
-      supabase
-        .from('recalls')
-        .update({ pending_embedding_jobs: 1, embedding_jobs_initialized: true })
-        .eq('id', recallId)
-        .then(({ error: counterError }) => {
-          if (counterError) console.error('[NoteEditor] Failed to set pending_embedding_jobs:', counterError);
-        });
       setTimeout(() => {
         triggerRecallEmbedding(
           recallId,

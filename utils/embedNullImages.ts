@@ -73,26 +73,6 @@ export async function embedNullImages(): Promise<{
     console.log(`📊 Found ${images.length} images to process`);
     console.log('---');
 
-    // Step 1b: Initialise pending_embedding_jobs counter per recall before kicking off the batch
-    const jobCountByRecall = new Map<string, number>();
-    for (const img of images as ImageToEmbed[]) {
-      const hasContent = (img.ocr_text && img.ocr_text.trim()) ||
-                         (img.image_explanation && img.image_explanation.trim());
-      if (hasContent && img.recall_id) {
-        jobCountByRecall.set(img.recall_id, (jobCountByRecall.get(img.recall_id) || 0) + 1);
-      }
-    }
-    for (const [recallId, jobCount] of jobCountByRecall.entries()) {
-      console.log(`Setting pending_embedding_jobs=${jobCount} for recall ${recallId}`);
-      supabase
-        .from('recalls')
-        .update({ pending_embedding_jobs: jobCount, embedding_jobs_initialized: true })
-        .eq('id', recallId)
-        .then(({ error: counterError }) => {
-          if (counterError) console.error(`Failed to set pending_embedding_jobs for recall ${recallId}:`, counterError);
-        });
-    }
-
     // Step 2: Process each image
     for (let i = 0; i < images.length; i++) {
       const image = images[i] as ImageToEmbed;
@@ -256,25 +236,6 @@ export async function embedNullImagesInBatches(batchSize: number = 10): Promise<
       }
 
       console.log(`Processing ${images.length} images in this batch`);
-
-      // Initialise pending_embedding_jobs counter per recall for this batch
-      const batchJobCountByRecall = new Map<string, number>();
-      for (const img of images as ImageToEmbed[]) {
-        const hasContent = (img.ocr_text && img.ocr_text.trim()) ||
-                           (img.image_explanation && img.image_explanation.trim());
-        if (hasContent && img.recall_id) {
-          batchJobCountByRecall.set(img.recall_id, (batchJobCountByRecall.get(img.recall_id) || 0) + 1);
-        }
-      }
-      for (const [recallId, jobCount] of batchJobCountByRecall.entries()) {
-        supabase
-          .from('recalls')
-          .update({ pending_embedding_jobs: jobCount, embedding_jobs_initialized: true })
-          .eq('id', recallId)
-          .then(({ error: counterError }) => {
-            if (counterError) console.error(`Failed to set pending_embedding_jobs for recall ${recallId}:`, counterError);
-          });
-      }
 
       // Process each image in the batch
       for (let i = 0; i < images.length; i++) {
