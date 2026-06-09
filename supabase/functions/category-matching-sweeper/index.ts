@@ -68,8 +68,9 @@ Deno.serve(async (req) => {
 
     const { data: recalls, error: fetchError } = await supabase
       .from('recalls')
-      .select('id, category_matching_at, category_matched_at')
+      .select('id, category_matching_at, category_matched_at, category_match_attempts')
       .is('category_matched_at', null)
+      .lt('category_match_attempts', 5)
       .or(`category_matching_at.is.null,category_matching_at.lt.${thirtySecondsAgo}`)
       .order('created_at', { ascending: true })
       .limit(batchSize);

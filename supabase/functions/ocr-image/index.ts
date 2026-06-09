@@ -366,27 +366,28 @@ Deno.serve(async (req) => {
 
     // Trigger category matching for this recall
     console.log('Triggering category matching for recall:', record.recall_id);
-    try {
-      const categoryMatchResponse = await fetch(`${supabaseUrl}/functions/v1/match-recollection-category`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`,
-        },
-        body: JSON.stringify({ recallId: record.recall_id }),
-      });
+    EdgeRuntime.waitUntil((async () => {
+      try {
+        const categoryMatchResponse = await fetch(`${supabaseUrl}/functions/v1/match-recollection-category`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ recallId: record.recall_id }),
+        });
 
-      if (categoryMatchResponse.ok) {
-        const categoryMatchData = await categoryMatchResponse.json();
-        console.log('Category matching triggered successfully:', categoryMatchData);
-      } else {
-        const errorText = await categoryMatchResponse.text();
-        console.error('Failed to trigger category matching:', errorText);
+        if (categoryMatchResponse.ok) {
+          const categoryMatchData = await categoryMatchResponse.json();
+          console.log('Category matching triggered successfully:', categoryMatchData);
+        } else {
+          const errorText = await categoryMatchResponse.text();
+          console.error('Failed to trigger category matching:', errorText);
+        }
+      } catch (categoryError) {
+        console.error('Exception while triggering category matching:', categoryError);
       }
-    } catch (categoryError) {
-      console.error('Exception while triggering category matching:', categoryError);
-      // Don't fail the OCR process if category matching fails
-    }
+    })());
 
     // ===== TRIGGER EMBEDDING GENERATION FOR THIS IMAGE =====
     // This happens at the end, after OCR processing is complete

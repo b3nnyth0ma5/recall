@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.ocr-image]
 verify_jwt = true
+
+[functions.embed-category]
+verify_jwt = false

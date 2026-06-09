@@ -361,15 +361,16 @@ Deno.serve(async (req) => {
 
     // ===== TRIGGER MATCH-RECOLLECTION-CATEGORY FIRE-AND-FORGET =====
     console.log('[embedding-document] Triggering match-recollection-category asynchronously');
-    fetch(`${supabaseUrl}/functions/v1/match-recollection-category`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseServiceKey}`,
-      },
-      body: JSON.stringify({ recallId: existingData.recall_id }),
-    })
-      .then(async (response) => {
+    EdgeRuntime.waitUntil((async () => {
+      try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/match-recollection-category`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ recallId: existingData.recall_id }),
+        });
         if (response.ok) {
           const data = await response.json();
           console.log('[embedding-document] match-recollection-category triggered successfully:', data);
@@ -377,10 +378,10 @@ Deno.serve(async (req) => {
           const errorText = await response.text();
           console.error('[embedding-document] Failed to trigger match-recollection-category:', errorText);
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error('[embedding-document] Exception while triggering match-recollection-category:', error);
-      });
+      }
+    })());
     console.log('[embedding-document] match-recollection-category triggered asynchronously');
 
     return new Response(

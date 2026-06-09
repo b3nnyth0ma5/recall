@@ -6,20 +6,14 @@ const corsHeaders = {
 };
 
 /**
- * Match Recollection Category Edge Function (Enhanced with Claude Analysis)
- * 
- * This function is triggered when a recall is created or updated.
- * It uses a two-step matching process similar to new-category-matching:
- * 1. Embedding-based similarity search (>= 0.20 threshold) to find candidate categories
- * 2. Claude API to identify which candidates are the closest matches
- * 
- * Process:
- * 1. Receives a recall ID (from database trigger or manual call)
- * 2. Fetches recall data including text, location, type, images (OCR + explanation), and persons
- * 3. Generates recall embedding if not exists
- * 4. Finds all categories with similarity >= 0.20 using embeddings (using category_name + category_search_description)
- * 5. Uses Claude to analyze and rank the candidate categories
- * 6. Updates recollections table with high-confidence matches (>= 60)
+ * Match Recollection Category Edge Function v52
+ *
+ * Changes vs previous version:
+ * - Only stamps category_matched_at on COMPLETED comparison (not on every exit)
+ * - Clears category_matching_at on EVERY exit path (success, error, skip)
+ * - Bounded retry: reads category_match_attempts; gives up at >= 5 via increment_category_match_attempts RPC
+ * - Reads stored category_embedding from recollection_categories; falls back to OpenAI only for NULL embeddings
+ *   (fires embed-category to cache the result for next time)
  */
 
 // Helper function to generate embedding using OpenAI with base64 encoding
@@ -48,8 +42,7 @@ async function generateEmbedding(text: string, openaiApiKey: string): Promise<nu
 
   const data = await response.json();
   const embeddingBase64 = data.data[0].embedding;
-  
-  // Decode base64 to get the actual embedding array
+
   const binaryString = atob(embeddingBase64);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
@@ -57,9 +50,8 @@ async function generateEmbedding(text: string, openaiApiKey: string): Promise<nu
   }
   const float32Array = new Float32Array(bytes.buffer);
   const embedding = Array.from(float32Array);
-  
+
   console.log('Decoded embedding array length:', embedding.length);
-  
   return embedding;
 }
 
@@ -91,20 +83,17 @@ function cosineSimilarity(vecA: number[], vecB: number[]): number {
     return 0;
   }
 
-  const similarity = dotProduct / (normA * normB);
-  return similarity;
+  return dotProduct / (normA * normB);
 }
 
 // Helper function to parse stored embeddings (handles both array and string formats)
 function parseStoredEmbedding(storedEmbedding: any): number[] | null {
   if (!storedEmbedding) return null;
 
-  // If already an array, return it
   if (Array.isArray(storedEmbedding)) {
     return storedEmbedding;
   }
 
-  // If it's a string, try to parse it
   if (typeof storedEmbedding === 'string') {
     try {
       const cleanStr = storedEmbedding.replace(/[\[\]]/g, '');
@@ -119,22 +108,17 @@ function parseStoredEmbedding(storedEmbedding: any): number[] | null {
   return null;
 }
 
-// Helper function to sanitize and truncate text for Claude
+// Helper function to sanitize and truncate text for OpenAI
 function sanitizeText(text: string, maxLength: number = 500): string {
   if (!text) return '';
-  
-  // Remove excessive whitespace and newlines
   let sanitized = text.replace(/\s+/g, ' ').trim();
-  
-  // Truncate if too long
   if (sanitized.length > maxLength) {
     sanitized = sanitized.substring(0, maxLength) + '...';
   }
-  
   return sanitized;
 }
 
-// Helper function to match a recall against all categories using embeddings + Claude
+// Helper function to match a recall against all categories using embeddings + OpenAI
 async function matchRecallAgainstCategories(
   recallId: string,
   supabaseUrl: string,
@@ -165,10 +149,7 @@ async function matchRecallAgainstCategories(
       details: recallError?.message
     }), {
       status: 404,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 
@@ -222,18 +203,17 @@ async function matchRecallAgainstCategories(
 
   // Step 4: Generate or fetch recall embedding
   let recallEmbedding: number[] | null = parseStoredEmbedding(recallData.recall_embedding);
-  
+
   if (!recallEmbedding && recallData.text) {
     console.log('Generating recall embedding from text...');
     try {
       recallEmbedding = await generateEmbedding(recallData.text, openaiApiKey);
-      
-      // Update the recall with the new embedding
+
       const { error: updateError } = await supabase
         .from('recalls')
         .update({ recall_embedding: recallEmbedding })
         .eq('id', recallId);
-      
+
       if (updateError) {
         console.error('Error updating recall embedding:', updateError);
       } else {
@@ -244,7 +224,6 @@ async function matchRecallAgainstCategories(
     }
   }
 
-  // Check if we have any embeddings to work with
   const imageEmbeddings = images
     .map(img => parseStoredEmbedding(img.recall_image_embedding))
     .filter(emb => emb !== null);
@@ -257,18 +236,15 @@ async function matchRecallAgainstCategories(
       recallId
     }), {
       status: 200,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 
-  // Step 5: Fetch all categories for this user
+  // Step 5: Fetch all categories for this user — including stored category_embedding
   console.log('Step 5: Fetching categories for user:', recallData.user_id);
   const { data: categoriesData, error: categoriesError } = await supabase
     .from('recollection_categories')
-    .select('id, category_name, category_search_description')
+    .select('id, category_name, category_search_description, category_embedding')
     .eq('user_id', recallData.user_id);
 
   if (categoriesError) {
@@ -278,10 +254,7 @@ async function matchRecallAgainstCategories(
       details: categoriesError.message
     }), {
       status: 500,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 
@@ -293,33 +266,68 @@ async function matchRecallAgainstCategories(
       recallId
     }), {
       status: 200,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 
   const categories = categoriesData;
   console.log(`Found ${categories.length} categories to match against`);
 
-  // Step 6: Generate embeddings for each category using category_name + category_search_description
-  console.log('Step 6: Generating category embeddings from category_name + category_search_description...');
+  // Step 6: Get or generate embeddings for each category
+  // Use stored category_embedding when available; fall back to OpenAI only for NULL embeddings
+  // and fire embed-category to cache the result for next time.
+  console.log('Step 6: Resolving category embeddings (stored first, OpenAI fallback for NULLs)...');
   const categoryEmbeddings = await Promise.all(
     categories.map(async (category) => {
       try {
-        // Combine category_name and category_search_description for embedding
+        // Try stored embedding first
+        const storedEmb = parseStoredEmbedding(category.category_embedding);
+        if (storedEmb && storedEmb.length > 0) {
+          console.log(`Using stored embedding for category: ${category.category_name} (length: ${storedEmb.length})`);
+          return {
+            categoryId: category.id,
+            categoryName: category.category_name,
+            categoryDescription: category.category_search_description,
+            embedding: storedEmb
+          };
+        }
+
+        // Fall back to generating via OpenAI
         const categoryName = category.category_name || '';
         const categoryDescription = category.category_search_description || '';
         const categoryText = `${categoryName}. ${categoryDescription}`.trim();
-        
+
         if (!categoryText.trim()) {
           console.log(`Category ${category.id} has empty name and description, skipping`);
           return null;
         }
-        console.log(`Generating embedding for category: ${category.category_name} with combined text`);
+
+        console.log(`Generating embedding for category: ${category.category_name} (no stored embedding)`);
         const embedding = await generateEmbedding(categoryText, openaiApiKey);
         console.log(`Generated embedding for ${category.category_name}, length: ${embedding.length}`);
+
+        // Fire embed-category to cache this embedding for future calls (fire-and-forget)
+        EdgeRuntime.waitUntil((async () => {
+          try {
+            const embedResp = await fetch(`${supabaseUrl}/functions/v1/embed-category`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({ category_id: category.id }),
+            });
+            if (embedResp.ok) {
+              console.log(`[match-recollection-category] embed-category cached for ${category.id}`);
+            } else {
+              const errText = await embedResp.text();
+              console.error(`[match-recollection-category] embed-category failed for ${category.id}:`, errText);
+            }
+          } catch (err) {
+            console.error(`[match-recollection-category] embed-category exception for ${category.id}:`, err);
+          }
+        })());
+
         return {
           categoryId: category.id,
           categoryName: category.category_name,
@@ -327,25 +335,22 @@ async function matchRecallAgainstCategories(
           embedding
         };
       } catch (error) {
-        console.error(`Error generating embedding for category ${category.id}:`, error);
+        console.error(`Error resolving embedding for category ${category.id}:`, error);
         return null;
       }
     })
   );
 
   const validCategoryEmbeddings = categoryEmbeddings.filter(ce => ce !== null);
-  console.log(`Generated ${validCategoryEmbeddings.length} category embeddings`);
+  console.log(`Resolved ${validCategoryEmbeddings.length} category embeddings`);
 
   if (validCategoryEmbeddings.length === 0) {
-    console.error('Failed to generate any category embeddings');
+    console.error('Failed to resolve any category embeddings');
     return new Response(JSON.stringify({
-      error: 'Failed to generate category embeddings'
+      error: 'Failed to resolve category embeddings'
     }), {
       status: 500,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 
@@ -355,7 +360,6 @@ async function matchRecallAgainstCategories(
     let maxSimilarity = 0;
     let matchSource = 'none';
 
-    // Compare with recall text embedding
     if (recallEmbedding) {
       const textSimilarity = cosineSimilarity(recallEmbedding, catEmbed.embedding);
       console.log(`Text similarity for ${catEmbed.categoryName}: ${textSimilarity.toFixed(4)}`);
@@ -365,7 +369,6 @@ async function matchRecallAgainstCategories(
       }
     }
 
-    // Compare with image embeddings
     for (let i = 0; i < imageEmbeddings.length; i++) {
       const imgEmbed = imageEmbeddings[i];
       if (imgEmbed) {
@@ -392,13 +395,12 @@ async function matchRecallAgainstCategories(
   // Step 8: Filter categories with similarity >= 0.20
   const SIMILARITY_THRESHOLD = 0.20;
   const candidateCategories = categoryScores.filter((cat) => cat.similarity >= SIMILARITY_THRESHOLD);
-  
+
   console.log(`Found ${candidateCategories.length} candidate categories with similarity >= ${SIMILARITY_THRESHOLD}`);
 
   if (candidateCategories.length === 0) {
     console.log('No categories matched with sufficient similarity (>= 0.20)');
-    
-    // Delete any existing recollections for this recall
+
     const { error: deleteError } = await supabase
       .from('recollections')
       .delete()
@@ -418,10 +420,7 @@ async function matchRecallAgainstCategories(
       processingTimeMs: processingTime
     }), {
       status: 200,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 
@@ -431,17 +430,16 @@ async function matchRecallAgainstCategories(
   // Step 9: Use OpenAI to analyze and rank the candidate categories
   console.log('Step 9: Using OpenAI to analyze and rank candidate categories...');
 
-  // Prepare recall context for Claude
   let recallContext = `Text: ${sanitizeText(recallData.text || 'No text', 300)}`;
-  
+
   if (recallData.location) {
     recallContext += `\nLocation: ${sanitizeText(recallData.location, 100)}`;
   }
-  
+
   if (recallData.location_primary_type) {
     recallContext += `\nLocation Type: ${recallData.location_primary_type}`;
   }
-  
+
   if (images.length > 0) {
     const imageInfo = images
       .map((img: any, idx: number) => {
@@ -452,27 +450,26 @@ async function matchRecallAgainstCategories(
       })
       .filter((info: string | null) => info !== null)
       .join('\n');
-    
+
     if (imageInfo) {
       recallContext += `\n${imageInfo}`;
     }
   }
-  
+
   if (personNames.length > 0) {
     recallContext += `\nPeople: ${personNames.join(', ')}`;
   }
 
-  // Prepare category context for Claude
   const categoriesContext = candidateCategories.map((cat, idx) => {
     const categoryId = `CATEGORY_${idx + 1}`;
     const similarity = Math.round(cat.similarity * 100);
-    
+
     let contextText = `${categoryId} (${similarity}% similarity):\nName: ${cat.categoryName}`;
-    
+
     if (cat.categoryDescription) {
       contextText += `\nDescription: ${sanitizeText(cat.categoryDescription, 200)}`;
     }
-    
+
     return {
       categoryId,
       actualId: cat.categoryId,
@@ -528,9 +525,7 @@ Only include categories with confidence >= 40. If no categories meet this thresh
   if (!openaiResponse.ok) {
     const errorText = await openaiResponse.text();
     console.error('OpenAI API error:', errorText);
-    
-    // Fallback: use all candidates with similarity-based scores
-    console.log('Using fallback matching based on similarity scores');
+
     const fallbackMatches = candidateCategories
       .map((cat) => ({
         categoryId: cat.categoryId,
@@ -538,27 +533,24 @@ Only include categories with confidence >= 40. If no categories meet this thresh
         similarity: cat.similarity
       }))
       .filter((m) => m.confidence >= 60);
-    
+
     if (fallbackMatches.length > 0) {
       await updateRecollections(supabase, recallId, recallData.user_id, fallbackMatches);
     } else {
       await deleteRecollections(supabase, recallId, recallData.user_id);
     }
-    
+
     const processingTime = Date.now() - startTime;
     return new Response(JSON.stringify({
       success: true,
       recallId,
       matchCount: fallbackMatches.length,
       matches: fallbackMatches,
-      message: 'Used fallback matching due to Claude error',
+      message: 'Used fallback matching due to OpenAI error',
       processingTimeMs: processingTime
     }), {
       status: 200,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 
@@ -575,24 +567,22 @@ Only include categories with confidence >= 40. If no categories meet this thresh
     } catch (parseError) {
       console.error('Failed to parse OpenAI response:', parseError);
       console.error('OpenAI response content:', openaiContent);
-      
-      // Fallback: use all candidates with similarity-based scores
+
       matches = candidateCategories.map((cat, idx) => ({
         categoryId: `CATEGORY_${idx + 1}`,
         confidence: Math.round(cat.similarity * 100),
         reason: 'Fallback: based on embedding similarity'
       })).filter((m) => m.confidence >= 60);
-      
+
       console.log(`Using fallback: ${matches.length} matches based on similarity`);
     }
   }
 
-  // Map category IDs back to actual category IDs
   const finalMatches = matches
     .map((match) => {
       const categoryContext = categoriesContext.find((c) => c.categoryId === match.categoryId);
       if (!categoryContext) return null;
-      
+
       return {
         categoryId: categoryContext.actualId,
         confidence: match.confidence,
@@ -631,10 +621,7 @@ Only include categories with confidence >= 40. If no categories meet this thresh
     processingTimeMs: processingTime
   }), {
     status: 200,
-    headers: {
-      ...corsHeaders,
-      'Content-Type': 'application/json'
-    }
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
   });
 }
 
@@ -645,7 +632,6 @@ async function updateRecollections(
   userId: string,
   matches: Array<{ categoryId: string; confidence: number }>
 ): Promise<void> {
-  // Delete existing recollections for this recall
   console.log('Deleting existing recollections for recall:', recallId);
   const { error: deleteError } = await supabase
     .from('recollections')
@@ -658,7 +644,6 @@ async function updateRecollections(
     throw new Error(`Failed to delete existing recollections: ${deleteError.message}`);
   }
 
-  // Insert new recollections
   const recollectionsToInsert = matches.map((match) => ({
     recall_id: recallId,
     user_id: userId,
@@ -697,19 +682,35 @@ async function deleteRecollections(
 Deno.serve(async (req) => {
   const startTime = Date.now();
 
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  let actualRecallId: string | null = null;
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  // Helper to clear category_matching_at on every exit
+  async function clearMatchingAt() {
+    if (!actualRecallId || !supabaseUrl || !supabaseServiceKey) return;
+    try {
+      const client = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      });
+      await client.from('recalls').update({
+        category_matching_at: null,
+      }).eq('id', actualRecallId);
+      console.log('[match-recollection-category] Cleared category_matching_at for', actualRecallId);
+    } catch (err) {
+      console.error('[match-recollection-category] Failed to clear category_matching_at:', err);
+    }
+  }
+
   try {
-    console.log('=== Match Recollection Category Edge Function Started ===');
+    console.log('=== Match Recollection Category Edge Function Started (v52) ===');
     console.log('Request method:', req.method);
     console.log('Timestamp:', new Date().toISOString());
 
-    // Get environment variables
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
 
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
@@ -718,96 +719,112 @@ Deno.serve(async (req) => {
         error: 'Server configuration error'
       }), {
         status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Parse request body
     const body = await req.json();
     console.log('Request body:', body);
 
-    const { recallId, recall_id, type, table, record, old_record } = body;
+    const { recallId, recall_id, type, record } = body;
 
-    // Support both direct recallId/recall_id and webhook payload formats
-    let actualRecallId = recallId || recall_id;
-    
-    // Handle webhook payload from database trigger
-    if (!actualRecallId && record?.id) {
-      actualRecallId = record.id;
-      console.log('Extracted recallId from webhook record:', actualRecallId);
+    let resolvedRecallId = recallId || recall_id;
+
+    if (!resolvedRecallId && record?.id) {
+      resolvedRecallId = record.id;
+      console.log('Extracted recallId from webhook record:', resolvedRecallId);
     }
 
-    // Validate input
-    if (!actualRecallId) {
+    if (!resolvedRecallId) {
       console.error('Missing required parameter: recallId');
       return new Response(JSON.stringify({
         error: 'recallId is required'
       }), {
         status: 400,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
+    actualRecallId = resolvedRecallId;
     console.log('Processing recall:', actualRecallId);
     console.log('Trigger type:', type || 'manual');
 
-    // Create a separate supabase client for stamping (matchRecallAgainstCategories has its own internal client)
     const stampClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // 30-second in-flight idempotency guard:
-    // If category_matching_at was set within the last 30s AND category_matched_at is still null,
-    // another invocation is already in progress — skip to avoid duplicate work.
-    try {
-      const { data: recallRow } = await stampClient
-        .from('recalls')
-        .select('category_matching_at, category_matched_at')
-        .eq('id', actualRecallId)
-        .single();
+    // Check bounded retry: give up if category_match_attempts >= 5
+    const { data: recallRow, error: recallRowErr } = await stampClient
+      .from('recalls')
+      .select('category_matching_at, category_matched_at, category_match_attempts')
+      .eq('id', actualRecallId)
+      .single();
 
-      if (recallRow?.category_matching_at && !recallRow?.category_matched_at) {
-        const matchingAt = new Date(recallRow.category_matching_at).getTime();
-        const ageMs = Date.now() - matchingAt;
-        if (ageMs < 30_000) {
-          console.log(`[match-recollection-category] In-flight guard: another invocation started ${ageMs}ms ago, skipping`);
-          return new Response(JSON.stringify({
-            success: true,
-            skipped: true,
-            reason: 'in-flight idempotency guard',
-            recallId: actualRecallId,
-            ageMs,
-          }), {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
-      }
-    } catch (guardErr) {
-      console.error('[match-recollection-category] Failed to check idempotency guard:', guardErr);
-      // Don't abort — proceed with matching
+    if (recallRowErr) {
+      console.error('[match-recollection-category] Failed to fetch recall row:', recallRowErr);
     }
 
-    // Stamp category_matching_at = now(), category_matched_at = null at the START
+    const attempts = recallRow?.category_match_attempts ?? 0;
+    console.log(`[match-recollection-category] category_match_attempts: ${attempts}`);
+
+    if (attempts >= 5) {
+      console.log(`[match-recollection-category] Giving up: attempts=${attempts} >= 5 for recall ${actualRecallId}`);
+      await clearMatchingAt();
+      return new Response(JSON.stringify({
+        success: true,
+        skipped: true,
+        reason: 'max_attempts_reached',
+        attempts,
+        recallId: actualRecallId,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 30-second in-flight idempotency guard
+    if (recallRow?.category_matching_at && !recallRow?.category_matched_at) {
+      const matchingAt = new Date(recallRow.category_matching_at).getTime();
+      const ageMs = Date.now() - matchingAt;
+      if (ageMs < 30_000) {
+        console.log(`[match-recollection-category] In-flight guard: another invocation started ${ageMs}ms ago, skipping`);
+        return new Response(JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: 'in-flight idempotency guard',
+          recallId: actualRecallId,
+          ageMs,
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // Stamp category_matching_at = now() and increment attempt counter atomically
     try {
       await stampClient.from('recalls').update({
         category_matching_at: new Date().toISOString(),
-        category_matched_at: null, // reset so pill shows on re-match
+        category_matched_at: null,
       }).eq('id', actualRecallId);
       console.log('[match-recollection-category] Stamped category_matching_at for', actualRecallId);
+
+      // Increment attempt counter via RPC
+      const { data: newCount, error: rpcErr } = await stampClient.rpc('increment_category_match_attempts', {
+        p_recall_id: actualRecallId,
+      });
+      if (rpcErr) {
+        console.error('[match-recollection-category] Failed to increment attempts:', rpcErr);
+      } else {
+        console.log(`[match-recollection-category] Incremented attempts to ${newCount}`);
+      }
     } catch (err) {
       console.error('[match-recollection-category] Failed to stamp category_matching_at:', err);
-      // Don't abort
     }
 
+    let matchResponse: Response;
     try {
-      const response = await matchRecallAgainstCategories(
+      matchResponse = await matchRecallAgainstCategories(
         actualRecallId,
         supabaseUrl,
         supabaseServiceKey,
@@ -815,24 +832,34 @@ Deno.serve(async (req) => {
         corsHeaders,
         startTime
       );
-      return response;
     } catch (err) {
-      console.error('[match-recollection-category] Unhandled error:', err);
+      console.error('[match-recollection-category] Unhandled error in matchRecallAgainstCategories:', err);
+      await clearMatchingAt();
       return new Response(JSON.stringify({ error: 'Internal error', details: (err as any)?.message }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
-    } finally {
-      // ALWAYS stamp category_matched_at, regardless of outcome
+    }
+
+    // Only stamp category_matched_at on a completed (non-error) comparison
+    const responseStatus = matchResponse.status;
+    if (responseStatus >= 200 && responseStatus < 300) {
       try {
         await stampClient.from('recalls').update({
           category_matched_at: new Date().toISOString(),
+          category_matching_at: null,
         }).eq('id', actualRecallId);
         console.log('[match-recollection-category] Stamped category_matched_at for', actualRecallId);
       } catch (err) {
         console.error('[match-recollection-category] Failed to stamp category_matched_at:', err);
       }
+    } else {
+      // Error response — clear matching_at but do NOT stamp matched_at
+      await clearMatchingAt();
     }
+
+    return matchResponse;
+
   } catch (error) {
     const processingTime = Date.now() - startTime;
     console.error('=== Error in Match Recollection Category Edge Function ===');
@@ -841,16 +868,15 @@ Deno.serve(async (req) => {
     console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     console.error('Processing time before error:', processingTime, 'ms');
 
+    await clearMatchingAt();
+
     return new Response(JSON.stringify({
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error',
       processingTimeMs: processingTime
     }), {
       status: 500,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 });
