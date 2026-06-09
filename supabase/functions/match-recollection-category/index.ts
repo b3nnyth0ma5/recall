@@ -729,10 +729,10 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log('Request body:', body);
 
-    const { recallId, type, table, record, old_record } = body;
+    const { recallId, recall_id, type, table, record, old_record } = body;
 
-    // Support both direct recallId and webhook payload formats
-    let actualRecallId = recallId;
+    // Support both direct recallId/recall_id and webhook payload formats
+    let actualRecallId = recallId || recall_id;
     
     // Handle webhook payload from database trigger
     if (!actualRecallId && record?.id) {
@@ -761,6 +761,38 @@ Deno.serve(async (req) => {
     const stampClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
+
+    // 30-second in-flight idempotency guard:
+    // If category_matching_at was set within the last 30s AND category_matched_at is still null,
+    // another invocation is already in progress — skip to avoid duplicate work.
+    try {
+      const { data: recallRow } = await stampClient
+        .from('recalls')
+        .select('category_matching_at, category_matched_at')
+        .eq('id', actualRecallId)
+        .single();
+
+      if (recallRow?.category_matching_at && !recallRow?.category_matched_at) {
+        const matchingAt = new Date(recallRow.category_matching_at).getTime();
+        const ageMs = Date.now() - matchingAt;
+        if (ageMs < 30_000) {
+          console.log(`[match-recollection-category] In-flight guard: another invocation started ${ageMs}ms ago, skipping`);
+          return new Response(JSON.stringify({
+            success: true,
+            skipped: true,
+            reason: 'in-flight idempotency guard',
+            recallId: actualRecallId,
+            ageMs,
+          }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      }
+    } catch (guardErr) {
+      console.error('[match-recollection-category] Failed to check idempotency guard:', guardErr);
+      // Don't abort — proceed with matching
+    }
 
     // Stamp category_matching_at = now(), category_matched_at = null at the START
     try {

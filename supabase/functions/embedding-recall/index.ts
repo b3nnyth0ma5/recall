@@ -397,6 +397,30 @@ Deno.serve(async (req) => {
     
     console.log('=== People-finder function triggered asynchronously ===');
 
+    // ===== TRIGGER MATCH-RECOLLECTION-CATEGORY FIRE-AND-FORGET =====
+    console.log('=== Triggering match-recollection-category asynchronously ===');
+    fetch(`${supabaseUrl}/functions/v1/match-recollection-category`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({ recallId: recall_id }),
+    })
+      .then(async (response) => {
+        if (response.ok) {
+          const data = await response.json();
+          console.log('match-recollection-category triggered successfully:', data);
+        } else {
+          const errorText = await response.text();
+          console.error('Failed to trigger match-recollection-category:', errorText);
+        }
+      })
+      .catch((error) => {
+        console.error('Exception while triggering match-recollection-category:', error);
+      });
+    console.log('=== match-recollection-category triggered asynchronously ===');
+
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -407,6 +431,7 @@ Deno.serve(async (req) => {
         tokenUsage: openaiData.usage,
         wasReplaced: !!(recallData.recall_embedding && recallData.recall_embedding.length > 0),
         peopleFinderTriggered: true,
+        categoryMatchingTriggered: true,
       }),
       { 
         status: 200, 

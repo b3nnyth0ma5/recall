@@ -1,1 +1,22 @@
 project_id = "cesmsdnblkdjkskmiqib"
+
+[functions.embedding-recall]
+verify_jwt = false
+
+[functions.embedding-image]
+verify_jwt = false
+
+[functions.embedding-url]
+verify_jwt = false
+
+[functions.embedding-document]
+verify_jwt = false
+
+[functions.match-recollection-category]
+verify_jwt = false
+
+[functions.category-matching-sweeper]
+verify_jwt = false
+
+[functions.ocr-image]
+verify_jwt = true

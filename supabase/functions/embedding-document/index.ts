@@ -359,6 +359,30 @@ Deno.serve(async (req) => {
 
     console.log('[embedding-document] people-finder triggered asynchronously');
 
+    // ===== TRIGGER MATCH-RECOLLECTION-CATEGORY FIRE-AND-FORGET =====
+    console.log('[embedding-document] Triggering match-recollection-category asynchronously');
+    fetch(`${supabaseUrl}/functions/v1/match-recollection-category`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({ recallId: existingData.recall_id }),
+    })
+      .then(async (response) => {
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[embedding-document] match-recollection-category triggered successfully:', data);
+        } else {
+          const errorText = await response.text();
+          console.error('[embedding-document] Failed to trigger match-recollection-category:', errorText);
+        }
+      })
+      .catch((error) => {
+        console.error('[embedding-document] Exception while triggering match-recollection-category:', error);
+      });
+    console.log('[embedding-document] match-recollection-category triggered asynchronously');
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -368,6 +392,7 @@ Deno.serve(async (req) => {
         inputTextLength: inputText.length,
         tokenUsage: openaiData.usage,
         peopleFinderTriggered: true,
+        categoryMatchingTriggered: true,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
