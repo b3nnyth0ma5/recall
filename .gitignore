@@ -30,8 +30,8 @@ yarn-error.*
 
 .natively/
 
-android/
-ios/
+/android/
+/ios/
 
 netlify.toml
 .netlify/
@@ -47,3 +47,5 @@ build/
 yarn.lock
 next-env.d.ts
 
+android/
+ios/
