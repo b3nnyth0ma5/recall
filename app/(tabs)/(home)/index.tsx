@@ -8,8 +8,8 @@ import { NoteCard } from '@/components/NoteCard';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
-import { CategoryCarousel } from '@/components/CategoryCarousel';
 import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
+import { SearchTopBar } from '@/components/SearchTopBar';
 import { useCreateRecallUI } from '@/contexts/CreateRecallUIContext';
 import { useScrollToTop } from '@/contexts/ScrollToTopContext';
 import { supabase, uploadImageToDatabase, uploadDocumentToDatabase, triggerRecallEmbedding } from '@/utils/supabase';
@@ -466,6 +466,14 @@ export default function HomeScreen() {
     </View>
   ), [creatingRecallId, savingStage]);  // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleSearchBarPress = () => {
+    console.log('[HomeScreen] Launcher search bar pressed — navigating to search');
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    router.push('/search');
+  };
+
   const ListHeaderComponent = (
     <View>
       <View style={[styles.customHeader, { paddingTop: insets.top }]}>
@@ -477,14 +485,11 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {user && (
-        <View style={styles.categoryCarouselContainer}>
-          <CategoryCarousel
-            userId={user.id}
-            refreshTrigger={categoryRefreshTrigger}
-          />
-        </View>
-      )}
+      <SearchTopBar
+        mode="launcher"
+        onPress={handleSearchBarPress}
+        withSafeArea={false}
+      />
     </View>
   );
 
@@ -617,10 +622,7 @@ const styles = StyleSheet.create({
   scrollContentWithCombined: {
     paddingBottom: 200,
   },
-  categoryCarouselContainer: {
-    paddingTop: 3.89,
-    paddingBottom: 3.89,
-  },
+
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',

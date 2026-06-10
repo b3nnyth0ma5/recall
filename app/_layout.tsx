@@ -425,7 +425,14 @@ function RootLayoutNav() {
         <Stack.Screen name="email-confirmed" options={{ headerShown: false }} />
         <Stack.Screen name="verify-email" options={{ headerShown: false }} />
         <Stack.Screen name="note-editor" options={{ headerShown: false }} />
-        <Stack.Screen name="search" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="search"
+          options={{
+            headerShown: false,
+            animation: 'fade',
+            animationDuration: 200,
+          }}
+        />
         <Stack.Screen name="location-search" options={{ headerShown: false }} />
         <Stack.Screen name="map-view" options={{ headerShown: false }} />
         <Stack.Screen name="shared-recall" options={{ headerShown: false }} />

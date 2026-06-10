@@ -14,6 +14,8 @@ import {
   Image,
   Animated as RNAnimated,
 } from 'react-native';
+import RecallHeader from '@/components/RecallHeader';
+import { SearchTopBar } from '@/components/SearchTopBar';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
@@ -652,43 +654,19 @@ export default function SearchScreen() {
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={[styles.searchContainer, { paddingTop: insets.top + 8 }]}>
-        <View style={styles.searchBar}>
-          <IconSymbol 
-            name="magnifyingglass" 
-            size={20} 
-            color={colors.textSecondary} 
-          />
-          <TextInput
-            ref={searchInputRef}
-            style={styles.searchInput}
-            placeholder="What do you want to search for?"
-            placeholderTextColor={colors.textTertiary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onSubmitEditing={handleSearch}
-            returnKeyType="search"
-            blurOnSubmit={false}
-            multiline={false}
-            autoCorrect={false}
-            autoCapitalize="none"
-            keyboardType="default"
-          />
-          {searchQuery.length > 0 && (
-            <Pressable 
-              onPress={handleClear} 
-              style={styles.clearButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <IconSymbol 
-                name="xmark.circle.fill" 
-                size={20} 
-                color={colors.textSecondary} 
-              />
-            </Pressable>
-          )}
-        </View>
+      <View style={[styles.recallHeaderContainer, { paddingTop: insets.top }]}>
+        <RecallHeader />
       </View>
+
+      <SearchTopBar
+        ref={searchInputRef}
+        mode="interactive"
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        onSubmitEditing={handleSearch}
+        onClear={handleClear}
+        withSafeArea={false}
+      />
 
       {/* FlatList: data = filteredNotes when searching, empty otherwise.
           All non-results content (history, empty states, answer, progress) lives in ListHeaderComponent. */}
@@ -858,6 +836,7 @@ export default function SearchScreen() {
         initialNumToRender={8}
         removeClippedSubviews
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         onScrollToIndexFailed={() => {}}
       />
 
@@ -886,33 +865,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  recallHeaderContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 4,
+    backgroundColor: colors.background,
+  },
   headerButton: {
     padding: 8 * 1.15,
     marginHorizontal: 8,
-  },
-  searchContainer: {
-    padding: 16,
-    backgroundColor: colors.background,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    paddingHorizontal: 16 * 1.15,
-    paddingVertical: 12,
-    gap: 12,
-    minHeight: 48 * 1.1,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: colors.text,
-    minHeight: 24,
-    paddingVertical: 0,
-  },
-  clearButton: {
-    padding: 4 * 1.15,
   },
   searchIconButton: {
     padding: 4 * 1.15,
