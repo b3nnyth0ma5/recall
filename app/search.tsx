@@ -928,8 +928,8 @@ const styles = StyleSheet.create({
   },
   pillsRowWrapper: {
     marginHorizontal: -16,
-    marginTop: 4,
-    marginBottom: 12,
+    marginTop: 0,
+    marginBottom: 8,
   },
   historyContainer: {
     width: '100%',
@@ -1154,7 +1154,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   shareAnswerButton: {
-    padding: 8,
+    padding: 10,
     borderRadius: 20,
     backgroundColor: 'rgba(255, 107, 122, 0.15)',
     justifyContent: 'center',
@@ -1181,14 +1181,14 @@ const styles = StyleSheet.create({
   answerSourceBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     backgroundColor: 'rgba(255, 107, 122, 0.15)',
     paddingVertical: 6 * 1.15,
     paddingHorizontal: 12 * 1.15,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
-    zIndex: 100,
-    elevation: 100,
+    zIndex: 300,
+    elevation: 200,
   },
   answerSourceText: {
     fontSize: 12,
