@@ -33,6 +33,7 @@ import { useNotes } from '@/hooks/useNotes';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { peopleCache, imageCache, CostCalculator } from '@/utils/memoryCache';
 import { debounce } from '@/utils/debounce';
+import { PillsRow } from '@/components/PillsRow';
 
 type SortOrder = 'Newest' | 'Oldest' | 'Best match';
 
@@ -962,51 +963,15 @@ export default function PersonRecallsScreen() {
 
               {/* Sort pills */}
               <View style={styles.sortContainer}>
-                <Pressable
-                  style={[styles.sortButton, sortOrder === 'Newest' && styles.sortButtonActive]}
-                  onPress={() => {
-                    console.log('[PersonRecalls] User tapped "Newest" sort button');
-                    if (Platform.OS !== 'web') {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                <PillsRow
+                  items={['Newest', 'Oldest', 'Best match']}
+                  selected={sortOrder}
+                  onSelect={(label) => {
+                    if (label) {
+                      setSortOrder(label as SortOrder);
                     }
-                    setSortOrder('Newest');
                   }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={[styles.sortButtonText, sortOrder === 'Newest' && styles.sortButtonTextActive]}>
-                    Newest
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.sortButton, sortOrder === 'Oldest' && styles.sortButtonActive]}
-                  onPress={() => {
-                    console.log('[PersonRecalls] User tapped "Oldest" sort button');
-                    if (Platform.OS !== 'web') {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }
-                    setSortOrder('Oldest');
-                  }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={[styles.sortButtonText, sortOrder === 'Oldest' && styles.sortButtonTextActive]}>
-                    Oldest
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.sortButton, sortOrder === 'Best match' && styles.sortButtonActive]}
-                  onPress={() => {
-                    console.log('[PersonRecalls] User tapped "Best match" sort button');
-                    if (Platform.OS !== 'web') {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }
-                    setSortOrder('Best match');
-                  }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={[styles.sortButtonText, sortOrder === 'Best match' && styles.sortButtonTextActive]}>
-                    Best match
-                  </Text>
-                </Pressable>
+                />
               </View>
 
               {/* Count row */}
@@ -1115,32 +1080,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // ─── Sort pills (mirrors sortContainer / sortButton) ─────────────────────────
+  // ─── Sort pills wrapper ───────────────────────────────────────────────────────
   sortContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 8,
-  },
-  sortButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: colors.cardBackground,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  sortButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  sortButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  sortButtonTextActive: {
-    color: '#FFFFFF',
+    marginHorizontal: -16,
   },
   // ─── Count row (mirrors countEllipsisRow / recallCount) ──────────────────────
   countEllipsisRow: {

@@ -18,9 +18,19 @@ import { ZeroState } from '@/components/ZeroState';
 import { extractUrls, processRecallUrlsAndAwaitScrape } from '@/utils/urlProcessor';
 import RecallHeader from '@/components/RecallHeader';
 import { Note } from '@/types/Note';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  useAnimatedScrollHandler,
+  interpolate,
+  Extrapolation,
+} from 'react-native-reanimated';
 
 // Module-level scroll-position cache — survives component remounts within a session.
 let homeScrollOffset = 0;
+
+// Threshold (px) at which the launcher search bar fades out and FloatingNavBar takes over.
+const SCROLL_THRESHOLD = 36;
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata, addNoteOptimistic } = useNotesContext();
@@ -43,6 +53,12 @@ export default function HomeScreen() {
   const pendingImageUploadsRef = useRef<Map<string, number>>(new Map());
   const { isCreatePanelOpen, closeCreatePanel } = useCreateRecallUI();
   const { registerScrollToTop } = useScrollToTop();
+
+  // Scroll-driven animation shared value
+  const scrollY = useSharedValue(0);
+  // Track whether content has been laid out so we can restore scroll position
+  const contentSizeKnownRef = useRef(false);
+  const pendingScrollRestoreRef = useRef(false);
 
   useEffect(() => {
     const unregister = registerScrollToTop('home', () => {
@@ -116,6 +132,13 @@ export default function HomeScreen() {
     previousNotesCountRef.current = notes.length;
   }, [notes.length]);
 
+  const restoreScrollPosition = useCallback(() => {
+    if (homeScrollOffset > 0 && listRef.current) {
+      console.log('[HomeScreen iOS] Restoring scroll position to:', homeScrollOffset);
+      listRef.current.scrollToOffset({ offset: homeScrollOffset, animated: false });
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       console.log('[useFocusEffect] Home screen focused');
@@ -132,19 +155,36 @@ export default function HomeScreen() {
         isFirstFocusRef.current = false;
       }
 
-      if (homeScrollOffset > 0 && listRef.current) {
-        setTimeout(() => {
-          requestAnimationFrame(() => {
-            listRef.current?.scrollToOffset({ offset: homeScrollOffset, animated: false });
-          });
-        }, 250);
+      if (homeScrollOffset > 0) {
+        if (contentSizeKnownRef.current) {
+          // Content already laid out — restore immediately
+          setTimeout(() => {
+            requestAnimationFrame(() => {
+              restoreScrollPosition();
+            });
+          }, 50);
+        } else {
+          // Content not yet laid out — flag for restoration on contentSizeChange
+          pendingScrollRestoreRef.current = true;
+        }
       }
 
       return () => {
         console.log('[useFocusEffect] Home screen unfocused');
       };
-    }, [notes.length, refreshNotes])
+    }, [notes.length, refreshNotes, restoreScrollPosition])
   );
+
+  const handleContentSizeChange = useCallback(() => {
+    contentSizeKnownRef.current = true;
+    if (pendingScrollRestoreRef.current && homeScrollOffset > 0) {
+      pendingScrollRestoreRef.current = false;
+      console.log('[HomeScreen iOS] onContentSizeChange — restoring deferred scroll to:', homeScrollOffset);
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToOffset({ offset: homeScrollOffset, animated: false });
+      });
+    }
+  }, []);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -186,6 +226,13 @@ export default function HomeScreen() {
     }
   }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
 
+  // Reanimated scroll handler — updates scrollY on the UI thread
+  const animatedScrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
   const handleScroll = useCallback((event: any) => {
     try {
       const { contentOffset } = event.nativeEvent;
@@ -196,6 +243,23 @@ export default function HomeScreen() {
       console.error('Error handling scroll:', error);
     }
   }, []);
+
+  // Animated style for the launcher search bar — fades/slides up as user scrolls
+  const launcherSearchBarStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      scrollY.value,
+      [0, SCROLL_THRESHOLD],
+      [1, 0],
+      Extrapolation.CLAMP,
+    );
+    const translateY = interpolate(
+      scrollY.value,
+      [0, SCROLL_THRESHOLD],
+      [0, -12],
+      Extrapolation.CLAMP,
+    );
+    return { opacity, transform: [{ translateY }] };
+  });
 
   const handleCreateRecallFromCombined = async (
     data: {
@@ -487,11 +551,13 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      <SearchTopBar
-        mode="launcher"
-        onPress={handleSearchBarPress}
-        withSafeArea={false}
-      />
+      <Animated.View style={launcherSearchBarStyle}>
+        <SearchTopBar
+          mode="launcher"
+          onPress={handleSearchBarPress}
+          withSafeArea={false}
+        />
+      </Animated.View>
     </View>
   );
 
@@ -534,7 +600,7 @@ export default function HomeScreen() {
         }}
       />
 
-      <FlatList
+      <Animated.FlatList
         ref={listRef}
         data={listData}
         keyExtractor={(item) => item.id}
@@ -552,8 +618,12 @@ export default function HomeScreen() {
         }
         onEndReached={!loading ? handleEndReached : undefined}
         onEndReachedThreshold={0.5}
-        onScroll={handleScroll}
+        onScroll={(event: any) => {
+          animatedScrollHandler(event);
+          handleScroll(event);
+        }}
         scrollEventThrottle={16}
+        onContentSizeChange={handleContentSizeChange}
         windowSize={10}
         maxToRenderPerBatch={6}
         initialNumToRender={8}
@@ -598,7 +668,8 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     backgroundColor: colors.background,
     paddingHorizontal: 20,
-    paddingBottom: 12,
+    // Task 1: align gap between header bottom and search box top with search screen (8px)
+    paddingBottom: 8,
   },
   headerTitle: {
     fontSize: 22,

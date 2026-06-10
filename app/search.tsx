@@ -34,6 +34,7 @@ import { donateSearch } from 'recall-native';
 import { Share as ShareIcon } from 'lucide-react-native';
 import { Swipeable, RectButton } from 'react-native-gesture-handler';
 import { supabase, deleteSearchHistory, cleanupCloudflareCollage } from '@/utils/supabase';
+import { PillsRow } from '@/components/PillsRow';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -65,10 +66,13 @@ export default function SearchScreen() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isProgressExpanded, setIsProgressExpanded] = useState(true);
+  const [selectedPill, setSelectedPill] = useState<string | null>(null);
   const searchInputRef = useRef<TextInput>(null);
   const hasAutoSearchedRef = useRef(false);
 
   const shouldShowSearchTime = user?.email === 'benny_thomas21@yahoo.co.in';
+
+  const SEARCH_PILLS = ['Cookbooks', 'Elly', 'Cocktail Ideas', 'Rated restaurants', 'Travel', 'Health', 'Home ideas', 'Documents', 'Alcohol', 'Sri Lanka'];
 
   const filteredNotes = useMemo(() => {
     // If a search has completed, ONLY show notes flagged as used_for_answer.
@@ -695,6 +699,16 @@ export default function SearchScreen() {
         renderItem={renderSearchResultItem}
         ListHeaderComponent={
           <View style={styles.listHeaderContainer}>
+            <View style={styles.pillsRowWrapper}>
+              <PillsRow
+                items={SEARCH_PILLS}
+                selected={selectedPill}
+                onSelect={(label) => {
+                  console.log('[SearchScreen] Pill toggled:', label, '| was selected:', selectedPill);
+                  setSelectedPill(selectedPill === label ? null : label);
+                }}
+              />
+            </View>
             {showHistory && isLoadingHistory ? (
               renderHistorySkeletons
             ) : showHistory && searchHistory.length > 0 ? (
@@ -911,6 +925,11 @@ const styles = StyleSheet.create({
   },
   listHeaderContainer: {
     width: '100%',
+  },
+  pillsRowWrapper: {
+    marginHorizontal: -16,
+    marginTop: 4,
+    marginBottom: 12,
   },
   historyContainer: {
     width: '100%',
