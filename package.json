@@ -87,7 +87,6 @@
     "react-router-dom": "^7.10.1",
     "react-slick": "^0.31.0",
     "react-timeago": "^8.3.0",
-    "recall-native": "file:./modules/recall-native",
     "slick-carousel": "^1.8.1",
     "swiper": "^12.0.3",
     "workbox-cli": "^7.4.0",
@@ -121,6 +120,11 @@
   "pnpm": {
     "overrides": {
       "@supabase/supabase-js": "2.105.0"
+    }
+  },
+  "expo": {
+    "autolinking": {
+      "nativeModulesDir": "./modules"
     }
   }
 }
