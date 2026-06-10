@@ -516,7 +516,7 @@ export default function SearchScreen() {
   const renderHistorySkeletons = useMemo(() => {
     return (
       <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
-        <Text style={styles.historyTitle}>Recent Searches</Text>
+        <Text style={styles.historyTitle}>Recent</Text>
         {[...Array(3)].map((_, index) => (
           <View key={`history-skeleton-${index}`} style={styles.historyItemSkeleton}>
             <View style={styles.historyIconPlaceholder} />
@@ -699,7 +699,7 @@ export default function SearchScreen() {
               renderHistorySkeletons
             ) : showHistory && searchHistory.length > 0 ? (
               <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
-                <Text style={styles.historyTitle}>Recent Searches</Text>
+                <Text style={styles.historyTitle}>Recent</Text>
                 {searchHistory.map((item) => (
                   <Swipeable
                     key={item.id}
@@ -916,7 +916,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   historyTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: 'bold',
     color: colors.text,
     marginBottom: 12,
