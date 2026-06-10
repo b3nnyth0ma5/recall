@@ -19,12 +19,15 @@ import { extractUrls, processRecallUrlsAndAwaitScrape } from '@/utils/urlProcess
 import RecallHeader from '@/components/RecallHeader';
 import { Note } from '@/types/Note';
 
+// Module-level scroll-position cache — survives component remounts within a session.
+let homeScrollOffset = 0;
+
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata, addNoteOptimistic } = useNotesContext();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const listRef = useRef<FlatList<Note>>(null);
-  const scrollPositionRef = useRef(0);
+  const scrollPositionRef = useRef(homeScrollOffset);
   const previousNotesCountRef = useRef(notes.length);
   const isFirstFocusRef = useRef(true);
   const { user } = useAuth();
@@ -43,8 +46,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     const unregister = registerScrollToTop('home', () => {
-      console.log('[HomeScreen iOS] Scroll to top triggered');
-      listRef.current?.scrollToOffset({ offset: 0, animated: true });
+      console.log('[HomeScreen iOS] Home tab tapped — preserving scroll position (no-op)');
     });
     return unregister;
   }, [registerScrollToTop]);
@@ -117,27 +119,27 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       console.log('[useFocusEffect] Home screen focused');
-      
-      if (isFirstFocusRef.current) {
+
+      if (!isFirstFocusRef.current) {
+        const currentCount = notes.length;
+        const previousCount = previousNotesCountRef.current;
+
+        if (currentCount > previousCount) {
+          console.log('[useFocusEffect] New recall detected, auto-refreshing...');
+          refreshNotes();
+        }
+      } else {
         isFirstFocusRef.current = false;
-        return;
       }
-      
-      const currentCount = notes.length;
-      const previousCount = previousNotesCountRef.current;
-      
-      if (currentCount > previousCount) {
-        console.log('[useFocusEffect] New recall detected, auto-refreshing...');
-        refreshNotes();
-      }
-      
-      const savedScrollPosition = scrollPositionRef.current;
-      if (savedScrollPosition > 0 && listRef.current) {
+
+      if (homeScrollOffset > 0 && listRef.current) {
         setTimeout(() => {
-          listRef.current?.scrollToOffset({ offset: savedScrollPosition, animated: false });
-        }, 100);
+          requestAnimationFrame(() => {
+            listRef.current?.scrollToOffset({ offset: homeScrollOffset, animated: false });
+          });
+        }, 250);
       }
-      
+
       return () => {
         console.log('[useFocusEffect] Home screen unfocused');
       };
@@ -188,6 +190,7 @@ export default function HomeScreen() {
     try {
       const { contentOffset } = event.nativeEvent;
       scrollPositionRef.current = contentOffset.y;
+      homeScrollOffset = contentOffset.y;
       Keyboard.dismiss();
     } catch (error) {
       console.error('Error handling scroll:', error);

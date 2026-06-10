@@ -461,11 +461,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const hasImages = displayImages && displayImages.length > 0;
   const hasMedia = displayMedia.length > 0;
 
-  const isMatching =
-    note.category_matching_at != null &&
-    (note.category_matched_at == null ||
-      new Date(note.category_matching_at) > new Date(note.category_matched_at));
-
   // Image-counter spinner is driven by upload state or an active processing stage.
   const isCardProcessing = isUploadingImages || !!processingStage;
 
@@ -584,12 +579,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               </View>
             )}
 
-            {isMatching && (
-              <View testID="matching-pill" style={styles.matchingPill} pointerEvents="none">
-                <ActivityIndicator size="small" color="#FFFFFF" style={styles.matchingPillSpinner} />
-                <Text style={styles.matchingPillText}>Matching categories…</Text>
-              </View>
-            )}
           </View>
         )}
 
@@ -602,12 +591,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           containerStyle={styles.swipeableContainer}
         >
           <View style={styles.cardContent}>
-            {!hasMedia && isMatching && (
-              <View testID="matching-pill" style={styles.matchingPillNoMedia} pointerEvents="none">
-                <ActivityIndicator size="small" color="#FFFFFF" style={styles.matchingPillSpinner} />
-                <Text style={styles.matchingPillText}>Matching categories…</Text>
-              </View>
-            )}
             {!hasMedia && !!processingStage && (
               <View style={styles.processingStageRow} pointerEvents="none">
                 <ActivityIndicator size="small" color="#FFFFFF" style={styles.matchingPillSpinner} />
@@ -736,9 +719,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     prevProps.loading === nextProps.loading &&
     prevProps.expectedImageCount === nextProps.expectedImageCount &&
     prevProps.scrollToImageIndex === nextProps.scrollToImageIndex &&
-    prevProps.processingStage === nextProps.processingStage &&
-    prevProps.note.category_matching_at === nextProps.note.category_matching_at &&
-    prevProps.note.category_matched_at === nextProps.note.category_matched_at
+    prevProps.processingStage === nextProps.processingStage
   );
 });
 
@@ -962,20 +943,7 @@ const styles = StyleSheet.create({
   deletePill: {
     backgroundColor: colors.error,
   },
-  matchingPill: {
-    position: 'absolute',
-    top: 8,
-    left: CARD_PADDING + IMAGE_SPACING,
-    zIndex: 3,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    gap: 6,
-  },
-  matchingPillNoMedia: {
+  processingStageRow: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
@@ -995,19 +963,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#FFFFFF',
     fontWeight: '600',
-  },
-  processingStageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    gap: 6,
-    marginTop: 4,
-    marginLeft: 4,
-    marginBottom: 4,
   },
 
 });

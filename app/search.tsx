@@ -652,11 +652,29 @@ export default function SearchScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ headerShown: false }} />
-
-      <View style={[styles.recallHeaderContainer, { paddingTop: insets.top }]}>
-        <RecallHeader />
-      </View>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerBackVisible: false,
+          headerLeft: () => (
+            <Pressable
+              onPress={() => {
+                console.log('[Search] Back chevron tapped');
+                handleBack();
+              }}
+              style={styles.headerButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="chevron.left" size={24} color={colors.text} />
+            </Pressable>
+          ),
+          headerTitle: () => <RecallHeader />,
+          headerTitleAlign: 'center',
+          headerStyle: { backgroundColor: colors.background },
+          headerShadowVisible: false,
+          headerTintColor: colors.text,
+        }}
+      />
 
       <SearchTopBar
         ref={searchInputRef}
@@ -863,11 +881,6 @@ export default function SearchScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
-  },
-  recallHeaderContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 4,
     backgroundColor: colors.background,
   },
   headerButton: {

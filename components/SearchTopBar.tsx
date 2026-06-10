@@ -25,7 +25,7 @@ interface LauncherProps {
 
 type SearchTopBarProps = InteractiveProps | LauncherProps;
 
-const PLACEHOLDER = 'What do you want to search for?';
+const PLACEHOLDER = 'Search with Recall AI';
 
 export const SearchTopBar = forwardRef<TextInput, SearchTopBarProps>(
   (props, ref) => {
