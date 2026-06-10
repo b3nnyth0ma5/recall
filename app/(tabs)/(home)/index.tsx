@@ -21,7 +21,6 @@ import { Note } from '@/types/Note';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  useAnimatedScrollHandler,
   withTiming,
   interpolate,
   Extrapolation,
@@ -227,23 +226,19 @@ export default function HomeScreen() {
     }
   }, [hasMore, isLoadingMore, loading, loadMoreNotes]);
 
-  // Reanimated scroll handler — updates scrollY on the UI thread
-  const animatedScrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      scrollY.value = event.contentOffset.y;
-    },
-  });
-
+  // JS-thread scroll handler — updates the module-level cache, dismisses keyboard,
+  // and updates scrollY directly (shared values are writable from JS thread).
   const handleScroll = useCallback((event: any) => {
     try {
-      const { contentOffset } = event.nativeEvent;
-      scrollPositionRef.current = contentOffset.y;
-      homeScrollOffset = contentOffset.y;
+      const y = event.nativeEvent.contentOffset.y;
+      scrollPositionRef.current = y;
+      homeScrollOffset = y;
+      scrollY.value = y;
       Keyboard.dismiss();
     } catch (error) {
       console.error('Error handling scroll:', error);
     }
-  }, []);
+  }, [scrollY]);
 
   // Animated style for the launcher search bar — fades/slides up as user scrolls
   const launcherSearchBarStyle = useAnimatedStyle(() => {
@@ -620,10 +615,7 @@ export default function HomeScreen() {
         }
         onEndReached={!loading ? handleEndReached : undefined}
         onEndReachedThreshold={0.5}
-        onScroll={(event: any) => {
-          animatedScrollHandler(event);
-          handleScroll(event);
-        }}
+        onScroll={handleScroll}
         scrollEventThrottle={16}
         onContentSizeChange={handleContentSizeChange}
         windowSize={10}

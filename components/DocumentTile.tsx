@@ -19,6 +19,7 @@ interface DocumentTileProps {
   onPress?: () => void;
   onRemove?: () => void;
   showRemoveButton?: boolean;
+  showProcessingBadge?: boolean;
 }
 
 export function DocumentTile({
@@ -28,6 +29,7 @@ export function DocumentTile({
   onPress,
   onRemove,
   showRemoveButton = false,
+  showProcessingBadge = false,
 }: DocumentTileProps) {
   const thumbnailUrl = document.local_thumbnail_uri ?? document.thumbnail_url;
   const extension = getFileExtension(document.file_name);
@@ -96,7 +98,7 @@ export function DocumentTile({
       )}
 
       {/* Processing badge (server-side text extraction in progress) */}
-      {isProcessing && !isUploading && !isPending && (
+      {showProcessingBadge && isProcessing && !isUploading && !isPending && (
         <View style={styles.processingBadge}>
           <ActivityIndicator size="small" color="#FFFFFF" />
           <Text style={styles.processingLabel}>
