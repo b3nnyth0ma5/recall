@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform, TextInput, ActivityIndicator, Modal } from 'react-native';
 import RecallHeader from '@/components/RecallHeader';
 
 import { Stack, useRouter } from 'expo-router';
@@ -23,6 +23,8 @@ export default function ProfileScreen() {
   const { registerScrollToTop } = useScrollToTop();
   
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
 
   useEffect(() => {
     const unregister = registerScrollToTop('profile', () => {
@@ -56,6 +58,7 @@ export default function ProfileScreen() {
   };
 
   const handleSignOut = async () => {
+    console.log('[Profile] Sign out button pressed');
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -68,6 +71,7 @@ export default function ProfileScreen() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
+            console.log('[Profile] Sign out confirmed');
             try {
               await signOut();
               router.replace('/login');
@@ -81,6 +85,47 @@ export default function ProfileScreen() {
     );
   };
 
+  const dismissDeleteModal = () => {
+    console.log('[Profile] Delete confirmation modal dismissed');
+    setDeleteConfirmInput('');
+    setShowDeleteConfirmModal(false);
+  };
+
+  const performAccountDeletion = async () => {
+    console.log('[Profile] Typed confirmation accepted, initiating account deletion');
+    setDeleteConfirmInput('');
+    setShowDeleteConfirmModal(false);
+    try {
+      setDeleteLoading(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        Alert.alert('Error', 'No active session found. Please sign in again.');
+        return;
+      }
+      const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl as string;
+      console.log('[Profile] Calling delete-account edge function');
+      const response = await fetch(`${supabaseUrl}/functions/v1/delete-account`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to delete account');
+      }
+      console.log('[Profile] Account deleted successfully, signing out');
+      await signOut();
+      router.replace('/login');
+    } catch (error) {
+      console.error('[Profile] Delete account error:', error);
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account. Please try again.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const handleDeleteAccount = () => {
     console.log('[Profile] Delete account button pressed');
     Alert.alert(
@@ -91,50 +136,9 @@ export default function ProfileScreen() {
         {
           text: 'Delete Account',
           style: 'destructive',
-          onPress: async () => {
-            Alert.alert(
-              'Are you sure?',
-              'All your data will be permanently deleted. You cannot recover it.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Delete Account',
-                  style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      setDeleteLoading(true);
-                      console.log('[Profile] Initiating account deletion');
-                      const { data: { session } } = await supabase.auth.getSession();
-                      if (!session) {
-                        Alert.alert('Error', 'No active session found. Please sign in again.');
-                        return;
-                      }
-                      const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl as string;
-                      console.log('[Profile] Calling delete-account edge function');
-                      const response = await fetch(`${supabaseUrl}/functions/v1/delete-account`, {
-                        method: 'POST',
-                        headers: {
-                          'Authorization': `Bearer ${session.access_token}`,
-                          'Content-Type': 'application/json',
-                        },
-                      });
-                      const result = await response.json();
-                      if (!response.ok) {
-                        throw new Error(result.error || 'Failed to delete account');
-                      }
-                      console.log('[Profile] Account deleted successfully, signing out');
-                      await signOut();
-                      router.replace('/login');
-                    } catch (error) {
-                      console.error('[Profile] Delete account error:', error);
-                      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account. Please try again.');
-                    } finally {
-                      setDeleteLoading(false);
-                    }
-                  },
-                },
-              ]
-            );
+          onPress: () => {
+            console.log('[Profile] First delete alert confirmed, opening typed confirmation modal');
+            setShowDeleteConfirmModal(true);
           },
         },
       ]
@@ -142,6 +146,7 @@ export default function ProfileScreen() {
   };
 
   const handleChangePassword = async () => {
+    console.log('[Profile] Change password button pressed');
     // Validation
     if (!currentPassword || !newPassword || !confirmNewPassword) {
       Alert.alert('Error', 'Please fill in all password fields');
@@ -217,6 +222,8 @@ export default function ProfileScreen() {
     }
   };
 
+  const deleteButtonEnabled = deleteConfirmInput.trim() === 'DELETE';
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -283,6 +290,7 @@ export default function ProfileScreen() {
           {/* Change Password Toggle */}
           <Pressable 
             onPress={() => {
+              console.log('[Profile] Change password toggle pressed');
               setShowPasswordChange(!showPasswordChange);
               if (showPasswordChange) {
                 // Reset form when closing
@@ -424,6 +432,72 @@ export default function ProfileScreen() {
           <Text style={styles.appInfoText}>© 2024 Recall. All rights reserved.</Text>
         </View>
       </ScrollView>
+
+      {/* Typed-confirmation delete modal */}
+      <Modal
+        visible={showDeleteConfirmModal}
+        transparent
+        animationType="fade"
+        onRequestClose={dismissDeleteModal}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={dismissDeleteModal}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Confirm Account Deletion</Text>
+            <Text style={styles.modalBody}>
+              This action is permanent and cannot be undone. To confirm, type DELETE below.
+            </Text>
+
+            <Text style={styles.modalInputLabel}>Type DELETE to confirm</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                value={deleteConfirmInput}
+                onChangeText={(text) => {
+                  console.log('[Profile] Delete confirmation input changed');
+                  setDeleteConfirmInput(text);
+                }}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                autoComplete="off"
+                placeholder="DELETE"
+                placeholderTextColor={colors.textTertiary}
+                accessibilityLabel="Type DELETE to confirm account deletion"
+              />
+            </View>
+
+            <View style={styles.modalButtonRow}>
+              <Pressable
+                onPress={dismissDeleteModal}
+                style={styles.modalCancelButton}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel account deletion"
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  console.log('[Profile] Delete Account button pressed in confirmation modal');
+                  performAccountDeletion();
+                }}
+                disabled={!deleteButtonEnabled || deleteLoading}
+                style={[
+                  styles.modalDeleteButton,
+                  (!deleteButtonEnabled || deleteLoading) && styles.modalDeleteButtonDisabled,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Confirm and delete account"
+              >
+                {deleteLoading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalDeleteText}>Delete Account</Text>
+                )}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -611,5 +685,77 @@ const styles = StyleSheet.create({
   appInfoText: {
     fontSize: 12,
     color: colors.textTertiary,
+  },
+  // Delete confirmation modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  modalBody: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  modalInputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  modalDeleteButton: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: colors.error,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalDeleteButtonDisabled: {
+    opacity: 0.4,
+  },
+  modalDeleteText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
