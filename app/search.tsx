@@ -13,6 +13,7 @@ import {
   Share,
   Image,
   Animated as RNAnimated,
+  ScrollView,
 } from 'react-native';
 import RecallHeader from '@/components/RecallHeader';
 import { SearchTopBar } from '@/components/SearchTopBar';
@@ -24,7 +25,7 @@ import { NoteCard } from '@/components/NoteCard';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { SearchHistory } from '@/types/Note';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
@@ -35,6 +36,10 @@ import { Share as ShareIcon } from 'lucide-react-native';
 import { Swipeable, RectButton } from 'react-native-gesture-handler';
 import { supabase, deleteSearchHistory, cleanupCloudflareCollage } from '@/utils/supabase';
 import { PillsRow } from '@/components/PillsRow';
+import { SkeletonLoader } from '@/components/SkeletonLoader';
+
+// Pill widths vary so the skeleton row doesn't look like a uniform stripe
+const PILL_SKELETON_WIDTHS = [80, 60, 110, 120, 70, 70, 100, 100, 80, 95];
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -63,34 +68,37 @@ export default function SearchScreen() {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [isAnswerExpanded, setIsAnswerExpanded] = useState(false);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  // Initialize to true so the very first render shows skeletons, not the zero state
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [isProgressExpanded, setIsProgressExpanded] = useState(true);
   const [selectedPill, setSelectedPill] = useState<string | null>(null);
+  // Tracks whether history has been loaded at least once — gates zero states
+  const [hasLoadedHistoryOnce, setHasLoadedHistoryOnce] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
   const hasAutoSearchedRef = useRef(false);
+  // Tracks previous query to avoid loops in the empty-query effect
+  const prevQueryRef = useRef('');
 
   const shouldShowSearchTime = user?.email === 'benny_thomas21@yahoo.co.in';
 
   const SEARCH_PILLS = ['Cookbooks', 'Elly', 'Cocktail Ideas', 'Rated restaurants', 'Travel', 'Health', 'Home ideas', 'Documents', 'Alcohol', 'Sri Lanka'];
 
+  // Change 3: always filter to used_for_answer when hasSearched is true
   const filteredNotes = useMemo(() => {
-    // If a search has completed, ONLY show notes flagged as used_for_answer.
-    // Never fall back to "all notes" — that would mask zero-result searches.
-    if (hasSearched && searchStage === 'complete') {
+    if (hasSearched) {
       return notes.filter(note => note.used_for_answer === true);
     }
-    // Before any search has run, or while searching, the list shouldn't render
-    // any cards anyway (FlatList data prop already guards this), so just pass
-    // notes through.
     return notes;
-  }, [notes, hasSearched, searchStage]);
+  }, [notes, hasSearched]);
 
   const loadSearchHistory = useCallback(async () => {
     setIsLoadingHistory(true);
     const history = await getSearchHistory();
     setSearchHistory(history);
     setIsLoadingHistory(false);
+    // Mark that we've loaded at least once — gates zero states
+    setHasLoadedHistoryOnce(true);
   }, [getSearchHistory]);
 
   useEffect(() => {
@@ -108,6 +116,25 @@ export default function SearchScreen() {
       keyboardDidShowListener.remove();
     };
   }, [loadSearchHistory]);
+
+  // Change 2: when the user manually deletes text down to empty, reset search state
+  useEffect(() => {
+    const prev = prevQueryRef.current;
+    prevQueryRef.current = searchQuery;
+
+    // Only act when transitioning from non-empty to empty
+    if (searchQuery.trim() === '' && prev.trim() !== '') {
+      if (hasSearched || isSearching) {
+        console.log('[SearchScreen] Query cleared manually — resetting search state');
+        setHasSearched(false);
+        setIsSearching(false);
+        setIsAnswerExpanded(false);
+        setIsProgressExpanded(true);
+        setShowHistory(true);
+        searchNotes('');
+      }
+    }
+  }, [searchQuery, hasSearched, isSearching, searchNotes]);
 
   // Realtime subscription: update/delete/insert search_history rows live
   useEffect(() => {
@@ -517,20 +544,48 @@ export default function SearchScreen() {
     }
   }, [user?.id, getSearchHistory]);
 
+  // Change 5: shimmering history skeletons using SkeletonLoader
   const renderHistorySkeletons = useMemo(() => {
     return (
-      <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
+      <Animated.View entering={FadeIn.duration(300)} style={styles.historyContainer}>
         <Text style={styles.historyTitle}>Recent</Text>
         {[...Array(3)].map((_, index) => (
           <View key={`history-skeleton-${index}`} style={styles.historyItemSkeleton}>
-            <View style={styles.historyIconPlaceholder} />
-            <View style={styles.historyTextPlaceholder} />
-            <View style={styles.historyArrowPlaceholder} />
+            <SkeletonLoader variant="wave" width={52} height={52} borderRadius={10} />
+            <View style={styles.historySkeletonTextWrapper}>
+              <SkeletonLoader variant="wave" width="100%" height={16} borderRadius={4} />
+            </View>
+            <SkeletonLoader variant="wave" width={16} height={16} borderRadius={8} />
           </View>
         ))}
       </Animated.View>
     );
   }, []);
+
+  // Change 5: shimmering pills row skeleton
+  const pillsRowSkeleton = useMemo(() => (
+    <Animated.View
+      entering={FadeIn.duration(300)}
+      exiting={FadeOut.duration(200)}
+      style={styles.pillsRowWrapper}
+    >
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.pillsSkeletonContent}
+      >
+        {PILL_SKELETON_WIDTHS.map((w, i) => (
+          <SkeletonLoader
+            key={`pill-skeleton-${i}`}
+            variant="wave"
+            width={w}
+            height={36}
+            borderRadius={20}
+          />
+        ))}
+      </ScrollView>
+    </Animated.View>
+  ), []);
 
   const searchTips = useMemo(() => (
     <View style={styles.searchTipsContainer}>
@@ -699,16 +754,28 @@ export default function SearchScreen() {
         renderItem={renderSearchResultItem}
         ListHeaderComponent={
           <View style={styles.listHeaderContainer}>
-            <View style={styles.pillsRowWrapper}>
-              <PillsRow
-                items={SEARCH_PILLS}
-                selected={selectedPill}
-                onSelect={(label) => {
-                  console.log('[SearchScreen] Pill toggled:', label, '| was selected:', selectedPill);
-                  setSelectedPill(selectedPill === label ? null : label);
-                }}
-              />
-            </View>
+
+            {/* Change 1 & 5: pills row — skeleton while loading, real pills when ready and not searching */}
+            {!hasLoadedHistoryOnce ? (
+              pillsRowSkeleton
+            ) : !hasSearched && !isSearching ? (
+              <Animated.View
+                entering={FadeIn.duration(300)}
+                exiting={FadeOut.duration(200)}
+                style={styles.pillsRowWrapper}
+              >
+                <PillsRow
+                  items={SEARCH_PILLS}
+                  selected={selectedPill}
+                  onSelect={(label) => {
+                    console.log('[SearchScreen] Pill toggled:', label, '| was selected:', selectedPill);
+                    setSelectedPill(selectedPill === label ? null : label);
+                  }}
+                />
+              </Animated.View>
+            ) : null}
+
+            {/* History / zero states / search steps */}
             {showHistory && isLoadingHistory ? (
               renderHistorySkeletons
             ) : showHistory && searchHistory.length > 0 ? (
@@ -749,7 +816,8 @@ export default function SearchScreen() {
                   </Swipeable>
                 ))}
               </Animated.View>
-            ) : showHistory && searchHistory.length === 0 && !isLoadingHistory ? (
+            ) : showHistory && searchHistory.length === 0 && !isLoadingHistory && hasLoadedHistoryOnce ? (
+              // Change 4: gate "No Search History" on hasLoadedHistoryOnce
               <Animated.View entering={FadeIn.duration(600)} style={styles.emptyHistoryContainer}>
                 <View style={styles.emptyHistoryIconContainer}>
                   <IconSymbol name="clock" size={48} color={colors.textTertiary} />
@@ -760,7 +828,8 @@ export default function SearchScreen() {
                 </Text>
                 {searchTips}
               </Animated.View>
-            ) : !hasSearched ? (
+            ) : !hasSearched && hasLoadedHistoryOnce ? (
+              // Change 4: gate "Smart Searching" hero on hasLoadedHistoryOnce
               <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
                 <IconSymbol name="photo.on.rectangle" size={80} color={colors.textTertiary} />
                 <Text style={styles.emptyTitle}>Smart Searching</Text>
@@ -769,21 +838,20 @@ export default function SearchScreen() {
                 </Text>
                 {featureList}
               </Animated.View>
-            ) : (
-              <View style={styles.notesContainer}>
-                {hasSearched && (
-                  <SearchProgressIndicator
-                    stage={searchStage}
-                    locationName={searchLocationName}
-                    personNames={searchPersonNames}
-                    extractedKeywords={searchExtractedKeywords}
-                    isExpanded={isProgressExpanded}
-                    onToggle={() => setIsProgressExpanded(!isProgressExpanded)}
-                    locationInfo={locationInfo}
-                    searchTimings={searchTimings}
-                    shouldShowTimings={shouldShowSearchTime}
-                  />
-                )}
+            ) : hasSearched ? (
+              // Change 1: Search Steps — Animated.View with FadeIn for the crossfade swap
+              <Animated.View entering={FadeIn.duration(300)} style={styles.notesContainer}>
+                <SearchProgressIndicator
+                  stage={searchStage}
+                  locationName={searchLocationName}
+                  personNames={searchPersonNames}
+                  extractedKeywords={searchExtractedKeywords}
+                  isExpanded={isProgressExpanded}
+                  onToggle={() => setIsProgressExpanded(!isProgressExpanded)}
+                  locationInfo={locationInfo}
+                  searchTimings={searchTimings}
+                  shouldShowTimings={shouldShowSearchTime}
+                />
 
                 {isSearching ? (
                   <View style={styles.searchingPlaceholder} />
@@ -857,8 +925,8 @@ export default function SearchScreen() {
                     )}
                   </React.Fragment>
                 )}
-              </View>
-            )}
+              </Animated.View>
+            ) : null}
           </View>
         }
         style={styles.scrollView}
@@ -931,6 +999,12 @@ const styles = StyleSheet.create({
     marginTop: 0,
     marginBottom: 8,
   },
+  pillsSkeletonContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   historyContainer: {
     width: '100%',
   },
@@ -980,6 +1054,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 8,
     minHeight: 56 * 1.1,
+  },
+  historySkeletonTextWrapper: {
+    flex: 1,
   },
   historyIconPlaceholder: {
     width: 18,
