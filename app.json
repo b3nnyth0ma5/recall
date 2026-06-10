@@ -24,6 +24,7 @@
         "NSPhotoLibraryAddUsageDescription": "Recall saves images to your photo library when you export or share your memories.",
         "NSCameraUsageDescription": "This app needs access to your camera to take photos for your recalls.",
         "NSLocationWhenInUseUsageDescription": "Recall uses your location to tag memories with where they happened.",
+        "NSSiriUsageDescription": "Recall uses Siri to suggest searches you've run before, so you can quickly jump back into your memories from Siri and Spotlight.",
         "UISupportsDocumentBrowser": true,
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true,
