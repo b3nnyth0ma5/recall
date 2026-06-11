@@ -383,7 +383,7 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
   console.log('[PeopleGraph] Rendering with', nodePositions.length, 'nodes');
 
   return (
-    <View style={styles.container} pointerEvents="box-none">
+    <View style={[styles.container, { pointerEvents: 'box-none' }]}>
       {/* Backdrop */}
       <Animated.View
         style={[
@@ -407,17 +407,17 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
             {
               opacity: graphOpacity,
               transform: [{ scale: graphScale }],
+              pointerEvents: 'box-none',
             },
           ]}
-          pointerEvents="box-none"
         >
           {/* Edges layer */}
-          <View style={styles.edgesLayer} pointerEvents="none">
+          <View style={[styles.edgesLayer, { pointerEvents: 'none' }]}>
             {renderEdges()}
           </View>
 
           {/* Nodes layer */}
-          <View style={styles.nodesLayer} pointerEvents="box-none">
+          <View style={[styles.nodesLayer, { pointerEvents: 'box-none' }]}>
             {/* Root node - centered on screen */}
             <Pressable
               onPress={handleRootPress}
@@ -533,10 +533,7 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     ...Platform.select({
       ios: {
-        shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.7,
-        shadowRadius: 12,
+        boxShadow: '0px 6px 12px rgba(255,107,122,0.7)',
       },
       android: {
         elevation: 16,
@@ -556,10 +553,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     ...Platform.select({
       ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4,
-        shadowRadius: 8,
+        boxShadow: '0px 4px 8px rgba(0,0,0,0.4)',
       },
       android: {
         elevation: 10,
@@ -595,10 +589,7 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     ...Platform.select({
       ios: {
-        shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.6,
-        shadowRadius: 4,
+        boxShadow: '0px 2px 4px rgba(255,107,122,0.6)',
       },
       android: {
         elevation: 8,

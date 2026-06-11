@@ -145,13 +145,7 @@ export const commonStyles = StyleSheet.create({
     marginVertical: 8,
     width: '100%',
     // Modern shadow for iOS
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    boxShadow: '0px 4px 8px rgba(0,0,0,0.3)',
     // Elevation for Android
     elevation: 6,
   },

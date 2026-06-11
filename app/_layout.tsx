@@ -33,7 +33,7 @@ const PeopleGraphOverlay = memo(() => {
   console.log('[PeopleGraphOverlay] Rendering PeopleGraph with', people.length, 'people');
 
   return (
-    <View style={styles.overlayContainer} pointerEvents="box-none">
+    <View style={[styles.overlayContainer, { pointerEvents: 'box-none' }]}>
       <PeopleGraph
         people={people}
         onClose={closeGraph}
@@ -466,7 +466,7 @@ function RootLayoutNav() {
       <PeopleGraphOverlay />
 
       {/* Floating Nav Bar */}
-      <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 24 }]}>
+      <View style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 24, pointerEvents: 'box-none' }]}>
         <FloatingNavBar
           visible={navBarVisible}
           activeRoute={activeRoute}

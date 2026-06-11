@@ -592,7 +592,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         >
           <View style={styles.cardContent}>
             {!hasMedia && !!processingStage && (
-              <View style={styles.processingStageRow} pointerEvents="none">
+              <View style={[styles.processingStageRow, { pointerEvents: 'none' }]}>
                 <ActivityIndicator size="small" color="#FFFFFF" style={styles.matchingPillSpinner} />
                 <Text style={styles.matchingPillText}>{processingStage}</Text>
               </View>

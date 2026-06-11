@@ -390,10 +390,7 @@ const cardStyles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#333333',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
+    boxShadow: '0px 4px 10px rgba(0,0,0,0.3)',
     elevation: 6,
   },
   image: {
@@ -1415,10 +1412,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 52,
     marginTop: 8,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
+    boxShadow: '0px 4px 12px rgba(255,107,122,0.3)',
     elevation: 6,
   },
   authButtonDisabled: {

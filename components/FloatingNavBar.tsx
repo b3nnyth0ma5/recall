@@ -72,7 +72,7 @@ function NavButton({
 
   return (
     // Outer column: flex layout spacer — does NOT absorb taps
-    <View style={styles.navColumn} pointerEvents="box-none">
+    <View style={[styles.navColumn, { pointerEvents: 'box-none' }]}>
       <Pressable
         testID={testID}
         onPress={handlePress}
@@ -118,7 +118,7 @@ export function FloatingNavBar({
 
   const barContent = (
     // innerRow passes taps through to the Pressables inside each navColumn
-    <View style={styles.innerRow} pointerEvents="box-none">
+    <View style={[styles.innerRow, { pointerEvents: 'box-none' }]}>
       <NavButton
         testID="navbar-home"
         icon={
@@ -185,15 +185,15 @@ export function FloatingNavBar({
     >
       {/* Halo glow ring behind the bar */}
       {Platform.OS === 'ios' && (
-        <View style={styles.haloRing} pointerEvents="none" />
+        <View style={[styles.haloRing, { pointerEvents: 'none' }]} />
       )}
       {Platform.OS === 'ios' ? (
         // pointerEvents="box-none" so the BlurView background never swallows taps
-        <BlurView intensity={100} tint="dark" style={styles.blurView} pointerEvents="box-none">
+        <BlurView intensity={100} tint="dark" style={[styles.blurView, { pointerEvents: 'box-none' }]}>
           {barContent}
         </BlurView>
       ) : (
-        <View style={styles.androidFallback} pointerEvents="box-none">
+        <View style={[styles.androidFallback, { pointerEvents: 'box-none' }]}>
           {barContent}
         </View>
       )}
@@ -226,10 +226,7 @@ const styles = StyleSheet.create({
     elevation: 16,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
+    boxShadow: '0px 6px 20px rgba(0,0,0,0.35)',
   },
   haloRing: {
     position: 'absolute',

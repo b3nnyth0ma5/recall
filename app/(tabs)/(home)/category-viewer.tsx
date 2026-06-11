@@ -1620,7 +1620,7 @@ export default function CategoryViewerScreen() {
 
       {/* Context menu popover */}
       {isMenuOpen && menuAnchor && (
-        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        <View style={[StyleSheet.absoluteFill, { pointerEvents: 'box-none' }]}>
           {/* Backdrop */}
           <Pressable
             style={styles.menuBackdrop}
@@ -2026,10 +2026,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
+    boxShadow: '0px 4px 8px rgba(0,0,0,0.4)',
     elevation: 10,
     zIndex: 300,
     overflow: 'hidden',

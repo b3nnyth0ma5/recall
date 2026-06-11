@@ -99,10 +99,7 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
     position: 'absolute' as const,
     left: popoverLeft,
     top: popoverTop,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: isDark ? 0.5 : 0.18,
-    shadowRadius: 8,
+    boxShadow: `0px 4px 8px rgba(0,0,0,${isDark ? 0.5 : 0.18})`,
     elevation: 10000,
     zIndex: 10000,
   };
@@ -115,10 +112,7 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
     height: TAIL_SIZE,
     backgroundColor: cardBackground,
     transform: [{ rotate: '45deg' }],
-    shadowColor: '#000',
-    shadowOffset: { width: 2, height: 2 },
-    shadowOpacity: isDark ? 0.3 : 0.1,
-    shadowRadius: 2,
+    boxShadow: `2px 2px 2px rgba(0,0,0,${isDark ? 0.3 : 0.1})`,
     elevation: 9999,
     zIndex: 9999,
   };
@@ -126,7 +120,7 @@ export function SharePopover({ visible, anchorPosition, onSelect, onDismiss }: S
   return (
     <Portal>
       {visible && (
-        <View style={styles.overlay} pointerEvents="box-none">
+        <View style={[styles.overlay, { pointerEvents: 'box-none' }]}>
           {/* Backdrop — full-screen tap-to-dismiss (sibling of card, not parent) */}
           <Pressable style={styles.backdrop} onPress={onDismiss} />
 
