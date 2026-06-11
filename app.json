@@ -15,7 +15,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.placeholder.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Recall needs access to your photo library to save and organize your memories.",
+        "NSCameraUsageDescription": "Recall needs access to your camera to capture photos and add them to your memories."
       }
     },
     "android": {
