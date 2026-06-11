@@ -6,163 +6,41 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/images/newly.png",
       "resizeMode": "contain",
-      "backgroundColor": "#242424"
+      "backgroundColor": "#FFFFFF"
     },
     "ios": {
       "supportsTablet": true,
-      "usesAppleSignIn": true,
-      "appleTeamId": "9PWN6F3TK8",
-      "bundleIdentifier": "com.b3nny1nc.recall",
-      "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
+      "bundleIdentifier": "com.placeholder.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "NSPhotoLibraryUsageDescription": "Recall needs access to your photo library so you can attach photos to memories and pull location and date metadata from them.",
-        "NSPhotoLibraryAddUsageDescription": "Recall saves images to your photo library when you export or share your memories.",
-        "NSCameraUsageDescription": "Recall uses your camera to capture photos and add them to a memory in the moment.",
-        "NSLocationWhenInUseUsageDescription": "Recall uses your location to tag memories with where they happened.",
-        "NSSiriUsageDescription": "Recall uses Siri to suggest searches you've run before, so you can quickly jump back into your memories from Siri and Spotlight.",
-        "UISupportsDocumentBrowser": true,
-        "UIFileSharingEnabled": true,
-        "LSSupportsOpeningDocumentsInPlace": true,
-        "CFBundleURLTypes": [
-          {
-            "CFBundleURLSchemes": [
-              "recall"
-            ],
-            "CFBundleURLName": "com.b3nny1nc.recall",
-            "CFBundleTypeRole": "Editor"
-          }
-        ],
-        "NSUserActivityTypes": [
-          "com.b3nny1nc.recall.search"
-        ]
-      },
-      "buildNumber": "1.0.0",
-      "entitlements": {
-        "com.apple.security.application-groups": [
-          "group.com.b3nny1nc.recall"
-        ],
-        "com.apple.developer.siri": true
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/recall icon.png",
-        "backgroundColor": "#242424",
-        "backgroundImage": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png"
+        "foregroundImage": "./assets/images/newly.png",
+        "backgroundColor": "#FFFFFF"
       },
-      "icon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
-      "edgeToEdgeEnabled": true,
-      "package": "com.b3nny1nc.recall",
-      "permissions": [
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
-      ],
-      "versionCode": 1,
-      "intentFilters": [
-        {
-          "action": "android.intent.action.VIEW",
-          "category": [
-            "android.intent.category.DEFAULT",
-            "android.intent.category.BROWSABLE"
-          ],
-          "data": [
-            {
-              "scheme": "recall"
-            }
-          ]
-        },
-        {
-          "action": "android.intent.action.SEND",
-          "category": [
-            "android.intent.category.DEFAULT"
-          ],
-          "data": [
-            {
-              "mimeType": "text/plain"
-            }
-          ]
-        },
-        {
-          "action": "android.intent.action.SEND",
-          "category": [
-            "android.intent.category.DEFAULT"
-          ],
-          "data": [
-            {
-              "mimeType": "image/*"
-            }
-          ]
-        },
-        {
-          "action": "android.intent.action.SEND_MULTIPLE",
-          "category": [
-            "android.intent.category.DEFAULT"
-          ],
-          "data": [
-            {
-              "mimeType": "image/*"
-            }
-          ]
-        },
-        {
-          "action": "android.intent.action.SEND",
-          "category": [
-            "android.intent.category.DEFAULT"
-          ],
-          "data": [
-            {
-              "mimeType": "video/*"
-            }
-          ]
-        }
-      ]
+      "package": "com.placeholder.app"
     },
     "web": {
-      "favicon": "./assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png",
+      "favicon": "./assets/images/newly.png",
       "bundler": "metro"
-    },
-    "updates": {
-      "enabled": false,
-      "checkAutomatically": "NEVER",
-      "fallbackToCacheTimeout": 0
     },
     "plugins": [
       "expo-font",
       "expo-router",
-      "expo-apple-authentication",
       "expo-web-browser",
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "usesCleartextTraffic": true,
-            "minSdkVersion": 21
-          },
-          "ios": {
-            "deploymentTarget": "15.1"
-          }
-        }
-      ],
-      "@bacons/apple-targets",
-      "./app.plugin.js",
-      "expo-asset"
+      "expo-secure-store"
     ],
     "scheme": "recall",
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
-      "supabaseUrl": "https://cesmsdnblkdjkskmiqib.supabase.co",
-      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4",
-      "router": {},
-      "eas": {}
+      "router": {}
     }
-  },
-  "scheme": "Recall"
+  }
 }
