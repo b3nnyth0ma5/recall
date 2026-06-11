@@ -13,7 +13,7 @@ Pod::Spec.new do |s|
   s.platform       = :ios, '15.1'
   s.swift_version  = '5.4'
   s.source         = { :path => '.' }
-  s.source_files   = '*.swift', 'ios/**/*.swift'
+  s.source_files   = 'ios/**/*.swift'
 
   s.dependency 'ExpoModulesCore'
 end
