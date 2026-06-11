@@ -47,5 +47,3 @@ build/
 yarn.lock
 next-env.d.ts
 
-android/
-ios/
