@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.placeholder.app",
+      "bundleIdentifier": "com.b3nny1nc.recall",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "Recall needs access to your photo library to save and organize your memories.",
@@ -27,7 +27,7 @@
         "foregroundImage": "./assets/images/newly.png",
         "backgroundColor": "#FFFFFF"
       },
-      "package": "com.placeholder.app"
+      "package": "com.b3nny1nc.recall"
     },
     "web": {
       "favicon": "./assets/images/newly.png",
