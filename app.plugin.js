@@ -1,11 +1,13 @@
-const { createRunOncePlugin, withPodfile } = require('@expo/config-plugins');
+const { createRunOncePlugin, withPodfile, withXcodeProject } = require('@expo/config-plugins');
 
 /**
  * Expo Config Plugin for Recall App
  *
- * Injects FOLLY_CFG_NO_COROUTINES=1 compiler flag (fixes folly/coro/Coroutine.h build error).
+ * 1. Injects FOLLY_CFG_NO_COROUTINES=1 compiler flag (fixes folly/coro/Coroutine.h build error).
+ * 2. Strips -D EXPO_CONFIGURATION_DEBUG from OTHER_SWIFT_FLAGS in Release build configurations
+ *    so it cannot leak into production builds and cause module-resolution mismatches.
  *
- * Note: AppGroupModule and SiriShortcutsModule are now registered as a proper local Expo Module
+ * Note: AppGroupModule and SiriShortcutsModule are registered as a proper local Expo Module
  * package under modules/recall-native/ and are picked up automatically by expo-modules-autolinking
  * via the `expo.autolinking.nativeModulesDir` setting in package.json. No manual Xcode injection
  * is needed.
@@ -42,8 +44,57 @@ const withFollyNoCoroutines = (config) => {
   });
 };
 
+/**
+ * Strips -D EXPO_CONFIGURATION_DEBUG from OTHER_SWIFT_FLAGS in all Release
+ * build configurations of the main Xcode project.  This prevents the debug
+ * flag from leaking into production builds and causing module-resolution
+ * mismatches (e.g. "no such module 'RecallNative'").
+ */
+const withStripDebugConfigFlag = (config) => {
+  return withXcodeProject(config, (config) => {
+    const project = config.modResults;
+    const FLAG = '-D EXPO_CONFIGURATION_DEBUG';
+
+    // Iterate every build configuration in the project
+    const buildConfigs = project.pbxXCBuildConfigurationSection();
+    for (const key of Object.keys(buildConfigs)) {
+      const buildConfig = buildConfigs[key];
+      if (typeof buildConfig !== 'object' || !buildConfig.name) continue;
+
+      // Only strip from Release configurations
+      if (buildConfig.name !== 'Release') continue;
+
+      const settings = buildConfig.buildSettings;
+      if (!settings) continue;
+
+      // OTHER_SWIFT_FLAGS can be a string or an array
+      if (typeof settings.OTHER_SWIFT_FLAGS === 'string') {
+        if (settings.OTHER_SWIFT_FLAGS.includes(FLAG)) {
+          settings.OTHER_SWIFT_FLAGS = settings.OTHER_SWIFT_FLAGS
+            .split(' ')
+            .filter((f) => f !== '-D' && f !== 'EXPO_CONFIGURATION_DEBUG')
+            .join(' ')
+            .trim();
+          console.log(`[withStripDebugConfigFlag] Stripped ${FLAG} from Release OTHER_SWIFT_FLAGS (key: ${key})`);
+        }
+      } else if (Array.isArray(settings.OTHER_SWIFT_FLAGS)) {
+        const before = settings.OTHER_SWIFT_FLAGS.length;
+        settings.OTHER_SWIFT_FLAGS = settings.OTHER_SWIFT_FLAGS.filter(
+          (f) => f !== FLAG && f !== '-D EXPO_CONFIGURATION_DEBUG' && f !== 'EXPO_CONFIGURATION_DEBUG'
+        );
+        if (settings.OTHER_SWIFT_FLAGS.length !== before) {
+          console.log(`[withStripDebugConfigFlag] Stripped ${FLAG} from Release OTHER_SWIFT_FLAGS array (key: ${key})`);
+        }
+      }
+    }
+
+    return config;
+  });
+};
+
 const withRecallConfig = (config) => {
   config = withFollyNoCoroutines(config);
+  config = withStripDebugConfigFlag(config);
   return config;
 };
 
