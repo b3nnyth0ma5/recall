@@ -5,8 +5,27 @@ import Constants from 'expo-constants';
 import { coalesce } from './requestCoalescer';
 
 // Initialize constants at module scope
-const supabaseUrl = (Constants.expoConfig?.extra?.supabaseUrl as string) ?? '';
-const supabaseAnonKey = (Constants.expoConfig?.extra?.supabaseAnonKey as string) ?? '';
+const supabaseUrl =
+  (Constants.expoConfig?.extra?.supabaseUrl as string | undefined) ?? '';
+const supabaseAnonKey =
+  (Constants.expoConfig?.extra?.supabaseAnonKey as string | undefined) ?? '';
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  // Loud, actionable startup error instead of a deep "supabaseUrl is required" stack later.
+  const missing = [
+    !supabaseUrl ? 'supabaseUrl' : null,
+    !supabaseAnonKey ? 'supabaseAnonKey' : null,
+  ].filter(Boolean).join(', ');
+  const msg =
+    `[Supabase] Missing required runtime config: ${missing}. ` +
+    `Add these keys to expo.extra in app.json (or app.config.*). ` +
+    `Without them, every Supabase call will throw.`;
+  console.error(msg);
+  // Don't `throw` here — the app's own ErrorBoundary already handles thrown
+  // errors poorly during early module init on iOS. createClient() will throw
+  // its own clear error on the first call, which is fine; the console.error
+  // above is the real diagnostic.
+}
 
 // Create and export supabase client at module scope with improved error handling
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
