@@ -46,3 +46,6 @@ build/
 .bun/bun.lock
 yarn.lock
 next-env.d.ts
+
+android/
+ios/
