@@ -1,4 +1,6 @@
-const { createRunOncePlugin, withPodfile, withXcodeProject } = require('@expo/config-plugins');
+const { createRunOncePlugin, withPodfile, withXcodeProject, withDangerousMod } = require('@expo/config-plugins');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Expo Config Plugin for Recall App
@@ -6,11 +8,8 @@ const { createRunOncePlugin, withPodfile, withXcodeProject } = require('@expo/co
  * 1. Injects FOLLY_CFG_NO_COROUTINES=1 compiler flag (fixes folly/coro/Coroutine.h build error).
  * 2. Strips -D EXPO_CONFIGURATION_DEBUG from OTHER_SWIFT_FLAGS in Release build configurations
  *    so it cannot leak into production builds and cause module-resolution mismatches.
- *
- * Note: AppGroupModule and SiriShortcutsModule are registered as a proper local Expo Module
- * package under modules/recall-native/ and are picked up automatically by expo-modules-autolinking
- * via the `expo.autolinking.nativeModulesDir` setting in package.json. No manual Xcode injection
- * is needed.
+ * 3. Injects AppGroupModule.swift into ios/RecallNative/ during prebuild.
+ * 4. Injects SiriShortcutsModule.swift into ios/RecallNative/ during prebuild.
  */
 
 const withFollyNoCoroutines = (config) => {
@@ -92,9 +91,151 @@ const withStripDebugConfigFlag = (config) => {
   });
 };
 
+const APP_GROUP_MODULE_SWIFT = `import ExpoModulesCore
+import Foundation
+
+public class AppGroupModule: Module {
+  public func definition() -> ModuleDefinition {
+    Name("AppGroupModule")
+
+    AsyncFunction("getContainerPath") { (appGroupId: String, promise: Promise) in
+      if let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) {
+        promise.resolve(url.path)
+      } else {
+        promise.reject("ERR_APP_GROUP", "Could not resolve container URL for app group: \\(appGroupId)")
+      }
+    }
+
+    AsyncFunction("verifyContainer") { (appGroupId: String, promise: Promise) in
+      guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
+        promise.reject("ERR_APP_GROUP", "Could not resolve container URL for app group: \\(appGroupId)")
+        return
+      }
+      let containerPath = containerURL.path
+      let containerExists = FileManager.default.fileExists(atPath: containerPath)
+      let tokenFileURL = containerURL.appendingPathComponent("auth-token.json")
+      let tokenFileExists = FileManager.default.fileExists(atPath: tokenFileURL.path)
+      var tokenFileSize: Int = 0
+      var tokenFileModifiedTimestamp: Double = 0
+      if tokenFileExists {
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: tokenFileURL.path) {
+          tokenFileSize = (attrs[.size] as? Int) ?? 0
+          if let modDate = attrs[.modificationDate] as? Date {
+            tokenFileModifiedTimestamp = modDate.timeIntervalSince1970 * 1000
+          }
+        }
+      }
+      promise.resolve([
+        "containerPath": containerPath,
+        "containerExists": containerExists,
+        "tokenFileExists": tokenFileExists,
+        "tokenFileSize": tokenFileSize,
+        "tokenFileModifiedTimestamp": tokenFileModifiedTimestamp
+      ])
+    }
+
+    AsyncFunction("readLastShareExtensionError") { (appGroupId: String, promise: Promise) in
+      guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
+        promise.resolve(nil)
+        return
+      }
+      let errorFileURL = containerURL.appendingPathComponent("last-share-error.json")
+      guard FileManager.default.fileExists(atPath: errorFileURL.path),
+            let data = try? Data(contentsOf: errorFileURL),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        promise.resolve(nil)
+        return
+      }
+      promise.resolve(json)
+    }
+
+    AsyncFunction("clearLastShareExtensionError") { (appGroupId: String, promise: Promise) in
+      guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
+        promise.resolve(false)
+        return
+      }
+      let errorFileURL = containerURL.appendingPathComponent("last-share-error.json")
+      guard FileManager.default.fileExists(atPath: errorFileURL.path) else {
+        promise.resolve(false)
+        return
+      }
+      do {
+        try FileManager.default.removeItem(at: errorFileURL)
+        promise.resolve(true)
+      } catch {
+        promise.resolve(false)
+      }
+    }
+  }
+}
+`;
+
+const SIRI_SHORTCUTS_MODULE_SWIFT = `import ExpoModulesCore
+import Foundation
+import CoreSpotlight
+import UniformTypeIdentifiers
+
+public class SiriShortcutsModule: Module {
+  public func definition() -> ModuleDefinition {
+    Name("SiriShortcutsModule")
+
+    AsyncFunction("donateSearch") { (query: String, promise: Promise) in
+      let activityType = "com.b3nny1nc.recall.search"
+      let activity = NSUserActivity(activityType: activityType)
+      activity.title = "Search for \\"\\(query)\\""
+      activity.isEligibleForSearch = true
+      activity.isEligibleForPrediction = true
+      activity.persistentIdentifier = NSUserActivityPersistentIdentifier("search-\\(query)")
+      let attributes = CSSearchableItemAttributeSet(contentType: UTType.text)
+      attributes.contentDescription = "Search Recall for \\"\\(query)\\""
+      activity.becomeCurrent()
+      promise.resolve(nil)
+    }
+  }
+}
+`;
+
+/**
+ * Writes AppGroupModule.swift into ios/RecallNative/ during expo prebuild.
+ * Always overwrites (idempotent).
+ */
+const withAppGroupModule = (config) => {
+  return withDangerousMod(config, [
+    'ios',
+    async (config) => {
+      const targetDir = path.join(config.modRequest.projectRoot, 'ios', 'RecallNative');
+      fs.mkdirSync(targetDir, { recursive: true });
+      const targetFile = path.join(targetDir, 'AppGroupModule.swift');
+      fs.writeFileSync(targetFile, APP_GROUP_MODULE_SWIFT, 'utf8');
+      console.log('[withAppGroupModule] Wrote ios/RecallNative/AppGroupModule.swift');
+      return config;
+    },
+  ]);
+};
+
+/**
+ * Writes SiriShortcutsModule.swift into ios/RecallNative/ during expo prebuild.
+ * Always overwrites (idempotent).
+ */
+const withSiriShortcutsModule = (config) => {
+  return withDangerousMod(config, [
+    'ios',
+    async (config) => {
+      const targetDir = path.join(config.modRequest.projectRoot, 'ios', 'RecallNative');
+      fs.mkdirSync(targetDir, { recursive: true });
+      const targetFile = path.join(targetDir, 'SiriShortcutsModule.swift');
+      fs.writeFileSync(targetFile, SIRI_SHORTCUTS_MODULE_SWIFT, 'utf8');
+      console.log('[withSiriShortcutsModule] Wrote ios/RecallNative/SiriShortcutsModule.swift');
+      return config;
+    },
+  ]);
+};
+
 const withRecallConfig = (config) => {
   config = withFollyNoCoroutines(config);
   config = withStripDebugConfigFlag(config);
+  config = withAppGroupModule(config);
+  config = withSiriShortcutsModule(config);
   return config;
 };
 
