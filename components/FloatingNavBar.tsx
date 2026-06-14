@@ -183,15 +183,22 @@ export function FloatingNavBar({
         animatedStyle,
       ]}
     >
-      {/* Halo glow ring behind the bar */}
-      {Platform.OS === 'ios' && (
-        <View style={[styles.haloRing, { pointerEvents: 'none' }]} />
-      )}
       {Platform.OS === 'ios' ? (
-        // pointerEvents="box-none" so the BlurView background never swallows taps
-        <BlurView intensity={100} tint="dark" style={[styles.blurView, { pointerEvents: 'box-none' }]}>
+        <>
+          {/* Decorative blur — absolutely fills the container, never receives touches */}
+          <View style={styles.blurWrapper} pointerEvents="none">
+            <BlurView
+              intensity={100}
+              tint="dark"
+              style={StyleSheet.absoluteFillObject}
+              pointerEvents="none"
+            />
+          </View>
+          {/* Halo ring — decorative only */}
+          <View style={[styles.haloRing, { pointerEvents: 'none' }]} />
+          {/* Interactive button row — sits on top, receives all touches */}
           {barContent}
-        </BlurView>
+        </>
       ) : (
         <View style={[styles.androidFallback, { pointerEvents: 'box-none' }]}>
           {barContent}
@@ -239,8 +246,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: 'transparent',
   },
-  blurView: {
-    flex: 1,
+  blurWrapper: {
+    ...StyleSheet.absoluteFillObject,
     borderRadius: 30,
     overflow: 'hidden',
   },

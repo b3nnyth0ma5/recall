@@ -32,7 +32,7 @@ let homeScrollOffset = 0;
 const SCROLL_THRESHOLD = 36;
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata, addNoteOptimistic } = useNotesContext();
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata, addNoteOptimistic, searchQuery, searchNotes } = useNotesContext();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const listRef = useRef<FlatList<Note>>(null);
@@ -143,12 +143,17 @@ export default function HomeScreen() {
       console.log('[useFocusEffect] Home screen focused');
 
       if (!isFirstFocusRef.current) {
-        const currentCount = notes.length;
-        const previousCount = previousNotesCountRef.current;
+        if (searchQuery) {
+          console.log('[useFocusEffect] Returning from search — resetting feed');
+          searchNotes('');
+        } else {
+          const currentCount = notes.length;
+          const previousCount = previousNotesCountRef.current;
 
-        if (currentCount > previousCount) {
-          console.log('[useFocusEffect] New recall detected, auto-refreshing...');
-          refreshNotes();
+          if (currentCount > previousCount) {
+            console.log('[useFocusEffect] New recall detected, auto-refreshing...');
+            refreshNotes();
+          }
         }
       } else {
         isFirstFocusRef.current = false;
@@ -171,7 +176,7 @@ export default function HomeScreen() {
       return () => {
         console.log('[useFocusEffect] Home screen unfocused');
       };
-    }, [notes.length, refreshNotes, restoreScrollPosition])
+    }, [notes.length, refreshNotes, restoreScrollPosition, searchQuery, searchNotes])
   );
 
   const handleContentSizeChange = useCallback(() => {

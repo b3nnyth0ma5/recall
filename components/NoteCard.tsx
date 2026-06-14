@@ -466,10 +466,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
-      <Pressable 
-        onPress={handleCardPress}
-        style={styles.entireCardTouchArea}
-      >
+      <View style={{ flex: 1, width: '100%' }}>
         {hasMedia && (
           <View style={styles.imagesContainer}>
             <ScrollView
@@ -686,7 +683,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
             </View>
           </View>
         </Swipeable>
-      </Pressable>
+      </View>
 
       {hasMedia && (
         <React.Suspense fallback={null}>
