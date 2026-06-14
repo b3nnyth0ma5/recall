@@ -1,6 +1,6 @@
 {
-  "platforms": ["apple"],
-  "_disabled_note": "AppGroupModule and SiriShortcutsModule disabled — uncomment to re-enable",
+  "platforms": [],
+  "_disabled_note": "AppGroupModule and SiriShortcutsModule disabled — change platforms back to [\"apple\"] to re-enable",
   "apple": {
     "modules": [],
     "_disabled_modules": ["AppGroupModule", "SiriShortcutsModule"],
