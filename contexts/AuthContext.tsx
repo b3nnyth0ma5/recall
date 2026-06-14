@@ -30,8 +30,8 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
   }
 
   try {
-    const { getAppGroupContainerPath } = await import('recall-native');
-    const containerPath = await getAppGroupContainerPath();
+    // const { getAppGroupContainerPath } = await import('recall-native'); // recall-native disabled
+    const containerPath = null as string | null; // recall-native disabled
 
     console.log(
       '[AuthContext] App Group container path:',
@@ -69,8 +69,8 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
 
       // Verify the write actually landed where the share extension will read.
       try {
-        const { verifyAppGroupContainer } = await import('recall-native');
-        const verify = await verifyAppGroupContainer();
+        // const { verifyAppGroupContainer } = await import('recall-native'); // recall-native disabled
+        const verify: any = null; // recall-native disabled
         console.log(
           '[AuthContext] Post-write verify:',
           JSON.stringify({
@@ -164,9 +164,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Run App Group diagnostics on every foreground so we can see the
         // native module state in device logs without needing Xcode.
         try {
-          const { getDiagnostics } = await import('recall-native');
-          const diagnostics = await getDiagnostics();
-          console.log('[AuthContext] App Group diagnostics:', JSON.stringify(diagnostics));
+          // const { getDiagnostics } = await import('recall-native'); // recall-native disabled
+          // const diagnostics = await getDiagnostics(); // recall-native disabled
         } catch (diagErr) {
           console.warn('[AuthContext] getDiagnostics threw:', String(diagErr));
         }

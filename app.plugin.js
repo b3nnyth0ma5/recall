@@ -234,8 +234,8 @@ const withSiriShortcutsModule = (config) => {
 const withRecallConfig = (config) => {
   config = withFollyNoCoroutines(config);
   config = withStripDebugConfigFlag(config);
-  config = withAppGroupModule(config);
-  config = withSiriShortcutsModule(config);
+  // config = withAppGroupModule(config); // recall-native disabled
+  // config = withSiriShortcutsModule(config); // recall-native disabled
   return config;
 };
 

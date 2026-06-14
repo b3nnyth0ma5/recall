@@ -8,7 +8,7 @@
       "@/*": [
         "./*"
       ],
-      "recall-native": [
+      "_disabled_recall-native": [
         "./modules/recall-native/index.ts"
       ]
     }

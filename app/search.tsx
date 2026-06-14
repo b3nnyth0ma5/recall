@@ -31,7 +31,7 @@ import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
 import { MarkdownAnswer } from '@/components/MarkdownAnswer';
 import Toast from 'react-native-toast-message';
-import { donateSearch } from 'recall-native';
+// import { donateSearch } from 'recall-native'; // recall-native disabled
 import { Share as ShareIcon } from 'lucide-react-native';
 import { Swipeable, RectButton } from 'react-native-gesture-handler';
 import { supabase, deleteSearchHistory, cleanupCloudflareCollage } from '@/utils/supabase';
@@ -214,7 +214,7 @@ export default function SearchScreen() {
       setIsProgressExpanded(true);
       
       hasAutoSearchedRef.current = true;
-      donateSearch(decodedQuery);
+      // donateSearch(decodedQuery); // recall-native disabled
       
       searchNotes(decodedQuery, true).finally(() => {
         setIsSearching(false);
@@ -263,7 +263,7 @@ export default function SearchScreen() {
       setIsAnswerExpanded(false);
       setIsSearching(true);
       setIsProgressExpanded(true);
-      donateSearch(searchQuery.trim());
+      // donateSearch(searchQuery.trim()); // recall-native disabled
       
       searchNotes(searchQuery, true).finally(() => {
         setIsSearching(false);

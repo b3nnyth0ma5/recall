@@ -1,3 +1,5 @@
+// recall-native SiriShortcutsModule disabled — Swift iOS module commented out
+/*
 import { requireNativeModule } from 'expo-modules-core';
 import { Platform } from 'react-native';
 
@@ -20,7 +22,7 @@ function getNativeModule() {
 /**
  * Donate a search activity to Siri so it can be suggested as a Shortcut.
  * No-op on Android or if the module is unavailable.
- */
+ * /
 export async function donateSearch(query: string): Promise<void> {
   if (Platform.OS !== 'ios') return;
   const mod = getNativeModule();
@@ -32,3 +34,4 @@ export async function donateSearch(query: string): Promise<void> {
     console.warn('[SiriShortcuts] Failed to donate search:', error);
   }
 }
+*/

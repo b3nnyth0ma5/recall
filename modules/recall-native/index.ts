@@ -1,3 +1,5 @@
+// recall-native exports disabled — Swift iOS modules commented out
+/*
 export {
   getAppGroupContainerPath,
   verifyAppGroupContainer,
@@ -12,3 +14,4 @@ export type {
 } from './src/AppGroupModule';
 
 export { donateSearch } from './src/SiriShortcutsModule';
+*/

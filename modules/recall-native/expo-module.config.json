@@ -1,7 +1,9 @@
 {
   "platforms": ["apple"],
+  "_disabled_note": "AppGroupModule and SiriShortcutsModule disabled — uncomment to re-enable",
   "apple": {
-    "modules": ["AppGroupModule", "SiriShortcutsModule"],
+    "modules": [],
+    "_disabled_modules": ["AppGroupModule", "SiriShortcutsModule"],
     "podspecPath": "RecallNative.podspec"
   }
 }

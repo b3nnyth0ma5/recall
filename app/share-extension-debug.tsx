@@ -9,14 +9,14 @@ import {
 import { Stack } from 'expo-router';
 import { supabase } from '@/utils/supabase';
 import { colors } from '@/styles/commonStyles';
-import {
-  getDiagnostics,
-  getAppGroupContainerPath,
-  verifyAppGroupContainer,
-  readLastShareExtensionError,
-  clearLastShareExtensionError,
-  type AppGroupDiagnostics,
-} from 'recall-native';
+// import { // recall-native disabled
+//   getDiagnostics,
+//   getAppGroupContainerPath,
+//   verifyAppGroupContainer,
+//   readLastShareExtensionError,
+//   clearLastShareExtensionError,
+//   type AppGroupDiagnostics,
+// } from 'recall-native'; // recall-native disabled
 import { writeTokenToAppGroup } from '@/contexts/AuthContext';
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -44,7 +44,7 @@ function relativeTime(epochSeconds: number): string {
 // ─── component ──────────────────────────────────────────────────────────────
 
 export default function ShareExtensionDebugScreen() {
-  const [diagnostics, setDiagnostics] = useState<AppGroupDiagnostics | null>(null);
+  const [diagnostics, setDiagnostics] = useState<any>(null);
   const [sessionInfo, setSessionInfo] = useState<string>('—');
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -69,7 +69,8 @@ export default function ShareExtensionDebugScreen() {
   const runDiagnostics = useCallback(async () => {
     appendLog('Running getDiagnostics()…');
     try {
-      const result = await getDiagnostics();
+      const result = null; // getDiagnostics disabled
+      // const result = await getDiagnostics(); // recall-native disabled
       setDiagnostics(result);
       appendLog('getDiagnostics() OK: ' + JSON.stringify(result));
     } catch (e) {
@@ -106,9 +107,10 @@ export default function ShareExtensionDebugScreen() {
     console.log('[ShareExtDebug] fetchLastError called');
     setErrorBusy(true);
     try {
-      const result = await readLastShareExtensionError();
+      const result = null; // readLastShareExtensionError disabled
+      // const result = await readLastShareExtensionError(); // recall-native disabled
       setLastError(result);
-      appendLog('readLastShareExtensionError: ' + (result ? JSON.stringify(result) : 'null'));
+      // appendLog('readLastShareExtensionError: ' + (result ? JSON.stringify(result) : 'null')); // recall-native disabled
     } catch (e) {
       appendLog('readLastShareExtensionError THREW: ' + String(e));
       setLastError(null);
@@ -120,8 +122,9 @@ export default function ShareExtensionDebugScreen() {
     console.log('[ShareExtDebug] Clear last error button pressed');
     setErrorBusy(true);
     try {
-      const ok = await clearLastShareExtensionError();
-      appendLog('clearLastShareExtensionError: ' + (ok ? 'cleared' : 'nothing to clear'));
+      const ok = false; // clearLastShareExtensionError disabled
+      // const ok = await clearLastShareExtensionError(); // recall-native disabled
+      // appendLog('clearLastShareExtensionError: ' + (ok ? 'cleared' : 'nothing to clear')); // recall-native disabled
       setLastError(null);
     } catch (e) {
       appendLog('clearLastShareExtensionError THREW: ' + String(e));
@@ -158,7 +161,8 @@ export default function ShareExtensionDebugScreen() {
         return;
       }
 
-      const containerPath = await getAppGroupContainerPath();
+      const containerPath = null as string | null; // getAppGroupContainerPath disabled
+      // const containerPath = await getAppGroupContainerPath(); // recall-native disabled
       appendLog('Container path: ' + (containerPath ?? 'NULL'));
 
       if (!containerPath) {
@@ -199,7 +203,8 @@ export default function ShareExtensionDebugScreen() {
     setBusy(true);
     appendLog('Clearing token from App Group…');
     try {
-      const containerPath = await getAppGroupContainerPath();
+      const containerPath = null as string | null; // getAppGroupContainerPath disabled
+      // const containerPath = await getAppGroupContainerPath(); // recall-native disabled
       appendLog('Container path: ' + (containerPath ?? 'NULL'));
 
       if (!containerPath) {
@@ -255,7 +260,8 @@ export default function ShareExtensionDebugScreen() {
 
       // Step 3: verify via native module
       appendLog('Calling verifyAppGroupContainer…');
-      const verify = await verifyAppGroupContainer();
+      const verify = null as any; // verifyAppGroupContainer disabled
+      // const verify = await verifyAppGroupContainer(); // recall-native disabled
       appendLog('verifyAppGroupContainer result: ' + JSON.stringify(verify));
 
       if (!verify) {

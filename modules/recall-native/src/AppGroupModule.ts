@@ -1,3 +1,5 @@
+// recall-native AppGroupModule disabled — Swift iOS module commented out
+/*
 import { requireNativeModule } from 'expo-modules-core';
 import { Platform } from 'react-native';
 
@@ -31,7 +33,7 @@ function getNativeModule() {
 /**
  * Get the real App Group container path on iOS.
  * Returns null on Android or if the module is unavailable.
- */
+ * /
 export async function getAppGroupContainerPath(): Promise<string | null> {
   if (Platform.OS !== 'ios') return null;
   const mod = getNativeModule();
@@ -60,7 +62,7 @@ export interface ContainerVerification {
 /**
  * Calls the native verifyContainer function to inspect the App Group directory
  * and the auth-token.json file. Returns null on Android or if unavailable.
- */
+ * /
 export async function verifyAppGroupContainer(): Promise<ContainerVerification | null> {
   if (Platform.OS !== 'ios') return null;
   const mod = getNativeModule();
@@ -94,7 +96,7 @@ export interface AppGroupDiagnostics {
  * Run a full diagnostic of the App Group bridge and return a single object
  * suitable for logging. Safe to call from any platform — non-iOS fields will
  * be null.
- */
+ * /
 export async function getDiagnostics(): Promise<AppGroupDiagnostics> {
   const platform = Platform.OS;
   let moduleAvailable = false;
@@ -144,7 +146,7 @@ export async function getDiagnostics(): Promise<AppGroupDiagnostics> {
  * Read the last share extension error/success record from the App Group.
  * Written by ShareViewController whenever loadAuthToken() fails or succeeds.
  * Returns null on Android, if the module is unavailable, or if no record exists yet.
- */
+ * /
 export async function readLastShareExtensionError(): Promise<Record<string, any> | null> {
   if (Platform.OS !== 'ios') return null;
   const mod = getNativeModule();
@@ -165,7 +167,7 @@ export async function readLastShareExtensionError(): Promise<Record<string, any>
 /**
  * Delete the last share extension error record from the App Group.
  * Returns true if the file was removed, false otherwise.
- */
+ * /
 export async function clearLastShareExtensionError(): Promise<boolean> {
   if (Platform.OS !== 'ios') return false;
   const mod = getNativeModule();
@@ -182,3 +184,4 @@ export async function clearLastShareExtensionError(): Promise<boolean> {
     return false;
   }
 }
+*/
