@@ -1053,26 +1053,7 @@ export default function SearchScreen() {
                       }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      {item.collage_cdn_urls && item.collage_cdn_urls.length > 0 ? (
-                        item.collage_cdn_urls.length === 1 ? (
-                          <Image
-                            source={{ uri: item.collage_cdn_urls[0] }}
-                            style={styles.historyCollage}
-                            resizeMode="cover"
-                          />
-                        ) : (
-                          <View style={styles.historyCollageGrid}>
-                            {item.collage_cdn_urls.slice(0, 4).map((url, idx) => (
-                              <Image
-                                key={idx}
-                                source={{ uri: url }}
-                                style={styles.historyCollageGridCell}
-                                resizeMode="cover"
-                              />
-                            ))}
-                          </View>
-                        )
-                      ) : item.collage_cdn_url ? (
+                      {item.collage_cdn_url ? (
                         <Image
                           source={{ uri: item.collage_cdn_url }}
                           style={styles.historyCollage}
@@ -1314,20 +1295,6 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 8,
     backgroundColor: 'transparent',
-  },
-  historyCollageGrid: {
-    width: 52,
-    height: 52,
-    borderRadius: 10,
-    overflow: 'hidden',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 1,
-  },
-  historyCollageGridCell: {
-    width: 25.5,
-    height: 25.5,
-    borderRadius: 4,
   },
   historyClockWrapper: {
     width: 52,

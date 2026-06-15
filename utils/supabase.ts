@@ -476,31 +476,38 @@ export async function saveSearchHistoryUploads(
       console.log('[saveSearchHistoryUploads] Saved successfully, searchHistoryId:', searchHistoryId);
     }
 
-    // Collect up to 4 cdn_urls from the uploads array
+    // Generate a composite collage via the edge function and save it — fire-and-forget
     const cdnUrls = uploads
       .map(u => u.cdn_url)
       .filter((u): u is string => !!u)
       .slice(0, 4);
 
-    // Backfill collage_cdn_url (first image, backward compat) and collage_cdn_urls (array) — fire-and-forget
     if (cdnUrls.length > 0) {
-      console.log('[saveSearchHistoryUploads] Backfilling collage_cdn_url and collage_cdn_urls:', cdnUrls);
-      supabase
-        .from('search_history')
-        .update({
-          collage_cdn_url: cdnUrls[0] ?? null,
-          collage_cdn_urls: cdnUrls.length > 0 ? cdnUrls : null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', searchHistoryId)
-        .eq('user_id', userId)
-        .then(({ error: collageError }) => {
-          if (collageError) {
-            console.error('[saveSearchHistoryUploads] collage_cdn_urls update error:', collageError);
-          } else {
-            console.log('[saveSearchHistoryUploads] collage_cdn_url and collage_cdn_urls backfilled successfully');
+      (async () => {
+        try {
+          console.log('[saveSearchHistoryUploads] Generating search collage for', cdnUrls.length, 'image(s)');
+          const { data: collageData, error: collageError } = await supabase.functions.invoke(
+            'generate-search-collage',
+            { body: { userId, searchText: searchText.trim(), imageUrls: cdnUrls, previousCollageCdnUrl: null } },
+          );
+          if (collageError || !collageData?.success) {
+            console.warn('[saveSearchHistoryUploads] Collage generation failed (non-fatal):', collageError ?? collageData?.reason);
+            return;
           }
-        });
+          const { error: updateError } = await supabase
+            .from('search_history')
+            .update({ collage_cdn_url: collageData.collageCdnUrl, updated_at: new Date().toISOString() })
+            .eq('id', searchHistoryId)
+            .eq('user_id', userId);
+          if (updateError) {
+            console.warn('[saveSearchHistoryUploads] collage_cdn_url update error (non-fatal):', updateError);
+          } else {
+            console.log('[saveSearchHistoryUploads] collage_cdn_url saved:', collageData.collageCdnUrl);
+          }
+        } catch (err) {
+          console.warn('[saveSearchHistoryUploads] Collage generation exception (non-fatal):', err);
+        }
+      })();
     }
   } catch (e) {
     console.error('[saveSearchHistoryUploads] Exception:', e);
