@@ -14,6 +14,8 @@ interface InteractiveProps {
   onClear?: () => void;
   onFocus?: () => void;
   withSafeArea?: boolean;
+  onAttachPress?: () => void;
+  showAttachButton?: boolean;
 }
 
 // ── Launcher mode (landing page) ──────────────────────────────────────────────
@@ -96,6 +98,18 @@ export const SearchTopBar = forwardRef<TextInput, SearchTopBarProps>(
               <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
             </Pressable>
           )}
+          {props.showAttachButton && (
+            <Pressable
+              onPress={() => {
+                console.log('[SearchTopBar] Attach button pressed');
+                props.onAttachPress?.();
+              }}
+              style={styles.plusButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+            </Pressable>
+          )}
         </View>
       </View>
     );
@@ -134,5 +148,12 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     padding: 4 * 1.15,
+  },
+  plusButton: {
+    padding: 0,
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

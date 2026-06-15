@@ -412,17 +412,35 @@ export async function saveSearchHistoryUploads(
 
     console.log('[saveSearchHistoryUploads] Saving', uploads.length, 'uploads for search:', searchText.trim());
 
-    // Find the search_history row (it was already upserted by saveSearchHistory)
-    const { data: historyRow, error: fetchError } = await supabase
+    // Try to find existing row first
+    let { data: historyRow, error: fetchError } = await supabase
       .from('search_history')
       .select('id')
       .eq('user_id', userId)
       .eq('search_text', searchText.trim())
-      .single();
+      .maybeSingle();
 
-    if (fetchError || !historyRow) {
-      console.error('[saveSearchHistoryUploads] Could not find search_history row:', fetchError);
-      return;
+    // If not found yet (race condition: saveSearchHistory is fire-and-forget), upsert it now
+    if (!historyRow) {
+      console.log('[saveSearchHistoryUploads] Row not found, upserting search_history row');
+      const { data: upserted, error: upsertError } = await supabase
+        .from('search_history')
+        .upsert(
+          {
+            user_id: userId,
+            search_text: searchText.trim(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,search_text', ignoreDuplicates: false }
+        )
+        .select('id')
+        .single();
+
+      if (upsertError || !upserted) {
+        console.error('[saveSearchHistoryUploads] Could not upsert search_history row:', upsertError);
+        return;
+      }
+      historyRow = upserted;
     }
 
     const searchHistoryId = historyRow.id;

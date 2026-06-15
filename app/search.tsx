@@ -28,7 +28,7 @@ import { NoteCard } from '@/components/NoteCard';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { SearchHistory } from '@/types/Note';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, SlideInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
@@ -81,6 +81,7 @@ export default function SearchScreen() {
   // Image attachment state
   const [attachedImages, setAttachedImages] = useState<{ uri: string; isOptimising: boolean; originalUri: string }[]>([]);
   const [ocrProgress, setOcrProgress] = useState<string | null>(null);
+  const [showAttachFABs, setShowAttachFABs] = useState(false);
 
   const searchInputRef = useRef<TextInput>(null);
   const hasAutoSearchedRef = useRef(false);
@@ -258,6 +259,7 @@ export default function SearchScreen() {
   }, [searchStage, isSearching, hasSearched]);
 
   const pickFromLibrary = useCallback(async () => {
+    setShowAttachFABs(false);
     try {
       console.log('[SearchScreen] pickFromLibrary: requesting media library permissions');
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -292,6 +294,7 @@ export default function SearchScreen() {
   }, []);
 
   const takePhoto = useCallback(async () => {
+    setShowAttachFABs(false);
     try {
       console.log('[SearchScreen] takePhoto: requesting camera permissions');
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -316,29 +319,12 @@ export default function SearchScreen() {
   }, []);
 
   const handleAttachPress = useCallback(() => {
-    console.log('[SearchScreen] Attach image button pressed');
+    console.log('[SearchScreen] Attach button pressed, toggling FABs');
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['Cancel', 'Photo Library', 'Take Photo'],
-          cancelButtonIndex: 0,
-        },
-        async (buttonIndex) => {
-          if (buttonIndex === 1) await pickFromLibrary();
-          if (buttonIndex === 2) await takePhoto();
-        }
-      );
-    } else {
-      Alert.alert('Attach Image', 'Choose a source', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Photo Library', onPress: pickFromLibrary },
-        { text: 'Take Photo', onPress: takePhoto },
-      ]);
-    }
-  }, [pickFromLibrary, takePhoto]);
+    setShowAttachFABs(prev => !prev);
+  }, []);
 
   const removeAttachedImage = useCallback((originalUri: string) => {
     console.log('[SearchScreen] Remove attached image:', originalUri);
@@ -526,6 +512,7 @@ export default function SearchScreen() {
     setIsProgressExpanded(true);
     setAttachedImages([]);
     setOcrProgress(null);
+    setShowAttachFABs(false);
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -901,18 +888,46 @@ export default function SearchScreen() {
         onSubmitEditing={handleSearch}
         onClear={handleClear}
         withSafeArea={false}
+        showAttachButton={true}
+        onAttachPress={handleAttachPress}
       />
 
-      {/* Attach button — visible when not in results mode */}
-      {(!hasSearched || attachedImages.length > 0) && !isSearching && (
-        <Pressable
-          style={styles.attachButton}
-          onPress={handleAttachPress}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <IconSymbol name="paperclip" size={16} color={colors.textSecondary} />
-          <Text style={styles.attachButtonText}>Attach image</Text>
-        </Pressable>
+      {/* FAB overlay for attachment options */}
+      {showAttachFABs && (
+        <>
+          {/* Backdrop to dismiss */}
+          <Pressable
+            style={styles.fabBackdrop}
+            onPress={() => {
+              console.log('[SearchScreen] FAB backdrop pressed, closing FABs');
+              setShowAttachFABs(false);
+            }}
+          />
+          {/* FABs — positioned absolutely below the search bar, aligned to the right */}
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={styles.fabContainer}
+          >
+            <Animated.View entering={SlideInDown.duration(200).delay(0)}>
+              <Pressable
+                style={styles.floatingActionButton}
+                onPress={pickFromLibrary}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol name="photo.fill" size={28} color={colors.primary} />
+              </Pressable>
+            </Animated.View>
+            <Animated.View entering={SlideInDown.duration(200).delay(50)}>
+              <Pressable
+                style={styles.floatingActionButton}
+                onPress={takePhoto}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol name="camera.fill" size={28} color={colors.primary} />
+              </Pressable>
+            </Animated.View>
+          </Animated.View>
+        </>
       )}
 
       {/* Thumbnail strip — visible when images are attached */}
@@ -1525,17 +1540,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  attachButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  attachButtonText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
   attachmentStrip: {
     backgroundColor: colors.background,
     paddingVertical: 8,
@@ -1582,6 +1586,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.card,
+  },
+  fabBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 998,
+  },
+  fabContainer: {
+    position: 'absolute',
+    top: 72,
+    right: 24,
+    flexDirection: 'column',
+    gap: 12,
+    zIndex: 999,
+    elevation: 999,
+  },
+  floatingActionButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.primary,
+    boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.4)',
+    elevation: 8,
   },
   ocrProgressContainer: {
     flexDirection: 'row',
