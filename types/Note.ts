@@ -41,8 +41,9 @@ export interface SearchHistory {
   search_text: string;
   created_at: string;
   updated_at: string;
-  collage_cdn_url?: string | null;   // Cloudflare Images collage thumbnail
-  has_uploads?: boolean;             // Whether this search had image attachments
+  collage_cdn_url?: string | null;    // Cloudflare Images collage thumbnail (first image, backward compat)
+  collage_cdn_urls?: string[] | null; // Up to 4 CDN URLs for the 2×2 grid collage
+  has_uploads?: boolean;              // Whether this search had image attachments
 }
 
 export interface ImageRecord {

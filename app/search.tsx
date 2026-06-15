@@ -1053,7 +1053,26 @@ export default function SearchScreen() {
                       }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      {item.collage_cdn_url ? (
+                      {item.collage_cdn_urls && item.collage_cdn_urls.length > 0 ? (
+                        item.collage_cdn_urls.length === 1 ? (
+                          <Image
+                            source={{ uri: item.collage_cdn_urls[0] }}
+                            style={styles.historyCollage}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View style={styles.historyCollageGrid}>
+                            {item.collage_cdn_urls.slice(0, 4).map((url, idx) => (
+                              <Image
+                                key={idx}
+                                source={{ uri: url }}
+                                style={styles.historyCollageGridCell}
+                                resizeMode="cover"
+                              />
+                            ))}
+                          </View>
+                        )
+                      ) : item.collage_cdn_url ? (
                         <Image
                           source={{ uri: item.collage_cdn_url }}
                           style={styles.historyCollage}
@@ -1293,8 +1312,22 @@ const styles = StyleSheet.create({
   historyCollage: {
     width: 52,
     height: 52,
-    borderRadius: 10,
+    borderRadius: 8,
     backgroundColor: 'transparent',
+  },
+  historyCollageGrid: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 1,
+  },
+  historyCollageGridCell: {
+    width: 25.5,
+    height: 25.5,
+    borderRadius: 4,
   },
   historyClockWrapper: {
     width: 52,
@@ -1591,21 +1624,21 @@ const styles = StyleSheet.create({
   attachmentThumb: {
     width: 72,
     height: 72,
-    borderRadius: 10,
+    borderRadius: 8,
     overflow: 'hidden',
     position: 'relative',
   },
   attachmentThumbImage: {
     width: 72,
     height: 72,
-    borderRadius: 10,
+    borderRadius: 8,
   },
   attachmentOptimising: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
+    borderRadius: 8,
   },
   attachmentRemoveBtn: {
     position: 'absolute',
@@ -1615,7 +1648,7 @@ const styles = StyleSheet.create({
   attachmentAddMore: {
     width: 72,
     height: 72,
-    borderRadius: 10,
+    borderRadius: 8,
     borderWidth: 1.5,
     borderColor: colors.border,
     borderStyle: 'dashed',

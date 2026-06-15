@@ -32,7 +32,7 @@ let homeScrollOffset = 0;
 const SCROLL_THRESHOLD = 36;
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata, addNoteOptimistic, searchQuery, searchNotes } = useNotesContext();
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata, addNoteOptimistic, patchNoteOptimistic, searchQuery, searchNotes } = useNotesContext();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const listRef = useRef<FlatList<Note>>(null);
@@ -450,6 +450,26 @@ export default function HomeScreen() {
 
       if (data.documents && data.documents.length > 0) {
         console.log(`[handleCreateRecallFromCombined] Uploading ${data.documents.length} documents...`);
+
+        // Inject placeholder documents into the optimistic note so the card
+        // shows a DocumentTile with an uploading spinner immediately
+        console.log(`[handleCreateRecallFromCombined] Injecting ${data.documents.length} placeholder document(s) into optimistic note`);
+        patchNoteOptimistic(recallData.id, {
+          documents: data.documents!.map(doc => ({
+            id: `pending-${doc.file_name}-${Date.now()}`,
+            file_name: doc.file_name,
+            content_type: doc.content_type,
+            file_size: doc.file_size ?? 0,
+            upload_state: 'uploading' as const,
+            cdn_url: undefined,
+            local_uri: doc.local_uri ?? undefined,
+            local_thumbnail_uri: doc.local_thumbnail_uri ?? undefined,
+            created_at: new Date().toISOString(),
+            processed_at: undefined,
+            page_count: undefined,
+          })),
+        });
+
         (async () => {
           for (let i = 0; i < data.documents!.length; i++) {
             const doc = data.documents![i];

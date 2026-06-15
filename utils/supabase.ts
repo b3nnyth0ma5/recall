@@ -476,21 +476,29 @@ export async function saveSearchHistoryUploads(
       console.log('[saveSearchHistoryUploads] Saved successfully, searchHistoryId:', searchHistoryId);
     }
 
-    // If the first upload has a cdn_url, backfill collage_cdn_url on the search_history row
-    // (only when it is currently null — fire-and-forget)
-    if (uploads[0]?.cdn_url) {
-      console.log('[saveSearchHistoryUploads] Backfilling collage_cdn_url:', uploads[0].cdn_url);
+    // Collect up to 4 cdn_urls from the uploads array
+    const cdnUrls = uploads
+      .map(u => u.cdn_url)
+      .filter((u): u is string => !!u)
+      .slice(0, 4);
+
+    // Backfill collage_cdn_url (first image, backward compat) and collage_cdn_urls (array) — fire-and-forget
+    if (cdnUrls.length > 0) {
+      console.log('[saveSearchHistoryUploads] Backfilling collage_cdn_url and collage_cdn_urls:', cdnUrls);
       supabase
         .from('search_history')
-        .update({ collage_cdn_url: uploads[0].cdn_url, updated_at: new Date().toISOString() })
+        .update({
+          collage_cdn_url: cdnUrls[0] ?? null,
+          collage_cdn_urls: cdnUrls.length > 0 ? cdnUrls : null,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', searchHistoryId)
         .eq('user_id', userId)
-        .is('collage_cdn_url', null)
         .then(({ error: collageError }) => {
           if (collageError) {
-            console.error('[saveSearchHistoryUploads] collage_cdn_url update error:', collageError);
+            console.error('[saveSearchHistoryUploads] collage_cdn_urls update error:', collageError);
           } else {
-            console.log('[saveSearchHistoryUploads] collage_cdn_url backfilled successfully');
+            console.log('[saveSearchHistoryUploads] collage_cdn_url and collage_cdn_urls backfilled successfully');
           }
         });
     }

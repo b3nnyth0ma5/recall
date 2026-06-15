@@ -1249,6 +1249,15 @@ export function useNotes() {
    * The realtime INSERT subscription and subsequent refreshNotes() will
    * reconcile the canonical version.
    */
+  /**
+   * Apply a local-only patch to a note already in the list — no DB write.
+   * Used to inject placeholder documents before the async upload starts.
+   */
+  const patchNoteOptimistic = useCallback((noteId: string, patch: Partial<Note>) => {
+    console.log('[useNotes] patchNoteOptimistic: patching note', noteId);
+    setNotes(prev => prev.map(n => n.id === noteId ? { ...n, ...patch } : n));
+  }, []);
+
   const addNoteOptimistic = useCallback((note: Partial<Note> & { id: string; user_id: string }) => {
     console.log('[useNotes] addNoteOptimistic: prepending note', note.id);
     setNotes(prev => {
@@ -1298,6 +1307,7 @@ export function useNotes() {
     urlMetadataByRecallId,
     addNote,
     addNoteOptimistic,
+    patchNoteOptimistic,
     updateNote,
     deleteNote,
     searchNotes,
