@@ -12,9 +12,12 @@ import {
   ActivityIndicator,
   Share,
   Image,
+  Alert,
+  ActionSheetIOS,
   Animated as RNAnimated,
   ScrollView,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import RecallHeader from '@/components/RecallHeader';
 import { SearchTopBar } from '@/components/SearchTopBar';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -34,7 +37,7 @@ import Toast from 'react-native-toast-message';
 // import { donateSearch } from 'recall-native'; // recall-native disabled
 import { Share as ShareIcon } from 'lucide-react-native';
 import { Swipeable, RectButton } from 'react-native-gesture-handler';
-import { supabase, deleteSearchHistory, cleanupCloudflareCollage } from '@/utils/supabase';
+import { supabase, deleteSearchHistory, cleanupCloudflareCollage, saveSearchHistoryUploads, getSearchHistoryUploads } from '@/utils/supabase';
 import { PillsRow } from '@/components/PillsRow';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
 
@@ -75,6 +78,10 @@ export default function SearchScreen() {
   const [selectedPill, setSelectedPill] = useState<string | null>(null);
   // Tracks whether history has been loaded at least once — gates zero states
   const [hasLoadedHistoryOnce, setHasLoadedHistoryOnce] = useState(false);
+  // Image attachment state
+  const [attachedImages, setAttachedImages] = useState<{ uri: string; isOptimising: boolean; originalUri: string }[]>([]);
+  const [ocrProgress, setOcrProgress] = useState<string | null>(null);
+
   const searchInputRef = useRef<TextInput>(null);
   const hasAutoSearchedRef = useRef(false);
   // Tracks previous query to avoid loops in the empty-query effect
@@ -250,40 +257,189 @@ export default function SearchScreen() {
     }
   }, [searchStage, isSearching, hasSearched]);
 
-  const handleSearch = useCallback(() => {
+  const pickFromLibrary = useCallback(async () => {
+    try {
+      console.log('[SearchScreen] pickFromLibrary: requesting media library permissions');
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant permission to access your photos');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'] as any,
+        allowsMultipleSelection: true,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets) {
+        console.log('[SearchScreen] pickFromLibrary: selected', result.assets.length, 'image(s)');
+        const placeholders = result.assets.map(asset => ({
+          uri: asset.uri,
+          isOptimising: true,
+          originalUri: asset.uri,
+        }));
+        setAttachedImages(prev => [...prev, ...placeholders]);
+        for (const asset of result.assets) {
+          const { compressImageForUpload } = await import('@/utils/imageOptimization');
+          const optimisedUri = await compressImageForUpload(asset.uri);
+          setAttachedImages(prev => prev.map(img =>
+            img.originalUri === asset.uri ? { ...img, uri: optimisedUri, isOptimising: false } : img
+          ));
+        }
+      }
+    } catch (e) {
+      console.error('[SearchScreen] pickFromLibrary error:', e);
+    }
+  }, []);
+
+  const takePhoto = useCallback(async () => {
+    try {
+      console.log('[SearchScreen] takePhoto: requesting camera permissions');
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant permission to access your camera');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: false });
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        console.log('[SearchScreen] takePhoto: photo captured');
+        setAttachedImages(prev => [...prev, { uri: asset.uri, isOptimising: true, originalUri: asset.uri }]);
+        const { compressImageForUpload } = await import('@/utils/imageOptimization');
+        const optimisedUri = await compressImageForUpload(asset.uri);
+        setAttachedImages(prev => prev.map(img =>
+          img.originalUri === asset.uri ? { ...img, uri: optimisedUri, isOptimising: false } : img
+        ));
+      }
+    } catch (e) {
+      console.error('[SearchScreen] takePhoto error:', e);
+    }
+  }, []);
+
+  const handleAttachPress = useCallback(() => {
+    console.log('[SearchScreen] Attach image button pressed');
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Photo Library', 'Take Photo'],
+          cancelButtonIndex: 0,
+        },
+        async (buttonIndex) => {
+          if (buttonIndex === 1) await pickFromLibrary();
+          if (buttonIndex === 2) await takePhoto();
+        }
+      );
+    } else {
+      Alert.alert('Attach Image', 'Choose a source', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Photo Library', onPress: pickFromLibrary },
+        { text: 'Take Photo', onPress: takePhoto },
+      ]);
+    }
+  }, [pickFromLibrary, takePhoto]);
+
+  const removeAttachedImage = useCallback((originalUri: string) => {
+    console.log('[SearchScreen] Remove attached image:', originalUri);
+    setAttachedImages(prev => prev.filter(img => img.originalUri !== originalUri));
+  }, []);
+
+  const uriToBase64 = useCallback(async (uri: string): Promise<string> => {
+    const FileSystem = await import('expo-file-system/legacy');
+    const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+    return base64;
+  }, []);
+
+  const handleSearch = useCallback(async () => {
     console.log('User submitted search query:', searchQuery.trim() || '(empty)');
     Keyboard.dismiss();
-    if (searchQuery.trim()) {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
-      
-      setShowHistory(false);
-      setHasSearched(true);
-      setIsAnswerExpanded(false);
-      setIsSearching(true);
-      setIsProgressExpanded(true);
-      // donateSearch(searchQuery.trim()); // recall-native disabled
-      
-      searchNotes(searchQuery, true).finally(() => {
-        setIsSearching(false);
-        
-        setTimeout(() => {
-          loadSearchHistory();
-        }, 500);
-      });
-    }
-  }, [searchQuery, searchNotes, loadSearchHistory]);
+    if (!searchQuery.trim()) return;
 
-  const handleHistoryItemPress = useCallback((searchText: string) => {
-    setSearchQuery(searchText);
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
     setShowHistory(false);
     setHasSearched(true);
     setIsAnswerExpanded(false);
     setIsSearching(true);
     setIsProgressExpanded(true);
-    
-    searchNotes(searchText, true).finally(() => {
+
+    // Only use images that have finished optimising
+    const readyImages = attachedImages.filter(img => !img.isOptimising);
+    let searchUploads: { text: string; explanation: string }[] = [];
+
+    if (readyImages.length > 0) {
+      try {
+        console.log('[SearchScreen] Processing', readyImages.length, 'attached image(s) via OCR');
+        for (let i = 0; i < readyImages.length; i++) {
+          setOcrProgress(`Analysing image ${i + 1} of ${readyImages.length}...`);
+          const base64 = await uriToBase64(readyImages[i].uri);
+          console.log('[SearchScreen] Invoking ocr-search-image for image', i + 1);
+          const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('ocr-search-image', {
+            body: { image_base64: base64, content_type: 'image/jpeg' },
+          });
+          if (!ocrError && ocrResult) {
+            console.log('[SearchScreen] OCR result for image', i + 1, '— text length:', (ocrResult.ocr_text ?? '').length);
+            searchUploads.push({
+              text: ocrResult.ocr_text ?? '',
+              explanation: ocrResult.image_explanation ?? '',
+            });
+          } else {
+            console.error('[SearchScreen] OCR error for image', i + 1, ocrError);
+          }
+        }
+        setOcrProgress('Searching your recalls...');
+
+        // Save uploads to DB fire-and-forget
+        if (user?.id && searchUploads.length > 0) {
+          saveSearchHistoryUploads(user.id, searchQuery.trim(), searchUploads).catch(console.error);
+        }
+      } catch (e) {
+        console.error('[SearchScreen] OCR processing error:', e);
+      }
+    }
+
+    setOcrProgress(null);
+
+    searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined).finally(() => {
+      setIsSearching(false);
+      setAttachedImages([]);
+      setTimeout(() => {
+        loadSearchHistory();
+      }, 500);
+    });
+  }, [searchQuery, searchNotes, loadSearchHistory, attachedImages, uriToBase64, user?.id]);
+
+  const handleHistoryItemPress = useCallback(async (item: SearchHistory) => {
+    console.log('[SearchScreen] History item pressed:', item.search_text, '| has_uploads:', item.has_uploads);
+    setSearchQuery(item.search_text);
+    setShowHistory(false);
+    setHasSearched(true);
+    setIsAnswerExpanded(false);
+    setIsSearching(true);
+    setIsProgressExpanded(true);
+
+    let searchUploads: { text: string; explanation: string }[] | undefined;
+
+    // If this search had uploads, fetch and reuse them (no re-OCR needed)
+    if (item.has_uploads && item.id) {
+      try {
+        console.log('[SearchScreen] Fetching stored uploads for history item:', item.id);
+        const uploads = await getSearchHistoryUploads(item.id);
+        if (uploads.length > 0) {
+          searchUploads = uploads
+            .filter(u => u.text !== null || u.explanation !== null)
+            .map(u => ({ text: u.text ?? '', explanation: u.explanation ?? '' }));
+          console.log('[SearchScreen] Reusing', searchUploads.length, 'stored upload(s) for re-run');
+        }
+      } catch (e) {
+        console.error('[SearchScreen] Failed to fetch search uploads:', e);
+      }
+    }
+
+    searchNotes(item.search_text, true, searchUploads).finally(() => {
       setIsSearching(false);
     });
   }, [searchNotes]);
@@ -368,6 +524,8 @@ export default function SearchScreen() {
     setIsAnswerExpanded(false);
     setIsSearching(false);
     setIsProgressExpanded(true);
+    setAttachedImages([]);
+    setOcrProgress(null);
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -745,6 +903,52 @@ export default function SearchScreen() {
         withSafeArea={false}
       />
 
+      {/* Attach button — visible when not in results mode */}
+      {(!hasSearched || attachedImages.length > 0) && !isSearching && (
+        <Pressable
+          style={styles.attachButton}
+          onPress={handleAttachPress}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <IconSymbol name="paperclip" size={16} color={colors.textSecondary} />
+          <Text style={styles.attachButtonText}>Attach image</Text>
+        </Pressable>
+      )}
+
+      {/* Thumbnail strip — visible when images are attached */}
+      {attachedImages.length > 0 && (
+        <Animated.View entering={FadeIn.duration(200)} style={styles.attachmentStrip}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.attachmentStripContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {attachedImages.map((img) => (
+              <View key={img.originalUri} style={styles.attachmentThumb}>
+                <Image source={{ uri: img.uri }} style={styles.attachmentThumbImage} resizeMode="cover" />
+                {img.isOptimising && (
+                  <View style={styles.attachmentOptimising}>
+                    <ActivityIndicator size="small" color="#fff" />
+                  </View>
+                )}
+                <Pressable
+                  style={styles.attachmentRemoveBtn}
+                  onPress={() => removeAttachedImage(img.originalUri)}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <IconSymbol name="xmark.circle.fill" size={20} color="#fff" />
+                </Pressable>
+              </View>
+            ))}
+            {/* Add more button */}
+            <Pressable style={styles.attachmentAddMore} onPress={handleAttachPress}>
+              <IconSymbol name="plus" size={22} color={colors.textSecondary} />
+            </Pressable>
+          </ScrollView>
+        </Animated.View>
+      )}
+
       {/* FlatList: data = filteredNotes when searching, empty otherwise.
           All non-results content (history, empty states, answer, progress) lives in ListHeaderComponent. */}
       <FlatList
@@ -794,8 +998,7 @@ export default function SearchScreen() {
                     <Pressable
                       style={styles.historyItem}
                       onPress={() => {
-                        console.log('[search] History item pressed:', item.search_text);
-                        handleHistoryItemPress(item.search_text);
+                        handleHistoryItemPress(item);
                       }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
@@ -811,6 +1014,11 @@ export default function SearchScreen() {
                         </View>
                       )}
                       <Text style={styles.historyText} numberOfLines={1}>{item.search_text}</Text>
+                      {item.has_uploads && (
+                        <View style={styles.uploadsBadge}>
+                          <IconSymbol name="photo" size={12} color={colors.primary} />
+                        </View>
+                      )}
                       <IconSymbol name="arrow.up.left" size={16} color={colors.textTertiary} />
                     </Pressable>
                   </Swipeable>
@@ -841,6 +1049,12 @@ export default function SearchScreen() {
             ) : hasSearched ? (
               // Change 1: Search Steps — Animated.View with FadeIn for the crossfade swap
               <Animated.View entering={FadeIn.duration(300)} style={styles.notesContainer}>
+                {ocrProgress && (
+                  <Animated.View entering={FadeIn.duration(200)} style={styles.ocrProgressContainer}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.ocrProgressText}>{ocrProgress}</Text>
+                  </Animated.View>
+                )}
                 <SearchProgressIndicator
                   stage={searchStage}
                   locationName={searchLocationName}
@@ -1310,5 +1524,88 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',
+  },
+  attachButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  attachButtonText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  attachmentStrip: {
+    backgroundColor: colors.background,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  attachmentStripContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  attachmentThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: 10,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  attachmentThumbImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 10,
+  },
+  attachmentOptimising: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  attachmentRemoveBtn: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+  },
+  attachmentAddMore: {
+    width: 72,
+    height: 72,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+  },
+  ocrProgressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  ocrProgressText: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  uploadsBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 107, 122, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

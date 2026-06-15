@@ -770,7 +770,11 @@ export function useNotes() {
     }
   }, [getActiveUserId]);
 
-  const searchNotes = useCallback(async (query: string, useV2: boolean = false) => {
+  const searchNotes = useCallback(async (
+    query: string,
+    useV2: boolean = false,
+    searchUploads?: { text: string; explanation: string }[],
+  ) => {
     const userId = await getActiveUserId();
     if (!userId) {
       console.error('[useNotes] searchNotes: no active user');
@@ -833,9 +837,11 @@ export function useNotes() {
       if (__DEV__) console.log('Step 1: Calling unified entity extraction...');
       const entitySearchStart = Date.now();
       
+      console.log('[useNotes] Invoking search-recalls-v3, query:', query.trim(), 'searchUploads count:', searchUploads?.length ?? 0);
       const { data: entityResult, error: entityError } = await supabase.functions.invoke('search-recalls-v3', {
         body: { 
           query: query.trim(),
+          ...(searchUploads && searchUploads.length > 0 ? { search_uploads: searchUploads } : {}),
         },
       });
 

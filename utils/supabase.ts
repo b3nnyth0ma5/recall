@@ -399,6 +399,94 @@ export async function deleteSearchHistory(
 }
 
 /**
+ * Save search_history_uploads rows and mark has_uploads=true on the search_history row.
+ * Call this after OCR processing is complete, before triggering the search.
+ */
+export async function saveSearchHistoryUploads(
+  userId: string,
+  searchText: string,
+  uploads: { text: string; explanation: string; type?: string }[],
+): Promise<void> {
+  try {
+    if (!searchText.trim() || uploads.length === 0) return;
+
+    console.log('[saveSearchHistoryUploads] Saving', uploads.length, 'uploads for search:', searchText.trim());
+
+    // Find the search_history row (it was already upserted by saveSearchHistory)
+    const { data: historyRow, error: fetchError } = await supabase
+      .from('search_history')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('search_text', searchText.trim())
+      .single();
+
+    if (fetchError || !historyRow) {
+      console.error('[saveSearchHistoryUploads] Could not find search_history row:', fetchError);
+      return;
+    }
+
+    const searchHistoryId = historyRow.id;
+
+    // Insert upload rows
+    const rows = uploads.map((u) => ({
+      search_history_id: searchHistoryId,
+      type: u.type ?? 'image',
+      text: u.text ?? null,
+      explanation: u.explanation ?? null,
+    }));
+
+    const { error: insertError } = await supabase
+      .from('search_history_uploads')
+      .insert(rows);
+
+    if (insertError) {
+      console.error('[saveSearchHistoryUploads] Insert error:', insertError);
+      return;
+    }
+
+    // Mark has_uploads = true
+    const { error: updateError } = await supabase
+      .from('search_history')
+      .update({ has_uploads: true, updated_at: new Date().toISOString() })
+      .eq('id', searchHistoryId)
+      .eq('user_id', userId);
+
+    if (updateError) {
+      console.error('[saveSearchHistoryUploads] Update has_uploads error:', updateError);
+    } else {
+      console.log('[saveSearchHistoryUploads] Saved successfully, searchHistoryId:', searchHistoryId);
+    }
+  } catch (e) {
+    console.error('[saveSearchHistoryUploads] Exception:', e);
+  }
+}
+
+/**
+ * Fetch search_history_uploads for a given search_history row.
+ */
+export async function getSearchHistoryUploads(
+  searchHistoryId: string,
+): Promise<{ text: string | null; explanation: string | null; type: string }[]> {
+  try {
+    console.log('[getSearchHistoryUploads] Fetching uploads for searchHistoryId:', searchHistoryId);
+    const { data, error } = await supabase
+      .from('search_history_uploads')
+      .select('text, explanation, type')
+      .eq('search_history_id', searchHistoryId);
+
+    if (error) {
+      console.error('[getSearchHistoryUploads] Error:', error);
+      return [];
+    }
+    console.log('[getSearchHistoryUploads] Found', data?.length ?? 0, 'uploads');
+    return data ?? [];
+  } catch (e) {
+    console.error('[getSearchHistoryUploads] Exception:', e);
+    return [];
+  }
+}
+
+/**
  * Fire-and-forget cleanup of a Cloudflare Images asset.
  * Extracts the image ID from a CDN URL of the form
  * `https://imagedelivery.net/<accountHash>/<imageId>/<variant>` and invokes
