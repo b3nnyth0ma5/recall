@@ -38,6 +38,7 @@ import Toast from 'react-native-toast-message';
 import { Share as ShareIcon } from 'lucide-react-native';
 import { Swipeable, RectButton } from 'react-native-gesture-handler';
 import { supabase, deleteSearchHistory, cleanupCloudflareCollage, saveSearchHistoryUploads, getSearchHistoryUploads } from '@/utils/supabase';
+import { uploadImageToCloudflare } from '@/utils/cloudflareCDN';
 import { PillsRow } from '@/components/PillsRow';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
 
@@ -79,7 +80,7 @@ export default function SearchScreen() {
   // Tracks whether history has been loaded at least once — gates zero states
   const [hasLoadedHistoryOnce, setHasLoadedHistoryOnce] = useState(false);
   // Image attachment state
-  const [attachedImages, setAttachedImages] = useState<{ uri: string; isOptimising: boolean; originalUri: string }[]>([]);
+  const [attachedImages, setAttachedImages] = useState<{ uri: string; isOptimising: boolean; originalUri: string; locked?: boolean }[]>([]);
   const [ocrProgress, setOcrProgress] = useState<string | null>(null);
   const [showAttachFABs, setShowAttachFABs] = useState(false);
 
@@ -354,28 +355,43 @@ export default function SearchScreen() {
 
     // Only use images that have finished optimising
     const readyImages = attachedImages.filter(img => !img.isOptimising);
-    let searchUploads: { text: string; explanation: string }[] = [];
+    let searchUploads: { text: string; explanation: string; cdn_url: string | null }[] = [];
 
     if (readyImages.length > 0) {
       try {
-        console.log('[SearchScreen] Processing', readyImages.length, 'attached image(s) via OCR');
-        for (let i = 0; i < readyImages.length; i++) {
-          setOcrProgress(`Analysing image ${i + 1} of ${readyImages.length}...`);
-          const base64 = await uriToBase64(readyImages[i].uri);
-          console.log('[SearchScreen] Invoking ocr-search-image for image', i + 1);
-          const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('ocr-search-image', {
-            body: { image_base64: base64, content_type: 'image/jpeg' },
-          });
-          if (!ocrError && ocrResult) {
-            console.log('[SearchScreen] OCR result for image', i + 1, '— text length:', (ocrResult.ocr_text ?? '').length);
-            searchUploads.push({
-              text: ocrResult.ocr_text ?? '',
-              explanation: ocrResult.image_explanation ?? '',
-            });
-          } else {
-            console.error('[SearchScreen] OCR error for image', i + 1, ocrError);
-          }
-        }
+        console.log('[SearchScreen] Processing', readyImages.length, 'attached image(s) via OCR + CDN upload (parallel)');
+        setOcrProgress(`Analysing ${readyImages.length} image${readyImages.length > 1 ? 's' : ''}...`);
+
+        const results = await Promise.all(
+          readyImages.map(async (img, i) => {
+            const base64 = await uriToBase64(img.uri);
+            const fileName = `search-${Date.now()}-${i}.jpg`;
+            console.log('[SearchScreen] Parallel OCR + CDN upload for image', i + 1, '| file:', fileName);
+
+            const [ocrResponse, cdnUrl] = await Promise.all([
+              supabase.functions.invoke('ocr-search-image', {
+                body: { image_base64: base64, content_type: 'image/jpeg' },
+              }),
+              uploadImageToCloudflare(base64, fileName, 'image/jpeg'),
+            ]);
+
+            const { data: ocrResult, error: ocrError } = ocrResponse;
+            if (ocrError) {
+              console.error('[SearchScreen] OCR error for image', i + 1, ocrError);
+            } else {
+              console.log('[SearchScreen] OCR result for image', i + 1, '— text length:', (ocrResult?.ocr_text ?? '').length);
+            }
+            console.log('[SearchScreen] CDN upload result for image', i + 1, ':', cdnUrl ?? 'null');
+
+            return {
+              text: ocrResult?.ocr_text ?? '',
+              explanation: ocrResult?.image_explanation ?? '',
+              cdn_url: cdnUrl ?? null,
+            };
+          })
+        );
+
+        searchUploads = results;
         setOcrProgress('Searching your recalls...');
 
         // Save uploads to DB fire-and-forget
@@ -389,9 +405,11 @@ export default function SearchScreen() {
 
     setOcrProgress(null);
 
+    // Lock images so they stay visible during the search (no X button, no add-more)
+    setAttachedImages(prev => prev.map(img => ({ ...img, locked: true })));
+
     searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined).finally(() => {
       setIsSearching(false);
-      setAttachedImages([]);
       setTimeout(() => {
         loadSearchHistory();
       }, 500);
@@ -400,6 +418,8 @@ export default function SearchScreen() {
 
   const handleHistoryItemPress = useCallback(async (item: SearchHistory) => {
     console.log('[SearchScreen] History item pressed:', item.search_text, '| has_uploads:', item.has_uploads);
+    // Clear any stale images from a previous search immediately
+    setAttachedImages([]);
     setSearchQuery(item.search_text);
     setShowHistory(false);
     setHasSearched(true);
@@ -419,6 +439,18 @@ export default function SearchScreen() {
             .filter(u => u.text !== null || u.explanation !== null)
             .map(u => ({ text: u.text ?? '', explanation: u.explanation ?? '' }));
           console.log('[SearchScreen] Reusing', searchUploads.length, 'stored upload(s) for re-run');
+
+          // Populate thumbnail strip with CDN images (locked — no X button)
+          const imageUploads = uploads.filter(u => u.cdn_url);
+          if (imageUploads.length > 0) {
+            console.log('[SearchScreen] Restoring', imageUploads.length, 'CDN image(s) to thumbnail strip');
+            setAttachedImages(imageUploads.map(u => ({
+              uri: u.cdn_url!,
+              isOptimising: false,
+              originalUri: u.cdn_url!,
+              locked: true,
+            })));
+          }
         }
       } catch (e) {
         console.error('[SearchScreen] Failed to fetch search uploads:', e);
@@ -947,19 +979,23 @@ export default function SearchScreen() {
                     <ActivityIndicator size="small" color="#fff" />
                   </View>
                 )}
-                <Pressable
-                  style={styles.attachmentRemoveBtn}
-                  onPress={() => removeAttachedImage(img.originalUri)}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <IconSymbol name="xmark.circle.fill" size={20} color="#fff" />
-                </Pressable>
+                {!img.locked && (
+                  <Pressable
+                    style={styles.attachmentRemoveBtn}
+                    onPress={() => removeAttachedImage(img.originalUri)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <IconSymbol name="xmark.circle.fill" size={20} color="#fff" />
+                  </Pressable>
+                )}
               </View>
             ))}
-            {/* Add more button */}
-            <Pressable style={styles.attachmentAddMore} onPress={handleAttachPress}>
-              <IconSymbol name="plus" size={22} color={colors.textSecondary} />
-            </Pressable>
+            {/* Add more button — hidden once any image is locked */}
+            {attachedImages.every(img => !img.locked) && (
+              <Pressable style={styles.attachmentAddMore} onPress={handleAttachPress}>
+                <IconSymbol name="plus" size={22} color={colors.textSecondary} />
+              </Pressable>
+            )}
           </ScrollView>
         </Animated.View>
       )}

@@ -405,7 +405,7 @@ export async function deleteSearchHistory(
 export async function saveSearchHistoryUploads(
   userId: string,
   searchText: string,
-  uploads: { text: string; explanation: string; type?: string }[],
+  uploads: { text: string; explanation: string; type?: string; cdn_url?: string | null }[],
 ): Promise<void> {
   try {
     if (!searchText.trim() || uploads.length === 0) return;
@@ -451,6 +451,7 @@ export async function saveSearchHistoryUploads(
       type: u.type ?? 'image',
       text: u.text ?? null,
       explanation: u.explanation ?? null,
+      cdn_url: u.cdn_url ?? null,
     }));
 
     const { error: insertError } = await supabase
@@ -474,6 +475,25 @@ export async function saveSearchHistoryUploads(
     } else {
       console.log('[saveSearchHistoryUploads] Saved successfully, searchHistoryId:', searchHistoryId);
     }
+
+    // If the first upload has a cdn_url, backfill collage_cdn_url on the search_history row
+    // (only when it is currently null — fire-and-forget)
+    if (uploads[0]?.cdn_url) {
+      console.log('[saveSearchHistoryUploads] Backfilling collage_cdn_url:', uploads[0].cdn_url);
+      supabase
+        .from('search_history')
+        .update({ collage_cdn_url: uploads[0].cdn_url, updated_at: new Date().toISOString() })
+        .eq('id', searchHistoryId)
+        .eq('user_id', userId)
+        .is('collage_cdn_url', null)
+        .then(({ error: collageError }) => {
+          if (collageError) {
+            console.error('[saveSearchHistoryUploads] collage_cdn_url update error:', collageError);
+          } else {
+            console.log('[saveSearchHistoryUploads] collage_cdn_url backfilled successfully');
+          }
+        });
+    }
   } catch (e) {
     console.error('[saveSearchHistoryUploads] Exception:', e);
   }
@@ -484,12 +504,12 @@ export async function saveSearchHistoryUploads(
  */
 export async function getSearchHistoryUploads(
   searchHistoryId: string,
-): Promise<{ text: string | null; explanation: string | null; type: string }[]> {
+): Promise<{ text: string | null; explanation: string | null; type: string; cdn_url: string | null }[]> {
   try {
     console.log('[getSearchHistoryUploads] Fetching uploads for searchHistoryId:', searchHistoryId);
     const { data, error } = await supabase
       .from('search_history_uploads')
-      .select('text, explanation, type')
+      .select('text, explanation, type, cdn_url')
       .eq('search_history_id', searchHistoryId);
 
     if (error) {
