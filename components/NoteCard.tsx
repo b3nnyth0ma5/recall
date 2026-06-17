@@ -671,15 +671,14 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                     <IconSymbol name="chevron.right" size={12} color={colors.primary} />
                   </View>
                 </Pressable>
-              ) : (
-                <View style={styles.locationWrapper} />
-              )}
-
-              <RecallUtilityBar
-                onAskQuestion={handleAskQuestion}
-                onShare={handleSharePress}
-                hasLocation={Boolean(note.location)}
-              />
+              ) : null}
+              <View style={!note.location ? styles.utilityBarRight : undefined}>
+                <RecallUtilityBar
+                  onAskQuestion={handleAskQuestion}
+                  onShare={handleSharePress}
+                  hasLocation={Boolean(note.location)}
+                />
+              </View>
             </View>
           </View>
         </Swipeable>
@@ -904,7 +903,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 6,
     gap: 8,
-		
+  },
+  utilityBarRight: {
+    marginLeft: 'auto' as const,
   },
   timeAgoWrapper: {
     width: '100%',

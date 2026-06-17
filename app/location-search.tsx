@@ -18,7 +18,7 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { supabase } from '@/utils/supabase';
-import { searchPlaces, searchNearbyPlaces, PlaceResult, extractShortLocationName } from '@/utils/googlePlaces';
+import { searchPlaces, searchNearbyPlaces, PlaceResult, extractShortLocationName, reverseGeocodeGoogle } from '@/utils/googlePlaces';
 
 interface LocationSearchScreenProps {
   visible?: boolean;
@@ -55,6 +55,7 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
   const [loading, setLoading] = useState(false);
   const [loadingNearby, setLoadingNearby] = useState(false);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [currentLocationPlace, setCurrentLocationPlace] = useState<PlaceResult | null>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const searchInputRef = React.useRef<TextInput>(null);
 
@@ -87,6 +88,27 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
         return;
       }
 
+      // Helper to build and set the currentLocationPlace from a lat/lng fix
+      const resolveCurrentLocationPlace = async (lat: number, lng: number) => {
+        try {
+          const resolvedName = await reverseGeocodeGoogle(lat, lng);
+          console.log('[LocationSearch] Reverse geocoded current location:', resolvedName);
+          setCurrentLocationPlace({
+            placeId: 'current-location',
+            displayName: 'Your current location',
+            formattedAddress: resolvedName,
+            latitude: lat,
+            longitude: lng,
+            primaryTypeDisplayName: undefined,
+            suburb: undefined,
+            locality: undefined,
+            distance: 0,
+          });
+        } catch (e) {
+          console.error('[LocationSearch] Failed to reverse geocode current location:', e);
+        }
+      };
+
       // STAGE 1: Use cached last-known position immediately if available.
       // This typically returns in <50ms and gives us a fix accurate enough for
       // distance-ranked nearby search.
@@ -105,6 +127,8 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
           setUserLocation(initialLocation);
           // Fire the nearby search immediately — don't await
           loadNearbyPlaces(initialLocation);
+          // Resolve current location name from cached fix
+          resolveCurrentLocationPlace(initialLocation.latitude, initialLocation.longitude);
         } else {
           console.log('[LocationSearch] No cached fix available');
         }
@@ -129,6 +153,8 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
           console.log('[LocationSearch] First paint — firing nearby search with fresh fix');
           setUserLocation(freshLocation);
           loadNearbyPlaces(freshLocation);
+          // Resolve current location name from fresh fix
+          resolveCurrentLocationPlace(freshLocation.latitude, freshLocation.longitude);
         } else {
           // Compare with the cached fix; only refresh if user has moved meaningfully.
           const deltaKm = haversineKm(
@@ -141,6 +167,8 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
             console.log(`[LocationSearch] Fresh fix moved by ${deltaKm.toFixed(3)}km — silently refreshing list`);
             setUserLocation(freshLocation);
             loadNearbyPlaces(freshLocation, { silent: true });
+            // Update current location place with more accurate fresh fix
+            resolveCurrentLocationPlace(freshLocation.latitude, freshLocation.longitude);
           } else {
             console.log(`[LocationSearch] Fresh fix within ${(deltaKm * 1000).toFixed(0)}m of cached — keeping current results`);
             // Still update userLocation so subsequent typed searches use the fresh fix
@@ -411,11 +439,46 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
                 {loading ? 'Searching with Google Places...' : 'Finding nearby places...'}
               </Text>
             </View>
-          ) : results.length > 0 ? (
+          ) : results.length > 0 || (!searchQuery.trim() && currentLocationPlace) ? (
             <Animated.View entering={FadeInDown.duration(600)}>
-              <Text style={styles.resultsTitle}>
-                {searchQuery.trim() ? `Top ${results.length} Results` : `${results.length} Nearby Places`}
-              </Text>
+              {!searchQuery.trim() && currentLocationPlace ? (
+                <>
+                  <Text style={styles.sectionHeader}>Your current location</Text>
+                  <Pressable
+                    style={styles.resultItem}
+                    onPress={() => {
+                      console.log('[LocationSearch] User tapped current location option');
+                      handleSelectLocation(currentLocationPlace);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <View style={styles.resultIconContainer}>
+                      <IconSymbol name="location.fill" size={24} color={colors.primary} />
+                    </View>
+                    <View style={styles.resultTextContainer}>
+                      <Text style={styles.resultTextBold} numberOfLines={1}>
+                        {currentLocationPlace.displayName}
+                      </Text>
+                      <Text style={styles.resultText} numberOfLines={2}>
+                        {currentLocationPlace.formattedAddress}
+                      </Text>
+                    </View>
+                    <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
+                  </Pressable>
+                  {results.length > 0 && (
+                    <Text style={styles.sectionHeader}>
+                      {results.length}
+                      {' Nearby Places'}
+                    </Text>
+                  )}
+                </>
+              ) : (
+                <Text style={styles.resultsTitle}>
+                  {'Top '}
+                  {results.length}
+                  {' Results'}
+                </Text>
+              )}
               {results.map((result) => {
                 const shortName = extractShortLocationName(
                   result.displayName,
@@ -426,7 +489,10 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
                   <Pressable
                     key={result.placeId}
                     style={styles.resultItem}
-                    onPress={() => handleSelectLocation(result)}
+                    onPress={() => {
+                      console.log('[LocationSearch] User tapped place result:', result.displayName);
+                      handleSelectLocation(result);
+                    }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <View style={styles.resultIconContainer}>
@@ -442,7 +508,8 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
                         </Text>
                       )}
                       <Text style={styles.resultTextFormatted} numberOfLines={1}>
-                        Will be saved as: {shortName}
+                        {'Will be saved as: '}
+                        {shortName}
                       </Text>
                       <Text style={styles.resultText} numberOfLines={2}>
                         {result.formattedAddress}
@@ -560,6 +627,16 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.text,
     marginBottom: 16,
+  },
+  sectionHeader: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+    paddingTop: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   resultItem: {
     flexDirection: 'row',

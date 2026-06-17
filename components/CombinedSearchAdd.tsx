@@ -179,7 +179,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
       };
 
       setCurrentLocation(locationData);
-      setLocation(locationData);
       lastLocationFetchRef.current = Date.now();
       
       console.log('[CombinedSearchAdd] Current location obtained:', locationData);
@@ -442,7 +441,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
     try {
       setIsCreating(true);
       
-      const locationToSave = location || currentLocation;
+      const locationToSave = location;
       
       const imageUris = images.map(img => img.uri);
       
@@ -461,7 +460,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
       setText('');
       setImages([]);
       setDocuments([]);
-      setLocation(currentLocation);
+      setLocation(null);
       setSavingStage('');
     } catch (error) {
       console.error('Error creating recall:', error);
@@ -644,13 +643,9 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
                     size={16} 
                     color={colors.primary} 
                   />
-                  {isRefreshingLocation ? (
-                    <ActivityIndicator size="small" color={colors.primary} style={styles.locationSpinner} />
-                  ) : (
-                    <Text style={styles.locationPillText} numberOfLines={1}>
-                      {location?.name || currentLocation?.name || 'Add Location'}
-                    </Text>
-                  )}
+                  <Text style={styles.locationPillText} numberOfLines={1}>
+                    {location?.name || 'Click to add a location'}
+                  </Text>
                 </Pressable>
 								
                 <View style={styles.iconSpacer} />
