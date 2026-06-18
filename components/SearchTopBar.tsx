@@ -107,7 +107,7 @@ export const SearchTopBar = forwardRef<TextInput, SearchTopBarProps>(
               style={styles.plusButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <IconSymbol name="plus.circle.fill" size={28} color={colors.text} />
+              <IconSymbol name="plus.circle.fill" size={24} color={colors.text} />
             </Pressable>
           )}
         </View>
@@ -129,9 +129,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     borderRadius: 12,
-    paddingHorizontal: 16 * 1.15,
+    paddingHorizontal: 10,
     paddingVertical: 12,
-    gap: 12,
+    gap: 8,
     minHeight: 48 * 1.1,
   },
   searchInput: {
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
   },
   clearButton: {
-    padding: 4 * 1.15,
+    padding: 0,
   },
   plusButton: {
     padding: 0,
