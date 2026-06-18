@@ -1184,3 +1184,58 @@ export async function batchUploadImagesToCloudflare(batchSize: number = 100): Pr
     };
   }
 }
+
+// Fetch recollection categories for the current user
+export async function getRecollectionCategories(): Promise<{
+  id: string;
+  category_name: string;
+  icon_cdn_url: string | null;
+}[]> {
+  console.log('[getRecollectionCategories] Fetching categories');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from('recollection_categories')
+    .select('id, category_name, icon_cdn_url')
+    .eq('user_id', user.id)
+    .order('category_name', { ascending: true });
+  if (error) {
+    console.error('[getRecollectionCategories] Error:', error);
+    return [];
+  }
+  console.log('[getRecollectionCategories] Fetched', (data || []).length, 'categories');
+  return data || [];
+}
+
+// Fetch all recalls for a given category (via recollections join)
+export async function getCategoryRecollections(categoryId: string): Promise<import('@/types/Note').Note[]> {
+  console.log('[getCategoryRecollections] Fetching recalls for category:', categoryId);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from('recollections')
+    .select(`
+      match_score,
+      recalls (
+        id, text, location, location_primary_type, latitude, longitude,
+        created_at, updated_at, user_id, collage_cdn_url,
+        recall_images (id, cdn_url, ocr_text, image_explanation, content_type, upload_state),
+        recall_documents (id, cdn_url, content_type, upload_state, text_content, explanation),
+        recall_urls (id, url, title, description, image_url),
+        recall_people (people (id, name, avatar_cdn_url))
+      )
+    `)
+    .eq('category_id', categoryId)
+    .eq('user_id', user.id)
+    .order('match_score', { ascending: false })
+    .limit(50);
+  if (error) {
+    console.error('[getCategoryRecollections] Error:', error);
+    return [];
+  }
+  const recalls = (data || [])
+    .map((row: any) => row.recalls)
+    .filter(Boolean) as import('@/types/Note').Note[];
+  console.log('[getCategoryRecollections] Fetched', recalls.length, 'recalls for category:', categoryId);
+  return recalls;
+}
