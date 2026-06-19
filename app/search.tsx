@@ -122,6 +122,7 @@ export default function SearchScreen() {
         iconUrl: c.icon_cdn_url && typeof c.icon_cdn_url === 'string' && c.icon_cdn_url.length > 0
           ? c.icon_cdn_url
           : undefined,
+        count: c.recollection_count,
       })));
     } catch (e) {
       console.error('[SearchScreen] Failed to load categories:', e);

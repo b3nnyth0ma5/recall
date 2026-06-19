@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, Platform, Image } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Platform, Image, useColorScheme } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/styles/commonStyles';
 
@@ -7,18 +7,26 @@ export type PillItem = {
   id: string;
   label: string;
   iconUrl?: string | null;
+  count?: number;
 };
 
 type PillsRowProps = {
   items: PillItem[];
-  selected: string | null;
+  /** Currently selected pill id */
+  selected?: string | null;
+  /** Alias for selected — accepted for backwards compat */
+  selectedId?: string | null;
   onSelect: (id: string | null) => void;
   testID?: string;
 };
 
-export function PillsRow({ items, selected, onSelect, testID }: PillsRowProps) {
+export function PillsRow({ items, selected, selectedId, onSelect, testID }: PillsRowProps) {
+  const activeId = selected !== undefined ? selected : selectedId;
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
   const handlePress = (id: string) => {
-    console.log('[PillsRow] Pill pressed:', id, '| currently selected:', selected);
+    console.log('[PillsRow] Pill pressed:', id, '| currently selected:', activeId);
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
@@ -33,7 +41,10 @@ export function PillsRow({ items, selected, onSelect, testID }: PillsRowProps) {
       testID={testID}
     >
       {items.map((item) => {
-        const isActive = selected === item.id;
+        const isActive = activeId === item.id;
+        const showCount = item.count !== undefined && item.count > 0;
+        const countBadgeBg = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)';
+        const countText = String(item.count);
         return (
           <Pressable
             key={item.id}
@@ -43,20 +54,31 @@ export function PillsRow({ items, selected, onSelect, testID }: PillsRowProps) {
           >
             {item.iconUrl ? (
               <Image
+                testID={`pill-icon-${item.id}`}
                 source={{ uri: item.iconUrl }}
                 style={styles.pillIcon}
                 resizeMode="cover"
+                accessibilityRole="image"
+                role="image"
+                alt={item.label}
               />
             ) : null}
             <Text style={[styles.pillText, isActive && styles.pillTextActive]}>
               {item.label}
             </Text>
+            {showCount ? (
+              <View style={[styles.countBadge, { backgroundColor: countBadgeBg }]}>
+                <Text style={styles.countBadgeText}>{countText}</Text>
+              </View>
+            ) : null}
           </Pressable>
         );
       })}
     </ScrollView>
   );
 }
+
+export default PillsRow;
 
 const styles = StyleSheet.create({
   contentContainer: {
@@ -82,9 +104,10 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   pillIcon: {
-    width: 22,
-    height: 22,
-    borderRadius: 5,
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    marginRight: 5,
   },
   pillText: {
     fontSize: 14,
@@ -93,5 +116,18 @@ const styles = StyleSheet.create({
   },
   pillTextActive: {
     color: '#FFFFFF',
+  },
+  countBadge: {
+    minWidth: 18,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 });

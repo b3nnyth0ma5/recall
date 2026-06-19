@@ -1241,17 +1241,64 @@ export async function getCategoryRecollections(categoryId: string): Promise<impo
   console.log('[getCategoryRecollections] Fetching recalls for category:', categoryId);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
-  const { data, error } = await supabase
-    .rpc('get_category_recollections', {
-      p_category_id: categoryId,
-      p_user_id: user.id,
-      p_limit: 50,
-    });
-  if (error) {
-    console.error('[getCategoryRecollections] Error:', error);
+
+  // Step 1: get recall IDs for this category, ordered by match score
+  const { data: recollections, error: recErr } = await supabase
+    .from('recollections')
+    .select('recall_id, match_score')
+    .eq('category_id', categoryId)
+    .eq('user_id', user.id)
+    .order('match_score', { ascending: false })
+    .limit(50);
+
+  if (recErr) {
+    console.error('[getCategoryRecollections] recollections error:', recErr);
     return [];
   }
-  const recalls = (Array.isArray(data) ? data : []) as import('@/types/Note').Note[];
-  console.log('[getCategoryRecollections] Fetched', recalls.length, 'recalls for category:', categoryId);
-  return recalls;
+  if (!recollections || recollections.length === 0) return [];
+
+  const recallIds = recollections.map(r => r.recall_id);
+
+  // Step 2: fetch full recall data
+  const { data: recalls, error: recallsErr } = await supabase
+    .from('recalls')
+    .select(`
+      id, text, location, location_primary_type, latitude, longitude,
+      created_at, updated_at, user_id,
+      recall_images (id, cdn_url),
+      recall_documents (id, cdn_url, thumbnail_url, file_name, file_size, content_type, page_count, extracted_text, doc_explanation, processed_at, created_at),
+      recall_urls (id, url, og_title, og_description, og_image_url),
+      recall_people (person_id, persons (id, person_name, photo_url))
+    `)
+    .in('id', recallIds);
+
+  if (recallsErr) {
+    console.error('[getCategoryRecollections] recalls error:', recallsErr);
+    return [];
+  }
+
+  // Preserve match_score order
+  const scoreMap = new Map(recollections.map(r => [r.recall_id, r.match_score]));
+  const sorted = (recalls || []).sort((a, b) =>
+    (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0)
+  );
+
+  // Map to Note shape — same pattern as useNotes.ts
+  const notes = sorted.map((recall: any) => {
+    const imageRows: any[] = recall.recall_images ?? [];
+    const docRows: any[] = recall.recall_documents ?? [];
+    const peopleRows: any[] = recall.recall_people ?? [];
+    const urlRows: any[] = recall.recall_urls ?? [];
+    return {
+      ...recall,
+      images: imageRows.map((img: any) => img.cdn_url).filter(Boolean),
+      imageIds: imageRows.map((img: any) => img.id).filter(Boolean),
+      documents: docRows.map((doc: any) => ({ ...doc, upload_state: 'uploaded' as const })),
+      people: peopleRows.map((rp: any) => rp.persons).filter(Boolean),
+      urls: urlRows,
+    };
+  });
+
+  console.log('[getCategoryRecollections] Fetched', notes.length, 'recalls for category:', categoryId);
+  return notes as import('@/types/Note').Note[];
 }
