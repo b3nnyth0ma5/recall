@@ -26,7 +26,7 @@ export function cdnVariant(
   url: string | null | undefined,
   variant: CdnVariant,
 ): string | null | undefined {
-  if (!url) return url;
+  if (!url || typeof url !== 'string') return url;
   if (!url.includes('imagedelivery.net/')) return url;
   // Replace last path segment with the requested variant
   const idx = url.lastIndexOf('/');

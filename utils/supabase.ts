@@ -1190,21 +1190,50 @@ export async function getRecollectionCategories(): Promise<{
   id: string;
   category_name: string;
   icon_cdn_url: string | null;
+  recollection_count: number;
 }[]> {
   console.log('[getRecollectionCategories] Fetching categories');
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
-  const { data, error } = await supabase
+
+  // Fetch categories
+  const { data: cats, error: catsErr } = await supabase
     .from('recollection_categories')
     .select('id, category_name, icon_cdn_url')
-    .eq('user_id', user.id)
-    .order('category_name', { ascending: true });
-  if (error) {
-    console.error('[getRecollectionCategories] Error:', error);
+    .eq('user_id', user.id);
+
+  if (catsErr) {
+    console.error('[getRecollectionCategories] Error:', catsErr);
     return [];
   }
-  console.log('[getRecollectionCategories] Fetched', (data || []).length, 'categories');
-  return data || [];
+  if (!cats || cats.length === 0) return [];
+
+  // Fetch recollection counts per category
+  const { data: counts, error: countsErr } = await supabase
+    .from('recollections')
+    .select('category_id')
+    .eq('user_id', user.id)
+    .in('category_id', cats.map(c => c.id));
+
+  if (countsErr) {
+    console.error('[getRecollectionCategories] Count error:', countsErr);
+  }
+
+  // Build count map
+  const countMap = new Map<string, number>();
+  for (const row of (counts || [])) {
+    countMap.set(row.category_id, (countMap.get(row.category_id) ?? 0) + 1);
+  }
+
+  // Attach counts and sort descending
+  const result = cats.map(c => ({
+    ...c,
+    recollection_count: countMap.get(c.id) ?? 0,
+  }));
+  result.sort((a, b) => b.recollection_count - a.recollection_count);
+
+  console.log('[getRecollectionCategories] Fetched', result.length, 'categories');
+  return result;
 }
 
 // Fetch all recalls for a given category (via recollections join)

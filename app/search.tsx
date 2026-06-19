@@ -119,7 +119,9 @@ export default function SearchScreen() {
       setUserCategories(cats.map(c => ({
         id: c.id,
         label: c.category_name,
-        iconUrl: c.icon_cdn_url,
+        iconUrl: c.icon_cdn_url && typeof c.icon_cdn_url === 'string' && c.icon_cdn_url.length > 0
+          ? c.icon_cdn_url
+          : undefined,
       })));
     } catch (e) {
       console.error('[SearchScreen] Failed to load categories:', e);

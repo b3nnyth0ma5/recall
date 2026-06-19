@@ -82,9 +82,9 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   pillIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 5,
   },
   pillText: {
     fontSize: 14,
