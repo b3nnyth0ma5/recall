@@ -1222,7 +1222,7 @@ export async function getCategoryRecollections(categoryId: string): Promise<impo
         recall_images (id, cdn_url, ocr_text, image_explanation, content_type, upload_state),
         recall_documents (id, cdn_url, content_type, upload_state, text_content, explanation),
         recall_urls (id, url, title, description, image_url),
-        recall_people (people (id, name, avatar_cdn_url))
+        recall_people (person_id, persons (id, person_name, photo_url))
       )
     `)
     .eq('category_id', categoryId)
