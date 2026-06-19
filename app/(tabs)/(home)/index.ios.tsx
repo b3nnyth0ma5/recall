@@ -9,7 +9,6 @@ import { useNotesContext } from '@/contexts/NotesContext';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
 import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
-import { SearchTopBar } from '@/components/SearchTopBar';
 import { useCreateRecallUI } from '@/contexts/CreateRecallUIContext';
 import { useScrollToTop } from '@/contexts/ScrollToTopContext';
 import { supabase, uploadImageToDatabase, uploadDocumentToDatabase, triggerRecallEmbedding } from '@/utils/supabase';
@@ -21,15 +20,10 @@ import { Note } from '@/types/Note';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  interpolate,
-  Extrapolation,
 } from 'react-native-reanimated';
 
 // Module-level scroll-position cache — survives component remounts within a session.
 let homeScrollOffset = 0;
-
-// Threshold (px) at which the launcher search bar fades out and FloatingNavBar takes over.
-const SCROLL_THRESHOLD = 36;
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata, addNoteOptimistic, patchNoteOptimistic, searchQuery, searchNotes } = useNotesContext();
@@ -243,23 +237,6 @@ export default function HomeScreen() {
       console.error('Error handling scroll:', error);
     }
   }, [scrollY]);
-
-  // Animated style for the launcher search bar — fades/slides up as user scrolls
-  const launcherSearchBarStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      scrollY.value,
-      [0, SCROLL_THRESHOLD],
-      [1, 0],
-      Extrapolation.CLAMP,
-    );
-    const translateY = interpolate(
-      scrollY.value,
-      [0, SCROLL_THRESHOLD],
-      [0, -12],
-      Extrapolation.CLAMP,
-    );
-    return { opacity, transform: [{ translateY }] };
-  });
 
   const handleCreateRecallFromCombined = async (
     data: {
@@ -552,14 +529,6 @@ export default function HomeScreen() {
     </View>
   ), [creatingRecallId, savingStage]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSearchBarPress = () => {
-    console.log('[HomeScreen iOS] Launcher search bar pressed — navigating to search');
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    router.push('/search');
-  };
-
   const ListHeaderComponent = (
     <View>
       <View style={[styles.customHeader, { paddingTop: insets.top }]}>
@@ -570,14 +539,6 @@ export default function HomeScreen() {
           <RecallHeader />
         </Pressable>
       </View>
-
-      <Animated.View style={launcherSearchBarStyle}>
-        <SearchTopBar
-          mode="launcher"
-          onPress={handleSearchBarPress}
-          withSafeArea={false}
-        />
-      </Animated.View>
     </View>
   );
 

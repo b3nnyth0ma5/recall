@@ -1,12 +1,11 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, Platform, Image, useColorScheme } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Platform, useColorScheme } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/styles/commonStyles';
 
 export type PillItem = {
   id: string;
   label: string;
-  iconUrl?: string | null;
   count?: number;
 };
 
@@ -43,7 +42,12 @@ export function PillsRow({ items, selected, selectedId, onSelect, testID }: Pill
       {items.map((item) => {
         const isActive = activeId === item.id;
         const showCount = item.count !== undefined && item.count > 0;
-        const countBadgeBg = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)';
+        const countBadgeBg = isActive
+          ? colors.primary
+          : isDark
+            ? 'rgba(255,255,255,0.15)'
+            : 'rgba(0,0,0,0.10)';
+        const countTextColor = isActive ? '#FFFFFF' : colors.textSecondary;
         const countText = String(item.count);
         return (
           <Pressable
@@ -52,23 +56,12 @@ export function PillsRow({ items, selected, selectedId, onSelect, testID }: Pill
             style={[styles.pill, isActive && styles.pillActive]}
             hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
           >
-            {item.iconUrl ? (
-              <Image
-                testID={`pill-icon-${item.id}`}
-                source={{ uri: item.iconUrl }}
-                style={styles.pillIcon}
-                resizeMode="cover"
-                accessibilityRole="image"
-                role="image"
-                alt={item.label}
-              />
-            ) : null}
             <Text style={[styles.pillText, isActive && styles.pillTextActive]}>
               {item.label}
             </Text>
             {showCount ? (
               <View style={[styles.countBadge, { backgroundColor: countBadgeBg }]}>
-                <Text style={styles.countBadgeText}>{countText}</Text>
+                <Text style={[styles.countBadgeText, { color: countTextColor }]}>{countText}</Text>
               </View>
             ) : null}
           </Pressable>
@@ -100,14 +93,8 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   pillActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#FF6B7A1A',
     borderColor: colors.primary,
-  },
-  pillIcon: {
-    width: 18,
-    height: 18,
-    borderRadius: 4,
-    marginRight: 2,
   },
   pillText: {
     fontSize: 12,
@@ -115,7 +102,8 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   pillTextActive: {
-    color: '#FFFFFF',
+    color: colors.primary,
+    fontWeight: '700',
   },
   countBadge: {
     minWidth: 18,

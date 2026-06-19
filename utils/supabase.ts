@@ -1189,7 +1189,6 @@ export async function batchUploadImagesToCloudflare(batchSize: number = 100): Pr
 export async function getRecollectionCategories(): Promise<{
   id: string;
   category_name: string;
-  icon_cdn_url: string | null;
   recollection_count: number;
 }[]> {
   console.log('[getRecollectionCategories] Fetching categories');
@@ -1199,7 +1198,7 @@ export async function getRecollectionCategories(): Promise<{
   // Fetch categories
   const { data: cats, error: catsErr } = await supabase
     .from('recollection_categories')
-    .select('id, category_name, icon_cdn_url')
+    .select('id, category_name')
     .eq('user_id', user.id);
 
   if (catsErr) {
@@ -1249,7 +1248,7 @@ export async function getCategoryRecollections(categoryId: string): Promise<impo
     .eq('category_id', categoryId)
     .eq('user_id', user.id)
     .order('match_score', { ascending: false })
-    .limit(50);
+    .limit(100);
 
   if (recErr) {
     console.error('[getCategoryRecollections] recollections error:', recErr);
