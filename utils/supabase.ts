@@ -1213,29 +1213,16 @@ export async function getCategoryRecollections(categoryId: string): Promise<impo
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
   const { data, error } = await supabase
-    .from('recollections')
-    .select(`
-      match_score,
-      recalls (
-        id, text, location, location_primary_type, latitude, longitude,
-        created_at, updated_at, user_id, collage_cdn_url,
-        recall_images (id, cdn_url, ocr_text, image_explanation, content_type, upload_state),
-        recall_documents (id, cdn_url, content_type, upload_state, text_content, explanation),
-        recall_urls (id, url, title, description, image_url),
-        recall_people (person_id, persons (id, person_name, photo_url))
-      )
-    `)
-    .eq('category_id', categoryId)
-    .eq('user_id', user.id)
-    .order('match_score', { ascending: false })
-    .limit(50);
+    .rpc('get_category_recollections', {
+      p_category_id: categoryId,
+      p_user_id: user.id,
+      p_limit: 50,
+    });
   if (error) {
     console.error('[getCategoryRecollections] Error:', error);
     return [];
   }
-  const recalls = (data || [])
-    .map((row: any) => row.recalls)
-    .filter(Boolean) as import('@/types/Note').Note[];
+  const recalls = (Array.isArray(data) ? data : []) as import('@/types/Note').Note[];
   console.log('[getCategoryRecollections] Fetched', recalls.length, 'recalls for category:', categoryId);
   return recalls;
 }
