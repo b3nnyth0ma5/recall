@@ -1550,12 +1550,11 @@ export default function NoteEditorScreen() {
           />
         </View>
 
+        <View style={styles.spacer} />
+
         {people.length > 0 && (
           <>
-            <View style={styles.sectionLabel}>
-              <Text style={styles.sectionLabelText}>PEOPLE</Text>
-              <View style={styles.sectionLabelLine} />
-            </View>
+            <Text style={styles.sectionHeader}>PEOPLE</Text>
             <PeopleAvatarsRow 
               people={people} 
               avatarSize={44} 
@@ -1576,10 +1575,7 @@ export default function NoteEditorScreen() {
 
         {hasMedia && (
           <View style={styles.imagesContainer}>
-            <View style={styles.sectionLabel}>
-              <Text style={styles.sectionLabelText}>MEDIA</Text>
-              <View style={styles.sectionLabelLine} />
-            </View>
+            <Text style={styles.sectionHeader}>MEDIA</Text>
             <ScrollView
               ref={imageScrollRef}
               horizontal
@@ -1640,16 +1636,6 @@ export default function NoteEditorScreen() {
                 );
               })}
             </ScrollView>
-          </View>
-        )}
-
-        {textHasUrl && (
-          <View>
-            <View style={styles.sectionLabel}>
-              <Text style={styles.sectionLabelText}>LINKS</Text>
-              <View style={styles.sectionLabelLine} />
-            </View>
-            <Text style={styles.linkHintText}>URLs in your text will be saved automatically</Text>
           </View>
         )}
 
@@ -1828,6 +1814,19 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  sectionHeader: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    paddingTop: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  spacer: {
+    flex: 1,
+  },
   richEditorContainer: {
     minHeight: 120,
     paddingHorizontal: 4,
@@ -1842,33 +1841,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     textAlignVertical: 'top',
   },
-  sectionLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
-    gap: 8,
-  },
-  sectionLabelText: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 1.2,
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-  },
-  sectionLabelLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.border,
-  },
-  linkHintText: {
-    fontSize: 13,
-    color: colors.textTertiary ?? colors.textSecondary,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    fontStyle: 'italic',
-  },
+
   scrollBottomPadding: {
     height: 80,
   },
@@ -1919,8 +1892,8 @@ const styles = StyleSheet.create({
   },
   imageActions: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: 2,
+    right: 2,
     flexDirection: 'row',
     gap: 8,
   },

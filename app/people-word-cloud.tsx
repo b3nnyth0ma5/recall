@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   Pressable,
   ScrollView,
@@ -36,6 +37,7 @@ export default function PeopleWordCloudScreen() {
   const [saving, setSaving] = useState(false);
 
   const recallId = params.recallId as string | undefined;
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Parse initial selected people from params
   useEffect(() => {
@@ -355,6 +357,10 @@ export default function PeopleWordCloudScreen() {
     router.back();
   };
 
+  const filteredPeople = searchQuery.trim()
+    ? allPeople.filter(p => p.person_name.toLowerCase().includes(searchQuery.toLowerCase().trim()))
+    : allPeople;
+
   // Truncate name to 18 characters
   const truncateName = (name: string, maxLength: number = 18): string => {
     if (name.length <= maxLength) {
@@ -441,6 +447,27 @@ export default function PeopleWordCloudScreen() {
         </View>
       )}
 
+      <View style={styles.searchSection}>
+        <View style={styles.searchContainer}>
+          <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search people..."
+            placeholderTextColor={colors.textTertiary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
+            </Pressable>
+          )}
+        </View>
+      </View>
+
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -478,13 +505,19 @@ export default function PeopleWordCloudScreen() {
             </View>
           </View>
         </View>
+      ) : filteredPeople.length === 0 && searchQuery.trim() ? (
+        <View style={styles.noResultsContainer}>
+          <Text style={styles.noResultsText}>
+            No people match "{searchQuery}"
+          </Text>
+        </View>
       ) : (
         <ScrollView 
           style={styles.scrollView}
           contentContainerStyle={styles.wordCloudContainer}
           showsVerticalScrollIndicator={true}
         >
-          {allPeople.map((person) => {
+          {filteredPeople.map((person) => {
             const isSelected = selectedPeople.some(p => p.id === person.id);
             
             return (
@@ -768,5 +801,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     fontWeight: '600',
+  },
+  searchSection: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+    minHeight: 48,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.text,
+  },
+  noResultsContainer: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  noResultsText: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
 });
