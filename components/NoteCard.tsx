@@ -587,6 +587,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           rightThreshold={60}
           containerStyle={styles.swipeableContainer}
         >
+          <Pressable onPress={handleCardPress} style={{ flex: 1 }}>
           <View style={styles.cardContent}>
             {!hasMedia && !!processingStage && (
               <View style={[styles.processingStageRow, { pointerEvents: 'none' }]}>
@@ -681,6 +682,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               </View>
             </View>
           </View>
+          </Pressable>
         </Swipeable>
       </View>
 

@@ -78,7 +78,7 @@ export function PeopleAvatarsRow({
           ]}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <IconSymbol name="plus" size={avatarSize * 0.5} color={colors.primary} />
+          <IconSymbol name="person.crop.circle.badge.plus" size={avatarSize * 0.6} color={colors.primary} />
         </Pressable>
 
         {/* People avatars */}
@@ -125,6 +125,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: colors.primary,
-    borderStyle: 'dashed',
+    borderStyle: 'solid',
   },
 });

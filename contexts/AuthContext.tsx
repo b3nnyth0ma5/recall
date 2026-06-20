@@ -152,6 +152,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       // Persist/clear token in App Group for share extension
       writeTokenToAppGroup(newSession);
+
+      // NEW: trigger theme analysis on first login if no categories exist
+      if (_event === 'SIGNED_IN' && newSession?.user) {
+        const userId = newSession.user.id;
+        (async () => {
+          try {
+            const { count } = await supabase
+              .from('recollection_categories')
+              .select('id', { count: 'exact', head: true })
+              .eq('user_id', userId);
+            if (count === 0) {
+              console.log('[AuthContext] No categories found for user — triggering analyse-user-themes');
+              await supabase.functions.invoke('analyse-user-themes', {
+                body: { user_id: userId, force: true },
+              });
+              console.log('[AuthContext] analyse-user-themes invoked successfully');
+            }
+          } catch (e) {
+            console.error('[AuthContext] Failed to trigger theme analysis on login:', e);
+          }
+        })();
+      }
     });
 
     // Refresh the App Group token whenever the app comes to the foreground.

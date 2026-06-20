@@ -38,6 +38,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
 import { PeopleAvatarsRow } from '@/components/PeopleAvatarsRow';
 import { DocumentTile } from '@/components/DocumentTile';
+import { useLocalSearchParams } from 'expo-router';
 import { supabase, reverseGeocode, uploadImageToDatabase, deleteImageRecord, getImageDataUrl, triggerOCRProcessing, triggerRecallEmbedding, triggerPeopleFinder, uploadDocumentToDatabase, deleteDocumentRecord, fetchDocumentsForNote } from '@/utils/supabase';
 import { processRecallUrls, processRecallUrlsAndAwaitScrape, extractUrls } from '@/utils/urlProcessor';
 import { extractLocationFromImage } from '@/utils/imageLocationExtractor';
@@ -93,6 +94,8 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const [showFABs, setShowFABs] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [initialPeople, setInitialPeople] = useState<Person[]>([]);
+  const params = useLocalSearchParams<{ selectedPeople?: string; peopleUpdatedTimestamp?: string }>();
+  const lastPeopleTimestampRef = useRef<string | undefined>(undefined);
   const [initialDocuments, setInitialDocuments] = useState<Document[]>([]);
   const imageScrollRef = useRef<ScrollView>(null);
 
@@ -112,6 +115,22 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
 
   // Poll for document processing completion when editing an existing recall
   useDocumentProcessingPoller(isEditing ? noteId : undefined, documents, setDocuments);
+
+  useEffect(() => {
+    if (!visible) return;
+    const ts = params.peopleUpdatedTimestamp;
+    if (!ts || ts === lastPeopleTimestampRef.current) return;
+    lastPeopleTimestampRef.current = ts;
+    if (params.selectedPeople) {
+      try {
+        const parsed = JSON.parse(params.selectedPeople);
+        console.log('[NoteEditorSlideUp] People updated from word cloud:', parsed.length);
+        setPeople(parsed);
+      } catch (e) {
+        console.error('[NoteEditorSlideUp] Failed to parse selectedPeople param:', e);
+      }
+    }
+  }, [params.peopleUpdatedTimestamp, params.selectedPeople, visible]);
 
   type MediaItem =
     | { kind: 'image'; image: ImageData; index: number }
