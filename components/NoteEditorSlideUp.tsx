@@ -56,7 +56,7 @@ interface ImageData {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 40) * 0.48;
+const IMAGE_CAROUSEL_WIDTH = 88;
 const IMAGE_CAROUSEL_SPACING = 10;
 
 const hasUrl = (text: string): boolean => {
@@ -125,8 +125,6 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
   const imagesPart = images.length > 0 ? `${images.length} ${images.length === 1 ? 'Image' : 'Images'}` : '';
   const docsPart = documents.length > 0 ? `${documents.length} ${documents.length === 1 ? 'Document' : 'Documents'}` : '';
   const mediaHeaderLabel = [imagesPart, docsPart].filter(Boolean).join(' • ');
-
-  const textInputHeight = (hasImages || hasDocuments) ? 510 : 792;
 
   useEffect(() => {
     if (images.length > 0) {
@@ -1295,99 +1293,134 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                   />
                 )}
 
-                <Pressable
-                  style={[styles.richTextContainer, { height: textInputHeight }]}
-                  onPress={handleRichTextPress}
+                <ScrollView
+                  style={styles.scrollView}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
                 >
-                  <TextInput
-                    ref={textInputRef}
-                    style={styles.richText}
-                    value={text}
-                    onChangeText={setText}
-                    multiline
-                    placeholder="What's on your mind?"
-                    placeholderTextColor={colors.textTertiary ?? '#888888'}
-                    textAlignVertical="top"
-                    scrollEnabled={false}
-                  />
-                </Pressable>
+                  <Pressable
+                    style={styles.richTextContainer}
+                    onPress={handleRichTextPress}
+                  >
+                    <TextInput
+                      ref={textInputRef}
+                      style={styles.richText}
+                      value={text}
+                      onChangeText={setText}
+                      multiline
+                      placeholder="What's on your mind?"
+                      placeholderTextColor={colors.textTertiary ?? '#888888'}
+                      textAlignVertical="top"
+                      scrollEnabled={false}
+                    />
+                  </Pressable>
 
-                <PeopleAvatarsRow 
-                  people={people} 
-                  avatarSize={44} 
-                  onPeopleChange={handlePeopleChange}
-                  recallId={isEditing ? noteId : undefined}
-                />
+                  {people.length > 0 && (
+                    <>
+                      <View style={styles.sectionLabel}>
+                        <Text style={styles.sectionLabelText}>PEOPLE</Text>
+                        <View style={styles.sectionLabelLine} />
+                      </View>
+                      <PeopleAvatarsRow 
+                        people={people} 
+                        avatarSize={44} 
+                        onPeopleChange={handlePeopleChange}
+                        recallId={isEditing ? noteId : undefined}
+                      />
+                    </>
+                  )}
 
-                {hasMedia && (
-                  <View style={styles.imagesContainer}>
-                    <View style={styles.imagesHeader}>
-                      <Text style={styles.imagesTitle}>{mediaHeaderLabel}</Text>
-                    </View>
-                    <ScrollView
-                      ref={imageScrollRef}
-                      horizontal
-                      pagingEnabled={false}
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.imagesScrollContent}
-                      onScroll={handleImageScroll}
-                      scrollEventThrottle={16}
-                      decelerationRate={0.9}
-                      snapToInterval={IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING}
-                      snapToAlignment="start"
-                    >
-                      {mediaItems.map((item, globalIndex) => {
-                        if (item.kind === 'document') {
+                  {people.length === 0 && (
+                    <PeopleAvatarsRow 
+                      people={people} 
+                      avatarSize={44} 
+                      onPeopleChange={handlePeopleChange}
+                      recallId={isEditing ? noteId : undefined}
+                    />
+                  )}
+
+                  {hasMedia && (
+                    <View style={styles.imagesContainer}>
+                      <View style={styles.sectionLabel}>
+                        <Text style={styles.sectionLabelText}>MEDIA</Text>
+                        <View style={styles.sectionLabelLine} />
+                      </View>
+                      <ScrollView
+                        ref={imageScrollRef}
+                        horizontal
+                        pagingEnabled={false}
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.imagesScrollContent}
+                        onScroll={handleImageScroll}
+                        scrollEventThrottle={16}
+                        decelerationRate={0.9}
+                        snapToInterval={IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING}
+                        snapToAlignment="start"
+                      >
+                        {mediaItems.map((item, globalIndex) => {
+                          if (item.kind === 'document') {
+                            return (
+                              <DocumentTile
+                                key={`doc-${item.doc.id ?? item.doc.file_name}-${item.index}`}
+                                document={item.doc}
+                                width={88}
+                                height={88}
+                                showRemoveButton
+                                onRemove={() => removeDocument(item.index)}
+                              />
+                            );
+                          }
+                          const image = item.image;
+                          const isLoaded = loadedImageIndices.has(item.index) || image.uri;
                           return (
-                            <DocumentTile
-                              key={`doc-${item.doc.id ?? item.doc.file_name}-${item.index}`}
-                              document={item.doc}
-                              width={IMAGE_CAROUSEL_WIDTH}
-                              height={IMAGE_CAROUSEL_WIDTH * 0.75}
-                              showRemoveButton
-                              onRemove={() => removeDocument(item.index)}
-                            />
-                          );
-                        }
-                        const image = item.image;
-                        const isLoaded = loadedImageIndices.has(item.index) || image.uri;
-                        return (
-                          <Pressable
-                            key={`${image.id || 'new'}-${item.index}`}
-                            style={styles.imageWrapper}
-                            onPress={() => handleImagePress(globalIndex)}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            {!isLoaded ? (
-                              <View style={styles.imageLoadingContainer}>
-                                <ActivityIndicator size="large" color={colors.primary} />
-                                <Text style={styles.loadingImageText}>Loading...</Text>
-                              </View>
-                            ) : (
-                              <Image source={{ uri: image.uri }} style={styles.image} contentFit="cover" transition={150} cachePolicy="memory-disk" />
-                            )}
-                            <View style={styles.imageActions}>
-                              <Pressable
-                                onPress={() => removeImage(item.index)}
-                                style={styles.imageActionButton}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                              >
-                                <View style={styles.actionButtonCircle}>
-                                  <IconSymbol
-                                    ios_icon_name="xmark"
-                                    android_material_icon_name="close"
-                                    size={12}
-                                    color="#FFFFFF"
-                                  />
+                            <Pressable
+                              key={`${image.id || 'new'}-${item.index}`}
+                              style={styles.imageWrapper}
+                              onPress={() => handleImagePress(globalIndex)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              {!isLoaded ? (
+                                <View style={styles.imageLoadingContainer}>
+                                  <ActivityIndicator size="small" color={colors.primary} />
                                 </View>
-                              </Pressable>
-                            </View>
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                )}
+                              ) : (
+                                <Image source={{ uri: image.uri }} style={styles.image} contentFit="cover" transition={150} cachePolicy="memory-disk" />
+                              )}
+                              <View style={styles.imageActions}>
+                                <Pressable
+                                  onPress={() => removeImage(item.index)}
+                                  style={styles.imageActionButton}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                  <View style={styles.actionButtonCircle}>
+                                    <IconSymbol
+                                      ios_icon_name="xmark"
+                                      android_material_icon_name="close"
+                                      size={12}
+                                      color="#FFFFFF"
+                                    />
+                                  </View>
+                                </Pressable>
+                              </View>
+                            </Pressable>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  )}
+
+                  {textHasUrl && (
+                    <View>
+                      <View style={styles.sectionLabel}>
+                        <Text style={styles.sectionLabelText}>LINKS</Text>
+                        <View style={styles.sectionLabelLine} />
+                      </View>
+                      <Text style={styles.linkHintText}>URLs in your text will be saved automatically</Text>
+                    </View>
+                  )}
+
+                  <View style={styles.scrollBottomPadding} />
+                </ScrollView>
 
                 {showFABs && (
                   <Animated.View
@@ -1493,21 +1526,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                     </Pressable>
                   </View>
 
-                  {/* Keyboard icons - Right aligned (swapped from left) */}
-                  <View style={styles.toolbarRight}>
-                    <Pressable
-                      onPress={toggleKeyboard}
-                      style={styles.toolbarButton}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <IconSymbol 
-                        ios_icon_name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-                        android_material_icon_name={keyboardVisible ? "keyboard-hide" : "keyboard"} 
-                        size={26} 
-                        color={colors.primary} 
-                      />
-                    </Pressable>
-                  </View>
+                  <View style={styles.toolbarRight} />
                 </View>
 
                 {saving && (
@@ -1550,7 +1569,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   slideUpContainer: {
-    height: SCREEN_HEIGHT * 0.85,
+    height: SCREEN_HEIGHT * 0.95,
     backgroundColor: colors.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -1633,15 +1652,45 @@ const styles = StyleSheet.create({
   },
   richTextContainer: {
     position: 'relative',
-    flex: 1,
+    minHeight: 120,
   },
   richText: {
     fontSize: 17,
     lineHeight: 26,
     color: colors.text,
-    flex: 1,
+    minHeight: 120,
     padding: 16,
     textAlignVertical: 'top',
+  },
+  sectionLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  sectionLabelText: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 1.2,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+  },
+  sectionLabelLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  linkHintText: {
+    fontSize: 13,
+    color: colors.textTertiary ?? colors.textSecondary,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    fontStyle: 'italic',
+  },
+  scrollBottomPadding: {
+    height: 80,
   },
   overlayInput: {
     position: 'absolute',
@@ -1663,48 +1712,37 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   imagesContainer: {
-    paddingVertical: 16,
     marginBottom: 8,
   },
   documentsContainer: {
     paddingVertical: 16,
     marginBottom: 8,
   },
-  imagesHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    marginBottom: 16,
-  },
-  imagesTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
-  },
   imagesScrollContent: {
     paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   imageWrapper: {
     position: 'relative',
     marginRight: IMAGE_CAROUSEL_SPACING,
-    width: IMAGE_CAROUSEL_WIDTH,
-    borderRadius: 16,
+    width: 88,
+    height: 88,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   image: {
-    width: IMAGE_CAROUSEL_WIDTH,
-    height: IMAGE_CAROUSEL_WIDTH * 0.75,
-    borderRadius: 16,
+    width: 88,
+    height: 88,
+    borderRadius: 12,
     backgroundColor: colors.cardDark,
   },
   imageLoadingContainer: {
-    width: IMAGE_CAROUSEL_WIDTH,
-    height: IMAGE_CAROUSEL_WIDTH * 0.75,
+    width: 88,
+    height: 88,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.cardDark,
-    borderRadius: 16,
+    borderRadius: 12,
   },
   loadingImageText: {
     fontSize: 14,

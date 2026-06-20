@@ -54,8 +54,8 @@ interface ImageData {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const IMAGE_CAROUSEL_WIDTH = (SCREEN_WIDTH - 32) * 0.8;
-const IMAGE_CAROUSEL_SPACING = 12;
+const IMAGE_CAROUSEL_WIDTH = 88;
+const IMAGE_CAROUSEL_SPACING = 10;
 
 const hasUrl = (text: string): boolean => {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -142,8 +142,6 @@ export default function NoteEditorScreen() {
   const imagesPart = images.length > 0 ? `${images.length} ${images.length === 1 ? 'Image' : 'Images'}` : '';
   const docsPart = documents.length > 0 ? `${documents.length} ${documents.length === 1 ? 'Document' : 'Documents'}` : '';
   const mediaHeaderLabel = [imagesPart, docsPart].filter(Boolean).join(' • ');
-
-  const textInputHeight = (hasImages || hasDocuments) ? 340 : 480 * 1.1;
 
   useEffect(() => {
     if (images.length > 1) {
@@ -1532,106 +1530,131 @@ export default function NoteEditorScreen() {
         />
       )}
 
-      <View style={[styles.richEditorContainer, { height: textInputHeight }]}>
-        <TextInput
-          ref={textInputRef}
-          style={styles.textInput}
-          value={text}
-          onChangeText={setText}
-          multiline
-          placeholder="What's on your mind?"
-          placeholderTextColor={colors.textTertiary}
-          autoFocus={!isEditing}
-          textAlignVertical="top"
-        />
-      </View>
-
-      <PeopleAvatarsRow 
-        people={people} 
-        avatarSize={44} 
-        onPeopleChange={handlePeopleChange}
-        recallId={isEditing ? (params.id as string) : undefined}
-      />
-
-      {hasMedia && (
-        <View style={styles.imagesContainer}>
-          <View style={styles.imagesHeader}>
-            <Text style={styles.imagesTitle}>{mediaHeaderLabel}</Text>
-            <View style={styles.paginationDots}>
-              {mediaItems.map((_, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.paginationDot,
-                    index === currentImageIndex && styles.paginationDotActive,
-                  ]}
-                />
-              ))}
-            </View>
-          </View>
-          <ScrollView
-            ref={imageScrollRef}
-            horizontal
-            pagingEnabled={false}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.imagesScrollContent}
-            onScroll={handleImageScroll}
-            scrollEventThrottle={16}
-            decelerationRate={0.9}
-            snapToInterval={IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING}
-            snapToAlignment="start"
-          >
-            {mediaItems.map((item, globalIndex) => {
-              if (item.kind === 'document') {
-                return (
-                  <DocumentTile
-                    key={`doc-${item.doc.id ?? item.doc.file_name}-${item.index}`}
-                    document={item.doc}
-                    width={IMAGE_CAROUSEL_WIDTH}
-                    height={IMAGE_CAROUSEL_WIDTH * 0.75}
-                    showRemoveButton
-                    onRemove={() => removeDocument(item.index)}
-                  />
-                );
-              }
-              const image = item.image;
-              const displayImage = displayImages[item.index] ?? image;
-              return (
-                <Pressable
-                  key={`${image.id || 'new'}-${item.index}`}
-                  style={styles.imageWrapper}
-                  onPress={() => handleImagePress(globalIndex)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  {!displayImage.uri ? (
-                    <View style={styles.imageLoadingContainer}>
-                      <ActivityIndicator size="large" color={colors.primary} />
-                      <Text style={styles.loadingImageText}>Loading...</Text>
-                    </View>
-                  ) : (
-                    <Image source={{ uri: displayImage.uri }} style={styles.image} contentFit="cover" transition={150} cachePolicy="memory-disk" />
-                  )}
-                  <View style={styles.imageActions}>
-                    <Pressable
-                      onPress={() => removeImage(item.index)}
-                      style={styles.imageActionButton}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <View style={styles.actionButtonCircle}>
-                        <IconSymbol
-                          name="xmark"
-                          size={14}
-                          color="#FFFFFF"
-                        />
-                      </View>
-                    </Pressable>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+      <ScrollView
+        style={styles.scrollView}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.richEditorContainer}>
+          <TextInput
+            ref={textInputRef}
+            style={styles.textInput}
+            value={text}
+            onChangeText={setText}
+            multiline
+            placeholder="What's on your mind?"
+            placeholderTextColor={colors.textTertiary}
+            autoFocus={!isEditing}
+            textAlignVertical="top"
+            scrollEnabled={false}
+          />
         </View>
-      )}
+
+        {people.length > 0 && (
+          <>
+            <View style={styles.sectionLabel}>
+              <Text style={styles.sectionLabelText}>PEOPLE</Text>
+              <View style={styles.sectionLabelLine} />
+            </View>
+            <PeopleAvatarsRow 
+              people={people} 
+              avatarSize={44} 
+              onPeopleChange={handlePeopleChange}
+              recallId={isEditing ? (params.id as string) : undefined}
+            />
+          </>
+        )}
+
+        {people.length === 0 && (
+          <PeopleAvatarsRow 
+            people={people} 
+            avatarSize={44} 
+            onPeopleChange={handlePeopleChange}
+            recallId={isEditing ? (params.id as string) : undefined}
+          />
+        )}
+
+        {hasMedia && (
+          <View style={styles.imagesContainer}>
+            <View style={styles.sectionLabel}>
+              <Text style={styles.sectionLabelText}>MEDIA</Text>
+              <View style={styles.sectionLabelLine} />
+            </View>
+            <ScrollView
+              ref={imageScrollRef}
+              horizontal
+              pagingEnabled={false}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.imagesScrollContent}
+              onScroll={handleImageScroll}
+              scrollEventThrottle={16}
+              decelerationRate={0.9}
+              snapToInterval={IMAGE_CAROUSEL_WIDTH + IMAGE_CAROUSEL_SPACING}
+              snapToAlignment="start"
+            >
+              {mediaItems.map((item, globalIndex) => {
+                if (item.kind === 'document') {
+                  return (
+                    <DocumentTile
+                      key={`doc-${item.doc.id ?? item.doc.file_name}-${item.index}`}
+                      document={item.doc}
+                      width={88}
+                      height={88}
+                      showRemoveButton
+                      onRemove={() => removeDocument(item.index)}
+                    />
+                  );
+                }
+                const image = item.image;
+                const displayImage = displayImages[item.index] ?? image;
+                return (
+                  <Pressable
+                    key={`${image.id || 'new'}-${item.index}`}
+                    style={styles.imageWrapper}
+                    onPress={() => handleImagePress(globalIndex)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    {!displayImage.uri ? (
+                      <View style={styles.imageLoadingContainer}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      </View>
+                    ) : (
+                      <Image source={{ uri: displayImage.uri }} style={styles.image} contentFit="cover" transition={150} cachePolicy="memory-disk" />
+                    )}
+                    <View style={styles.imageActions}>
+                      <Pressable
+                        onPress={() => removeImage(item.index)}
+                        style={styles.imageActionButton}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <View style={styles.actionButtonCircle}>
+                          <IconSymbol
+                            name="xmark"
+                            size={14}
+                            color="#FFFFFF"
+                          />
+                        </View>
+                      </Pressable>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {textHasUrl && (
+          <View>
+            <View style={styles.sectionLabel}>
+              <Text style={styles.sectionLabelText}>LINKS</Text>
+              <View style={styles.sectionLabelLine} />
+            </View>
+            <Text style={styles.linkHintText}>URLs in your text will be saved automatically</Text>
+          </View>
+        )}
+
+        <View style={styles.scrollBottomPadding} />
+      </ScrollView>
 
       {showFABs && (
         <Animated.View
@@ -1732,20 +1755,7 @@ export default function NoteEditorScreen() {
           </Pressable>
         </View>
 
-        {/* Keyboard icons - Right aligned (swapped from left) */}
-        <View style={styles.toolbarRight}>
-          <Pressable
-            onPress={toggleKeyboard}
-            style={styles.toolbarButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <IconSymbol 
-              name={keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"} 
-              size={26} 
-              color={colors.primary} 
-            />
-          </Pressable>
-        </View>
+        <View style={styles.toolbarRight} />
       </View>
 
       {saving && (
@@ -1815,12 +1825,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  richEditorContainer: {
+  scrollView: {
     flex: 1,
+  },
+  richEditorContainer: {
+    minHeight: 120,
     paddingHorizontal: 4,
   },
   textInput: {
-    flex: 1,
+    minHeight: 120,
     fontSize: 16,
     lineHeight: 24,
     color: colors.text,
@@ -1828,6 +1841,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 8,
     textAlignVertical: 'top',
+  },
+  sectionLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  sectionLabelText: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 1.2,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+  },
+  sectionLabelLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  linkHintText: {
+    fontSize: 13,
+    color: colors.textTertiary ?? colors.textSecondary,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    fontStyle: 'italic',
+  },
+  scrollBottomPadding: {
+    height: 80,
   },
   normalText: {
     color: colors.text,
@@ -1837,62 +1880,37 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   imagesContainer: {
-    paddingVertical: 16,
     marginBottom: 8,
   },
   documentsContainer: {
     paddingVertical: 16,
     marginBottom: 8,
   },
-  imagesHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    marginBottom: 16,
-  },
-  imagesTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  paginationDots: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  paginationDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.border,
-  },
-  paginationDotActive: {
-    backgroundColor: colors.primary,
-    width: 20,
-  },
   imagesScrollContent: {
     paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   imageWrapper: {
     position: 'relative',
     marginRight: IMAGE_CAROUSEL_SPACING,
-    width: IMAGE_CAROUSEL_WIDTH,
-    borderRadius: 16,
+    width: 88,
+    height: 88,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   image: {
-    width: IMAGE_CAROUSEL_WIDTH,
-    height: IMAGE_CAROUSEL_WIDTH * 0.75,
-    borderRadius: 16,
+    width: 88,
+    height: 88,
+    borderRadius: 12,
     backgroundColor: colors.cardDark,
   },
   imageLoadingContainer: {
-    width: IMAGE_CAROUSEL_WIDTH,
-    height: IMAGE_CAROUSEL_WIDTH * 0.75,
+    width: 88,
+    height: 88,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.cardDark,
-    borderRadius: 16,
+    borderRadius: 12,
   },
   loadingImageText: {
     fontSize: 14,
