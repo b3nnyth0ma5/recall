@@ -5,7 +5,6 @@ import * as Haptics from 'expo-haptics';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import { PersonAvatar } from './PersonAvatar';
-import { SkeletonLoader } from './SkeletonLoader';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { getMultiplePersonRecallCounts } from '@/utils/recallCounter';
@@ -220,8 +219,6 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
   }[]>([]);
   const [rootPosition, setRootPosition] = useState({ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT / 2 });
   const [recallCounts, setRecallCounts] = useState<{ [personId: string]: number }>({});
-  const [isLoading, setIsLoading] = useState(true);
-
   // Load recall counts for each person using the standalone function
   useEffect(() => {
     const loadRecallCounts = async () => {
@@ -246,12 +243,6 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     console.log('[PeopleGraph] Root position:', { x: centerX, y: centerY });
     setNodePositions(positions);
     setRootPosition({ x: centerX, y: centerY });
-
-    // Show skeleton placeholders while loading
-    // This gives time for the graph to render smoothly
-    setTimeout(() => {
-      setIsLoading(false);
-    }, 300);
 
     // Trigger heavy haptic feedback when graph loads
     console.log('[PeopleGraph] Graph loaded - triggering heavy haptic feedback');
@@ -348,38 +339,6 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
     });
   };
 
-  // Render skeleton placeholders
-  const renderSkeleton = () => {
-    const centerX = SCREEN_WIDTH / 2;
-    const centerY = SCREEN_HEIGHT / 2;
-    
-    return (
-      <View style={styles.skeletonContainer}>
-        {/* Center skeleton node */}
-        <View style={[styles.skeletonCenterNode, { left: centerX - 30, top: centerY - 30 }]}>
-          <SkeletonLoader width={60} height={60} borderRadius={30} />
-        </View>
-        
-        {/* Surrounding skeleton nodes */}
-        {[0, 1, 2, 3, 4].map((index) => {
-          const angle = (index / 5) * 2 * Math.PI - Math.PI / 2;
-          const radius = 150;
-          const x = centerX + Math.cos(angle) * radius;
-          const y = centerY + Math.sin(angle) * radius;
-          
-          return (
-            <View 
-              key={`skeleton-${index}`}
-              style={[styles.skeletonPersonNode, { left: x - 60, top: y - 20 }]}
-            >
-              <SkeletonLoader width={120} height={40} borderRadius={20} />
-            </View>
-          );
-        })}
-      </View>
-    );
-  };
-
   console.log('[PeopleGraph] Rendering with', nodePositions.length, 'nodes');
 
   return (
@@ -396,12 +355,8 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
         <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
       </Animated.View>
 
-      {/* Show skeleton while loading */}
-      {isLoading ? (
-        renderSkeleton()
-      ) : (
-        /* Graph content */
-        <Animated.View
+      {/* Graph content */}
+      <Animated.View
           style={[
             styles.graphContainer,
             {
@@ -477,7 +432,6 @@ export function PeopleGraph({ people, onClose }: PeopleGraphProps) {
             })}
           </View>
         </Animated.View>
-      )}
     </View>
   );
 }
@@ -491,17 +445,6 @@ const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
-  },
-  skeletonContainer: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1000000,
-    elevation: 1000000,
-  },
-  skeletonCenterNode: {
-    position: 'absolute',
-  },
-  skeletonPersonNode: {
-    position: 'absolute',
   },
   graphContainer: {
     ...StyleSheet.absoluteFillObject,

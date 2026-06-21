@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -516,6 +517,7 @@ export default function PeopleWordCloudScreen() {
           style={styles.scrollView}
           contentContainerStyle={styles.wordCloudContainer}
           showsVerticalScrollIndicator={true}
+          keyboardDismissMode="on-drag"
         >
           {filteredPeople.map((person) => {
             const isSelected = selectedPeople.some(p => p.id === person.id);
@@ -523,7 +525,7 @@ export default function PeopleWordCloudScreen() {
             return (
               <Pressable
                 key={person.id}
-                onPress={() => togglePerson(person)}
+                onPress={() => { console.log('[PeopleWordCloud] Person chip pressed:', person.person_name); Keyboard.dismiss(); togglePerson(person); }}
                 style={[
                   styles.personChip,
                   isSelected && styles.personChipSelected,
