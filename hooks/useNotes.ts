@@ -773,7 +773,7 @@ export function useNotes() {
   const searchNotes = useCallback(async (
     query: string,
     useV2: boolean = false,
-    searchUploads?: { text: string; explanation: string }[],
+    searchUploads?: { text: string; explanation: string; cdn_url?: string | null }[],
   ) => {
     const userId = await getActiveUserId();
     if (!userId) {
@@ -993,6 +993,15 @@ export function useNotes() {
         }
 
         // Fire-and-forget: generate a collage for the recent-searches thumbnail.
+        // Skip recall-based collage when the search had uploaded images — saveSearchHistoryUploads
+        // already generated a collage from those CDN URLs and we don't want to overwrite it.
+        const uploadedImageUrls = (searchUploads ?? [])
+          .filter((u): u is { text: string; explanation: string; cdn_url: string } => typeof u.cdn_url === 'string' && u.cdn_url.length > 0)
+          .map((u) => u.cdn_url);
+
+        if (uploadedImageUrls.length > 0) {
+          if (__DEV__) console.log('[searchNotes] Search had uploaded images — skipping recall-based collage (upload collage already generated)');
+        } else
         (async () => {
           try {
             if (__DEV__) console.log('[searchNotes] Starting collage generation for query:', query.trim());

@@ -277,6 +277,9 @@ export function FullScreenImage({
   const [openingDocument, setOpeningDocument] = useState(false);
   // resetTrigger increments whenever currentImageIndex changes to reset zoom in each slide
   const [resetTrigger, setResetTrigger] = useState(0);
+  // Controls visibility of overlay UI (close, FABs, counter, dots, hint)
+  const [showControls, setShowControls] = useState(true);
+  const overlayOpacity = useSharedValue(1);
   const scrollViewRef = useRef<React.ElementRef<typeof ScrollView>>(null);
 
   // Animated values for swipe-to-dismiss gesture
@@ -296,6 +299,9 @@ export function FullScreenImage({
       // Reset animation values immediately
       translateY.value = 0;
       contextY.value = 0;
+      // Always show controls when modal opens
+      setShowControls(true);
+      overlayOpacity.value = 1;
       
       // Load all images from imageIds if available
       const loadAllImages = async () => {
@@ -539,6 +545,25 @@ export function FullScreenImage({
     setImageLoadStates(prev => ({ ...prev, [index]: true }));
   };
 
+  // Toggle overlay controls on single tap
+  const toggleControls = () => {
+    const next = !showControls;
+    console.log('[FullScreenImage] Single tap — toggling controls:', next ? 'show' : 'hide');
+    setShowControls(next);
+    overlayOpacity.value = withTiming(next ? 1 : 0, { duration: 200 });
+  };
+
+  const singleTapGesture = Gesture.Tap()
+    .numberOfTaps(1)
+    .maxDuration(250)
+    .onEnd(() => {
+      runOnJS(toggleControls)();
+    });
+
+  const overlayAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: overlayOpacity.value,
+  }));
+
   // Outer Pan Gesture for swipe-to-dismiss — only activates on clear vertical swipes
   const panGesture = Gesture.Pan()
     .activeOffsetY([-10, 10])
@@ -641,161 +666,169 @@ export function FullScreenImage({
         
         <GestureDetector gesture={panGesture}>
           <Animated.View style={[styles.container, animatedContainerStyle]}>
-            {/* Close Button - Top Right */}
-            <Pressable
-              style={styles.closeButton}
-              onPress={handleClose}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <View style={styles.closeButtonCircle}>
-                <IconSymbol name="xmark" size={24} color="#FFFFFF" />
-              </View>
-            </Pressable>
-
-            {/* Media Carousel */}
-            <ScrollView
-              ref={scrollViewRef}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              onScroll={handleScroll}
-              scrollEventThrottle={16}
-              snapToInterval={SCREEN_WIDTH}
-              decelerationRate="fast"
-              style={styles.scrollView}
-            >
-              {resolvedMedia.map((item, index) => {
-                if (item.kind === 'document') {
-                  const doc = item.doc;
-                  const thumbUrl = doc.local_thumbnail_uri ?? doc.thumbnail_url;
-                  const ext = getFileExtension(doc.file_name);
-                  const docColor = getDocumentColor(doc.content_type);
-                  const sizeText = doc.file_size ? formatFileSize(doc.file_size) : '';
-                  const pageText = doc.page_count ? `${doc.page_count} pages` : '';
-                  const truncatedName = doc.file_name.length > 40
-                    ? doc.file_name.substring(0, 37) + '...'
-                    : doc.file_name;
-                  const isActive = index === currentImageIndex;
-                  return (
-                    <View key={`fullscreen-doc-${index}`} style={styles.imageWrapper}>
-                      {thumbUrl ? (
-                        <Image
-                          source={{ uri: thumbUrl }}
-                          style={styles.image}
-                          contentFit="contain"
-                          transition={150}
-                          cachePolicy="memory-disk"
-                        />
-                      ) : (
-                        <View style={[styles.docPlaceholder, { backgroundColor: docColor }]}>
-                          <Text style={styles.docExtText}>{ext}</Text>
-                        </View>
-                      )}
-
-                      {/* "Tap to preview" pill — centered in upper-middle area */}
-                      {isActive && (
-                        <View style={styles.tapToPreviewContainer}>
-                          <TapToPreviewPill
-                            onPress={handleOpenDocument}
-                            isOpening={openingDocument}
+            {/* Media Carousel — wrapped in single-tap detector to toggle controls */}
+            <GestureDetector gesture={singleTapGesture}>
+              <ScrollView
+                ref={scrollViewRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onScroll={handleScroll}
+                scrollEventThrottle={16}
+                snapToInterval={SCREEN_WIDTH}
+                decelerationRate="fast"
+                style={styles.scrollView}
+              >
+                {resolvedMedia.map((item, index) => {
+                  if (item.kind === 'document') {
+                    const doc = item.doc;
+                    const thumbUrl = doc.local_thumbnail_uri ?? doc.thumbnail_url;
+                    const ext = getFileExtension(doc.file_name);
+                    const docColor = getDocumentColor(doc.content_type);
+                    const sizeText = doc.file_size ? formatFileSize(doc.file_size) : '';
+                    const pageText = doc.page_count ? `${doc.page_count} pages` : '';
+                    const truncatedName = doc.file_name.length > 40
+                      ? doc.file_name.substring(0, 37) + '...'
+                      : doc.file_name;
+                    const isActive = index === currentImageIndex;
+                    return (
+                      <View key={`fullscreen-doc-${index}`} style={styles.imageWrapper}>
+                        {thumbUrl ? (
+                          <Image
+                            source={{ uri: thumbUrl }}
+                            style={styles.image}
+                            contentFit="contain"
+                            transition={150}
+                            cachePolicy="memory-disk"
                           />
+                        ) : (
+                          <View style={[styles.docPlaceholder, { backgroundColor: docColor }]}>
+                            <Text style={styles.docExtText}>{ext}</Text>
+                          </View>
+                        )}
+
+                        {/* "Tap to preview" pill — centered in upper-middle area */}
+                        {isActive && (
+                          <View style={styles.tapToPreviewContainer}>
+                            <TapToPreviewPill
+                              onPress={handleOpenDocument}
+                              isOpening={openingDocument}
+                            />
+                          </View>
+                        )}
+
+                        <View style={styles.docInfoOverlay}>
+                          <IconSymbol name="doc.fill" size={20} color="#FFFFFF" />
+                          <Text style={styles.docFileName}>{truncatedName}</Text>
+                          {sizeText ? <Text style={styles.docMeta}>{sizeText}</Text> : null}
+                          {pageText ? <Text style={styles.docMeta}>{pageText}</Text> : null}
                         </View>
-                      )}
-
-                      <View style={styles.docInfoOverlay}>
-                        <IconSymbol name="doc.fill" size={20} color="#FFFFFF" />
-                        <Text style={styles.docFileName}>{truncatedName}</Text>
-                        {sizeText ? <Text style={styles.docMeta}>{sizeText}</Text> : null}
-                        {pageText ? <Text style={styles.docMeta}>{pageText}</Text> : null}
                       </View>
-                    </View>
+                    );
+                  }
+                  return (
+                    <ZoomableImage
+                      key={`fullscreen-${index}`}
+                      imageUrl={item.url}
+                      index={index}
+                      isLoaded={!!imageLoadStates[index]}
+                      onLoad={handleImageLoad}
+                      resetTrigger={currentImageIndex === index ? 0 : resetTrigger}
+                    />
                   );
-                }
-                return (
-                  <ZoomableImage
-                    key={`fullscreen-${index}`}
-                    imageUrl={item.url}
-                    index={index}
-                    isLoaded={!!imageLoadStates[index]}
-                    onLoad={handleImageLoad}
-                    resetTrigger={currentImageIndex === index ? 0 : resetTrigger}
-                  />
-                );
-              })}
-            </ScrollView>
+                })}
+              </ScrollView>
+            </GestureDetector>
 
-            {/* Share FAB — bottom left, shown for both images and documents */}
-            <Pressable
-              style={styles.shareButton}
-              onPress={() => {
-                console.log('[FullScreenImage] Share FAB pressed — isDocument:', isCurrentDocument);
-                handleShareImage();
-              }}
-              disabled={isSharing}
-              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+            {/* Overlay controls — fade in/out on tap */}
+            <Animated.View
+              style={[styles.overlayContainer, overlayAnimatedStyle]}
+              pointerEvents={showControls ? 'box-none' : 'none'}
             >
-              <View style={styles.shareButtonContent}>
-                {isSharing ? (
-                  <SkeletonLoader
-                    width={24}
-                    height={24}
-                    borderRadius={12}
-                    variant="pulse"
+              {/* Close Button - Top Right */}
+              <Pressable
+                style={styles.closeButton}
+                onPress={handleClose}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <View style={styles.closeButtonCircle}>
+                  <IconSymbol name="xmark" size={24} color="#FFFFFF" />
+                </View>
+              </Pressable>
+
+              {/* Share FAB — bottom left, shown for both images and documents */}
+              <Pressable
+                style={styles.shareButton}
+                onPress={() => {
+                  console.log('[FullScreenImage] Share FAB pressed — isDocument:', isCurrentDocument);
+                  handleShareImage();
+                }}
+                disabled={isSharing}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              >
+                <View style={styles.shareButtonContent}>
+                  {isSharing ? (
+                    <SkeletonLoader
+                      width={24}
+                      height={24}
+                      borderRadius={12}
+                      variant="pulse"
+                    />
+                  ) : (
+                    <Share size={24} color="#FFFFFF" strokeWidth={2.2} />
+                  )}
+                </View>
+              </Pressable>
+
+              {/* Analysis FAB — bottom right, shown for both images and documents */}
+              <Pressable
+                style={styles.ocrButton}
+                onPress={() => {
+                  console.log('[FullScreenImage] Analysis FAB pressed — isDocument:', isCurrentDocument, 'index:', currentImageIndex);
+                  handleOCRButtonPress();
+                }}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                accessibilityLabel={isCurrentDocument ? 'View document analysis' : 'View extracted text and explanation'}
+                accessibilityRole="button"
+              >
+                <View style={styles.shareButtonContent}>
+                  <IconSymbol
+                    name="text.alignleft"
+                    size={24}
+                    color="#FFFFFF"
                   />
-                ) : (
-                  <Share size={24} color="#FFFFFF" strokeWidth={2.2} />
-                )}
-              </View>
-            </Pressable>
+                </View>
+              </Pressable>
 
-            {/* Analysis FAB — bottom right, shown for both images and documents */}
-            <Pressable
-              style={styles.ocrButton}
-              onPress={() => {
-                console.log('[FullScreenImage] Analysis FAB pressed — isDocument:', isCurrentDocument, 'index:', currentImageIndex);
-                handleOCRButtonPress();
-              }}
-              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-              accessibilityLabel={isCurrentDocument ? 'View document analysis' : 'View extracted text and explanation'}
-              accessibilityRole="button"
-            >
-              <View style={styles.shareButtonContent}>
-                <IconSymbol
-                  name="text.alignleft"
-                  size={24}
-                  color="#FFFFFF"
-                />
-              </View>
-            </Pressable>
+              {/* Pagination Dots - Bottom Center */}
+              {resolvedMedia.length > 1 && (
+                <View style={styles.paginationContainer}>
+                  {resolvedMedia.map((_, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.paginationDot,
+                        currentImageIndex === index && styles.paginationDotActive,
+                      ]}
+                    />
+                  ))}
+                </View>
+              )}
 
-            {/* Pagination Dots - Bottom Center */}
-            {resolvedMedia.length > 1 && (
-              <View style={styles.paginationContainer}>
-                {resolvedMedia.map((_, index) => (
-                  <View
-                    key={index}
-                    style={[
-                      styles.paginationDot,
-                      currentImageIndex === index && styles.paginationDotActive,
-                    ]}
-                  />
-                ))}
-              </View>
-            )}
+              {/* Counter Badge - Top Left */}
+              {resolvedMedia.length > 1 && (
+                <View style={styles.counterBadge}>
+                  <Text style={styles.counterText}>
+                    {counterText}
+                  </Text>
+                </View>
+              )}
 
-            {/* Counter Badge - Top Left */}
-            {resolvedMedia.length > 1 && (
-              <View style={styles.counterBadge}>
-                <Text style={styles.counterText}>
-                  {counterText}
-                </Text>
+              {/* Swipe Down Hint - Top Center */}
+              <View style={styles.swipeHintContainer}>
+                <View style={styles.swipeHintBar} />
               </View>
-            )}
-
-            {/* Swipe Down Hint - Top Center */}
-            <View style={styles.swipeHintContainer}>
-              <View style={styles.swipeHintBar} />
-            </View>
+            </Animated.View>
           </Animated.View>
         </GestureDetector>
       </View>
@@ -855,6 +888,10 @@ export function FullScreenImage({
 const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
+  },
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
   },
   background: {
     ...StyleSheet.absoluteFillObject,
