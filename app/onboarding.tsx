@@ -1018,11 +1018,6 @@ export default function OnboardingScreen() {
               label="People"
               description="Recall surfaces and tags people mentioned anywhere — even in the images."
             />
-						<FeaturePill
-              icon={<Tags size={24} color={CORAL} strokeWidth={2} />}
-              label="Categories"
-              description="Create a category just by describing it. Recall keeps everything organised."
-            />
 						
             {/* Spacer so content clears the bottom chevrons */}
             <View style={{ height: 24 }} />
