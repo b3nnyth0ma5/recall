@@ -1574,7 +1574,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   slideUpContainer: {
-    height: SCREEN_HEIGHT * 0.75,
+    height: SCREEN_HEIGHT * 0.5,
     backgroundColor: colors.background,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -1667,7 +1667,7 @@ const styles = StyleSheet.create({
   },
   richTextContainer: {
     position: 'relative',
-    minHeight: 120,
+    minHeight: 180,
     flex: 1,
   },
   richText: {
@@ -1678,7 +1678,6 @@ const styles = StyleSheet.create({
     padding: 16,
     textAlignVertical: 'top',
   },
-
   scrollBottomPadding: {
     height: 80,
   },

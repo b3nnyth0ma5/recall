@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, Pressable, StyleSheet, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -25,15 +25,11 @@ type Props = {
 };
 
 const INACTIVE_ICON_COLOR = '#FFFFFF';
-const BAR_HEIGHT = 72;
+const BAR_HEIGHT = 56;
 const TAB_COUNT = 4;
+const CHIP_SIZE = 44;
 
 // ─── Sliding chip ─────────────────────────────────────────────────────────────
-// The chip translates horizontally to sit under the active tab.
-// Each tab zone is (barWidth / TAB_COUNT) wide; the chip is centred inside it.
-// We use a shared value that holds the tab index (0-3) and derive translateX
-// via withSpring so it animates smoothly between tabs.
-
 function routeToIndex(route: ActiveRoute): number {
   switch (route) {
     case 'home': return 0;
@@ -46,15 +42,15 @@ function routeToIndex(route: ActiveRoute): number {
 // ─── Individual tab button ────────────────────────────────────────────────────
 type TabButtonProps = {
   icon: React.ReactNode;
-  label: string;
   isActive: boolean;
   onPress: () => void;
   testID: string;
+  accessibilityLabel: string;
 };
 
-function TabButton({ icon, label, isActive, onPress, testID }: TabButtonProps) {
+function TabButton({ icon, isActive: _isActive, onPress, testID, accessibilityLabel }: TabButtonProps) {
   const handlePress = () => {
-    console.log(`[FloatingNavBar] Tapped: ${label}`);
+    console.log(`[FloatingNavBar] Tapped: ${accessibilityLabel}`);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onPress();
   };
@@ -65,14 +61,11 @@ function TabButton({ icon, label, isActive, onPress, testID }: TabButtonProps) {
       onPress={handlePress}
       style={({ pressed }) => [styles.tabZone, { opacity: pressed ? 0.75 : 1 }]}
       hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel}
     >
       <View style={styles.tabIconWrapper}>
         {icon}
       </View>
-      <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-        {label}
-      </Text>
     </Pressable>
   );
 }
@@ -100,9 +93,6 @@ function CreateButton({ onPress }: CreateButtonProps) {
       <View style={styles.createPill}>
         <Ionicons name="add" size={22} color="#FFFFFF" />
       </View>
-      <Text style={styles.tabLabel}>
-        New
-      </Text>
     </Pressable>
   );
 }
@@ -151,16 +141,11 @@ export function FloatingNavBar({
     }
   }, [activeRoute, chipIndex]);
 
-  // The chip translateX is computed as a percentage of the bar width.
-  // We use a fixed pixel approach: each tab zone is barWidth/4 wide.
-  // Since we can't read barWidth at style-time, we use onLayout on the inner row
-  // and store it in a shared value.
   const barWidth = useSharedValue(0);
 
   const chipAnimStyle = useAnimatedStyle(() => {
     const tabWidth = barWidth.value / TAB_COUNT;
-    const chipWidth = 52;
-    const chipLeft = chipIndex.value * tabWidth + (tabWidth - chipWidth) / 2;
+    const chipLeft = chipIndex.value * tabWidth + (tabWidth - CHIP_SIZE) / 2;
     return {
       transform: [{ translateX: chipLeft }],
       opacity: barWidth.value > 0 && activeRouteIndexSV.value >= 0 ? 1 : 0,
@@ -183,14 +168,14 @@ export function FloatingNavBar({
         testID="navbar-home"
         icon={
           <Ionicons
-            name={activeRoute === 'home' ? 'home' : 'home-outline'}
+            name="home"
             size={22}
             color={INACTIVE_ICON_COLOR}
           />
         }
-        label="Home"
         isActive={activeRoute === 'home'}
         onPress={onHomePress}
+        accessibilityLabel="Home"
       />
 
       <CreateButton onPress={onCreateRecallPress} />
@@ -199,28 +184,28 @@ export function FloatingNavBar({
         testID="navbar-search"
         icon={
           <Ionicons
-            name={activeRoute === 'search' ? 'search' : 'search-outline'}
+            name="search"
             size={22}
             color={INACTIVE_ICON_COLOR}
           />
         }
-        label="Search"
         isActive={activeRoute === 'search'}
         onPress={onSearchPress}
+        accessibilityLabel="Search"
       />
 
       <TabButton
         testID="navbar-profile"
         icon={
           <Ionicons
-            name={activeRoute === 'profile' ? 'person' : 'person-outline'}
+            name="person"
             size={22}
             color={INACTIVE_ICON_COLOR}
           />
         }
-        label="Profile"
         isActive={activeRoute === 'profile'}
         onPress={onProfilePress}
+        accessibilityLabel="Profile"
       />
     </View>
   );
@@ -300,18 +285,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 4,
-    paddingVertical: 8,
+    paddingVertical: 0,
     position: 'relative',
   },
   // Sliding chip — absolutely positioned at left:0, translateX moves it
   slidingChip: {
     position: 'absolute',
-    top: 8,
+    top: (BAR_HEIGHT - CHIP_SIZE) / 2,
     left: 0,
-    width: 52,
-    height: BAR_HEIGHT - 16,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 107, 122, 0.22)',
+    width: CHIP_SIZE,
+    height: CHIP_SIZE,
+    borderRadius: CHIP_SIZE / 2,
+    backgroundColor: colors.primary,
     zIndex: 0,
   },
   // Each tab zone: flex:1, tall touch target
@@ -319,22 +304,12 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    gap: 3,
+    paddingVertical: 0,
     zIndex: 1,
   },
   tabIconWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  tabLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.6)',
-    letterSpacing: 0.2,
-  },
-  tabLabelActive: {
-    color: '#FFFFFF',
   },
   // Create button pill — slightly larger, accent background
   createPill: {

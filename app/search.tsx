@@ -81,6 +81,10 @@ export default function SearchScreen() {
   const [userCategories, setUserCategories] = useState<PillItem[]>([]);
   const [categoryRecalls, setCategoryRecalls] = useState<import('@/types/Note').Note[]>([]);
   const [isLoadingCategoryRecalls, setIsLoadingCategoryRecalls] = useState(false);
+  const [categoryPage, setCategoryPage] = useState(0);
+  const [hasMoreCategoryRecalls, setHasMoreCategoryRecalls] = useState(false);
+  const [isLoadingMoreCategoryRecalls, setIsLoadingMoreCategoryRecalls] = useState(false);
+  const CATEGORY_PAGE_SIZE = 20;
   // Tracks whether history has been loaded at least once — gates zero states
   const [hasLoadedHistoryOnce, setHasLoadedHistoryOnce] = useState(false);
   // Image attachment state
@@ -1044,18 +1048,24 @@ export default function SearchScreen() {
                   items={userCategories}
                   selected={selectedPill}
                   onSelect={async (id) => {
-                    if (selectedPill === id) {
+                    if (selectedPill === id || id === null) {
                       console.log('[SearchScreen] Pill deselected:', id);
                       setSelectedPill(null);
                       setCategoryRecalls([]);
+                      setCategoryPage(0);
+                      setHasMoreCategoryRecalls(false);
                       return;
                     }
                     console.log('[SearchScreen] Pill selected:', id);
                     setSelectedPill(id);
+                    setCategoryRecalls([]);
+                    setCategoryPage(0);
+                    setHasMoreCategoryRecalls(false);
                     setIsLoadingCategoryRecalls(true);
                     try {
-                      const recalls = await getCategoryRecollections(id);
+                      const recalls = await getCategoryRecollections(id, 0, CATEGORY_PAGE_SIZE);
                       setCategoryRecalls(recalls);
+                      setHasMoreCategoryRecalls(recalls.length === CATEGORY_PAGE_SIZE);
                     } catch (e) {
                       console.error('[SearchScreen] Failed to load category recalls:', e);
                       setCategoryRecalls([]);
@@ -1082,15 +1092,44 @@ export default function SearchScreen() {
                     <Text style={styles.emptyText}>No recalls found for this category</Text>
                   </View>
                 ) : (
-                  categoryRecalls.map((note) => (
-                    <View key={note.id} style={styles.noteCardContainer}>
-                      <NoteCard
-                        note={note}
-                        onPress={(scrollToImage) => handleNotePress(note.id, scrollToImage)}
-                        loading={false}
-                      />
-                    </View>
-                  ))
+                  <FlatList
+                    data={categoryRecalls}
+                    keyExtractor={(item) => item.id}
+                    scrollEnabled={false}
+                    renderItem={({ item }) => (
+                      <View style={styles.noteCardContainer}>
+                        <NoteCard
+                          note={item}
+                          onPress={(scrollToImage) => handleNotePress(item.id, scrollToImage)}
+                          loading={false}
+                        />
+                      </View>
+                    )}
+                    onEndReachedThreshold={0.3}
+                    onEndReached={async () => {
+                      if (!hasMoreCategoryRecalls || isLoadingMoreCategoryRecalls || !selectedPill) return;
+                      const nextPage = categoryPage + 1;
+                      console.log('[SearchScreen] Loading more category recalls, page:', nextPage);
+                      setIsLoadingMoreCategoryRecalls(true);
+                      try {
+                        const more = await getCategoryRecollections(selectedPill, nextPage, CATEGORY_PAGE_SIZE);
+                        setCategoryRecalls((prev) => [...prev, ...more]);
+                        setCategoryPage(nextPage);
+                        setHasMoreCategoryRecalls(more.length === CATEGORY_PAGE_SIZE);
+                      } catch (e) {
+                        console.error('[SearchScreen] Failed to load more category recalls:', e);
+                      } finally {
+                        setIsLoadingMoreCategoryRecalls(false);
+                      }
+                    }}
+                    ListFooterComponent={
+                      isLoadingMoreCategoryRecalls ? (
+                        <View style={styles.categoryLoadingContainer}>
+                          <ActivityIndicator size="small" color={colors.primary} />
+                        </View>
+                      ) : null
+                    }
+                  />
                 )}
               </Animated.View>
             )}

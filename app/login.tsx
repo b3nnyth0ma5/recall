@@ -194,17 +194,18 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-          {/* App Icon */}
-          <View style={styles.iconContainer}>
-            <Image
-              source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
-              style={styles.appIcon}
-              contentFit="contain"
-            />
+          {/* Logo block: icon + title centred together */}
+          <View style={styles.logoBlock}>
+            <View style={styles.iconContainer}>
+              <Image
+                source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+                style={styles.appIcon}
+                contentFit="contain"
+              />
+            </View>
+            <Text style={styles.title}>Recall</Text>
           </View>
 
-          {/* Title */}
-          <Text style={styles.title}>Recall</Text>
           <Text style={styles.subtitle}>
             {isSignUp ? 'Create your account' : 'Welcome back'}
           </Text>
@@ -360,26 +361,32 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     alignSelf: 'center',
   },
+  logoBlock: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 32,
+  },
   iconContainer: {
-    marginBottom: 24,
+    marginBottom: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   appIcon: {
-    width: 120,
-    height: 120,
+    width: 100,
+    height: 100,
     borderRadius: 24,
   },
   title: {
     fontSize: 36,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 8,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 18,
     color: colors.textSecondary,
     marginBottom: 32,
+    textAlign: 'center',
   },
   inputContainer: {
     width: '100%',

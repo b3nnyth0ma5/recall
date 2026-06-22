@@ -1236,8 +1236,12 @@ export async function getRecollectionCategories(): Promise<{
 }
 
 // Fetch all recalls for a given category (via recollections join)
-export async function getCategoryRecollections(categoryId: string): Promise<import('@/types/Note').Note[]> {
-  console.log('[getCategoryRecollections] Fetching recalls for category:', categoryId);
+export async function getCategoryRecollections(
+  categoryId: string,
+  page: number = 0,
+  pageSize: number = 20,
+): Promise<import('@/types/Note').Note[]> {
+  console.log('[getCategoryRecollections] Fetching recalls for category:', categoryId, 'page:', page, 'pageSize:', pageSize);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
@@ -1248,7 +1252,7 @@ export async function getCategoryRecollections(categoryId: string): Promise<impo
     .eq('category_id', categoryId)
     .eq('user_id', user.id)
     .order('match_score', { ascending: false })
-    .limit(100);
+    .range(page * pageSize, (page + 1) * pageSize - 1);
 
   if (recErr) {
     console.error('[getCategoryRecollections] recollections error:', recErr);
