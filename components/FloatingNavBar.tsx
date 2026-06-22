@@ -10,7 +10,7 @@ import Animated, {
   FadeIn,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { Home, Plus, Search, User } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/styles/commonStyles';
 
 type ActiveRoute = 'home' | 'search' | 'profile' | null;
@@ -98,7 +98,7 @@ function CreateButton({ onPress }: CreateButtonProps) {
       accessibilityLabel="Create Recall"
     >
       <View style={styles.createPill}>
-        <Plus size={22} color="#FFFFFF" strokeWidth={2.2} />
+        <Ionicons name="add" size={22} color="#FFFFFF" />
       </View>
       <Text style={styles.tabLabel}>
         New
@@ -176,10 +176,10 @@ export function FloatingNavBar({
       <TabButton
         testID="navbar-home"
         icon={
-          <Home
+          <Ionicons
+            name={activeRoute === 'home' ? 'home' : 'home-outline'}
             size={22}
             color={INACTIVE_ICON_COLOR}
-            strokeWidth={activeRoute === 'home' ? 2.4 : 1.8}
           />
         }
         label="Home"
@@ -192,10 +192,10 @@ export function FloatingNavBar({
       <TabButton
         testID="navbar-search"
         icon={
-          <Search
+          <Ionicons
+            name={activeRoute === 'search' ? 'search' : 'search-outline'}
             size={22}
             color={INACTIVE_ICON_COLOR}
-            strokeWidth={activeRoute === 'search' ? 2.4 : 1.8}
           />
         }
         label="Search"
@@ -206,10 +206,10 @@ export function FloatingNavBar({
       <TabButton
         testID="navbar-profile"
         icon={
-          <User
+          <Ionicons
+            name={activeRoute === 'profile' ? 'person' : 'person-outline'}
             size={22}
             color={INACTIVE_ICON_COLOR}
-            strokeWidth={activeRoute === 'profile' ? 2.4 : 1.8}
           />
         }
         label="Profile"
