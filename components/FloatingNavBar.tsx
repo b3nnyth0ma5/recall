@@ -48,10 +48,10 @@ function TabButton({
   testID,
   accessibilityLabel,
 }: TabButtonProps) {
-  const bgScale = useSharedValue(isActive || alwaysShowBg ? 1 : 0.8);
+  const bgScale = useSharedValue(isActive || alwaysShowBg ? 1 : 0);
 
   useEffect(() => {
-    bgScale.value = withSpring(isActive || alwaysShowBg ? 1 : 0.8, {
+    bgScale.value = withSpring(isActive || alwaysShowBg ? 1 : 0, {
       damping: 18,
       stiffness: 220,
     });
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     alignSelf: 'center',
-    width: '80%',
+    width: '72%',
     maxWidth: 380,
     height: BAR_HEIGHT,
     borderRadius: 28,

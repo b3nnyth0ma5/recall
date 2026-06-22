@@ -71,6 +71,13 @@ export default function PersonRecallsScreen() {
   const ellipsisButtonRef = useRef<View>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
 
+  // Photo menu
+  const [isPhotoMenuOpen, setIsPhotoMenuOpen] = useState(false);
+  const photoMenuAnim = useRef(new Animated.Value(0)).current;
+  const photoMenuScaleAnim = useRef(new Animated.Value(0.95)).current;
+  const photoButtonRef = useRef<View>(null);
+  const [photoMenuAnchor, setPhotoMenuAnchor] = useState<{ top: number; left: number } | null>(null);
+
   const ITEMS_PER_PAGE = 10;
 
   // ─── People batch loader ────────────────────────────────────────────────────
@@ -588,6 +595,51 @@ export default function PersonRecallsScreen() {
     });
   }, [menuAnim, menuScaleAnim]);
 
+  const openPhotoMenu = useCallback(() => {
+    console.log('[PersonRecalls] User tapped person photo button');
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    const SCREEN_WIDTH = Dimensions.get('window').width;
+    const MENU_WIDTH = 200;
+    const SCREEN_MARGIN = 12;
+    const FALLBACK_ANCHOR = { top: insets.top + 100, left: SCREEN_MARGIN };
+
+    const doOpen = (anchor: { top: number; left: number }) => {
+      setPhotoMenuAnchor(anchor);
+      setIsPhotoMenuOpen(true);
+      photoMenuAnim.setValue(0);
+      photoMenuScaleAnim.setValue(0.95);
+      Animated.parallel([
+        Animated.timing(photoMenuAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+        Animated.timing(photoMenuScaleAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+      ]).start();
+    };
+
+    if (photoButtonRef.current) {
+      photoButtonRef.current.measureInWindow((x, y, width, height) => {
+        if (width > 0 && height > 0) {
+          const left = Math.max(SCREEN_MARGIN, Math.min(x, SCREEN_WIDTH - MENU_WIDTH - SCREEN_MARGIN));
+          doOpen({ top: y + height + 8, left });
+        } else {
+          doOpen(FALLBACK_ANCHOR);
+        }
+      });
+    } else {
+      doOpen(FALLBACK_ANCHOR);
+    }
+  }, [photoMenuAnim, photoMenuScaleAnim, insets.top]);
+
+  const closePhotoMenu = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(photoMenuAnim, { toValue: 0, duration: 100, useNativeDriver: true }),
+      Animated.timing(photoMenuScaleAnim, { toValue: 0.95, duration: 100, useNativeDriver: true }),
+    ]).start(() => {
+      setIsPhotoMenuOpen(false);
+      setPhotoMenuAnchor(null);
+    });
+  }, [photoMenuAnim, photoMenuScaleAnim]);
+
   const handleNotePress = useCallback((noteId: string) => {
     try {
       console.log('[PersonRecalls] User tapped note:', noteId);
@@ -684,73 +736,60 @@ export default function PersonRecallsScreen() {
   }, [personId, user]);
 
   const handlePhotoPress = useCallback(async () => {
-    console.log('[PersonRecalls] User tapped photo / Add/Edit Photo');
+    openPhotoMenu();
+  }, [openPhotoMenu]);
+
+  const handleTakePhoto = useCallback(async () => {
+    console.log('[PersonRecalls] User chose Take Photo');
+    closePhotoMenu();
     try {
-      Alert.alert(
-        'Person Photo',
-        'Choose an option',
-        [
-          {
-            text: 'Take Photo',
-            onPress: async () => {
-              console.log('[PersonRecalls] User chose Take Photo');
-              const { status } = await ImagePicker.requestCameraPermissionsAsync();
-              if (status !== 'granted') {
-                Alert.alert('Permission needed', 'Please grant camera permissions');
-                return;
-              }
-              const result = await ImagePicker.launchCameraAsync({
-                mediaTypes: ['images'],
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.9,
-              });
-              if (!result.canceled && result.assets) {
-                await handlePhotoUpload(result.assets[0].uri);
-              }
-            },
-          },
-          {
-            text: 'Choose from Library',
-            onPress: async () => {
-              console.log('[PersonRecalls] User chose Choose from Library');
-              const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-              if (status !== 'granted') {
-                Alert.alert('Permission needed', 'Please grant photo library permissions');
-                return;
-              }
-              const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ['images'],
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.9,
-              });
-              if (!result.canceled && result.assets) {
-                await handlePhotoUpload(result.assets[0].uri);
-              }
-            },
-          },
-          ...(personPhotoUrl
-            ? [
-                {
-                  text: 'Remove Photo',
-                  style: 'destructive' as const,
-                  onPress: async () => {
-                    await handlePhotoRemove();
-                  },
-                },
-              ]
-            : []),
-          {
-            text: 'Cancel',
-            style: 'cancel' as const,
-          },
-        ]
-      );
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant camera permissions');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (!result.canceled && result.assets) {
+        await handlePhotoUpload(result.assets[0].uri);
+      }
     } catch (error) {
-      console.error('[PersonRecalls] Error handling photo press:', error);
+      console.error('[PersonRecalls] Error taking photo:', error);
     }
-  }, [personPhotoUrl, handlePhotoUpload, handlePhotoRemove]);
+  }, [closePhotoMenu, handlePhotoUpload]);
+
+  const handleChooseFromLibrary = useCallback(async () => {
+    console.log('[PersonRecalls] User chose Choose from Library');
+    closePhotoMenu();
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant photo library permissions');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (!result.canceled && result.assets) {
+        await handlePhotoUpload(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('[PersonRecalls] Error choosing from library:', error);
+    }
+  }, [closePhotoMenu, handlePhotoUpload]);
+
+  const handleRemovePhotoAction = useCallback(async () => {
+    console.log('[PersonRecalls] User chose Remove Photo');
+    closePhotoMenu();
+    await handlePhotoRemove();
+  }, [closePhotoMenu, handlePhotoRemove]);
 
   // ─── Render helpers ──────────────────────────────────────────────────────────
   const renderSkeletons = () => (
@@ -901,6 +940,49 @@ export default function PersonRecallsScreen() {
         </View>
       )}
 
+      {/* Photo menu popover */}
+      {isPhotoMenuOpen && photoMenuAnchor && (
+        <View style={[StyleSheet.absoluteFill, { pointerEvents: 'box-none' }]}>
+          <Pressable style={styles.menuBackdrop} onPress={closePhotoMenu} />
+          <Animated.View
+            style={[
+              styles.menuCard,
+              { top: photoMenuAnchor.top, left: photoMenuAnchor.left, width: 200 },
+              { opacity: photoMenuAnim, transform: [{ scale: photoMenuScaleAnim }] },
+            ]}
+          >
+            <Pressable
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+              onPress={handleTakePhoto}
+            >
+              <IconSymbol name="camera.fill" size={18} color={colors.text} />
+              <Text style={styles.menuRowText}>Take Photo</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+              onPress={handleChooseFromLibrary}
+            >
+              <IconSymbol
+                ios_icon_name="photo.fill"
+                android_material_icon_name="photo_library"
+                size={18}
+                color={colors.text}
+              />
+              <Text style={styles.menuRowText}>Choose from Library</Text>
+            </Pressable>
+            {personPhotoUrl && (
+              <Pressable
+                style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+                onPress={handleRemovePhotoAction}
+              >
+                <IconSymbol name="trash.fill" size={18} color="#FF3B30" />
+                <Text style={[styles.menuRowText, { color: '#FF3B30' }]}>Remove Photo</Text>
+              </Pressable>
+            )}
+          </Animated.View>
+        </View>
+      )}
+
       <FlatList
         data={notes}
         keyExtractor={(item) => item.id}
@@ -911,35 +993,37 @@ export default function PersonRecallsScreen() {
             <View style={styles.titleInfoContainer}>
               <View style={styles.titleTopRow}>
                 {/* Person photo / avatar */}
-                <Pressable
-                  onPress={handlePhotoPress}
-                  disabled={uploadingPhoto}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  style={styles.titleImageWrapper}
-                >
-                  {personPhotoUrl ? (
-                    <PersonAvatar
-                      key={`person-avatar-${photoUpdateTrigger}`}
-                      personName={personName}
-                      photoUrl={personPhotoUrl}
-                      size={88}
-                      style={styles.titleImage}
-                    />
-                  ) : (
-                    <PersonAvatar
-                      key={`person-avatar-${photoUpdateTrigger}`}
-                      personName={personName}
-                      photoUrl={null}
-                      size={88}
-                      style={styles.titleImage}
-                    />
-                  )}
-                  {uploadingPhoto && (
-                    <View style={styles.uploadingOverlay}>
-                      <ActivityIndicator size="large" color={colors.primary} />
-                    </View>
-                  )}
-                </Pressable>
+                <View ref={photoButtonRef} collapsable={false}>
+                  <Pressable
+                    onPress={handlePhotoPress}
+                    disabled={uploadingPhoto}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={styles.titleImageWrapper}
+                  >
+                    {personPhotoUrl ? (
+                      <PersonAvatar
+                        key={`person-avatar-${photoUpdateTrigger}`}
+                        personName={personName}
+                        photoUrl={personPhotoUrl}
+                        size={88}
+                        style={styles.titleImage}
+                      />
+                    ) : (
+                      <PersonAvatar
+                        key={`person-avatar-${photoUpdateTrigger}`}
+                        personName={personName}
+                        photoUrl={null}
+                        size={88}
+                        style={styles.titleImage}
+                      />
+                    )}
+                    {uploadingPhoto && (
+                      <View style={styles.uploadingOverlay}>
+                        <ActivityIndicator size="large" color={colors.primary} />
+                      </View>
+                    )}
+                  </Pressable>
+                </View>
 
                 {/* Name column + ellipsis */}
                 <View style={styles.titleTextContainer}>
@@ -964,11 +1048,15 @@ export default function PersonRecallsScreen() {
               {/* Sort pills */}
               <View style={styles.sortContainer}>
                 <PillsRow
-                  items={['Newest', 'Oldest', 'Best match']}
+                  items={[
+                    { id: 'Newest', label: 'Newest' },
+                    { id: 'Oldest', label: 'Oldest' },
+                    { id: 'Best match', label: 'Best match' },
+                  ]}
                   selected={sortOrder}
-                  onSelect={(label) => {
-                    if (label) {
-                      setSortOrder(label as SortOrder);
+                  onSelect={(id) => {
+                    if (id) {
+                      setSortOrder(id as SortOrder);
                     }
                   }}
                 />
