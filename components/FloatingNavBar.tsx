@@ -132,6 +132,12 @@ export function FloatingNavBar({
     transform: [{ translateY: translateY.value }],
   }));
 
+  // Mirror activeRoute index into a shared value so worklets can read it safely
+  const activeRouteIndexSV = useSharedValue(routeToIndex(activeRoute));
+  useEffect(() => {
+    activeRouteIndexSV.value = routeToIndex(activeRoute);
+  }, [activeRoute, activeRouteIndexSV]);
+
   // Sliding chip: tracks active tab index
   const chipIndex = useSharedValue(routeToIndex(activeRoute));
   useEffect(() => {
@@ -157,7 +163,7 @@ export function FloatingNavBar({
     const chipLeft = chipIndex.value * tabWidth + (tabWidth - chipWidth) / 2;
     return {
       transform: [{ translateX: chipLeft }],
-      opacity: barWidth.value > 0 && routeToIndex(activeRoute) >= 0 ? 1 : 0,
+      opacity: barWidth.value > 0 && activeRouteIndexSV.value >= 0 ? 1 : 0,
     };
   });
 
