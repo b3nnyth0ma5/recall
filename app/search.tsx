@@ -84,7 +84,8 @@ export default function SearchScreen() {
   const [categoryPage, setCategoryPage] = useState(0);
   const [hasMoreCategoryRecalls, setHasMoreCategoryRecalls] = useState(false);
   const [isLoadingMoreCategoryRecalls, setIsLoadingMoreCategoryRecalls] = useState(false);
-  const CATEGORY_PAGE_SIZE = 20;
+  const [categoryHasLocationRecalls, setCategoryHasLocationRecalls] = useState(false);
+  const CATEGORY_PAGE_SIZE = 10;
   // Tracks whether history has been loaded at least once — gates zero states
   const [hasLoadedHistoryOnce, setHasLoadedHistoryOnce] = useState(false);
   // Image attachment state
@@ -1054,6 +1055,7 @@ export default function SearchScreen() {
                       setCategoryRecalls([]);
                       setCategoryPage(0);
                       setHasMoreCategoryRecalls(false);
+                      setCategoryHasLocationRecalls(false);
                       return;
                     }
                     console.log('[SearchScreen] Pill selected:', id);
@@ -1061,11 +1063,25 @@ export default function SearchScreen() {
                     setCategoryRecalls([]);
                     setCategoryPage(0);
                     setHasMoreCategoryRecalls(false);
+                    setCategoryHasLocationRecalls(false);
                     setIsLoadingCategoryRecalls(true);
                     try {
-                      const recalls = await getCategoryRecollections(id, 0, CATEGORY_PAGE_SIZE);
+                      const [recalls, locationCount] = await Promise.all([
+                        getCategoryRecollections(id, 0, CATEGORY_PAGE_SIZE),
+                        user
+                          ? supabase
+                              .from('recollections')
+                              .select('recalls!inner(latitude)', { count: 'exact', head: true })
+                              .eq('category_id', id)
+                              .eq('user_id', user.id)
+                              .not('recalls.latitude', 'is', null)
+                          : Promise.resolve({ count: 0 }),
+                      ]);
                       setCategoryRecalls(recalls);
                       setHasMoreCategoryRecalls(recalls.length === CATEGORY_PAGE_SIZE);
+                      const count = (locationCount as { count: number | null }).count;
+                      setCategoryHasLocationRecalls((count ?? 0) > 0);
+                      console.log('[SearchScreen] Category location recalls count:', count);
                     } catch (e) {
                       console.error('[SearchScreen] Failed to load category recalls:', e);
                       setCategoryRecalls([]);
@@ -1309,22 +1325,31 @@ export default function SearchScreen() {
         onScrollToIndexFailed={() => {}}
       />
 
-      {/* Map FAB — always visible */}
-      <Pressable
-        onPress={() => {
-          if (hasSearched && filteredNotes.length > 0) {
-            const ids = filteredNotes.map(n => n.id).join(',');
-            console.log('[SearchScreen] Map FAB pressed — navigating with', filteredNotes.length, 'search result IDs');
-            router.push(`/map-view?hasSearch=true&ids=${ids}`);
-          } else {
-            console.log('[SearchScreen] Map FAB pressed — navigating to browse-all map');
-            router.push('/map-view');
-          }
-        }}
-        style={[styles.mapFab, { bottom: insets.bottom + 48 }]}
-      >
-        <IconSymbol name="map.fill" size={24} color="#FFFFFF" />
-      </Pressable>
+      {/* Map FAB — visible only when there are location-tagged recalls */}
+      {(selectedPill
+        ? categoryHasLocationRecalls
+        : notes.some(n => n.latitude != null)
+      ) && (
+        <Pressable
+          onPress={() => {
+            if (selectedPill && categoryRecalls.length > 0) {
+              const ids = categoryRecalls.map(n => n.id).join(',');
+              console.log('[SearchScreen] Map FAB pressed — navigating with', categoryRecalls.length, 'category recall IDs');
+              router.push(`/map-view?hasSearch=true&ids=${ids}`);
+            } else if (hasSearched && filteredNotes.length > 0) {
+              const ids = filteredNotes.map(n => n.id).join(',');
+              console.log('[SearchScreen] Map FAB pressed — navigating with', filteredNotes.length, 'search result IDs');
+              router.push(`/map-view?hasSearch=true&ids=${ids}`);
+            } else {
+              console.log('[SearchScreen] Map FAB pressed — navigating to browse-all map');
+              router.push('/map-view');
+            }
+          }}
+          style={[styles.mapFab, { bottom: insets.bottom + 48 }]}
+        >
+          <IconSymbol name="map.fill" size={24} color="#FFFFFF" />
+        </Pressable>
+      )}
     </View>
   );
 }

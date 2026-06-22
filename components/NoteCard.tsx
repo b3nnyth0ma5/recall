@@ -621,6 +621,20 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                   />
                 );
               }
+              // Fallback: use note.urls directly (e.g. category recalls not in NotesContext cache)
+              if (note.urls && note.urls.length > 0) {
+                const firstUrl = note.urls[0];
+                return (
+                  <UrlPreviewCard
+                    url={firstUrl.url}
+                    ogTitle={firstUrl.og_title ?? null}
+                    ogDescription={firstUrl.og_description ?? null}
+                    ogSiteName={firstUrl.og_site_name ?? null}
+                    ogImageUrl={firstUrl.og_image_url ?? null}
+                    scrapedAt={firstUrl.scraped_at ?? ''}
+                  />
+                );
+              }
               return null;
             })()}
 

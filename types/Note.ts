@@ -1,6 +1,16 @@
 
 import { Document } from './Document';
 
+export interface RecallUrl {
+  id: string;
+  url: string;
+  og_title?: string | null;
+  og_description?: string | null;
+  og_image_url?: string | null;
+  og_site_name?: string | null;
+  scraped_at?: string | null;
+}
+
 export interface Note {
   id: string;
   text: string;                  // plain text — kept for embeddings/search
@@ -21,6 +31,7 @@ export interface Note {
   documentIds?: string[]; // Array of document record IDs
   category_matching_at?: string | null; // Set when category matching starts
   category_matched_at?: string | null;  // Set when category matching completes
+  urls?: RecallUrl[]; // URL previews attached to this recall
 }
 
 export interface Person {
