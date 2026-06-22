@@ -126,7 +126,6 @@ export function FloatingNavBar({
         iconName="add"
         iconSize={26}
         isActive={false}
-        alwaysShowBg
         onPress={onCreateRecallPress}
         accessibilityLabel="Create Recall"
       />
