@@ -464,21 +464,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       >
         <IconSymbol name="trash.fill" size={22} color="#FFFFFF" />
       </Pressable>
-      <Pressable
-        style={[styles.actionPill, styles.tagPeoplePill]}
-        onPress={handleTagPeople}
-        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-      >
-        <IconSymbol name="person.crop.circle.badge.plus" size={26} color="#FFFFFF" />
-      </Pressable>
-			<Pressable
-        style={[styles.actionPill, styles.chatPill]}
-        onPress={handleSwipeChat}
-        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-      >
-        <IconSymbol name="message" size={22} color="#FFFFFF" />
-      </Pressable>
-      
+
       <View ref={shareButtonRef} collapsable={false}>
         <Pressable
           style={[styles.actionPill, styles.sharePill]}
@@ -1057,10 +1043,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 10,
-    paddingRight: 12,
-    paddingLeft: 12,
-    width: 240,
+    gap: 16,
+    paddingRight: 16,
+    paddingLeft: 16,
+    width: 144,
     backgroundColor: '#333232',
   },
   actionPill: {
