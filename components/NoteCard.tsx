@@ -169,6 +169,14 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     setShowChatModal(true);
   }, [note.id]);
 
+  const handleLongPress = useCallback(async () => {
+    console.log('[NoteCard] User long-pressed recall card:', note.id);
+    if (Platform.OS !== 'web') {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+    }
+    setShowContextMenu(true);
+  }, [note.id]);
+
   // Initialize with first TWO images for better performance
   useEffect(() => {
     if (!loading && note.images && note.images.length > 0) {
@@ -516,17 +524,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
-      <Pressable
-        onLongPress={async () => {
-          console.log('[NoteCard] User long-pressed recall card:', note.id);
-          if (Platform.OS !== 'web') {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-          }
-          setShowContextMenu(true);
-        }}
-        delayLongPress={150}
-        style={{ flex: 1, width: '100%' }}
-      >
       <View style={{ flex: 1, width: '100%' }}>
         {hasMedia && (
           <View style={styles.imagesContainer}>
@@ -563,6 +560,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                   <Pressable 
                     key={`${note.id}-image-${index}`}
                     onPress={() => handleImagePress(index)}
+                    onLongPress={handleLongPress}
+                    delayLongPress={150}
                     style={styles.imageWrapper}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
@@ -650,6 +649,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         >
           <Pressable
             onPress={handleCardPress}
+            onLongPress={handleLongPress}
+            delayLongPress={150}
             style={{ flex: 1 }}
           >
           <View style={styles.cardContent}>
@@ -749,7 +750,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           </Pressable>
         </Swipeable>
       </View>
-      </Pressable>
 
       {hasMedia && (
         <React.Suspense fallback={null}>

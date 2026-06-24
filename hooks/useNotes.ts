@@ -521,14 +521,16 @@ export function useNotes() {
       )
       .subscribe();
 
+    const timeoutsRef = categoryMatchTimeoutsRef.current;
     return () => {
       console.log('[useNotes] Cleaning up realtime recall category matching subscription');
       channel.unsubscribe();
       supabase.removeChannel(channel);
       // Clear all pending safety timers
-      categoryMatchTimeoutsRef.current.forEach(clearTimeout);
-      categoryMatchTimeoutsRef.current.clear();
+      timeoutsRef.forEach(clearTimeout);
+      timeoutsRef.clear();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   const loadMoreNotes = useCallback(() => {

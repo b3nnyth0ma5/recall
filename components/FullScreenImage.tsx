@@ -348,7 +348,7 @@ export function FullScreenImage({
         });
       }, 100);
     }
-  }, [visible, initialIndex, images, imageIds, translateY, contextY]);
+  }, [visible, initialIndex, images, imageIds, translateY, contextY, overlayOpacity]);
 
   // Reset zoom on all slides when the active index changes
   useEffect(() => {
