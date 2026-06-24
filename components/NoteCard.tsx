@@ -14,8 +14,8 @@ import { TimeAgo } from './TimeAgo';
 import { shareRecall } from '@/utils/shareRecall';
 import { getImageDataUrl } from '@/utils/supabase';
 import { PeopleAvatars } from './PeopleAvatars';
-import { RecallUtilityBar } from './RecallUtilityBar';
 import { RecallChatModal } from './RecallChatModal';
+import { SharePopover } from './SharePopover';
 import * as Haptics from 'expo-haptics';
 import { NoteCardSkeleton } from './NoteCardSkeleton';
 import { SkeletonLoader } from './SkeletonLoader';
@@ -88,6 +88,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const [showChatModal, setShowChatModal] = useState(false);
   const imageScrollRef = useRef<ScrollView>(null);
   const swipeableRef = useRef<Swipeable>(null);
+  const shareButtonRef = useRef<View>(null);
+  const [sharePopoverVisible, setSharePopoverVisible] = useState(false);
+  const [shareAnchorRect, setShareAnchorRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   
   // Optimized lazy loading state for images
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
@@ -126,14 +129,29 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     }
   }, [note, currentImageIndex]);
 
-  const handleAskQuestion = useCallback(() => {
-    console.log('User tapped Chat icon on recall:', note.id);
-    setShowChatModal(true);
-  }, [note.id]);
+  const handleSwipeShare = useCallback(async () => {
+    console.log('User swiped Share on recall:', note.id);
+    swipeableRef.current?.close();
+    if (Platform.OS !== 'web') {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    if (!note.location) {
+      await handleSharePress();
+      return;
+    }
+    shareButtonRef.current?.measureInWindow((x, y, width, height) => {
+      setShareAnchorRect({ x, y, width, height });
+      setSharePopoverVisible(true);
+    });
+  }, [note.id, note.location, handleSharePress]);
 
-  const handleCloseChatModal = useCallback(() => {
-    console.log('User closed chat modal for recall:', note.id);
-    setShowChatModal(false);
+  const handleSwipeChat = useCallback(async () => {
+    console.log('User swiped Chat on recall:', note.id);
+    swipeableRef.current?.close();
+    if (Platform.OS !== 'web') {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    setShowChatModal(true);
   }, [note.id]);
 
   // Initialize with first TWO images for better performance
@@ -371,6 +389,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
 
   const handleDelete = async () => {
+    console.log('[NoteCard] User swiped Delete on recall:', note.id);
     swipeableRef.current?.close();
     
     if (Platform.OS !== 'web') {
@@ -412,26 +431,40 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
     });
   };
 
-  const renderRightActions = () => {
-    return (
-      <View style={styles.swipeActionsRow}>
+  const renderRightActions = () => (
+    <View style={styles.swipeActionsRow}>
+      <View ref={shareButtonRef} collapsable={false}>
         <Pressable
-          style={[styles.actionPill, styles.tagPeoplePill]}
-          onPress={handleTagPeople}
+          style={[styles.actionPill, styles.sharePill]}
+          onPress={handleSwipeShare}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <IconSymbol name="person.crop.circle.badge.plus" size={28} color="#FFFFFF" />
-        </Pressable>
-        <Pressable
-          style={[styles.actionPill, styles.deletePill]}
-          onPress={handleDelete}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <IconSymbol name="trash.fill" size={22} color="#FFFFFF" />
+          <IconSymbol name="square.and.arrow.up" size={22} color="#FFFFFF" />
         </Pressable>
       </View>
-    );
-  };
+      <Pressable
+        style={[styles.actionPill, styles.chatPill]}
+        onPress={handleSwipeChat}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
+        <IconSymbol name="message" size={22} color="#FFFFFF" />
+      </Pressable>
+      <Pressable
+        style={[styles.actionPill, styles.tagPeoplePill]}
+        onPress={handleTagPeople}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
+        <IconSymbol name="person.crop.circle.badge.plus" size={26} color="#FFFFFF" />
+      </Pressable>
+      <Pressable
+        style={[styles.actionPill, styles.deletePill]}
+        onPress={handleDelete}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
+        <IconSymbol name="trash.fill" size={22} color="#FFFFFF" />
+      </Pressable>
+    </View>
+  );
 
   const displayImages = totalImageCount > 0 
     ? Array.from({ length: totalImageCount }, (_, index) => {
@@ -662,18 +695,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               </Pressable>
             ) : null}
 
-            <View style={styles.locationTimeContainer}>
-              <View style={styles.timeAgoWrapper}>
-                <TimeAgo 
-                  date={note.created_at} 
-                  style={styles.date}
-                />
-              </View>
-            </View>
-
-            <View style={styles.actionsRowWithLocation}>
+            <View style={styles.footerRow}>
               {note.location ? (
-                <Pressable 
+                <Pressable
                   onPress={handleLocationPress}
                   style={styles.locationWrapper}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -686,15 +710,10 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                     <IconSymbol name="chevron.right" size={12} color={colors.primary} />
                   </View>
                 </Pressable>
-              ) : null}
-              <View style={!note.location ? styles.utilityBarRight : undefined}>
-                <RecallUtilityBar
-                  onAskQuestion={handleAskQuestion}
-                  onShare={handleSharePress}
-                  hasLocation={Boolean(note.location)}
-                />
-              </View>
+              ) : <View style={{ flex: 1 }} />}
+              <TimeAgo date={note.created_at} style={styles.date} />
             </View>
+
           </View>
           </Pressable>
         </Swipeable>
@@ -716,7 +735,21 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       <RecallChatModal
         visible={showChatModal}
         recall={note}
-        onClose={handleCloseChatModal}
+        onClose={() => {
+          console.log('User closed chat modal for recall:', note.id);
+          setShowChatModal(false);
+        }}
+      />
+
+      <SharePopover
+        visible={sharePopoverVisible}
+        anchorPosition={shareAnchorRect}
+        onSelect={(includeLocation) => {
+          console.log('SharePopover selection on recall:', note.id, '— includeLocation:', includeLocation);
+          setSharePopoverVisible(false);
+          handleSharePress({ includeLocation });
+        }}
+        onDismiss={() => setSharePopoverVisible(false)}
       />
     </Animated.View>
   );
@@ -882,16 +915,14 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
   },
-  locationTimeContainer: {
+  footerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 6,
-    marginTop: 8,
     paddingTop: 8,
     paddingBottom: 6,
     gap: 8,
-    zIndex: 1,
   },
   locationWrapper: {
     flexDirection: 'row',
@@ -913,21 +944,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flexShrink: 1,
   },
-  actionsRowWithLocation: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    gap: 8,
-  },
-  utilityBarRight: {
-    marginLeft: 'auto' as const,
-  },
-  timeAgoWrapper: {
-    width: '100%',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
   date: {
     fontSize: 13,
     color: colors.textSecondary,
@@ -938,11 +954,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 14,
+    gap: 10,
     paddingRight: 12,
     paddingLeft: 12,
-    width: 140,
-		backgroundColor: '#333232',
+    width: 240,
+    backgroundColor: '#333232',
   },
   actionPill: {
     width: 48,
@@ -950,6 +966,12 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  sharePill: {
+    backgroundColor: '#4A90D9',
+  },
+  chatPill: {
+    backgroundColor: '#7B68EE',
   },
   tagPeoplePill: {
     backgroundColor: '#FF8A8A',
@@ -978,5 +1000,4 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
   },
-
 });
