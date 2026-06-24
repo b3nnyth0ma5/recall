@@ -89,6 +89,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const imageScrollRef = useRef<ScrollView>(null);
   const swipeableRef = useRef<Swipeable>(null);
   const shareButtonRef = useRef<View>(null);
+  const pendingActionRef = useRef<(() => void) | null>(null);
   const [sharePopoverVisible, setSharePopoverVisible] = useState(false);
   const [shareAnchorRect, setShareAnchorRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [showContextMenu, setShowContextMenu] = useState(false);
@@ -641,7 +642,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
             }
             setShowContextMenu(true);
           }}
-          delayLongPress={350}
+          delayLongPress={200}
         >
           <View style={styles.cardContent}>
             {!hasMedia && !!processingStage && (
@@ -779,6 +780,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         transparent
         animationType="fade"
         onRequestClose={() => setShowContextMenu(false)}
+        onDismiss={() => {
+          const action = pendingActionRef.current;
+          pendingActionRef.current = null;
+          action?.();
+        }}
         statusBarTranslucent
       >
         <Pressable style={styles.contextMenuBackdrop} onPress={() => {
@@ -789,8 +795,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
             <View style={styles.contextMenuPanel}>
               <Pressable style={styles.contextMenuRow} onPress={() => {
                 console.log('[NoteCard] User tapped Share Recall in context menu for recall:', note.id);
+                pendingActionRef.current = () => handleContextShare();
                 setShowContextMenu(false);
-                setTimeout(() => handleContextShare(), 150);
               }}>
                 <IconSymbol name="square.and.arrow.up" size={22} color={colors.text} />
                 <Text style={styles.contextMenuLabel}>Share Recall</Text>
@@ -798,8 +804,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={() => {
                 console.log('[NoteCard] User tapped Add/Edit People in context menu for recall:', note.id);
+                pendingActionRef.current = () => handleTagPeople();
                 setShowContextMenu(false);
-                setTimeout(() => handleTagPeople(), 150);
               }}>
                 <IconSymbol name="person.crop.circle.badge.plus" size={22} color={colors.text} />
                 <Text style={styles.contextMenuLabel}>Add / Edit People</Text>
@@ -807,8 +813,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={() => {
                 console.log('[NoteCard] User tapped Chat with Recall in context menu for recall:', note.id);
+                pendingActionRef.current = () => setShowChatModal(true);
                 setShowContextMenu(false);
-                setTimeout(() => setShowChatModal(true), 150);
               }}>
                 <IconSymbol name="message" size={22} color={colors.text} />
                 <Text style={styles.contextMenuLabel}>Chat with Recall</Text>
@@ -816,8 +822,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={() => {
                 console.log('[NoteCard] User tapped Delete in context menu for recall:', note.id);
+                pendingActionRef.current = () => handleDelete();
                 setShowContextMenu(false);
-                setTimeout(() => handleDelete(), 150);
               }}>
                 <IconSymbol name="trash.fill" size={22} color="#FF3B30" />
                 <Text style={[styles.contextMenuLabel, styles.contextMenuDestructive]}>Delete</Text>
