@@ -824,12 +824,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
               </Pressable>
             </View>
 
-            <Pressable style={styles.contextMenuCancel} onPress={() => {
-              console.log('[NoteCard] User tapped Cancel in context menu for recall:', note.id);
-              setShowContextMenu(false);
-            }}>
-              <Text style={styles.contextMenuCancelText}>Cancel</Text>
-            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1086,49 +1080,39 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'flex-end',
+    alignItems: 'flex-start',
   },
   contextMenuContainer: {
-    paddingHorizontal: 12,
-    paddingBottom: 32,
-    gap: 10,
+    paddingLeft: 16,
+    paddingBottom: 100,
+    width: SCREEN_WIDTH * 0.5,
   },
   contextMenuPanel: {
     backgroundColor: '#1C1C1E',
     borderRadius: 16,
     overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   contextMenuRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    gap: 14,
-    minHeight: 56,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 12,
+    minHeight: 44,
   },
   contextMenuSeparator: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(255,255,255,0.12)',
-    marginLeft: 56,
+    marginLeft: 44,
   },
   contextMenuLabel: {
-    fontSize: 17,
+    fontSize: 15,
     color: colors.text,
     fontWeight: '400',
   },
   contextMenuDestructive: {
     color: '#FF3B30',
-  },
-  contextMenuCancel: {
-    backgroundColor: '#1C1C1E',
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 18,
-    minHeight: 56,
-  },
-  contextMenuCancelText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.text,
   },
 });

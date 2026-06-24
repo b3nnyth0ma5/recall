@@ -643,7 +643,7 @@ const styles = StyleSheet.create({
   customHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     backgroundColor: colors.background,
     paddingHorizontal: 20,
     // Task 1: align gap between header bottom and search box top with search screen (8px)
