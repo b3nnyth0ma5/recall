@@ -93,6 +93,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const [sharePopoverVisible, setSharePopoverVisible] = useState(false);
   const [shareAnchorRect, setShareAnchorRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [showContextMenu, setShowContextMenu] = useState(false);
+  const isShareInProgress = useRef(false);
   
   // Optimized lazy loading state for images
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
@@ -125,9 +126,12 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const handleSharePress = useCallback(async (options?: { includeLocation: boolean }) => {
     console.log('User tapped Share button on recall:', note.id, '— options:', options);
     try {
+      isShareInProgress.current = true;
       await shareRecall(note, currentImageIndex, options);
     } catch (error) {
       console.error('Error sharing recall:', error);
+    } finally {
+      isShareInProgress.current = false;
     }
   }, [note, currentImageIndex]);
 
@@ -354,6 +358,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   };
   
   const handleCardPress = () => {
+    if (isShareInProgress.current) return;
     onPress(scrollToImageIndex);
   };
 
@@ -511,6 +516,17 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   return (
     <Animated.View style={[styles.card, animatedCardStyle]}>
+      <Pressable
+        onLongPress={async () => {
+          console.log('[NoteCard] User long-pressed recall card:', note.id);
+          if (Platform.OS !== 'web') {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+          }
+          setShowContextMenu(true);
+        }}
+        delayLongPress={150}
+        style={{ flex: 1, width: '100%' }}
+      >
       <View style={{ flex: 1, width: '100%' }}>
         {hasMedia && (
           <View style={styles.imagesContainer}>
@@ -633,17 +649,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           containerStyle={styles.swipeableContainer}
         >
           <Pressable
-          onPress={handleCardPress}
-          style={{ flex: 1 }}
-          onLongPress={async () => {
-            console.log('[NoteCard] User long-pressed recall card:', note.id);
-            if (Platform.OS !== 'web') {
-              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-            }
-            setShowContextMenu(true);
-          }}
-          delayLongPress={200}
-        >
+            onPress={handleCardPress}
+            style={{ flex: 1 }}
+          >
           <View style={styles.cardContent}>
             {!hasMedia && !!processingStage && (
               <View style={[styles.processingStageRow, { pointerEvents: 'none' }]}>
@@ -741,6 +749,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           </Pressable>
         </Swipeable>
       </View>
+      </Pressable>
 
       {hasMedia && (
         <React.Suspense fallback={null}>
@@ -793,8 +802,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         }}>
           <Pressable style={styles.contextMenuContainer} onPress={e => e.stopPropagation()}>
             <View style={styles.contextMenuPanel}>
-              <Pressable style={styles.contextMenuRow} onPress={() => {
+              <Pressable style={styles.contextMenuRow} onPress={async () => {
                 console.log('[NoteCard] User tapped Share Recall in context menu for recall:', note.id);
+                if (Platform.OS !== 'web') {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                }
                 pendingActionRef.current = () => handleContextShare();
                 setShowContextMenu(false);
               }}>
@@ -802,8 +814,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                 <Text style={styles.contextMenuLabel}>Share Recall</Text>
               </Pressable>
               <View style={styles.contextMenuSeparator} />
-              <Pressable style={styles.contextMenuRow} onPress={() => {
+              <Pressable style={styles.contextMenuRow} onPress={async () => {
                 console.log('[NoteCard] User tapped Add/Edit People in context menu for recall:', note.id);
+                if (Platform.OS !== 'web') {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                }
                 pendingActionRef.current = () => handleTagPeople();
                 setShowContextMenu(false);
               }}>
@@ -811,8 +826,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                 <Text style={styles.contextMenuLabel}>Add / Edit People</Text>
               </Pressable>
               <View style={styles.contextMenuSeparator} />
-              <Pressable style={styles.contextMenuRow} onPress={() => {
+              <Pressable style={styles.contextMenuRow} onPress={async () => {
                 console.log('[NoteCard] User tapped Chat with Recall in context menu for recall:', note.id);
+                if (Platform.OS !== 'web') {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                }
                 pendingActionRef.current = () => setShowChatModal(true);
                 setShowContextMenu(false);
               }}>
@@ -820,8 +838,11 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                 <Text style={styles.contextMenuLabel}>Chat with Recall</Text>
               </Pressable>
               <View style={styles.contextMenuSeparator} />
-              <Pressable style={styles.contextMenuRow} onPress={() => {
+              <Pressable style={styles.contextMenuRow} onPress={async () => {
                 console.log('[NoteCard] User tapped Delete in context menu for recall:', note.id);
+                if (Platform.OS !== 'web') {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                }
                 pendingActionRef.current = () => handleDelete();
                 setShowContextMenu(false);
               }}>
@@ -1086,10 +1107,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'flex-end',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   contextMenuContainer: {
-    paddingLeft: 16,
     paddingBottom: 100,
     width: SCREEN_WIDTH * 0.5,
   },
