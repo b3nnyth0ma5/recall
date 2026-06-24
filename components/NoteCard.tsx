@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, memo, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator, Modal } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { Image } from 'expo-image';
 import { cdnVariant } from '@/utils/cdnVariant';
@@ -91,6 +91,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   const shareButtonRef = useRef<View>(null);
   const [sharePopoverVisible, setSharePopoverVisible] = useState(false);
   const [shareAnchorRect, setShareAnchorRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [showContextMenu, setShowContextMenu] = useState(false);
   
   // Optimized lazy loading state for images
   const [lazyLoadedImages, setLazyLoadedImages] = useState<string[]>([]);
@@ -128,6 +129,15 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
       console.error('Error sharing recall:', error);
     }
   }, [note, currentImageIndex]);
+
+  const handleContextShare = useCallback(async () => {
+    console.log('[NoteCard] User tapped Share Recall from context menu on recall:', note.id);
+    if (!note.location) {
+      await handleSharePress();
+      return;
+    }
+    await handleSharePress({ includeLocation: false });
+  }, [note.id, note.location, handleSharePress]);
 
   const handleSwipeShare = useCallback(async () => {
     console.log('User swiped Share on recall:', note.id);
@@ -621,7 +631,18 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           rightThreshold={60}
           containerStyle={styles.swipeableContainer}
         >
-          <Pressable onPress={handleCardPress} style={{ flex: 1 }}>
+          <Pressable
+          onPress={handleCardPress}
+          style={{ flex: 1 }}
+          onLongPress={async () => {
+            console.log('[NoteCard] User long-pressed recall card:', note.id);
+            if (Platform.OS !== 'web') {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+            }
+            setShowContextMenu(true);
+          }}
+          delayLongPress={350}
+        >
           <View style={styles.cardContent}>
             {!hasMedia && !!processingStage && (
               <View style={[styles.processingStageRow, { pointerEvents: 'none' }]}>
@@ -752,6 +773,66 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
         }}
         onDismiss={() => setSharePopoverVisible(false)}
       />
+
+      <Modal
+        visible={showContextMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowContextMenu(false)}
+        statusBarTranslucent
+      >
+        <Pressable style={styles.contextMenuBackdrop} onPress={() => {
+          console.log('[NoteCard] User dismissed context menu for recall:', note.id);
+          setShowContextMenu(false);
+        }}>
+          <Pressable style={styles.contextMenuContainer} onPress={e => e.stopPropagation()}>
+            <View style={styles.contextMenuPanel}>
+              <Pressable style={styles.contextMenuRow} onPress={() => {
+                console.log('[NoteCard] User tapped Share Recall in context menu for recall:', note.id);
+                setShowContextMenu(false);
+                setTimeout(() => handleContextShare(), 150);
+              }}>
+                <IconSymbol name="square.and.arrow.up" size={22} color={colors.text} />
+                <Text style={styles.contextMenuLabel}>Share Recall</Text>
+              </Pressable>
+              <View style={styles.contextMenuSeparator} />
+              <Pressable style={styles.contextMenuRow} onPress={() => {
+                console.log('[NoteCard] User tapped Add/Edit People in context menu for recall:', note.id);
+                setShowContextMenu(false);
+                setTimeout(() => handleTagPeople(), 150);
+              }}>
+                <IconSymbol name="person.crop.circle.badge.plus" size={22} color={colors.text} />
+                <Text style={styles.contextMenuLabel}>Add / Edit People</Text>
+              </Pressable>
+              <View style={styles.contextMenuSeparator} />
+              <Pressable style={styles.contextMenuRow} onPress={() => {
+                console.log('[NoteCard] User tapped Chat with Recall in context menu for recall:', note.id);
+                setShowContextMenu(false);
+                setTimeout(() => setShowChatModal(true), 150);
+              }}>
+                <IconSymbol name="message" size={22} color={colors.text} />
+                <Text style={styles.contextMenuLabel}>Chat with Recall</Text>
+              </Pressable>
+              <View style={styles.contextMenuSeparator} />
+              <Pressable style={styles.contextMenuRow} onPress={() => {
+                console.log('[NoteCard] User tapped Delete in context menu for recall:', note.id);
+                setShowContextMenu(false);
+                setTimeout(() => handleDelete(), 150);
+              }}>
+                <IconSymbol name="trash.fill" size={22} color="#FF3B30" />
+                <Text style={[styles.contextMenuLabel, styles.contextMenuDestructive]}>Delete</Text>
+              </Pressable>
+            </View>
+
+            <Pressable style={styles.contextMenuCancel} onPress={() => {
+              console.log('[NoteCard] User tapped Cancel in context menu for recall:', note.id);
+              setShowContextMenu(false);
+            }}>
+              <Text style={styles.contextMenuCancelText}>Cancel</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Animated.View>
   );
 }, (prevProps, nextProps) => {
@@ -1000,5 +1081,54 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+  contextMenuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  contextMenuContainer: {
+    paddingHorizontal: 12,
+    paddingBottom: 32,
+    gap: 10,
+  },
+  contextMenuPanel: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  contextMenuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 14,
+    minHeight: 56,
+  },
+  contextMenuSeparator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginLeft: 56,
+  },
+  contextMenuLabel: {
+    fontSize: 17,
+    color: colors.text,
+    fontWeight: '400',
+  },
+  contextMenuDestructive: {
+    color: '#FF3B30',
+  },
+  contextMenuCancel: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    minHeight: 56,
+  },
+  contextMenuCancelText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.text,
   },
 });

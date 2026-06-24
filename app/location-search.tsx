@@ -262,11 +262,11 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
   const handleSelectLocation = async (location: PlaceResult) => {
     try {
       // Format location as "DisplayName, Suburb" or "DisplayName, Locality"
-      const formattedLocationName = extractShortLocationName(
-        location.displayName,
-        location.suburb,
-        location.locality
-      );
+      // For current location, use the actual reverse-geocoded address instead of the hardcoded display name
+      const formattedLocationName = location.placeId === 'current-location'
+        ? location.formattedAddress
+        : extractShortLocationName(location.displayName, location.suburb, location.locality);
+      console.log('[LocationSearch] handleSelectLocation pressed:', { placeId: location.placeId, formattedLocationName });
 
       console.log('[LocationSearch] Selected location data:', {
         latitude: location.latitude,

@@ -458,7 +458,7 @@ function TopBar({ currentStep, onLoginPress }: TopBarProps) {
   const topPadding = insets.top > 0 ? insets.top : (Platform.OS === 'android' ? 28 : 44);
 
   return (
-    <View style={[topBarStyles.container, { paddingTop: topPadding }, currentStep === 0 && { justifyContent: 'flex-start' }]}>
+    <View style={[topBarStyles.container, { paddingTop: topPadding }, currentStep === 0 && { justifyContent: 'center' }]}>
       {/* Logo + wordmark */}
       <View style={topBarStyles.logoRow}>
         <Image

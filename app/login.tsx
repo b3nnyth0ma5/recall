@@ -355,6 +355,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingVertical: 40,
+    width: '100%',
   },
   content: {
     alignItems: 'center',
@@ -365,6 +366,7 @@ const styles = StyleSheet.create({
   logoBlock: {
     alignItems: 'center',
     justifyContent: 'center',
+    width: '100%',
     marginBottom: 32,
   },
   iconContainer: {
