@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, RefreshControl, Modal, Platform, Alert, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, RefreshControl, Modal, Platform, Alert, Keyboard, ScrollView } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
@@ -11,12 +11,15 @@ import * as Haptics from 'expo-haptics';
 import { CombinedSearchAdd } from '@/components/CombinedSearchAdd';
 import { useCreateRecallUI } from '@/contexts/CreateRecallUIContext';
 import { useScrollToTop } from '@/contexts/ScrollToTopContext';
-import { supabase, uploadImageToDatabase, uploadDocumentToDatabase, triggerRecallEmbedding } from '@/utils/supabase';
+import { supabase, uploadImageToDatabase, uploadDocumentToDatabase, triggerRecallEmbedding, getRecollectionCategories, getCategoryRecollections } from '@/utils/supabase';
 import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 import { ZeroState } from '@/components/ZeroState';
 import { extractUrls, processRecallUrlsAndAwaitScrape } from '@/utils/urlProcessor';
 import RecallHeader from '@/components/RecallHeader';
 import { Note } from '@/types/Note';
+import { PillsRow } from '@/components/PillsRow';
+import type { PillItem } from '@/components/PillsRow';
+import { SkeletonLoader } from '@/components/SkeletonLoader';
 import Animated, {
   useSharedValue,
   withTiming,
@@ -25,6 +28,7 @@ import Animated, {
 // Module-level scroll-position cache — survives component remounts within a session.
 let homeScrollOffset = 0;
 
+const PILL_SKELETON_WIDTHS = [80, 60, 110, 120, 70, 70, 100, 100, 80, 95];
 
 export default function HomeScreen() {
   const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata, addNoteOptimistic, patchNoteOptimistic } = useNotesContext();
@@ -43,6 +47,15 @@ export default function HomeScreen() {
   const [loadingPreferences, setLoadingPreferences] = useState(true);
   const [hasCheckedForRecalls, setHasCheckedForRecalls] = useState(false);
   const [hasRecalls, setHasRecalls] = useState(false);
+  const [userCategories, setUserCategories] = useState<PillItem[]>([]);
+  const [selectedPill, setSelectedPill] = useState<string | null>(null);
+  const [categoryRecalls, setCategoryRecalls] = useState<Note[]>([]);
+  const [isLoadingCategoryRecalls, setIsLoadingCategoryRecalls] = useState(false);
+  const [categoryPage, setCategoryPage] = useState(0);
+  const [hasMoreCategoryRecalls, setHasMoreCategoryRecalls] = useState(false);
+  const [isLoadingMoreCategoryRecalls, setIsLoadingMoreCategoryRecalls] = useState(false);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+  const CATEGORY_PAGE_SIZE = 10;
   const insets = useSafeAreaInsets();
   const pendingImageUploadsRef = useRef<Map<string, number>>(new Map());
   const { isCreatePanelOpen, closeCreatePanel } = useCreateRecallUI();
@@ -179,6 +192,54 @@ export default function HomeScreen() {
       });
     }
   }, []);
+
+  const loadCategories = useCallback(async () => {
+    try {
+      setIsLoadingCategories(true);
+      console.log('[HomeScreen] Loading recollection categories');
+      const cats = await getRecollectionCategories();
+      setUserCategories(cats.map(c => ({
+        id: c.id,
+        label: c.category_name,
+        count: c.recollection_count,
+      })));
+    } catch (e) {
+      console.error('[HomeScreen] Failed to load categories:', e);
+    } finally {
+      setIsLoadingCategories(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
+
+  const handlePillSelect = useCallback(async (id: string | null) => {
+    console.log('[HomeScreen] Pill selected:', id);
+    if (selectedPill === id || id === null) {
+      console.log('[HomeScreen] Pill deselected');
+      setSelectedPill(null);
+      setCategoryRecalls([]);
+      setCategoryPage(0);
+      setHasMoreCategoryRecalls(false);
+      return;
+    }
+    setSelectedPill(id);
+    setCategoryRecalls([]);
+    setCategoryPage(0);
+    setHasMoreCategoryRecalls(false);
+    setIsLoadingCategoryRecalls(true);
+    try {
+      const recalls = await getCategoryRecollections(id, 0, CATEGORY_PAGE_SIZE);
+      setCategoryRecalls(recalls);
+      setHasMoreCategoryRecalls(recalls.length === CATEGORY_PAGE_SIZE);
+    } catch (e) {
+      console.error('[HomeScreen] Failed to load category recalls:', e);
+      setCategoryRecalls([]);
+    } finally {
+      setIsLoadingCategoryRecalls(false);
+    }
+  }, [selectedPill, CATEGORY_PAGE_SIZE]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -510,7 +571,7 @@ export default function HomeScreen() {
   const shouldShowSkeletons = loading && (!hasCheckedForRecalls || notes.length === 0);
   const shouldShowZeroState = hasCheckedForRecalls && !hasRecalls && notes.length === 0 && !loading;
 
-  const listData = hasRecalls || notes.length > 0 ? notes : [];
+  const listData = selectedPill ? [] : (hasRecalls || notes.length > 0 ? notes : []);
 
   const renderItem = useCallback(({ item }: { item: Note }) => (
     <View style={styles.noteCardRow}>
@@ -537,6 +598,89 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
+      {/* Category pills row */}
+      {isLoadingCategories ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pillsSkeletonContent}
+          style={styles.pillsRowWrapper}
+        >
+          {PILL_SKELETON_WIDTHS.map((w, i) => (
+            <SkeletonLoader
+              key={`pill-skeleton-${i}`}
+              variant="wave"
+              width={w}
+              height={36}
+              borderRadius={20}
+            />
+          ))}
+        </ScrollView>
+      ) : userCategories.length > 0 ? (
+        <View style={styles.pillsRowWrapper}>
+          <PillsRow
+            items={userCategories}
+            selected={selectedPill}
+            onSelect={handlePillSelect}
+          />
+        </View>
+      ) : null}
+
+      {/* Category recalls — shown when a pill is selected */}
+      {selectedPill && (
+        <View style={styles.categoryRecallsContainer}>
+          {isLoadingCategoryRecalls ? (
+            <View style={styles.categoryLoadingContainer}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.categoryLoadingText}>Loading recalls...</Text>
+            </View>
+          ) : categoryRecalls.length === 0 ? (
+            <View style={styles.categoryEmptyContainer}>
+              <Text style={styles.categoryEmptyText}>No recalls found for this category</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={categoryRecalls}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              renderItem={({ item }) => (
+                <View style={styles.noteCardRow}>
+                  <NoteCard
+                    note={item}
+                    onPress={() => handleNotePress(item.id)}
+                    onDelete={() => handleDeleteNote(item.id)}
+                    loading={false}
+                  />
+                </View>
+              )}
+              onEndReachedThreshold={0.3}
+              onEndReached={async () => {
+                if (!hasMoreCategoryRecalls || isLoadingMoreCategoryRecalls || !selectedPill) return;
+                const nextPage = categoryPage + 1;
+                console.log('[HomeScreen] Loading more category recalls, page:', nextPage);
+                setIsLoadingMoreCategoryRecalls(true);
+                try {
+                  const more = await getCategoryRecollections(selectedPill, nextPage, CATEGORY_PAGE_SIZE);
+                  setCategoryRecalls((prev) => [...prev, ...more]);
+                  setCategoryPage(nextPage);
+                  setHasMoreCategoryRecalls(more.length === CATEGORY_PAGE_SIZE);
+                } catch (e) {
+                  console.error('[HomeScreen] Failed to load more category recalls:', e);
+                } finally {
+                  setIsLoadingMoreCategoryRecalls(false);
+                }
+              }}
+              ListFooterComponent={
+                isLoadingMoreCategoryRecalls ? (
+                  <View style={styles.categoryLoadingContainer}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  </View>
+                ) : null
+              }
+            />
+          )}
+        </View>
+      )}
     </View>
   );
 
@@ -745,5 +889,37 @@ const styles = StyleSheet.create({
   },
   noteCardRow: {
     paddingHorizontal: 16,
+  },
+  pillsRowWrapper: {
+    marginBottom: 4,
+  },
+  pillsSkeletonContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  categoryRecallsContainer: {
+    width: '100%',
+  },
+  categoryLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    gap: 10,
+  },
+  categoryLoadingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  categoryEmptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  categoryEmptyText: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
 });
