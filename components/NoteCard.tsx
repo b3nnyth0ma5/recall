@@ -433,6 +433,28 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
 
   const renderRightActions = () => (
     <View style={styles.swipeActionsRow}>
+      <Pressable
+        style={[styles.actionPill, styles.deletePill]}
+        onPress={handleDelete}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
+        <IconSymbol name="trash.fill" size={22} color="#FFFFFF" />
+      </Pressable>
+      <Pressable
+        style={[styles.actionPill, styles.tagPeoplePill]}
+        onPress={handleTagPeople}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
+        <IconSymbol name="person.crop.circle.badge.plus" size={26} color="#FFFFFF" />
+      </Pressable>
+			<Pressable
+        style={[styles.actionPill, styles.chatPill]}
+        onPress={handleSwipeChat}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
+        <IconSymbol name="message" size={22} color="#FFFFFF" />
+      </Pressable>
+      
       <View ref={shareButtonRef} collapsable={false}>
         <Pressable
           style={[styles.actionPill, styles.sharePill]}
@@ -442,27 +464,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
           <IconSymbol name="square.and.arrow.up" size={22} color="#FFFFFF" />
         </Pressable>
       </View>
-      <Pressable
-        style={[styles.actionPill, styles.chatPill]}
-        onPress={handleSwipeChat}
-        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-      >
-        <IconSymbol name="message" size={22} color="#FFFFFF" />
-      </Pressable>
-      <Pressable
-        style={[styles.actionPill, styles.tagPeoplePill]}
-        onPress={handleTagPeople}
-        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-      >
-        <IconSymbol name="person.crop.circle.badge.plus" size={26} color="#FFFFFF" />
-      </Pressable>
-      <Pressable
-        style={[styles.actionPill, styles.deletePill]}
-        onPress={handleDelete}
-        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-      >
-        <IconSymbol name="trash.fill" size={22} color="#FFFFFF" />
-      </Pressable>
     </View>
   );
 
