@@ -633,20 +633,36 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
                 </Pressable>
 
                 {/* Location Pill - Second */}
-                <Pressable
-                  style={styles.locationPillExtended}
-                  onPress={handleLocationPress}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <IconSymbol 
-                    name="mappin.circle.fill" 
-                    size={16} 
-                    color={colors.primary} 
-                  />
-                  <Text style={styles.locationPillText} numberOfLines={1}>
-                    {location?.name || 'Click to add a location'}
-                  </Text>
-                </Pressable>
+                <View style={[styles.locationPillExtended, location && styles.locationPillExtendedWithX]}>
+                  <Pressable
+                    style={styles.locationPillInner}
+                    onPress={() => {
+                      console.log('[CombinedSearchAdd] Location pill pressed');
+                      handleLocationPress();
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol 
+                      name="mappin.circle.fill" 
+                      size={16} 
+                      color={colors.primary} 
+                    />
+                    <Text style={styles.locationPillText} numberOfLines={1}>
+                      {location?.name || 'Click to add a location'}
+                    </Text>
+                  </Pressable>
+                  {location && (
+                    <Pressable
+                      onPress={() => {
+                        console.log('[CombinedSearchAdd] Location clear button pressed');
+                        setLocation(null);
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <IconSymbol name="xmark.circle.fill" size={16} color={colors.primary} />
+                    </Pressable>
+                  )}
+                </View>
 								
                 <View style={styles.iconSpacer} />
 
@@ -822,7 +838,7 @@ const styles = StyleSheet.create({
   locationPillExtended: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     backgroundColor: `${colors.primary}20`,
     paddingVertical: 6,
     paddingRight: 24,
@@ -833,11 +849,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primary,
   },
+  locationPillExtendedWithX: {
+    paddingRight: 8,
+  },
+  locationPillInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+  },
   locationPillText: {
     fontSize: 13,
     color: colors.primary,
     maxWidth: '90%',
     fontWeight: '600',
+    flexShrink: 1,
   },
   iconSpacer: {
     flex: 1,

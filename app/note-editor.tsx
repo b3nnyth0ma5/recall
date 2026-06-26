@@ -1400,8 +1400,16 @@ export default function NoteEditorScreen() {
   };
 
   const handleLocationSearch = () => {
+    console.log('[NoteEditor] Location pill pressed — opening location search');
     router.push('/location-search');
   };
+
+  const handleClearLocation = useCallback(() => {
+    console.log('[NoteEditor] Location clear button pressed');
+    setLocationName('');
+    setLocation(null);
+    setLocationPrimaryType('');
+  }, []);
 
   const handleImagePress = (index: number) => {
     setFullScreenImageIndex(index);
@@ -1725,20 +1733,30 @@ export default function NoteEditorScreen() {
         </View>
 
         <View style={styles.toolbarCenter}>
-          <Pressable
-            style={styles.locationPill}
-            onPress={handleLocationSearch}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <IconSymbol 
-              name="mappin.circle.fill" 
-              size={16} 
-              color={colors.primary} 
-            />
-            <Text style={styles.locationPillText} numberOfLines={1}>
-              {locationName || 'Add Location'}
-            </Text>
-          </Pressable>
+          <View style={[styles.locationPill, locationName ? styles.locationPillWithX : null]}>
+            <Pressable
+              style={styles.locationPillPressable}
+              onPress={handleLocationSearch}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <IconSymbol 
+                name="mappin.circle.fill" 
+                size={16} 
+                color={colors.primary} 
+              />
+              <Text style={styles.locationPillText} numberOfLines={1}>
+                {locationName || 'Add Location'}
+              </Text>
+            </Pressable>
+            {!!locationName && (
+              <Pressable
+                onPress={handleClearLocation}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <IconSymbol name="xmark.circle.fill" size={16} color={colors.primary} />
+              </Pressable>
+            )}
+          </View>
         </View>
 
         <View style={styles.toolbarRight} />
@@ -1972,16 +1990,27 @@ const styles = StyleSheet.create({
   locationPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     backgroundColor: `${colors.primary}20`,
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingLeft: 12,
+    paddingRight: 12,
     borderRadius: 16,
     flex: 1,
     minWidth: 0,
     maxWidth: 280,
     borderWidth: 1,
     borderColor: colors.primary,
+  },
+  locationPillWithX: {
+    paddingRight: 8,
+  },
+  locationPillPressable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
   },
   locationPillText: {
     fontSize: 13,

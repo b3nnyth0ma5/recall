@@ -85,6 +85,7 @@ export default function SearchScreen() {
   const [hasMoreCategoryRecalls, setHasMoreCategoryRecalls] = useState(false);
   const [isLoadingMoreCategoryRecalls, setIsLoadingMoreCategoryRecalls] = useState(false);
   const [categoryHasLocationRecalls, setCategoryHasLocationRecalls] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const CATEGORY_PAGE_SIZE = 10;
   // Tracks whether history has been loaded at least once — gates zero states
   const [hasLoadedHistoryOnce, setHasLoadedHistoryOnce] = useState(false);
@@ -569,6 +570,7 @@ export default function SearchScreen() {
     setShowAttachFABs(false);
     setSelectedPill(null);
     setCategoryRecalls([]);
+    setViewMode('list');
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -587,6 +589,7 @@ export default function SearchScreen() {
     setIsProgressExpanded(true);
     setSelectedPill(null);
     setCategoryRecalls([]);
+    setViewMode('list');
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -1185,6 +1188,51 @@ export default function SearchScreen() {
                           </Animated.View>
                         )}
 
+                        {hasSearched && !isSearching && searchStage === 'complete' && (
+                          <View style={[styles.viewToggleRow, filteredNotes.length === 0 && styles.viewToggleDisabled]}>
+                            <View style={styles.viewToggle}>
+                              <Pressable
+                                style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnActive]}
+                                onPress={() => {
+                                  console.log('[SearchScreen] View toggle: list selected');
+                                  setViewMode('list');
+                                }}
+                                disabled={filteredNotes.length === 0}
+                                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                              >
+                                <IconSymbol
+                                  ios_icon_name="list.bullet"
+                                  android_material_icon_name="format_list_bulleted"
+                                  size={18}
+                                  color={viewMode === 'list' ? '#fff' : colors.textSecondary}
+                                />
+                              </Pressable>
+                              <Pressable
+                                style={[styles.viewToggleBtn, viewMode === 'map' && styles.viewToggleBtnActive]}
+                                onPress={() => {
+                                  console.log('[SearchScreen] View toggle: map selected, filteredNotes:', filteredNotes.length);
+                                  setViewMode('map');
+                                  if (filteredNotes.length > 0) {
+                                    const ids = filteredNotes.map(n => n.id).join(',');
+                                    router.push(`/map-view?hasSearch=true&ids=${ids}`);
+                                  } else {
+                                    router.push('/map-view');
+                                  }
+                                }}
+                                disabled={filteredNotes.length === 0}
+                                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                              >
+                                <IconSymbol
+                                  ios_icon_name="map"
+                                  android_material_icon_name="map"
+                                  size={18}
+                                  color={viewMode === 'map' ? '#fff' : colors.textSecondary}
+                                />
+                              </Pressable>
+                            </View>
+                          </View>
+                        )}
+
                         {filteredNotes.length > 0 && (
                           <Text style={styles.resultsText}>
                             {filteredNotes.length} {filteredNotes.length === 1 ? 'result' : 'results'} used for answer
@@ -1211,31 +1259,7 @@ export default function SearchScreen() {
         onScrollToIndexFailed={() => {}}
       />
 
-      {/* Map FAB — visible only when there are location-tagged recalls */}
-      {(selectedPill
-        ? categoryHasLocationRecalls
-        : notes.some(n => n.latitude != null)
-      ) && (
-        <Pressable
-          onPress={() => {
-            if (selectedPill && categoryRecalls.length > 0) {
-              const ids = categoryRecalls.map(n => n.id).join(',');
-              console.log('[SearchScreen] Map FAB pressed — navigating with', categoryRecalls.length, 'category recall IDs');
-              router.push(`/map-view?hasSearch=true&ids=${ids}`);
-            } else if (hasSearched && filteredNotes.length > 0) {
-              const ids = filteredNotes.map(n => n.id).join(',');
-              console.log('[SearchScreen] Map FAB pressed — navigating with', filteredNotes.length, 'search result IDs');
-              router.push(`/map-view?hasSearch=true&ids=${ids}`);
-            } else {
-              console.log('[SearchScreen] Map FAB pressed — navigating to browse-all map');
-              router.push('/map-view');
-            }
-          }}
-          style={[styles.mapFab, { bottom: insets.bottom + 48 }]}
-        >
-          <IconSymbol name="map.fill" size={24} color="#FFFFFF" />
-        </Pressable>
-      )}
+
     </View>
   );
 }
@@ -1559,17 +1583,29 @@ const styles = StyleSheet.create({
   searchingPlaceholder: {
     minHeight: 100,
   },
-  mapFab: {
-    position: 'absolute',
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
+  viewToggleRow: {
+    alignItems: 'flex-end',
+    marginBottom: 12,
+  },
+  viewToggleDisabled: {
+    opacity: 0.4,
+  },
+  viewToggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  viewToggleBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 14,
     alignItems: 'center',
-    elevation: 8,
-    boxShadow: '0px 4px 8px rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+  },
+  viewToggleBtnActive: {
+    backgroundColor: colors.primary,
   },
   swipeDeleteContainer: {
     width: 80,

@@ -703,12 +703,12 @@ export default function HomeScreen() {
     />
   ) : null;
 
-  const ListFooterComponent = isLoadingMore ? (
+  const ListFooterComponent = (isLoadingMore && !selectedPill) ? (
     <View style={styles.loadingMoreContainer}>
       <ActivityIndicator size="small" color={colors.primary} />
       <Text style={styles.loadingMoreText}>Loading more...</Text>
     </View>
-  ) : !hasMore && notes.length > 0 ? (
+  ) : (!hasMore && notes.length > 0 && !selectedPill) ? (
     <View style={styles.endContainer}>
       <Text style={styles.endText}>You&apos;ve reached the end</Text>
     </View>

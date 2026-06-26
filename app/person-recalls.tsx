@@ -60,18 +60,15 @@ export default function PersonRecallsScreen() {
   const [totalRecallCount, setTotalRecallCount] = useState(0);
   const [sortOrder, setSortOrder] = useState<SortOrder>('Newest');
 
+  // Sort loading (separate from main loading to avoid full-screen skeleton on sort change)
+  const [isSortLoading, setIsSortLoading] = useState(false);
+  const prevSortOrderRef = useRef<SortOrder>(sortOrder);
+
   // Photo upload
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoUpdateTrigger, setPhotoUpdateTrigger] = useState(0);
 
-  // Ellipsis menu
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const menuAnim = useRef(new Animated.Value(0)).current;
-  const menuScaleAnim = useRef(new Animated.Value(0.95)).current;
-  const ellipsisButtonRef = useRef<View>(null);
-  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
-
-  // Photo menu
+  // Photo menu (ellipsis menu removed — photo button opens photo menu directly)
   const [isPhotoMenuOpen, setIsPhotoMenuOpen] = useState(false);
   const photoMenuAnim = useRef(new Animated.Value(0)).current;
   const photoMenuScaleAnim = useRef(new Animated.Value(0.95)).current;
@@ -243,7 +240,7 @@ export default function PersonRecallsScreen() {
   }, [loadPeopleForRecalls]);
 
   // ─── Main data loader ───────────────────────────────────────────────────────
-  const loadPersonAndRecalls = useCallback(async (pageNum: number = 1, append: boolean = false) => {
+  const loadPersonAndRecalls = useCallback(async (pageNum: number = 1, append: boolean = false, options?: { sortChange?: boolean }) => {
     if (!personId || !user) {
       console.log('[PersonRecalls] No personId or user');
       setLoading(false);
@@ -252,7 +249,11 @@ export default function PersonRecallsScreen() {
 
     try {
       if (!append) {
-        setLoading(true);
+        if (options?.sortChange) {
+          setIsSortLoading(true);
+        } else {
+          setLoading(true);
+        }
       } else {
         setIsLoadingMore(true);
       }
@@ -436,13 +437,16 @@ export default function PersonRecallsScreen() {
     } finally {
       setLoading(false);
       setIsLoadingMore(false);
+      setIsSortLoading(false);
     }
   }, [personId, user, getCachedNote, loadImagesForRecalls, sortOrder, refreshUrlMetadata]);
 
   // ─── Effects ────────────────────────────────────────────────────────────────
   useEffect(() => {
     console.log('[PersonRecalls] useEffect triggered - personId:', personId, 'sortOrder:', sortOrder);
-    loadPersonAndRecalls(1, false);
+    const isSortChange = prevSortOrderRef.current !== sortOrder;
+    prevSortOrderRef.current = sortOrder;
+    loadPersonAndRecalls(1, false, isSortChange ? { sortChange: true } : undefined);
     setPage(1);
     setHasMore(true);
   }, [personId, sortOrder, loadPersonAndRecalls]);
@@ -520,115 +524,26 @@ export default function PersonRecallsScreen() {
     }
   }, [hasMore, isLoadingMore, loading, loadMoreRecalls]);
 
-  const openMenu = useCallback(() => {
-    console.log('[PersonRecalls] User tapped ellipsis menu button');
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    }
-
-    const SCREEN_WIDTH = Dimensions.get('window').width;
-    const MENU_WIDTH = 180;
-    const SCREEN_MARGIN = 12;
-    const FALLBACK_ANCHOR = { top: insets.top + 160, left: SCREEN_WIDTH - MENU_WIDTH - SCREEN_MARGIN };
-
-    const doOpen = (anchor: { top: number; left: number }) => {
-      setMenuAnchor(anchor);
-      setIsMenuOpen(true);
-      menuAnim.setValue(0);
-      menuScaleAnim.setValue(0.95);
-      Animated.parallel([
-        Animated.timing(menuAnim, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.timing(menuScaleAnim, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    };
-
-    if (ellipsisButtonRef.current) {
-      ellipsisButtonRef.current.measureInWindow((x, y, width, height) => {
-        if (width > 0 && height > 0) {
-          // Center horizontally on the ellipsis
-          const centeredLeft = x + width / 2 - MENU_WIDTH / 2;
-          // Clamp to keep menu fully on-screen with a 12px margin
-          const clampedLeft = Math.max(
-            SCREEN_MARGIN,
-            Math.min(centeredLeft, SCREEN_WIDTH - MENU_WIDTH - SCREEN_MARGIN)
-          );
-          const anchor = {
-            top: y,
-            left: clampedLeft,
-          };
-          console.log('[PersonRecalls] Ellipsis button measured, anchor:', anchor);
-          doOpen(anchor);
-        } else {
-          console.log('[PersonRecalls] Ellipsis measure returned zero size, using fallback anchor');
-          doOpen(FALLBACK_ANCHOR);
-        }
-      });
-    } else {
-      console.log('[PersonRecalls] Ellipsis ref not ready, using fallback anchor');
-      doOpen(FALLBACK_ANCHOR);
-    }
-  }, [menuAnim, menuScaleAnim, insets.top]);
-
-  const closeMenu = useCallback(() => {
-    Animated.parallel([
-      Animated.timing(menuAnim, {
-        toValue: 0,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(menuScaleAnim, {
-        toValue: 0.95,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setIsMenuOpen(false);
-      setMenuAnchor(null);
-    });
-  }, [menuAnim, menuScaleAnim]);
-
   const openPhotoMenu = useCallback(() => {
     console.log('[PersonRecalls] User tapped person photo button');
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
     const SCREEN_WIDTH = Dimensions.get('window').width;
-    const MENU_WIDTH = 200;
-    const SCREEN_MARGIN = 12;
-    const FALLBACK_ANCHOR = { top: insets.top + 100, left: SCREEN_MARGIN };
-
-    const doOpen = (anchor: { top: number; left: number }) => {
-      setPhotoMenuAnchor(anchor);
-      setIsPhotoMenuOpen(true);
-      photoMenuAnim.setValue(0);
-      photoMenuScaleAnim.setValue(0.95);
-      Animated.parallel([
-        Animated.timing(photoMenuAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
-        Animated.timing(photoMenuScaleAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
-      ]).start();
-    };
-
-    if (photoButtonRef.current) {
-      photoButtonRef.current.measureInWindow((x, y, width, height) => {
-        if (width > 0 && height > 0) {
-          const left = Math.max(SCREEN_MARGIN, Math.min(x, SCREEN_WIDTH - MENU_WIDTH - SCREEN_MARGIN));
-          doOpen({ top: y + height + 8, left });
-        } else {
-          doOpen(FALLBACK_ANCHOR);
-        }
-      });
-    } else {
-      doOpen(FALLBACK_ANCHOR);
-    }
-  }, [photoMenuAnim, photoMenuScaleAnim, insets.top]);
+    const SCREEN_HEIGHT = Dimensions.get('window').height;
+    const MENU_WIDTH = 220;
+    const centeredLeft = (SCREEN_WIDTH - MENU_WIDTH) / 2;
+    // Position near bottom of screen, above safe area
+    const anchor = { top: SCREEN_HEIGHT - 220 - insets.bottom, left: centeredLeft };
+    setPhotoMenuAnchor(anchor);
+    setIsPhotoMenuOpen(true);
+    photoMenuAnim.setValue(0);
+    photoMenuScaleAnim.setValue(0.95);
+    Animated.parallel([
+      Animated.timing(photoMenuAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+      Animated.timing(photoMenuScaleAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+    ]).start();
+  }, [photoMenuAnim, photoMenuScaleAnim, insets.bottom]);
 
   const closePhotoMenu = useCallback(() => {
     Animated.parallel([
@@ -885,7 +800,7 @@ export default function PersonRecallsScreen() {
   const recallCountLabel = `${totalRecallCount} ${totalRecallCount === 1 ? 'Recall' : 'Recalls'}`;
 
   // ─── Loading state ───────────────────────────────────────────────────────────
-  if (loading) {
+  if (loading && !isSortLoading) {
     return (
       <View style={styles.container}>
         <Stack.Screen options={stackScreenOptions} />
@@ -912,34 +827,6 @@ export default function PersonRecallsScreen() {
     <View style={styles.container}>
       <Stack.Screen options={stackScreenOptions} />
 
-      {/* Ellipsis menu popover */}
-      {isMenuOpen && menuAnchor && (
-        <View style={[StyleSheet.absoluteFill, { pointerEvents: 'box-none' }]}>
-          {/* Backdrop */}
-          <Pressable style={styles.menuBackdrop} onPress={closeMenu} />
-          {/* Menu card anchored to ellipsis button */}
-          <Animated.View
-            style={[
-              styles.menuCard,
-              { top: menuAnchor.top, left: menuAnchor.left },
-              { opacity: menuAnim, transform: [{ scale: menuScaleAnim }] },
-            ]}
-          >
-            <Pressable
-              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
-              onPress={() => {
-                console.log('[PersonRecalls] User tapped "Add/Edit Photo" from ellipsis menu');
-                closeMenu();
-                handlePhotoPress();
-              }}
-            >
-              <IconSymbol name="camera.fill" size={18} color={colors.text} />
-              <Text style={styles.menuRowText}>Add/Edit Photo</Text>
-            </Pressable>
-          </Animated.View>
-        </View>
-      )}
-
       {/* Photo menu popover */}
       {isPhotoMenuOpen && photoMenuAnchor && (
         <View style={[StyleSheet.absoluteFill, { pointerEvents: 'box-none' }]}>
@@ -947,7 +834,7 @@ export default function PersonRecallsScreen() {
           <Animated.View
             style={[
               styles.menuCard,
-              { top: photoMenuAnchor.top, left: photoMenuAnchor.left, width: 200 },
+              { top: photoMenuAnchor.top, left: photoMenuAnchor.left, width: 220 },
               { opacity: photoMenuAnim, transform: [{ scale: photoMenuScaleAnim }] },
             ]}
           >
@@ -963,7 +850,7 @@ export default function PersonRecallsScreen() {
               onPress={handleChooseFromLibrary}
             >
               <IconSymbol
-                ios_icon_name="photo.fill"
+                ios_icon_name="photo.on.rectangle"
                 android_material_icon_name="photo_library"
                 size={18}
                 color={colors.text}
@@ -1017,6 +904,11 @@ export default function PersonRecallsScreen() {
                         style={styles.titleImage}
                       />
                     )}
+                    {!personPhotoUrl && !uploadingPhoto && (
+                      <View style={styles.clickToEditOverlay}>
+                        <Text style={styles.clickToEditText}>Click to edit</Text>
+                      </View>
+                    )}
                     {uploadingPhoto && (
                       <View style={styles.uploadingOverlay}>
                         <ActivityIndicator size="large" color={colors.primary} />
@@ -1025,22 +917,12 @@ export default function PersonRecallsScreen() {
                   </Pressable>
                 </View>
 
-                {/* Name column + ellipsis */}
+                {/* Name column */}
                 <View style={styles.titleTextContainer}>
-                  {/* Title row: name (flex) + ellipsis (fixed) */}
                   <View style={styles.titleNameRow}>
                     <Text style={[styles.titleHeading, { flex: 1 }]} numberOfLines={2} ellipsizeMode="tail">
                       {personName}
                     </Text>
-                    <View ref={ellipsisButtonRef} collapsable={false}>
-                      <Pressable
-                        onPress={openMenu}
-                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                        style={styles.ellipsisButton}
-                      >
-                        <IconSymbol name="ellipsis" size={20} color={colors.text} />
-                      </Pressable>
-                    </View>
                   </View>
                 </View>
               </View>
@@ -1056,11 +938,15 @@ export default function PersonRecallsScreen() {
                   selected={sortOrder}
                   onSelect={(id) => {
                     if (id) {
+                      console.log('[PersonRecalls] Sort order changed to:', id);
                       setSortOrder(id as SortOrder);
                     }
                   }}
                 />
               </View>
+              {isSortLoading && (
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 8 }} />
+              )}
 
               {/* Count row */}
               <View style={styles.countEllipsisRow}>
@@ -1153,9 +1039,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
   },
-  ellipsisButton: {
-    paddingLeft: 8,
-    paddingTop: 2,
+  clickToEditOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    paddingVertical: 4,
+    alignItems: 'center',
+  },
+  clickToEditText: {
+    fontSize: 10,
+    color: '#fff',
+    fontWeight: '600',
   },
   uploadingOverlay: {
     position: 'absolute',
