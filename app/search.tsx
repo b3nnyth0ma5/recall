@@ -85,7 +85,7 @@ export default function SearchScreen() {
   const [hasMoreCategoryRecalls, setHasMoreCategoryRecalls] = useState(false);
   const [isLoadingMoreCategoryRecalls, setIsLoadingMoreCategoryRecalls] = useState(false);
   const [categoryHasLocationRecalls, setCategoryHasLocationRecalls] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+
   const CATEGORY_PAGE_SIZE = 10;
   // Tracks whether history has been loaded at least once — gates zero states
   const [hasLoadedHistoryOnce, setHasLoadedHistoryOnce] = useState(false);
@@ -570,7 +570,6 @@ export default function SearchScreen() {
     setShowAttachFABs(false);
     setSelectedPill(null);
     setCategoryRecalls([]);
-    setViewMode('list');
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -589,7 +588,6 @@ export default function SearchScreen() {
     setIsProgressExpanded(true);
     setSelectedPill(null);
     setCategoryRecalls([]);
-    setViewMode('list');
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -1206,44 +1204,23 @@ export default function SearchScreen() {
                 ) : (
                   <View style={{ flex: 1 }} />
                 )}
-                <View style={[styles.viewToggle, filteredNotes.length === 0 && styles.viewToggleDisabled]}>
-                  <Pressable
-                    style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnActive]}
-                    onPress={() => {
-                      console.log('[SearchScreen] View toggle: list selected');
-                      setViewMode('list');
-                    }}
-                    disabled={filteredNotes.length === 0}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <IconSymbol
-                      name="list.bullet"
-                      size={18}
-                      color={viewMode === 'list' ? '#fff' : colors.textSecondary}
-                    />
-                  </Pressable>
-                  <Pressable
-                    style={[styles.viewToggleBtn, viewMode === 'map' && styles.viewToggleBtnActive]}
-                    onPress={() => {
-                      console.log('[SearchScreen] View toggle: map selected, filteredNotes:', filteredNotes.length);
-                      setViewMode('map');
-                      if (filteredNotes.length > 0) {
-                        const ids = filteredNotes.map(n => n.id).join(',');
-                        router.push(`/map-view?hasSearch=true&ids=${ids}`);
-                      } else {
-                        router.push('/map-view');
-                      }
-                    }}
-                    disabled={filteredNotes.length === 0}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <IconSymbol
-                      name="map"
-                      size={18}
-                      color={viewMode === 'map' ? '#fff' : colors.textSecondary}
-                    />
-                  </Pressable>
-                </View>
+                <Pressable
+                  style={[styles.mapButton, filteredNotes.length === 0 && styles.mapButtonDisabled]}
+                  onPress={() => {
+                    console.log('[SearchScreen] Map button pressed, filteredNotes:', filteredNotes.length);
+                    if (filteredNotes.length > 0) {
+                      const ids = filteredNotes.map(n => n.id).join(',');
+                      router.push(`/map-view?hasSearch=true&ids=${ids}`);
+                    } else {
+                      router.push('/map-view');
+                    }
+                  }}
+                  disabled={filteredNotes.length === 0}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <IconSymbol name="map" size={16} color={filteredNotes.length === 0 ? colors.textSecondary : '#fff'} />
+                  <Text style={[styles.mapButtonText, filteredNotes.length === 0 && styles.mapButtonTextDisabled]}>Map</Text>
+                </Pressable>
               </View>
             )}
           </View>
@@ -1589,26 +1566,29 @@ const styles = StyleSheet.create({
   searchingPlaceholder: {
     minHeight: 100,
   },
-  viewToggleDisabled: {
-    opacity: 0.4,
-  },
-  viewToggle: {
+  mapButton: {
     flexDirection: 'row',
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flexShrink: 0,
-  },
-  viewToggleBtn: {
-    paddingVertical: 7,
-    paddingHorizontal: 14,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewToggleBtnActive: {
+    gap: 6,
     backgroundColor: colors.primary,
     borderRadius: 20,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    flexShrink: 0,
+  },
+  mapButtonDisabled: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    opacity: 0.5,
+  },
+  mapButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  mapButtonTextDisabled: {
+    color: colors.textSecondary,
   },
   swipeDeleteContainer: {
     width: 80,

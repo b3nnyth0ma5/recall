@@ -201,6 +201,8 @@ export default function MapViewScreen() {
   const webViewRef = useRef<WebView>(null);
   const [webViewReady, setWebViewReady] = useState(false);
   const pendingMapData = useRef<MapNote[] | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const overlayOpacity = useRef(new Animated.Value(1)).current;
 
   // Bottom sheet animation state
   const slideAnim = useRef(new Animated.Value(300)).current;
@@ -262,6 +264,8 @@ export default function MapViewScreen() {
         if (webViewRef.current && webViewReady) {
           if (__DEV__) console.log('[MapView] Injecting', mapData.length, 'markers into WebView');
           webViewRef.current.injectJavaScript(`window.updateMarkers(${JSON.stringify(mapData)}); true;`);
+          // Signal map is ready after a short delay to let tiles start rendering
+          setTimeout(() => handleMapReady(), 600);
         } else {
           if (__DEV__) console.log('[MapView] WebView not ready, queuing', mapData.length, 'markers');
           pendingMapData.current = mapData;
@@ -320,7 +324,7 @@ export default function MapViewScreen() {
     }
     loadNotes();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, searchIds]);
+  }, [user?.id, searchIds, handleMapReady]);
 
   // After search-mode data loads, fit the map to all markers
   useEffect(() => {
@@ -332,6 +336,17 @@ export default function MapViewScreen() {
     return () => clearTimeout(timer);
   }, [mapNotes, searchIds, webViewReady]);
 
+  const handleMapReady = useCallback(() => {
+    if (mapReady) return;
+    if (__DEV__) console.log('[MapView] Map ready — fading in');
+    setMapReady(true);
+    Animated.timing(overlayOpacity, {
+      toValue: 0,
+      duration: 350,
+      useNativeDriver: true,
+    }).start();
+  }, [mapReady, overlayOpacity]);
+
   // When WebView becomes ready, flush any pending marker data
   const handleWebViewLoad = useCallback(() => {
     if (__DEV__) console.log('[MapView] WebView loaded and ready');
@@ -341,8 +356,12 @@ export default function MapViewScreen() {
       pendingMapData.current = null;
       if (__DEV__) console.log('[MapView] Flushing', mapData.length, 'pending markers into WebView');
       webViewRef.current?.injectJavaScript(`window.updateMarkers(${JSON.stringify(mapData)}); true;`);
+      setTimeout(() => handleMapReady(), 600);
+    } else {
+      // No pending markers — map is ready after a short delay
+      setTimeout(() => handleMapReady(), 400);
     }
-  }, []);
+  }, [handleMapReady]);
 
   const handleWebViewMessage = useCallback((event: any) => {
     try {
@@ -440,22 +459,8 @@ export default function MapViewScreen() {
         <IconSymbol name="chevron.left" size={22} color={colors.text} />
       </Pressable>
 
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading map...</Text>
-        </View>
-      ) : mapNotes.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <IconSymbol name="map" size={80} color={colors.textTertiary} />
-          <Text style={styles.emptyTitle}>No Locations Found</Text>
-          <Text style={styles.emptyText}>
-            {hasSearchResults
-              ? 'No search results have location data'
-              : 'Add location data to your recalls to see them on the map'}
-          </Text>
-        </View>
-      ) : (
+      {/* WebView always renders so it loads in background */}
+      {!loading && mapNotes.length > 0 && (
         <>
           <WebView
             ref={webViewRef}
@@ -469,12 +474,39 @@ export default function MapViewScreen() {
             geolocationEnabled={true}
             startInLoadingState={false}
           />
-
           <View style={styles.infoBadge}>
             <IconSymbol name="map.fill" size={16} color={colors.primary} />
             <Text style={styles.infoBadgeText}>{mapCountText}</Text>
           </View>
         </>
+      )}
+
+      {/* Empty state */}
+      {!loading && mapNotes.length === 0 && (
+        <View style={styles.emptyContainer}>
+          <IconSymbol name="map" size={80} color={colors.textTertiary} />
+          <Text style={styles.emptyTitle}>No Locations Found</Text>
+          <Text style={styles.emptyText}>
+            {hasSearchResults
+              ? 'No search results have location data'
+              : 'Add location data to your recalls to see them on the map'}
+          </Text>
+        </View>
+      )}
+
+      {/* Loading overlay — fades out when map is ready */}
+      {(!mapReady || loading) && (
+        <Animated.View
+          style={[
+            StyleSheet.absoluteFillObject,
+            styles.loadingOverlay,
+            { opacity: loading ? 1 : overlayOpacity },
+          ]}
+          pointerEvents={mapReady ? 'none' : 'auto'}
+        >
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading map...</Text>
+        </Animated.View>
       )}
 
       {showBottomSheet && selectedNote && (
@@ -605,6 +637,13 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
+  loadingOverlay: {
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    gap: 16,
+  },
   loadingText: { fontSize: 16, color: colors.textSecondary },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
   emptyTitle: { fontSize: 24, fontWeight: 'bold', color: colors.text, marginTop: 16, marginBottom: 8 },
