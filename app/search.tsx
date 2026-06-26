@@ -1190,61 +1190,62 @@ export default function SearchScreen() {
                       </React.Fragment>
                     )}
 
-                    {hasSearched && !isSearching && searchStage === 'complete' && (
-                      <View style={styles.resultsAndToggleRow}>
-                        {filteredNotes.length > 0 ? (
-                          <Text style={styles.resultsText}>
-                            {filteredNotes.length} {filteredNotes.length === 1 ? 'result' : 'results'} used for answer
-                            {locationInfo && ` near ${locationInfo.resolvedPlace}`}
-                            {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
-                          </Text>
-                        ) : (
-                          <View style={{ flex: 1 }} />
-                        )}
-                        <View style={[styles.viewToggle, filteredNotes.length === 0 && styles.viewToggleDisabled]}>
-                          <Pressable
-                            style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnActive]}
-                            onPress={() => {
-                              console.log('[SearchScreen] View toggle: list selected');
-                              setViewMode('list');
-                            }}
-                            disabled={filteredNotes.length === 0}
-                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                          >
-                            <IconSymbol
-                              name="list.bullet"
-                              size={18}
-                              color={viewMode === 'list' ? '#fff' : colors.textSecondary}
-                            />
-                          </Pressable>
-                          <Pressable
-                            style={[styles.viewToggleBtn, viewMode === 'map' && styles.viewToggleBtnActive]}
-                            onPress={() => {
-                              console.log('[SearchScreen] View toggle: map selected, filteredNotes:', filteredNotes.length);
-                              setViewMode('map');
-                              if (filteredNotes.length > 0) {
-                                const ids = filteredNotes.map(n => n.id).join(',');
-                                router.push(`/map-view?hasSearch=true&ids=${ids}`);
-                              } else {
-                                router.push('/map-view');
-                              }
-                            }}
-                            disabled={filteredNotes.length === 0}
-                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                          >
-                            <IconSymbol
-                              name="map"
-                              size={18}
-                              color={viewMode === 'map' ? '#fff' : colors.textSecondary}
-                            />
-                          </Pressable>
-                        </View>
-                      </View>
-                    )}
                   </React.Fragment>
                 )}
               </Animated.View>
             ) : null}
+            {/* List/map toggle — shown whenever a search has completed */}
+            {hasSearched && !isSearching && (
+              <View style={styles.resultsAndToggleRow}>
+                {filteredNotes.length > 0 ? (
+                  <Text style={styles.resultsText}>
+                    {filteredNotes.length} {filteredNotes.length === 1 ? 'result' : 'results'} used for answer
+                    {locationInfo && ` near ${locationInfo.resolvedPlace}`}
+                    {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
+                  </Text>
+                ) : (
+                  <View style={{ flex: 1 }} />
+                )}
+                <View style={[styles.viewToggle, filteredNotes.length === 0 && styles.viewToggleDisabled]}>
+                  <Pressable
+                    style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnActive]}
+                    onPress={() => {
+                      console.log('[SearchScreen] View toggle: list selected');
+                      setViewMode('list');
+                    }}
+                    disabled={filteredNotes.length === 0}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <IconSymbol
+                      name="list.bullet"
+                      size={18}
+                      color={viewMode === 'list' ? '#fff' : colors.textSecondary}
+                    />
+                  </Pressable>
+                  <Pressable
+                    style={[styles.viewToggleBtn, viewMode === 'map' && styles.viewToggleBtnActive]}
+                    onPress={() => {
+                      console.log('[SearchScreen] View toggle: map selected, filteredNotes:', filteredNotes.length);
+                      setViewMode('map');
+                      if (filteredNotes.length > 0) {
+                        const ids = filteredNotes.map(n => n.id).join(',');
+                        router.push(`/map-view?hasSearch=true&ids=${ids}`);
+                      } else {
+                        router.push('/map-view');
+                      }
+                    }}
+                    disabled={filteredNotes.length === 0}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <IconSymbol
+                      name="map"
+                      size={18}
+                      color={viewMode === 'map' ? '#fff' : colors.textSecondary}
+                    />
+                  </Pressable>
+                </View>
+              </View>
+            )}
           </View>
         }
         style={styles.scrollView}
