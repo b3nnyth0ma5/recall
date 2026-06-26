@@ -1189,8 +1189,17 @@ export default function SearchScreen() {
                         )}
 
                         {hasSearched && !isSearching && searchStage === 'complete' && (
-                          <View style={[styles.viewToggleRow, filteredNotes.length === 0 && styles.viewToggleDisabled]}>
-                            <View style={styles.viewToggle}>
+                          <View style={styles.resultsAndToggleRow}>
+                            {filteredNotes.length > 0 ? (
+                              <Text style={styles.resultsText}>
+                                {filteredNotes.length} {filteredNotes.length === 1 ? 'result' : 'results'} used for answer
+                                {locationInfo && ` near ${locationInfo.resolvedPlace}`}
+                                {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
+                              </Text>
+                            ) : (
+                              <View style={{ flex: 1 }} />
+                            )}
+                            <View style={[styles.viewToggle, filteredNotes.length === 0 && styles.viewToggleDisabled]}>
                               <Pressable
                                 style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnActive]}
                                 onPress={() => {
@@ -1201,8 +1210,7 @@ export default function SearchScreen() {
                                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                               >
                                 <IconSymbol
-                                  ios_icon_name="list.bullet"
-                                  android_material_icon_name="format_list_bulleted"
+                                  name="list.bullet"
                                   size={18}
                                   color={viewMode === 'list' ? '#fff' : colors.textSecondary}
                                 />
@@ -1223,22 +1231,13 @@ export default function SearchScreen() {
                                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                               >
                                 <IconSymbol
-                                  ios_icon_name="map"
-                                  android_material_icon_name="map"
+                                  name="map"
                                   size={18}
                                   color={viewMode === 'map' ? '#fff' : colors.textSecondary}
                                 />
                               </Pressable>
                             </View>
                           </View>
-                        )}
-
-                        {filteredNotes.length > 0 && (
-                          <Text style={styles.resultsText}>
-                            {filteredNotes.length} {filteredNotes.length === 1 ? 'result' : 'results'} used for answer
-                            {locationInfo && ` near ${locationInfo.resolvedPlace}`}
-                            {personInfo && personInfo.matchedNames.length > 0 && ` for ${personInfo.matchedNames.join(', ')}`}
-                          </Text>
                         )}
                       </React.Fragment>
                     )}
@@ -1541,10 +1540,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  resultsAndToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
   resultsText: {
+    flex: 1,
     fontSize: 14,
     color: colors.textSecondary,
-    marginBottom: 16,
   },
   noteWrapper: {
     marginBottom: 16,
@@ -1582,10 +1587,6 @@ const styles = StyleSheet.create({
   },
   searchingPlaceholder: {
     minHeight: 100,
-  },
-  viewToggleRow: {
-    alignItems: 'flex-end',
-    marginBottom: 12,
   },
   viewToggleDisabled: {
     opacity: 0.4,

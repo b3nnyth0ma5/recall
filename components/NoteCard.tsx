@@ -711,7 +711,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
                   </Pressable>
                 )}
               </Pressable>
-            ) : null}
+            ) : (
+              <View style={{ height: 8 }} />
+            )}
 
             <View style={styles.footerRow}>
               {note.location ? (

@@ -534,7 +534,7 @@ export default function PersonRecallsScreen() {
     const MENU_WIDTH = 220;
     const centeredLeft = (SCREEN_WIDTH - MENU_WIDTH) / 2;
     // Position near bottom of screen, above safe area
-    const anchor = { top: SCREEN_HEIGHT - 220 - insets.bottom, left: centeredLeft };
+    const anchor = { top: SCREEN_HEIGHT - 220 - insets.bottom - 24, left: centeredLeft };
     setPhotoMenuAnchor(anchor);
     setIsPhotoMenuOpen(true);
     photoMenuAnim.setValue(0);
@@ -850,8 +850,7 @@ export default function PersonRecallsScreen() {
               onPress={handleChooseFromLibrary}
             >
               <IconSymbol
-                ios_icon_name="photo.on.rectangle"
-                android_material_icon_name="photo_library"
+                name="photo.on.rectangle"
                 size={18}
                 color={colors.text}
               />
