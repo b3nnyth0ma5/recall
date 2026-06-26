@@ -1597,7 +1597,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: 'hidden',
     flexShrink: 0,
   },
   viewToggleBtn: {
@@ -1608,6 +1607,7 @@ const styles = StyleSheet.create({
   },
   viewToggleBtnActive: {
     backgroundColor: colors.primary,
+    borderRadius: 20,
   },
   swipeDeleteContainer: {
     width: 80,
