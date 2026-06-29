@@ -162,7 +162,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
   }, [note.id, note.location, handleSharePress]);
 
   const handleSwipeChat = useCallback(async () => {
-    console.log('User swiped Chat on recall:', note.id);
+    console.log('[NoteCard] User swiped Chat on recall:', note.id);
     swipeableRef.current?.close();
     if (Platform.OS !== 'web') {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -463,12 +463,20 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
 
   const renderRightActions = () => (
     <View style={styles.swipeActionsRow}>
-      <Pressable
+      {/* <Pressable
         style={[styles.actionPill, styles.deletePill]}
         onPress={handleDelete}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       >
         <IconSymbol name="trash.fill" size={22} color="#FFFFFF" />
+      </Pressable> */}
+
+      <Pressable
+        style={[styles.actionPill, styles.chatPill]}
+        onPress={handleSwipeChat}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
+        <IconSymbol name="bubble.left.and.bubble.right.fill" size={22} color="#FFFFFF" />
       </Pressable>
 
       <View ref={shareButtonRef} collapsable={false}>

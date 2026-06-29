@@ -741,8 +741,8 @@ const styles = StyleSheet.create({
   modalContainer: {
     width: '90%',
     maxWidth: 500,
-    height: '85%',
-    maxHeight: 750,
+    flex: 1,
+    marginVertical: 40,
   },
   modalContent: {
     flex: 1,
