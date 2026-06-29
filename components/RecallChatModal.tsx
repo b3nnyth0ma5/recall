@@ -648,26 +648,26 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                 )}
 
                 {isLoading && <TypingIndicator />}
+              </ScrollView>
+            </View>
 
-                {/* Skeleton pills while suggestions are loading */}
+            {/* Suggestions Area — always visible between messages and input */}
+            {(isLoadingSuggestions && suggestedQuestions.length === 0) || (!isLoadingSuggestions && suggestedQuestions.filter(q => !usedQuestions.has(q)).length > 0) ? (
+              <View style={styles.suggestionsArea}>
                 {isLoadingSuggestions && suggestedQuestions.length === 0 && (
-                  <View style={styles.suggestionsInChat}>
-                    <View style={[styles.skeletonPill, { width: 180, alignSelf: 'flex-end' }]} />
-                  </View>
+                  <View style={[styles.skeletonPill, { width: 180, alignSelf: 'flex-end', zIndex: 10, elevation: 10 }]} />
                 )}
-
-                {/* Suggestion pills — right-aligned in chat area */}
                 {!isLoadingSuggestions && suggestedQuestions.filter(q => !usedQuestions.has(q)).length > 0 && (
-                  <View style={styles.suggestionsInChat}>
+                  <Animated.View style={[styles.suggestionsInChat, { opacity: pillsOpacity }]}>
                     {suggestedQuestions.filter(q => !usedQuestions.has(q)).map((question, i) => (
-                      <Pressable key={i} style={[styles.suggestionPill, { alignSelf: 'flex-end' }]} onPress={() => handleSuggestionTap(question)}>
+                      <Pressable key={i} style={styles.suggestionPill} onPress={() => handleSuggestionTap(question)}>
                         <Text style={styles.suggestionPillText}>{question}</Text>
                       </Pressable>
                     ))}
-                  </View>
+                  </Animated.View>
                 )}
-              </ScrollView>
-            </View>
+              </View>
+            ) : null}
 
             {/* Input Area - Fixed at bottom */}
             <Pressable
@@ -958,11 +958,21 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     // kept for legacy reference
   },
+  suggestionsArea: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    alignItems: 'flex-end',
+    flexDirection: 'column',
+    gap: 8,
+    zIndex: 10,
+    elevation: 10,
+  },
   suggestionsInChat: {
     flexDirection: 'column',
     alignItems: 'flex-end',
     gap: 8,
-    paddingVertical: 8,
+    paddingVertical: 0,
+    width: '100%',
   },
   suggestionPill: {
     borderWidth: 1,

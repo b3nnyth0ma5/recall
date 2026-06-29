@@ -87,9 +87,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 8,
     borderRadius: 20,
-    backgroundColor: colors.cardBackground,
+    backgroundColor: `${colors.primary}10`,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: `${colors.primary}40`,
     gap: 3,
   },
   pillActive: {
