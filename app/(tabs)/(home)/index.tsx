@@ -1,5 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { NoteEditorSlideUp } from '@/components/NoteEditorSlideUp';
 import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, RefreshControl, Modal, Platform, Alert, Keyboard, ScrollView } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -55,6 +56,8 @@ export default function HomeScreen() {
   const [hasMoreCategoryRecalls, setHasMoreCategoryRecalls] = useState(false);
   const [isLoadingMoreCategoryRecalls, setIsLoadingMoreCategoryRecalls] = useState(false);
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+  const [slideUpNoteId, setSlideUpNoteId] = useState<string | undefined>(undefined);
+  const [slideUpVisible, setSlideUpVisible] = useState(false);
   const CATEGORY_PAGE_SIZE = 10;
   const insets = useSafeAreaInsets();
   const pendingImageUploadsRef = useRef<Map<string, number>>(new Map());
@@ -273,6 +276,12 @@ export default function HomeScreen() {
       console.error('Error navigating to recall editor:', error);
     }
   };
+
+  const handleCardPress = useCallback((noteId: string) => {
+    console.log('[HomeScreen] Card pressed, opening slide-up editor for note:', noteId);
+    setSlideUpNoteId(noteId);
+    setSlideUpVisible(true);
+  }, []);
 
   const handleEndReached = useCallback(() => {
     if (hasMore && !isLoadingMore && !loading) {
@@ -578,6 +587,7 @@ export default function HomeScreen() {
       <NoteCard
         note={item}
         onPress={() => handleNotePress(item.id)}
+        onCardPress={handleCardPress}
         onDelete={() => handleDeleteNote(item.id)}
         onPeopleUpdated={(noteId) => refreshSingleNote(noteId)}
         loading={false}
@@ -585,7 +595,7 @@ export default function HomeScreen() {
         processingStage={creatingRecallId === item.id ? savingStage : undefined}
       />
     </View>
-  ), [creatingRecallId, savingStage]);  // eslint-disable-line react-hooks/exhaustive-deps
+  ), [creatingRecallId, savingStage, handleCardPress]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const ListHeaderComponent = (
     <View>
@@ -648,6 +658,7 @@ export default function HomeScreen() {
                   <NoteCard
                     note={item}
                     onPress={() => handleNotePress(item.id)}
+                    onCardPress={handleCardPress}
                     onDelete={() => handleDeleteNote(item.id)}
                     loading={false}
                   />
@@ -772,6 +783,21 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
+
+      <NoteEditorSlideUp
+        visible={slideUpVisible}
+        noteId={slideUpNoteId}
+        onClose={() => {
+          console.log('[HomeScreen] NoteEditorSlideUp closed');
+          setSlideUpVisible(false);
+          setSlideUpNoteId(undefined);
+        }}
+        onSave={() => {
+          console.log('[HomeScreen] NoteEditorSlideUp saved');
+          setSlideUpVisible(false);
+          setSlideUpNoteId(undefined);
+        }}
+      />
 
     </View>
   );

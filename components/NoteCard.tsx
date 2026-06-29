@@ -43,6 +43,7 @@ const FullScreenImage = React.lazy(() =>
 interface NoteCardProps {
   note: Note;
   onPress: (imageIndex?: number) => void;
+  onCardPress?: (noteId: string) => void;
   onImagePress?: () => void;
   onDelete?: () => void;
   onPeopleUpdated?: (noteId: string) => void;
@@ -72,7 +73,7 @@ const countNewlines = (text: string): number => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, onDelete, onPeopleUpdated, loading = false, expectedImageCount, scrollToImageIndex, processingStage }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onImagePress, onDelete, onPeopleUpdated, loading = false, expectedImageCount, scrollToImageIndex, processingStage }: NoteCardProps) {
   const { getUrlMetadataForRecall } = useNotesContext();
   const router = useRouter();
   const pathname = usePathname();
@@ -367,7 +368,12 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onImagePress, on
   
   const handleCardPress = () => {
     if (isShareInProgress.current) return;
-    onPress(scrollToImageIndex);
+    console.log('[NoteCard] Card pressed:', note.id);
+    if (onCardPress) {
+      onCardPress(note.id);
+    } else {
+      onPress(scrollToImageIndex);
+    }
   };
 
   const handleToggleExpand = (e: any) => {

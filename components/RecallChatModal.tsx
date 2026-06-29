@@ -24,6 +24,7 @@ import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
 
+
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -118,6 +119,10 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [inputHeight, setInputHeight] = useState(40);
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [usedQuestions, setUsedQuestions] = useState<Set<string>>(new Set());
+  const pillsOpacity = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef<ScrollView>(null);
   const sendButtonAnim = useRef(new Animated.Value(0)).current;
 
@@ -125,9 +130,9 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
   const MAX_LINES = 5;
   const MAX_INPUT_HEIGHT = LINE_HEIGHT * MAX_LINES + 20; // +20 for vertical padding
 
-  const loadChatHistory = useCallback(async () => {
+  const loadChatHistory = useCallback(async (): Promise<boolean> => {
     if (!recall) {
-      return;
+      return false;
     }
 
     console.log('Loading chat history for recall:', recall.id);
@@ -136,13 +141,13 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     try {
       const { data: chatHistory, error } = await supabase
         .from('recall_chats')
-        .select('id, user_question, chat_answer, created_at')
+        .select('id, user_question, chat_answer, followup_questions, created_at')
         .eq('recall_id', recall.id)
         .order('created_at', { ascending: true });
 
       if (error) {
         console.error('Error loading chat history:', error);
-        return;
+        return false;
       }
 
       if (chatHistory && chatHistory.length > 0) {
@@ -170,24 +175,79 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
 
         setMessages(formattedMessages);
         console.log(`Loaded ${formattedMessages.length} messages from history`);
+
+        // Find the most recent chat record with followup_questions
+        const withFollowups = [...chatHistory].reverse().find(
+          (c) => c.followup_questions && Array.isArray(c.followup_questions) && c.followup_questions.length > 0
+        );
+        if (withFollowups) {
+          console.log('[RecallChat] Restoring followup questions from history');
+          setSuggestedQuestions(withFollowups.followup_questions);
+        }
+
+        return true;
       }
+      return false;
     } catch (error) {
       console.error('Error loading chat history:', error);
+      return false;
     } finally {
       setIsLoadingHistory(false);
+    }
+  }, [recall]);
+
+  const loadSuggestedQuestions = useCallback(async () => {
+    if (!recall) return;
+    console.log('[RecallChat] Loading suggested questions for recall:', recall.id);
+    setIsLoadingSuggestions(true);
+    try {
+      let imageData: { id: string; ocr_text?: string; image_explanation?: string }[] = [];
+      if (recall.imageIds && recall.imageIds.length > 0) {
+        const { data: fetchedImages } = await supabase
+          .from('recall_images')
+          .select('id, ocr_text, image_explanation')
+          .in('id', recall.imageIds);
+        if (fetchedImages) imageData = fetchedImages;
+      }
+      const recallData = {
+        id: recall.id,
+        text: recall.text || '',
+        location: recall.location,
+        location_primary_type: recall.location_primary_type,
+        images: imageData,
+      };
+      console.log('[RecallChat] Calling chat-with-recalls for suggested questions (empty question)');
+      const { data, error } = await supabase.functions.invoke('chat-with-recalls', {
+        body: { recall: recallData, user_question: '', chat_history: [] },
+      });
+      if (!error && data?.suggested_questions?.length) {
+        console.log('[RecallChat] Received', data.suggested_questions.length, 'suggested questions');
+        setSuggestedQuestions(data.suggested_questions);
+      }
+    } catch (e) {
+      console.error('[RecallChat] Error loading suggestions:', e);
+    } finally {
+      setIsLoadingSuggestions(false);
     }
   }, [recall]);
 
   // Load chat history when modal opens
   useEffect(() => {
     if (visible && recall) {
-      loadChatHistory();
+      (async () => {
+        const hadHistory = await loadChatHistory();
+        if (!hadHistory) {
+          loadSuggestedQuestions();
+        }
+      })();
     } else {
       // Clear messages when modal closes
       setMessages([]);
       setInputText('');
+      setSuggestedQuestions([]);
+      setUsedQuestions(new Set());
     }
-  }, [visible, recall, loadChatHistory]);
+  }, [visible, recall, loadChatHistory, loadSuggestedQuestions]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -197,6 +257,18 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
       }, 100);
     }
   }, [messages]);
+
+  // Animate pills in when they appear
+  useEffect(() => {
+    if (suggestedQuestions.length > 0 && !isLoadingSuggestions) {
+      pillsOpacity.setValue(0);
+      Animated.timing(pillsOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [suggestedQuestions, isLoadingSuggestions, pillsOpacity]);
 
   // Animate send button when canSend changes
   const canSend = inputText.trim().length > 0 && !isLoading;
@@ -257,14 +329,23 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     }
   }, []);
 
-  const handleSendMessage = async () => {
-    const trimmedText = inputText.trim();
-    
+  const handleSuggestionTap = useCallback((question: string) => {
+    console.log('[RecallChat] User tapped suggested question pill:', question);
+    setUsedQuestions(prev => new Set([...prev, question]));
+    setSuggestedQuestions([]);
+    setInputText('');
+    sendMessageWithText(question);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sendMessageWithText = async (text: string) => {
+    const trimmedText = text.trim();
+
     if (!trimmedText || !recall) {
       return;
     }
 
-    console.log('User sending message:', trimmedText);
+    console.log('[RecallChat] Sending message:', trimmedText);
 
     // Haptic feedback
     if (Platform.OS !== 'web') {
@@ -307,7 +388,6 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
 
         if (imageError) {
           console.error('Error fetching image data:', imageError);
-          // Continue with empty image data
           imageData = recall.imageIds.map(id => ({ id }));
         } else if (fetchedImages && fetchedImages.length > 0) {
           console.log('Successfully fetched', fetchedImages.length, 'images with OCR and explanations');
@@ -353,6 +433,13 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
 
       setMessages((prev) => [...prev, assistantMessage]);
 
+      // Update followup questions if provided
+      if (data.followup_questions && Array.isArray(data.followup_questions) && data.followup_questions.length > 0) {
+        console.log('[RecallChat] Received', data.followup_questions.length, 'followup questions');
+        setSuggestedQuestions(data.followup_questions);
+        setUsedQuestions(new Set());
+      }
+
       // Success haptic
       if (Platform.OS !== 'web') {
         try {
@@ -385,6 +472,17 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSendMessage = async () => {
+    const trimmedText = inputText.trim();
+    
+    if (!trimmedText || !recall) {
+      return;
+    }
+
+    console.log('[RecallChat] Send button — delegating to sendMessageWithText');
+    await sendMessageWithText(trimmedText);
   };
 
   const handleClose = () => {
@@ -554,6 +652,29 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
               </ScrollView>
             </View>
 
+            {/* Suggested question pills */}
+            {isLoadingSuggestions && (
+              <View style={styles.suggestionsContainer}>
+                <Text style={styles.suggestingText}>Suggesting questions...</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsScrollContent}>
+                  {[90, 130, 110, 80].map((w, i) => (
+                    <View key={i} style={[styles.skeletonPill, { width: w }]} />
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+            {!isLoadingSuggestions && suggestedQuestions.length > 0 && (
+              <Animated.View style={[styles.suggestionsContainer, { opacity: pillsOpacity }]}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsScrollContent}>
+                  {suggestedQuestions.filter(q => !usedQuestions.has(q)).map((question, i) => (
+                    <Pressable key={i} style={styles.suggestionPill} onPress={() => handleSuggestionTap(question)}>
+                      <Text style={styles.suggestionPillText} numberOfLines={2}>{question}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </Animated.View>
+            )}
+
             {/* Input Area - Fixed at bottom */}
             <Pressable
               style={styles.inputContainer}
@@ -565,7 +686,12 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                   placeholder="Ask a question..."
                   placeholderTextColor={colors.textSecondary}
                   value={inputText}
-                  onChangeText={setInputText}
+                  onChangeText={(text) => {
+                    setInputText(text);
+                    if (text.length > 0 && suggestedQuestions.length > 0) {
+                      setSuggestedQuestions([]);
+                    }
+                  }}
                   multiline
                   maxLength={500}
                   editable={!isLoading}
@@ -835,5 +961,43 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     // kept for legacy reference
+  },
+  suggestionsContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  suggestingText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
+  pillsScrollContent: {
+    gap: 8,
+    paddingRight: 8,
+  },
+  suggestionPill: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: `${colors.primary}15`,
+    maxWidth: 220,
+  },
+  suggestionPillText: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  skeletonPill: {
+    height: 36,
+    borderRadius: 20,
+    backgroundColor: colors.cardDark,
+    opacity: 0.5,
   },
 });
