@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { NoteEditorSlideUp } from '@/components/NoteEditorSlideUp';
 import { View, Text, StyleSheet, ScrollView, FlatList, Pressable, ActivityIndicator, RefreshControl, Alert, TextInput, Image, Modal, KeyboardAvoidingView, Platform, Animated, Dimensions } from 'react-native';
 import RecallHeader from '@/components/RecallHeader';
 
@@ -76,6 +77,8 @@ export default function CategoryViewerScreen() {
   const matchingCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [totalRecallCount, setTotalRecallCount] = useState(0);
   const [sortOrder, setSortOrder] = useState<SortOrder>('Newest');
+  const [slideUpNoteId, setSlideUpNoteId] = useState<string | null>(null);
+  const [slideUpVisible, setSlideUpVisible] = useState(false);
 
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
@@ -874,13 +877,10 @@ export default function CategoryViewerScreen() {
   }, [menuAnim]);
 
   const handleNotePress = useCallback((noteId: string) => {
-    try {
-      console.log('[CategoryViewer] User tapped note:', noteId);
-      router.push(`/note-editor?id=${noteId}`);
-    } catch (error) {
-      console.error('[CategoryViewer] Error navigating to note editor:', error);
-    }
-  }, [router]);
+    console.log('[CategoryViewer] Card pressed, opening slide-up editor for note:', noteId);
+    setSlideUpNoteId(noteId);
+    setSlideUpVisible(true);
+  }, []);
 
   const handleDeleteRecall = useCallback(async (recallId: string) => {
     if (!user) {
@@ -1563,6 +1563,7 @@ export default function CategoryViewerScreen() {
       <NoteCard
         note={item}
         onPress={() => handleNotePress(item.id)}
+        onCardPress={(id) => { console.log('[CategoryViewer] NoteCard onCardPress:', id); setSlideUpNoteId(id); setSlideUpVisible(true); }}
         onDelete={() => handleDeleteRecall(item.id)}
       />
     </View>
@@ -1931,6 +1932,21 @@ export default function CategoryViewerScreen() {
           </View>
         </View>
       </Modal>
+
+      <NoteEditorSlideUp
+        visible={slideUpVisible}
+        noteId={slideUpNoteId ?? undefined}
+        onClose={() => {
+          console.log('[CategoryViewer] NoteEditorSlideUp closed');
+          setSlideUpVisible(false);
+          setSlideUpNoteId(null);
+        }}
+        onSave={() => {
+          console.log('[CategoryViewer] NoteEditorSlideUp saved');
+          setSlideUpVisible(false);
+          setSlideUpNoteId(null);
+        }}
+      />
     </View>
   );
 }

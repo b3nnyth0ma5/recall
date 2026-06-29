@@ -595,7 +595,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
               <View style={styles.headerLeft}>
                 <View style={styles.brainIconContainer}>
                   <IconSymbol 
-                    name="sparkles" 
+                    name="bubble.left.and.bubble.right.fill" 
                     size={24} 
                     color={colors.text} 
                   />
@@ -650,11 +650,9 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                 {isLoading && <TypingIndicator />}
 
                 {/* Skeleton pills while suggestions are loading */}
-                {isLoadingSuggestions && (
+                {isLoadingSuggestions && suggestedQuestions.length === 0 && (
                   <View style={styles.suggestionsInChat}>
-                    {[140, 110, 160].map((w, i) => (
-                      <View key={i} style={[styles.skeletonPill, { width: w, alignSelf: 'flex-end' }]} />
-                    ))}
+                    <View style={[styles.skeletonPill, { width: 180, alignSelf: 'flex-end' }]} />
                   </View>
                 )}
 
@@ -935,8 +933,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
     minHeight: 40,
-    paddingVertical: 4,
+    paddingTop: 8,
+    paddingBottom: 8,
     lineHeight: 20,
+    textAlignVertical: 'center',
   },
   sendButtonWrapper: {
     width: 36,
@@ -971,7 +971,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     backgroundColor: `${colors.primary}15`,
-    maxWidth: 240,
+    maxWidth: 300,
+    flexShrink: 1,
+    alignSelf: 'flex-end',
   },
   suggestionPillText: {
     fontSize: 13,

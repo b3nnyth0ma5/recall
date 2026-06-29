@@ -435,11 +435,11 @@ const styles = StyleSheet.create({
     width: CATEGORY_SIZE,
     height: CATEGORY_SIZE,
     borderRadius: CATEGORY_SIZE / 2,
-    backgroundColor: colors.cardBackground,
+    backgroundColor: `${colors.primary}10`,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 3,
-    borderColor: colors.borderLight,
+    borderColor: `${colors.primary}40`,
     overflow: 'hidden',
   },
   unseenDot: {
