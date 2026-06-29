@@ -819,7 +819,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   emptyContainer: {
-    flex: 1,
+    paddingVertical: 60,
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 60,

@@ -42,6 +42,7 @@ import { uploadImageToCloudflare } from '@/utils/cloudflareCDN';
 import { PillsRow } from '@/components/PillsRow';
 import type { PillItem } from '@/components/PillsRow';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
+import { NoteEditorSlideUp } from '@/components/NoteEditorSlideUp';
 
 // Pill widths vary so the skeleton row doesn't look like a uniform stripe
 const PILL_SKELETON_WIDTHS = [80, 60, 110, 120, 70, 70, 100, 100, 80, 95];
@@ -85,6 +86,8 @@ export default function SearchScreen() {
   const [hasMoreCategoryRecalls, setHasMoreCategoryRecalls] = useState(false);
   const [isLoadingMoreCategoryRecalls, setIsLoadingMoreCategoryRecalls] = useState(false);
   const [categoryHasLocationRecalls, setCategoryHasLocationRecalls] = useState(false);
+  const [slideUpNoteId, setSlideUpNoteId] = useState<string | null>(null);
+  const [slideUpVisible, setSlideUpVisible] = useState(false);
 
   const CATEGORY_PAGE_SIZE = 10;
   // Tracks whether history has been loaded at least once — gates zero states
@@ -486,22 +489,13 @@ export default function SearchScreen() {
   }, [searchNotes]);
 
   const handleNotePress = useCallback((noteId: string, imageIndex?: number) => {
+    console.log('[SearchScreen] Note card pressed, opening slide-up editor for noteId:', noteId, 'imageIndex:', imageIndex);
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    
-    setTimeout(() => {
-      try {
-        const url = imageIndex !== undefined 
-          ? `/note-editor?id=${noteId}&scrollToImage=${imageIndex}`
-          : `/note-editor?id=${noteId}`;
-        
-        router.push(url);
-      } catch (error) {
-        console.error('[SearchScreen] Error navigating to note editor:', error);
-      }
-    }, 0);
-  }, [router]);
+    setSlideUpNoteId(noteId);
+    setSlideUpVisible(true);
+  }, []);
 
   const recallRefs = useRef<{ [key: string]: View | null }>({});
   const listRef = useRef<FlatList>(null);
@@ -901,10 +895,7 @@ export default function SearchScreen() {
         <View style={styles.noteCardContainer}>
           <NoteCard
             note={item}
-            onPress={(scrollToImage) => {
-              const finalImageIndex = scrollToImage !== undefined ? scrollToImage : imageIndex;
-              handleNotePress(item.id, finalImageIndex);
-            }}
+            onCardPress={(id) => { setSlideUpNoteId(id); setSlideUpVisible(true); }}
             scrollToImageIndex={imageIndex}
             loading={false}
           />
@@ -1237,6 +1228,11 @@ export default function SearchScreen() {
       />
 
 
+      <NoteEditorSlideUp
+        noteId={slideUpNoteId ?? undefined}
+        visible={slideUpVisible}
+        onClose={() => setSlideUpVisible(false)}
+      />
     </View>
   );
 }
