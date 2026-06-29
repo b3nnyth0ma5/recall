@@ -655,7 +655,11 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
             {(isLoadingSuggestions && suggestedQuestions.length === 0) || (!isLoadingSuggestions && suggestedQuestions.filter(q => !usedQuestions.has(q)).length > 0) ? (
               <View style={styles.suggestionsArea}>
                 {isLoadingSuggestions && suggestedQuestions.length === 0 && (
-                  <View style={[styles.skeletonPill, { width: 180, alignSelf: 'flex-end', zIndex: 10, elevation: 10 }]} />
+                  <View style={{ alignItems: 'flex-end', gap: 8 }}>
+                    {[220, 180, 200, 160].map((w, i) => (
+                      <View key={i} style={[styles.skeletonPill, { width: w }]} />
+                    ))}
+                  </View>
                 )}
                 {!isLoadingSuggestions && suggestedQuestions.filter(q => !usedQuestions.has(q)).length > 0 && (
                   <Animated.View style={[styles.suggestionsInChat, { opacity: pillsOpacity }]}>
@@ -740,7 +744,8 @@ const styles = StyleSheet.create({
     width: '90%',
     maxWidth: 500,
     flex: 1,
-    marginVertical: 40,
+    marginTop: 56,
+    marginBottom: 40,
   },
   modalContent: {
     flex: 1,
@@ -819,10 +824,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   emptyContainer: {
-    paddingVertical: 60,
-    justifyContent: 'center',
+    paddingVertical: 40,
     alignItems: 'center',
-    paddingVertical: 60,
+    justifyContent: 'center',
     paddingHorizontal: 32,
   },
   emptyText: {
