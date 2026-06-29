@@ -895,7 +895,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   pillsRowWrapper: {
-    marginBottom: 4,
+    marginBottom: 8,
   },
   pillsSkeletonContent: {
     paddingHorizontal: 16,
