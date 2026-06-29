@@ -601,8 +601,7 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                   />
                 </View>
                 <View style={styles.headerTextContainer}>
-                  <Text style={styles.headerTitle}>Chat with this Recall</Text>
-                  <Text style={styles.headerSubtitle}>Ask questions about this memory</Text>
+                  <Text style={styles.headerTitle}>Recall Chat</Text>
                 </View>
               </View>
               <Pressable onPress={handleClose} style={styles.closeButton}>
@@ -972,7 +971,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     backgroundColor: `${colors.primary}15`,
-    maxWidth: 220,
+    maxWidth: 240,
   },
   suggestionPillText: {
     fontSize: 13,
