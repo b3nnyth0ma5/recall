@@ -44,6 +44,7 @@ const MAPPING = {
 
   // Actions & Controls
   "plus": "add",
+  "plus.circle.fill": "add-circle",
   "minus": "remove",
   "xmark": "close",
   "checkmark": "check",

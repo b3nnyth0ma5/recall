@@ -1270,8 +1270,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <IconSymbol 
-                      ios_icon_name="xmark" 
-                      android_material_icon_name="close" 
+                      name="xmark" 
                       size={24} 
                       color={colors.text} 
                     />
@@ -1295,8 +1294,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                     ) : (
                       <View style={styles.checkmarkContainer}>
                         <IconSymbol 
-                          ios_icon_name="checkmark" 
-                          android_material_icon_name="check" 
+                          name="checkmark" 
                           size={20} 
                           color="#FFFFFF" 
                         />
@@ -1409,8 +1407,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                                 >
                                   <View style={styles.actionButtonCircle}>
                                     <IconSymbol
-                                      ios_icon_name="xmark"
-                                      android_material_icon_name="close"
+                                      name="xmark"
                                       size={12}
                                       color="#FFFFFF"
                                     />
@@ -1443,8 +1440,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <IconSymbol 
-                        ios_icon_name="doc.fill" 
-                        android_material_icon_name="insert-drive-file" 
+                        name="doc.fill" 
                         size={28} 
                         color={colors.primary} 
                       />
@@ -1456,8 +1452,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <IconSymbol 
-                        ios_icon_name="photo.fill" 
-                        android_material_icon_name="photo" 
+                        name="photo.fill" 
                         size={28} 
                         color={colors.primary} 
                       />
@@ -1469,8 +1464,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <IconSymbol 
-                        ios_icon_name="camera.fill" 
-                        android_material_icon_name="camera" 
+                        name="camera.fill" 
                         size={28} 
                         color={colors.primary} 
                       />
@@ -1504,8 +1498,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                         </View>
                       ) : (
                         <IconSymbol 
-                          ios_icon_name="plus.circle.fill" 
-                          android_material_icon_name="add-circle" 
+                          name="plus.circle.fill" 
                           size={28} 
                           color={colors.text} 
                         />
@@ -1520,8 +1513,7 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <IconSymbol 
-                        ios_icon_name="mappin.circle.fill" 
-                        android_material_icon_name="location-on" 
+                        name="mappin.circle.fill" 
                         size={16} 
                         color={colors.primary} 
                       />
@@ -1574,7 +1566,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   slideUpContainer: {
-    height: SCREEN_HEIGHT * 0.5,
+    height: SCREEN_HEIGHT * 0.75,
     backgroundColor: colors.background,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,

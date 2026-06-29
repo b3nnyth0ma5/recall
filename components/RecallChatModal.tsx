@@ -249,14 +249,14 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
     }
   }, [visible, recall, loadChatHistory, loadSuggestedQuestions]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages or suggestions arrive
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > 0 || suggestedQuestions.length > 0) {
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-  }, [messages]);
+  }, [messages, suggestedQuestions]);
 
   // Animate pills in when they appear
   useEffect(() => {
@@ -649,31 +649,28 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
                 )}
 
                 {isLoading && <TypingIndicator />}
+
+                {/* Skeleton pills while suggestions are loading */}
+                {isLoadingSuggestions && (
+                  <View style={styles.suggestionsInChat}>
+                    {[140, 110, 160].map((w, i) => (
+                      <View key={i} style={[styles.skeletonPill, { width: w, alignSelf: 'flex-end' }]} />
+                    ))}
+                  </View>
+                )}
+
+                {/* Suggestion pills — right-aligned in chat area */}
+                {!isLoadingSuggestions && suggestedQuestions.filter(q => !usedQuestions.has(q)).length > 0 && (
+                  <View style={styles.suggestionsInChat}>
+                    {suggestedQuestions.filter(q => !usedQuestions.has(q)).map((question, i) => (
+                      <Pressable key={i} style={[styles.suggestionPill, { alignSelf: 'flex-end' }]} onPress={() => handleSuggestionTap(question)}>
+                        <Text style={styles.suggestionPillText}>{question}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
               </ScrollView>
             </View>
-
-            {/* Suggested question pills */}
-            {isLoadingSuggestions && (
-              <View style={styles.suggestionsContainer}>
-                <Text style={styles.suggestingText}>Suggesting questions...</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsScrollContent}>
-                  {[90, 130, 110, 80].map((w, i) => (
-                    <View key={i} style={[styles.skeletonPill, { width: w }]} />
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-            {!isLoadingSuggestions && suggestedQuestions.length > 0 && (
-              <Animated.View style={[styles.suggestionsContainer, { opacity: pillsOpacity }]}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsScrollContent}>
-                  {suggestedQuestions.filter(q => !usedQuestions.has(q)).map((question, i) => (
-                    <Pressable key={i} style={styles.suggestionPill} onPress={() => handleSuggestionTap(question)}>
-                      <Text style={styles.suggestionPillText} numberOfLines={2}>{question}</Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </Animated.View>
-            )}
 
             {/* Input Area - Fixed at bottom */}
             <Pressable
@@ -962,22 +959,11 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     // kept for legacy reference
   },
-  suggestionsContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.card,
-  },
-  suggestingText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 8,
-    fontStyle: 'italic',
-  },
-  pillsScrollContent: {
+  suggestionsInChat: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
     gap: 8,
-    paddingRight: 8,
+    paddingVertical: 8,
   },
   suggestionPill: {
     borderWidth: 1,
