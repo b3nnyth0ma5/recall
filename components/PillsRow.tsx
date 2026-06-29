@@ -87,9 +87,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 8,
     borderRadius: 20,
-    backgroundColor: `${colors.primary}10`,
+    backgroundColor: colors.border,
     borderWidth: 1,
-    borderColor: `${colors.primary}40`,
+    borderColor: colors.border,
     gap: 3,
   },
   pillActive: {
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
   pillText: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: colors.text,
   },
   pillTextActive: {
     color: colors.primary,
@@ -116,6 +116,6 @@ const styles = StyleSheet.create({
   countBadgeText: {
     fontSize: 10,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: colors.text,
   },
 });
