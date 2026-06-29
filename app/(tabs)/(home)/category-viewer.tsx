@@ -191,6 +191,25 @@ export default function CategoryViewerScreen() {
       imagesByRecallId.get(img.recall_id)!.push(img);
     });
 
+    // Batch fetch all URLs for all recalls in one query
+    const { data: allUrlsData, error: allUrlsError } = await supabase
+      .from('recall_urls')
+      .select('id, recall_id, url, og_title, og_description, og_site_name, og_image_url, scraped_at, created_at')
+      .in('recall_id', recallIds);
+
+    if (allUrlsError) {
+      console.error('[CategoryViewer] Error fetching URLs:', allUrlsError);
+    }
+
+    // Group URLs by recall_id
+    const urlsByRecallId = new Map<string, any[]>();
+    (allUrlsData || []).forEach(urlRow => {
+      if (!urlsByRecallId.has(urlRow.recall_id)) {
+        urlsByRecallId.set(urlRow.recall_id, []);
+      }
+      urlsByRecallId.get(urlRow.recall_id)!.push(urlRow);
+    });
+
     // Process recalls with their images
     const processedNotes = await Promise.all(
       recalls.map(async (recall) => {
@@ -250,7 +269,7 @@ export default function CategoryViewerScreen() {
             location_primary_type: recall.location_primary_type,
             images: validImageUrls,
             imageIds: imageIds,
-            urls: [],
+            urls: urlsByRecallId.get(recall.id) || [],
             people: people,
             match_score: recall.match_score || 0,
           };
@@ -267,7 +286,7 @@ export default function CategoryViewerScreen() {
             location_primary_type: recall.location_primary_type,
             images: [],
             imageIds: [],
-            urls: [],
+            urls: urlsByRecallId.get(recall.id) || [],
             people: [],
             match_score: recall.match_score || 0,
           };
