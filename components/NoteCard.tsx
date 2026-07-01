@@ -363,7 +363,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
   };
 
   const handleTextPress = () => {
-    onPress();
+    handleCardPress();
   };
   
   const handleCardPress = () => {
@@ -704,7 +704,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
             })()}
 
             {note.text ? (
-              <Pressable onPress={handleTextPress}>
+              <Pressable onPress={handleTextPress} onLongPress={handleLongPress} delayLongPress={150}>
                 <View style={styles.text}>
                   <Text
                     style={styles.noteText}
@@ -836,7 +836,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                 pendingActionRef.current = () => setShowChatModal(true);
                 setShowContextMenu(false);
               }}>
-                <IconSymbol name="message" size={22} color={colors.text} />
+                <IconSymbol name="bubble.left.and.bubble.right.fill" size={22} color={colors.text} />
                 <Text style={styles.contextMenuLabel}>Chat with Recall</Text>
               </Pressable>
               <View style={styles.contextMenuSeparator} />
