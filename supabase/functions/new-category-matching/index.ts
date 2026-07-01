@@ -115,8 +115,8 @@ function groupBy<T>(arr: T[], key: keyof T): Record<string, T[]> {
 
 // ── main handler ─────────────────────────────────────────────────────────────
 
-const SIMILARITY_THRESHOLD = 0.10;
-const CONFIDENCE_THRESHOLD = 35;
+const SIMILARITY_THRESHOLD = 0.08;
+const CONFIDENCE_THRESHOLD = 30;
 const BATCH_SIZE = 100;
 
 Deno.serve(async (req) => {
@@ -346,7 +346,7 @@ Deno.serve(async (req) => {
     const systemPrompt = `You are an expert at matching recalls to categories. You will be given a category description and a list of candidate recalls that have already been filtered by embedding similarity. Use the Category Description as a guide to understand what the user wants in the category.
 
 Your task is to:
-1. Analyze each recall to determine if it could belongs to the category
+1. Analyze each recall to determine if it could belong to the category
 2. Assign a confidence score (0-100) for each recall
 3. Ensure at least 5% of recalls are matched to each catgegory
 A recall should match if it reasonably relates to the category description.
