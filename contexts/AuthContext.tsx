@@ -165,7 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (count === 0) {
               console.log('[AuthContext] No categories found for user — triggering analyse-user-themes');
               await supabase.functions.invoke('analyse-user-themes', {
-                body: { user_id: userId, force: true },
+                body: { userId: userId, force: true },
               });
               console.log('[AuthContext] analyse-user-themes invoked successfully');
             }
