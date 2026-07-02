@@ -138,18 +138,6 @@ Location intent rules:
 
 If a category is not found, use an empty array for keywords/people, empty string for location, and null for locationIntent.
 
-Examples:
-User: "recalls about John Doe in New York about his birthday party"
-Output: {"keywords": ["birthday party"], "people": ["John Doe"], "location": "New York", "locationIntent": "in"}
-
-User: "photos from last summer"
-Output: {"keywords": ["photos", "last summer"], "people": [], "location": "", "locationIntent": null}
-
-User: "restaurants near Collingwood"
-Output: {"keywords": ["restaurants"], "people": [], "location": "Collingwood", "locationIntent": "near"}
-
-User: "coffee shops near me"
-Output: {"keywords": ["coffee shops"], "people": [], "location": "", "locationIntent": "near_me"}
 
 Respond with valid JSON only, no markdown.`;
 
@@ -294,7 +282,8 @@ Deno.serve(async (req) => {
 
     console.log('User authenticated:', user.id);
 
-    const { query, userLocation } = await req.json();
+    // Change A: parse search_uploads from request body
+    const { query, userLocation, search_uploads } = await req.json();
 
     if (!query || typeof query !== 'string') {
       return new Response(JSON.stringify({ error: 'Query parameter is required' }), {
@@ -304,6 +293,9 @@ Deno.serve(async (req) => {
     }
 
     console.log('Search query:', query);
+    if (search_uploads && Array.isArray(search_uploads) && search_uploads.length > 0) {
+      console.log(`Search includes ${search_uploads.length} uploaded image(s)`);
+    }
 
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     const googleApiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
@@ -386,22 +378,28 @@ Deno.serve(async (req) => {
 
     const embeddingArray = queryEmbedding;
     const [recallsResult, imagesResult, urlsResult, docRes, recallPeopleResult] = await Promise.all([
+      // distance <= 0.6 means similarity >= 0.4, matching TEXT_SIMILARITY_THRESHOLD
+      // (RPC uses cosine distance: 0=identical, 1=opposite)
       supabase.rpc('match_recalls', {
         query_embedding: embeddingStr,
-        match_threshold: 0.4,
+        match_threshold: 0.6,
         match_count: 30,
         user_id_filter: user.id
       }),
+      // distance <= 0.75 means similarity >= 0.25, matching IMAGE_SIMILARITY_THRESHOLD
+      // (RPC uses cosine distance: 0=identical, 1=opposite)
       supabase.rpc('match_recall_images', {
         query_embedding: embeddingStr,
-        match_threshold: 0.4,
-        match_count: 30,
+        match_threshold: 0.75,
+        match_count: 50,
         user_id_filter: user.id
       }),
+      // distance <= 0.6 means similarity >= 0.4, matching URL_SIMILARITY_THRESHOLD
+      // (RPC uses cosine distance: 0=identical, 1=opposite)
       supabase.rpc('match_recall_urls', {
         query_embedding: embeddingStr,
-        match_threshold: 0.4,
-        match_count: 50,
+        match_threshold: 0.6,
+        match_count: 75,
         user_id_filter: user.id
       }),
       supabase.rpc('match_recall_documents', {
@@ -690,7 +688,7 @@ Deno.serve(async (req) => {
               contextText += `    Description: ${url.og_description}\n`;
             }
             if (url.url_data) {
-              const excerpt = url.url_data.length > 800 ? url.url_data.slice(0, 800) + '…' : url.url_data;
+              const excerpt = url.url_data.length > 800 ? url.url_data.slice(0, 800) + '\u2026' : url.url_data;
               contextText += `    Content: ${excerpt}\n`;
             }
           });
@@ -712,13 +710,13 @@ Deno.serve(async (req) => {
 
       const context = contextWithSources.map(c => c.text).join('\n');
 
+      // Change C: Updated QA system prompt with UPLOADED SEARCH IMAGES section
       const qaSystemPrompt = `You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
 
 CRITICAL RULES:
 - Prioritize your answer based on the recalls with the highest match percentages
 - Use bullet points when listing multiple items
 - Provide a confidence score (0-100) based on how well the recalls answer the question
-- Research the answer thoroughly based on the provided information
 - IMPORTANT: When referencing sources in your answer, use the format "SOURCE_X" (e.g., SOURCE_1, SOURCE_2) inline with the text
 - Place source references immediately after the relevant information, like: "The restaurant is located in Collingwood SOURCE_1."
 - You can reference the same source multiple times if needed
@@ -728,15 +726,17 @@ MATCH INFORMATION:
 - Pay attention to match type indicators: [LOCATION], [PEOPLE], [KEYWORD]
 - Pay attention to keyword match counts - more matched keywords indicate better relevance
 
-LINKED PAGES:
-- Each recall may include "Linked pages" with content scraped from URLs the user saved
-- Use linked-page content (title, description, page text) when it is relevant to answering the question
-- When information comes from a linked page rather than the recall text itself, attribute it clearly, e.g. "according to the linked article…" or "the linked page states…"
+LINKED PAGES AND DOCUMENTS:
+- Each recall may include "Linked pages" (content scraped from URLs) or "Documents" (extracted text from files) the user saved
+- When information comes from a linked page, attribute it clearly, e.g. "according to the linked article\u2026" or "the linked page states\u2026"
+- When information comes from an attached document, cite it: "according to the document <file_name>..."
 - Linked-page content is supplementary — always prefer the recall's own text when both are available
 
-ATTACHED DOCUMENTS:
-- Each recall may include "Documents" with extracted text from files the user saved
-- When information comes from an attached document, cite it: "according to the attached document <file_name>..."
+UPLOADED SEARCH IMAGES:
+- The user may have attached images to their search query (shown as "UPLOADED IMAGES CONTEXT" in the user message)
+- Use the image descriptions and extracted text to understand what the user is looking for
+- Cross-reference image content with recall data to provide relevant answers
+- If the user asks "have I seen/had/been to this before?", use the image context to identify what "this" refers to
 
 Provide your answer in JSON format with inline source references: {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
 Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John mentioned he'll bring the presentation SOURCE_2.", "confidence": 90, "sources": ["SOURCE_1", "SOURCE_2"]}
@@ -744,10 +744,23 @@ If the recalls don't contain the requested information, respond with: {"answer":
 
 Respond with valid JSON only, no markdown.`;
 
-      const qaUserMessage = `Question: ${query}
+      // Change B: Build qaUserMessage with optional uploaded images context
+      let uploadedImagesContext = '';
+      if (search_uploads && Array.isArray(search_uploads) && search_uploads.length > 0) {
+        uploadedImagesContext = `\n\nUPLOADED IMAGES CONTEXT (from images the user attached to this search):\n`;
+        search_uploads.forEach((upload: { text?: string; explanation?: string }, idx: number) => {
+          uploadedImagesContext += `Image ${idx + 1}:\n`;
+          if (upload.explanation) {
+            uploadedImagesContext += `  Description: ${upload.explanation}\n`;
+          }
+          if (upload.text && upload.text !== 'No text detected.') {
+            uploadedImagesContext += `  Text in image: ${upload.text}\n`;
+          }
+        });
+        uploadedImagesContext += `\nUse the above image context to help answer the question. For example, if the user uploaded a photo of a product and asks "have I seen this before?", use the image description and text to search for matching recalls.`;
+      }
 
-Available Recalls (sorted by highest match percentage first):
-${context}`;
+      const qaUserMessage = `Question: ${query}${uploadedImagesContext}\n\nAvailable Recalls (sorted by highest match percentage first):\n${context}`;
 
       const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
