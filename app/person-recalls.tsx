@@ -43,7 +43,7 @@ export default function PersonRecallsScreen() {
   const { personId } = useLocalSearchParams<{ personId: string }>();
   const { user } = useAuth();
   const { getCachedNote } = useNotes();
-  const { refreshUrlMetadata } = useNotesContext();
+  const { refreshUrlMetadata, getUrlMetadataForRecall } = useNotesContext();
   const insets = useSafeAreaInsets();
 
   // Person data
@@ -760,17 +760,21 @@ export default function PersonRecallsScreen() {
     </View>
   );
 
-  const renderNoteItem = useCallback(({ item }: { item: Note }) => (
-    <View style={styles.noteCardRow}>
-      <NoteCard
-        key={`${item.id}-${photoUpdateTrigger}`}
-        note={item}
-        onPress={() => { console.log('[PersonRecalls] NoteCard onPress:', item.id); setSlideUpNoteId(item.id); setSlideUpVisible(true); }}
-        onCardPress={(id) => { console.log('[PersonRecalls] NoteCard onCardPress:', id); setSlideUpNoteId(id); setSlideUpVisible(true); }}
-        loading={false}
-      />
-    </View>
-  ), [photoUpdateTrigger]);
+  const renderNoteItem = useCallback(({ item }: { item: Note }) => {
+    const itemUrlMeta = getUrlMetadataForRecall(item.id);
+    return (
+      <View style={styles.noteCardRow}>
+        <NoteCard
+          key={`${item.id}-${photoUpdateTrigger}`}
+          note={item}
+          urlMeta={itemUrlMeta}
+          onPress={() => { console.log('[PersonRecalls] NoteCard onPress:', item.id); setSlideUpNoteId(item.id); setSlideUpVisible(true); }}
+          onCardPress={(id) => { console.log('[PersonRecalls] NoteCard onCardPress:', id); setSlideUpNoteId(id); setSlideUpVisible(true); }}
+          loading={false}
+        />
+      </View>
+    );
+  }, [photoUpdateTrigger, getUrlMetadataForRecall]);
 
   // ─── Stack.Screen options ────────────────────────────────────────────────────
   const stackScreenOptions = {

@@ -44,7 +44,7 @@ export default function CategoryViewerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { getCachedNote } = useNotes();
-  const { refreshUrlMetadata } = useNotesContext();
+  const { refreshUrlMetadata, getUrlMetadataForRecall } = useNotesContext();
   const [category, setCategory] = useState<Category | null>(null);
 
   // Fire-and-forget: mark category as viewed so the unseen dot clears
@@ -1577,16 +1577,20 @@ export default function CategoryViewerScreen() {
     outputRange: [-8, 0],
   });
 
-  const renderNoteItem = useCallback(({ item }: { item: Note }) => (
-    <View style={styles.noteCardRow}>
-      <NoteCard
-        note={item}
-        onPress={() => handleNotePress(item.id)}
-        onCardPress={(id) => { console.log('[CategoryViewer] NoteCard onCardPress:', id); setSlideUpNoteId(id); setSlideUpVisible(true); }}
-        onDelete={() => handleDeleteRecall(item.id)}
-      />
-    </View>
-  ), [handleNotePress, handleDeleteRecall]);
+  const renderNoteItem = useCallback(({ item }: { item: Note }) => {
+    const itemUrlMeta = getUrlMetadataForRecall(item.id);
+    return (
+      <View style={styles.noteCardRow}>
+        <NoteCard
+          note={item}
+          urlMeta={itemUrlMeta}
+          onPress={() => handleNotePress(item.id)}
+          onCardPress={(id) => { console.log('[CategoryViewer] NoteCard onCardPress:', id); setSlideUpNoteId(id); setSlideUpVisible(true); }}
+          onDelete={() => handleDeleteRecall(item.id)}
+        />
+      </View>
+    );
+  }, [handleNotePress, handleDeleteRecall, getUrlMetadataForRecall]);
 
   // Shared Stack.Screen options with centered branded header and back chevron
   const stackScreenOptions = {

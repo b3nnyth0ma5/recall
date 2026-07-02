@@ -24,6 +24,7 @@ import * as Location from 'expo-location';
 import { TimeAgo } from '@/components/TimeAgo';
 import { NoteCard } from '@/components/NoteCard';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useNotesContext } from '@/contexts/NotesContext';
 
 // ─── Leaflet HTML builder ─────────────────────────────────────────────────────
 
@@ -193,6 +194,7 @@ export default function MapViewScreen() {
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { getUrlMetadataForRecall } = useNotesContext();
   const [loading, setLoading] = useState(true);
   const [mapNotes, setMapNotes] = useState<Note[]>([]);
   const [allLocationNotes, setAllLocationNotes] = useState<Note[]>([]);
@@ -609,6 +611,7 @@ export default function MapViewScreen() {
               <GestureHandlerRootView>
                 <NoteCard
                   note={selectedNote}
+                  urlMeta={getUrlMetadataForRecall(selectedNote.id)}
                   onPress={() => {}}
                 />
               </GestureHandlerRootView>

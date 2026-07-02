@@ -67,6 +67,7 @@ export default function SearchScreen() {
     searchExtractedKeywords,
     searchTimeMs,
     searchTimings,
+    getUrlMetadataForRecall,
   } = useNotesContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
@@ -881,6 +882,7 @@ export default function SearchScreen() {
   const renderSearchResultItem = useCallback(({ item }: { item: import('@/types/Note').Note }) => {
     const recallRef = recallReferences.find(ref => ref.recallId === item.id);
     const imageIndex = recallRef?.imageIndex;
+    const itemUrlMeta = getUrlMetadataForRecall(item.id);
     return (
       <View
         style={styles.noteWrapper}
@@ -895,6 +897,7 @@ export default function SearchScreen() {
         <View style={styles.noteCardContainer}>
           <NoteCard
             note={item}
+            urlMeta={itemUrlMeta}
             onCardPress={(id) => { setSlideUpNoteId(id); setSlideUpVisible(true); }}
             scrollToImageIndex={imageIndex}
             loading={false}
@@ -902,7 +905,7 @@ export default function SearchScreen() {
         </View>
       </View>
     );
-  }, [recallReferences, handleNotePress]);
+  }, [recallReferences, handleNotePress, getUrlMetadataForRecall]);
 
   return (
     <View style={styles.container}>

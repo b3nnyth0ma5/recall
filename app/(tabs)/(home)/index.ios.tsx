@@ -32,7 +32,7 @@ let homeScrollOffset = 0;
 const PILL_SKELETON_WIDTHS = [80, 60, 110, 120, 70, 70, 100, 100, 80, 95];
 
 export default function HomeScreen() {
-  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata, addNoteOptimistic, patchNoteOptimistic, searchQuery, searchNotes } = useNotesContext();
+  const { notes, loading, refreshNotes, loadMoreNotes, hasMore, isLoadingMore, refreshSingleNote, isDeletingNote, deleteNote, refreshUrlMetadata, addNoteOptimistic, patchNoteOptimistic, searchQuery, searchNotes, getUrlMetadataForRecall } = useNotesContext();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const listRef = useRef<FlatList<Note>>(null);
@@ -587,19 +587,23 @@ export default function HomeScreen() {
 
   const listData = selectedPill ? [] : (hasRecalls || notes.length > 0 ? notes : []);
 
-  const renderItem = useCallback(({ item }: { item: Note }) => (
-    <View style={styles.noteCardRow}>
-      <NoteCard
-        note={item}
-        onPress={() => handleNotePress(item.id)}
-        onCardPress={handleCardPress}
-        onDelete={() => handleDeleteNote(item.id)}
-        loading={false}
-        expectedImageCount={getExpectedImageCount(item.id)}
-        processingStage={creatingRecallId === item.id ? savingStage : undefined}
-      />
-    </View>
-  ), [creatingRecallId, savingStage, handleCardPress]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const renderItem = useCallback(({ item }: { item: Note }) => {
+    const itemUrlMeta = getUrlMetadataForRecall(item.id);
+    return (
+      <View style={styles.noteCardRow}>
+        <NoteCard
+          note={item}
+          urlMeta={itemUrlMeta}
+          onPress={() => handleNotePress(item.id)}
+          onCardPress={handleCardPress}
+          onDelete={() => handleDeleteNote(item.id)}
+          loading={false}
+          expectedImageCount={getExpectedImageCount(item.id)}
+          processingStage={creatingRecallId === item.id ? savingStage : undefined}
+        />
+      </View>
+    );
+  }, [creatingRecallId, savingStage, handleCardPress, getUrlMetadataForRecall]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const ListHeaderComponent = (
     <View>
@@ -657,17 +661,21 @@ export default function HomeScreen() {
               data={categoryRecalls}
               keyExtractor={(item) => item.id}
               scrollEnabled={false}
-              renderItem={({ item }) => (
-                <View style={styles.noteCardRow}>
-                  <NoteCard
-                    note={item}
-                    onPress={() => handleNotePress(item.id)}
-                    onCardPress={handleCardPress}
-                    onDelete={() => handleDeleteNote(item.id)}
-                    loading={false}
-                  />
-                </View>
-              )}
+              renderItem={({ item }) => {
+                const itemUrlMeta = getUrlMetadataForRecall(item.id);
+                return (
+                  <View style={styles.noteCardRow}>
+                    <NoteCard
+                      note={item}
+                      urlMeta={itemUrlMeta}
+                      onPress={() => handleNotePress(item.id)}
+                      onCardPress={handleCardPress}
+                      onDelete={() => handleDeleteNote(item.id)}
+                      loading={false}
+                    />
+                  </View>
+                );
+              }}
               onEndReachedThreshold={0.3}
               onEndReached={async () => {
                 if (!hasMoreCategoryRecalls || isLoadingMoreCategoryRecalls || !selectedPill) return;

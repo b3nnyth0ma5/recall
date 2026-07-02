@@ -45,7 +45,7 @@ function UrlPreviewCard({ url, ogTitle, ogDescription, ogSiteName, ogImageUrl, s
     return (
       <View style={styles.card}>
         <View style={styles.row}>
-          <SkeletonLoader width={88} height={88} borderRadius={8} />
+          <SkeletonLoader width={72} height={72} borderRadius={6} />
           <View style={styles.textColumn}>
             <SkeletonLoader width="90%" height={14} borderRadius={4} />
             <SkeletonLoader width="75%" height={12} borderRadius={4} style={styles.skeletonGap} />
@@ -122,26 +122,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
-    padding: 0,
+    padding: 8,
     marginTop: 2,
     marginHorizontal: 2,
+    overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',
     gap: 8,
   },
   imageContainer: {
-    width: 88,
-    height: 88,
-    borderRadius: 8,
+    width: 72,
+    height: 72,
+    borderRadius: 6,
     overflow: 'hidden',
     backgroundColor: colors.background,
     flexShrink: 0,
   },
   image: {
-    width: 88,
-    height: 88,
-    borderRadius: 8,
+    width: 72,
+    height: 72,
+    borderRadius: 6,
   },
   textColumn: {
     flex: 1,

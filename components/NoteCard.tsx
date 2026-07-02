@@ -51,6 +51,7 @@ interface NoteCardProps {
   expectedImageCount?: number;
   scrollToImageIndex?: number;
   processingStage?: string;
+  urlMeta?: import('@/utils/urlProcessor').RecallUrlMetadata | null;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -73,7 +74,7 @@ const countNewlines = (text: string): number => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onImagePress, onDelete, onPeopleUpdated, loading = false, expectedImageCount, scrollToImageIndex, processingStage }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onImagePress, onDelete, onPeopleUpdated, loading = false, expectedImageCount, scrollToImageIndex, processingStage, urlMeta }: NoteCardProps) {
   const { getUrlMetadataForRecall } = useNotesContext();
   const router = useRouter();
   const pathname = usePathname();
@@ -672,17 +673,17 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
             )}
 						
 						{(() => {
-              const urlMeta = getUrlMetadataForRecall(note.id);
+              const resolvedUrlMeta = urlMeta !== undefined ? urlMeta : getUrlMetadataForRecall(note.id);
               const noteHasUrl = note.text ? extractUrls(note.text).length > 0 : false;
-              if (urlMeta !== null && noteHasUrl) {
+              if (resolvedUrlMeta !== null && noteHasUrl) {
                 return (
                   <UrlPreviewCard
-                    url={urlMeta.url}
-                    ogTitle={urlMeta.og_title}
-                    ogDescription={urlMeta.og_description}
-                    ogSiteName={urlMeta.og_site_name}
-                    ogImageUrl={urlMeta.og_image_url}
-                    scrapedAt={urlMeta.scraped_at}
+                    url={resolvedUrlMeta.url}
+                    ogTitle={resolvedUrlMeta.og_title}
+                    ogDescription={resolvedUrlMeta.og_description}
+                    ogSiteName={resolvedUrlMeta.og_site_name}
+                    ogImageUrl={resolvedUrlMeta.og_image_url}
+                    scrapedAt={resolvedUrlMeta.scraped_at}
                   />
                 );
               }
@@ -869,7 +870,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
     prevProps.loading === nextProps.loading &&
     prevProps.expectedImageCount === nextProps.expectedImageCount &&
     prevProps.scrollToImageIndex === nextProps.scrollToImageIndex &&
-    prevProps.processingStage === nextProps.processingStage
+    prevProps.processingStage === nextProps.processingStage &&
+    prevProps.urlMeta?.og_image_url === nextProps.urlMeta?.og_image_url &&
+    prevProps.urlMeta?.scraped_at === nextProps.urlMeta?.scraped_at
   );
 });
 
