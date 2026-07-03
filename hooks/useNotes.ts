@@ -967,32 +967,33 @@ export function useNotes() {
           .filter((recall: any) => recall !== null);
 
         const notesWithImages = orderedRecalls;
-        setNotes(notesWithImages);
         setSearchAnswer(answer);
         setSearchConfidence(confidence);
 
-        // Fire-and-forget: fetch URL metadata for search result recalls
+        // Await URL metadata fetch so cache is populated before FlatList renders
         const searchResultIds = notesWithImages.map((n: any) => n.id).filter(Boolean);
         if (searchResultIds.length > 0) {
-          getRecallUrlsForRecalls(searchResultIds).then(fetched => {
-            setUrlMetadataByRecallId(prev => ({ ...prev, ...fetched }));
-            const unscrapedIds: string[] = [];
-            for (const rows of Object.values(fetched)) {
-              for (const row of rows) {
-                if (row.scraped_at === null) unscrapedIds.push(row.id);
-              }
+          console.log('[searchNotes] Fetching URL metadata for', searchResultIds.length, 'recalls');
+          const fetched = await getRecallUrlsForRecalls(searchResultIds);
+          setUrlMetadataByRecallId(prev => ({ ...prev, ...fetched }));
+          // Keep the unscraped follow-up timer as fire-and-forget
+          const unscrapedIds: string[] = [];
+          for (const rows of Object.values(fetched)) {
+            for (const row of rows) {
+              if (row.scraped_at === null) unscrapedIds.push(row.id);
             }
-            if (unscrapedIds.length > 0) {
-              unscrapedIds.forEach(id => triggerScrapeIfMissing(id));
-              if (urlRefreshTimerRef.current) clearTimeout(urlRefreshTimerRef.current);
-              urlRefreshTimerRef.current = setTimeout(() => {
-                getRecallUrlsForRecalls(searchResultIds).then(updated => {
-                  setUrlMetadataByRecallId(prev => ({ ...prev, ...updated }));
-                });
-              }, 6000);
-            }
-          });
+          }
+          if (unscrapedIds.length > 0) {
+            unscrapedIds.forEach(id => triggerScrapeIfMissing(id));
+            if (urlRefreshTimerRef.current) clearTimeout(urlRefreshTimerRef.current);
+            urlRefreshTimerRef.current = setTimeout(() => {
+              getRecallUrlsForRecalls(searchResultIds).then(updated => {
+                setUrlMetadataByRecallId(prev => ({ ...prev, ...updated }));
+              });
+            }, 6000);
+          }
         }
+        setNotes(notesWithImages);
 
         // Fire-and-forget: generate a collage for the recent-searches thumbnail.
         // Skip recall-based collage when the search had uploaded images — saveSearchHistoryUploads

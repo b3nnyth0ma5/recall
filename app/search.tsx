@@ -68,6 +68,7 @@ export default function SearchScreen() {
     searchTimeMs,
     searchTimings,
     getUrlMetadataForRecall,
+    urlMetadataByRecallId,
   } = useNotesContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
@@ -1028,6 +1029,7 @@ export default function SearchScreen() {
         data={hasSearched && !isSearching && filteredNotes.length > 0 ? filteredNotes : []}
         keyExtractor={(item) => item.id}
         renderItem={renderSearchResultItem}
+        extraData={urlMetadataByRecallId}
         ListHeaderComponent={
           <View style={styles.listHeaderContainer}>
 

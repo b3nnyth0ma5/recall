@@ -673,7 +673,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
             )}
 						
 						{(() => {
-              const resolvedUrlMeta = urlMeta !== undefined ? urlMeta : getUrlMetadataForRecall(note.id);
+              const resolvedUrlMeta = (urlMeta !== undefined && urlMeta !== null) ? urlMeta : getUrlMetadataForRecall(note.id);
               const noteHasUrl = note.text ? extractUrls(note.text).length > 0 : false;
               if (resolvedUrlMeta !== null && noteHasUrl) {
                 return (
