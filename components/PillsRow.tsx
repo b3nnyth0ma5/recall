@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     gap: 8,
-    paddingVertical: 2,
+    paddingVertical: 8,
   },
   pill: {
     flexDirection: 'row',
