@@ -962,6 +962,7 @@ export function useNotes() {
               ...recall,
               relevance_score: matchInfo.matchPercentage || 0,
               used_for_answer: matchInfo.usedForAnswer || false,
+              source_number: matchInfo.sourceNumber ?? null,
             };
           })
           .filter((recall: any) => recall !== null);

@@ -26,6 +26,7 @@ export interface Note {
   relevance_score?: number; // AI-powered relevance score (0-100)
   relevance_reason?: string; // Explanation of why this recall matches
   used_for_answer?: boolean; // Whether this recall was used to derive the AI answer
+  source_number?: number | null; // Source number assigned by the backend (e.g. SOURCE_3 → 3)
   people?: Person[]; // People mentioned in this recall
   documents?: Document[]; // Documents attached to this recall
   documentIds?: string[]; // Array of document record IDs

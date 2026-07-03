@@ -34,7 +34,7 @@ import { useNotesContext } from '@/contexts/NotesContext';
 import { peopleCache, imageCache, CostCalculator } from '@/utils/memoryCache';
 import { debounce } from '@/utils/debounce';
 import { PillsRow } from '@/components/PillsRow';
-import { NoteEditorSlideUp } from '@/components/NoteEditorSlideUp';
+
 
 type SortOrder = 'Newest' | 'Oldest' | 'Best match';
 
@@ -62,8 +62,7 @@ export default function PersonRecallsScreen() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('Newest');
 
   // Slide-up editor
-  const [slideUpNoteId, setSlideUpNoteId] = useState<string | null>(null);
-  const [slideUpVisible, setSlideUpVisible] = useState(false);
+
 
   // Sort loading (separate from main loading to avoid full-screen skeleton on sort change)
   const [isSortLoading, setIsSortLoading] = useState(false);
@@ -561,10 +560,9 @@ export default function PersonRecallsScreen() {
   }, [photoMenuAnim, photoMenuScaleAnim]);
 
   const handleNotePress = useCallback((noteId: string) => {
-    console.log('[PersonRecalls] User tapped note, opening slide-up editor:', noteId);
-    setSlideUpNoteId(noteId);
-    setSlideUpVisible(true);
-  }, []);
+    console.log('[PersonRecalls] User tapped note, navigating to note editor:', noteId);
+    router.push('/note-editor?id=' + noteId);
+  }, [router]);
 
   // ─── Photo upload flow ───────────────────────────────────────────────────────
   const handlePhotoUpload = useCallback(async (uri: string) => {
@@ -768,13 +766,13 @@ export default function PersonRecallsScreen() {
           key={`${item.id}-${photoUpdateTrigger}`}
           note={item}
           urlMeta={itemUrlMeta}
-          onPress={() => { console.log('[PersonRecalls] NoteCard onPress:', item.id); setSlideUpNoteId(item.id); setSlideUpVisible(true); }}
-          onCardPress={(id) => { console.log('[PersonRecalls] NoteCard onCardPress:', id); setSlideUpNoteId(id); setSlideUpVisible(true); }}
+          onPress={() => { console.log('[PersonRecalls] NoteCard onPress:', item.id); router.push('/note-editor?id=' + item.id); }}
+          onCardPress={(id) => { console.log('[PersonRecalls] NoteCard onCardPress:', id); router.push('/note-editor?id=' + id); }}
           loading={false}
         />
       </View>
     );
-  }, [photoUpdateTrigger, getUrlMetadataForRecall]);
+  }, [photoUpdateTrigger, getUrlMetadataForRecall, router]);
 
   // ─── Stack.Screen options ────────────────────────────────────────────────────
   const stackScreenOptions = {
@@ -994,11 +992,7 @@ export default function PersonRecallsScreen() {
         contentContainerStyle={styles.scrollContent}
       />
 
-      <NoteEditorSlideUp
-        noteId={slideUpNoteId ?? undefined}
-        visible={slideUpVisible}
-        onClose={() => setSlideUpVisible(false)}
-      />
+
     </View>
   );
 }

@@ -42,7 +42,7 @@ import { uploadImageToCloudflare } from '@/utils/cloudflareCDN';
 import { PillsRow } from '@/components/PillsRow';
 import type { PillItem } from '@/components/PillsRow';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
-import { NoteEditorSlideUp } from '@/components/NoteEditorSlideUp';
+
 
 // Pill widths vary so the skeleton row doesn't look like a uniform stripe
 const PILL_SKELETON_WIDTHS = [80, 60, 110, 120, 70, 70, 100, 100, 80, 95];
@@ -88,8 +88,7 @@ export default function SearchScreen() {
   const [hasMoreCategoryRecalls, setHasMoreCategoryRecalls] = useState(false);
   const [isLoadingMoreCategoryRecalls, setIsLoadingMoreCategoryRecalls] = useState(false);
   const [categoryHasLocationRecalls, setCategoryHasLocationRecalls] = useState(false);
-  const [slideUpNoteId, setSlideUpNoteId] = useState<string | null>(null);
-  const [slideUpVisible, setSlideUpVisible] = useState(false);
+
 
   const CATEGORY_PAGE_SIZE = 10;
   // Tracks whether history has been loaded at least once — gates zero states
@@ -491,13 +490,12 @@ export default function SearchScreen() {
   }, [searchNotes]);
 
   const handleNotePress = useCallback((noteId: string, imageIndex?: number) => {
-    console.log('[SearchScreen] Note card pressed, opening slide-up editor for noteId:', noteId, 'imageIndex:', imageIndex);
+    console.log('[SearchScreen] Note card pressed, navigating to note editor for noteId:', noteId, 'imageIndex:', imageIndex);
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    setSlideUpNoteId(noteId);
-    setSlideUpVisible(true);
-  }, []);
+    router.push('/note-editor?id=' + noteId);
+  }, [router]);
 
   const recallRefs = useRef<{ [key: string]: View | null }>({});
   const listRef = useRef<FlatList>(null);
@@ -537,21 +535,20 @@ export default function SearchScreen() {
   }, [filteredNotes]);
 
   const recallReferences = useMemo(() => {
-    if (!filteredNotes || filteredNotes.length === 0) {
-      return [];
-    }
-    
-    const references = filteredNotes.map((note) => {
-      const hasImages = note.images && note.images.length > 0;
-      
-      return {
-        recallId: note.id,
-        imageIndex: hasImages ? 0 : undefined,
-      };
+    if (!notes || notes.length === 0) return [];
+    // Build sparse array indexed by sourceNumber - 1 so SOURCE_3 → index 2
+    const refs: ({ recallId: string; imageIndex?: number } | undefined)[] = [];
+    notes.forEach((note) => {
+      const sn = (note as any).source_number;
+      if (typeof sn === 'number' && sn >= 1) {
+        refs[sn - 1] = {
+          recallId: note.id,
+          imageIndex: note.images && note.images.length > 0 ? 0 : undefined,
+        };
+      }
     });
-    
-    return references;
-  }, [filteredNotes]);
+    return refs;
+  }, [notes]);
 
   const handleClear = useCallback(() => {
     console.log('[SearchScreen] handleClear pressed');
@@ -899,14 +896,14 @@ export default function SearchScreen() {
           <NoteCard
             note={item}
             urlMeta={itemUrlMeta}
-            onCardPress={(id) => { setSlideUpNoteId(id); setSlideUpVisible(true); }}
+            onCardPress={(id) => { console.log('[SearchScreen] NoteCard onCardPress:', id); router.push('/note-editor?id=' + id); }}
             scrollToImageIndex={imageIndex}
             loading={false}
           />
         </View>
       </View>
     );
-  }, [recallReferences, handleNotePress, getUrlMetadataForRecall]);
+  }, [recallReferences, getUrlMetadataForRecall, router]);
 
   return (
     <View style={styles.container}>
@@ -1233,11 +1230,7 @@ export default function SearchScreen() {
       />
 
 
-      <NoteEditorSlideUp
-        noteId={slideUpNoteId ?? undefined}
-        visible={slideUpVisible}
-        onClose={() => setSlideUpVisible(false)}
-      />
+
     </View>
   );
 }
