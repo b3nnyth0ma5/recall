@@ -31,7 +31,7 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
 }) => {
   // Replace SOURCE_X with markdown link syntax [X](source:X)
   const processedContent = useMemo(() => {
-    return content.replace(/SOURCE_(\d+)/g, (_match, num) => `[${num}](source:${num})`);
+    return content.replace(/SOURCE_(\d+)/g, (_match, num) => `[Recall ${num}](source:${num})`);
   }, [content]);
 
   // Custom rules to intercept source: links and render as tappable badges
@@ -59,7 +59,7 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
               }
             }}
           >
-            {sourceNum}
+            {`Recall ${sourceNum}`}
           </Text>
         );
       }
@@ -83,10 +83,10 @@ export const MarkdownAnswer: React.FC<MarkdownAnswerProps> = ({
 
 const sourceLinkStyle = {
   color: colors.primary,
-  fontSize: 14,
-  fontWeight: '700' as const,
+  fontSize: 13,
+  fontWeight: '600' as const,
   textDecorationLine: 'underline' as const,
-  paddingHorizontal: 2,
+  marginHorizontal: 2,
 };
 
 const styles = StyleSheet.create({

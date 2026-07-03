@@ -819,6 +819,13 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
     setShowLocationSearch(true);
   };
 
+  const handleClearLocation = () => {
+    console.log('[NoteEditorSlideUp] User cleared location');
+    setLocation(null);
+    setLocationName('');
+    setLocationPrimaryType('');
+  };
+
   const handleLocationSelected = (selectedLocation: {
     latitude: number;
     longitude: number;
@@ -1507,20 +1514,31 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
                   </View>
 
                   <View style={styles.toolbarCenter}>
-                    <Pressable
-                      style={styles.locationPill}
-                      onPress={handleLocationSearch}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <IconSymbol 
-                        name="mappin.circle.fill" 
-                        size={16} 
-                        color={colors.primary} 
-                      />
-                      <Text style={styles.locationPillText} numberOfLines={1}>
-                        {locationName || 'Add Location'}
-                      </Text>
-                    </Pressable>
+                    <View style={styles.locationPill}>
+                      <Pressable
+                        style={styles.locationPillMain}
+                        onPress={handleLocationSearch}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <IconSymbol 
+                          name="mappin.circle.fill" 
+                          size={16} 
+                          color={colors.primary} 
+                        />
+                        <Text style={styles.locationPillText} numberOfLines={1}>
+                          {locationName || 'Add Location'}
+                        </Text>
+                      </Pressable>
+                      {!!locationName && (
+                        <Pressable
+                          style={styles.locationPillClearBtn}
+                          onPress={handleClearLocation}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <IconSymbol name="xmark.circle.fill" size={16} color={colors.primary} />
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
 
                   <View style={styles.toolbarRight} />
@@ -1550,11 +1568,18 @@ export function NoteEditorSlideUp({ visible, noteId, onClose, onSave }: NoteEdit
         </Animated.View>
       </Modal>
 
-      <LocationSearchScreen
+      <Modal
         visible={showLocationSearch}
-        onClose={() => setShowLocationSearch(false)}
-        onSelectLocation={handleLocationSelected}
-      />
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setShowLocationSearch(false)}
+      >
+        <LocationSearchScreen
+          visible={showLocationSearch}
+          onClose={() => setShowLocationSearch(false)}
+          onSelectLocation={handleLocationSelected}
+        />
+      </Modal>
     </>
   );
 }
@@ -1822,6 +1847,17 @@ const styles = StyleSheet.create({
     maxWidth: 280,
     borderWidth: 1,
     borderColor: colors.primary,
+  },
+  locationPillMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+  },
+  locationPillClearBtn: {
+    padding: 2,
+    marginLeft: 2,
   },
   locationPillText: {
     fontSize: 13,
