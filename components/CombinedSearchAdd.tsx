@@ -69,6 +69,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [clipboardHasContent, setClipboardHasContent] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const translateY = useSharedValue(0);
   const lastLocationFetchRef = useRef<number>(0);
@@ -80,12 +81,37 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
     getCurrentLocation();
   }, []);
 
+  const checkClipboard = useCallback(async () => {
+    try {
+      const [hasImage, hasUrl, hasText] = await Promise.all([
+        Clipboard.hasImageAsync(),
+        Platform.OS === 'ios' ? Clipboard.hasUrlAsync() : Promise.resolve(false),
+        Clipboard.hasStringAsync(),
+      ]);
+      setClipboardHasContent(hasImage || hasUrl || hasText);
+    } catch {
+      setClipboardHasContent(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkClipboard();
+  }, [checkClipboard]);
+
+  useEffect(() => {
+    const sub = Clipboard.addClipboardListener(() => {
+      checkClipboard();
+    });
+    return () => sub.remove();
+  }, [checkClipboard]);
+
   const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
     if (nextAppState === 'active') {
       console.log('[CombinedSearchAdd] App became active - refreshing location');
       getCurrentLocation();
+      checkClipboard();
     }
-  }, []);
+  }, [checkClipboard]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
@@ -616,7 +642,12 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
 
         <Pressable
           onPress={handlePaste}
-          style={[styles.pasteButtonOuter, !onDismiss && styles.pasteButtonOuterNoClose]}
+          disabled={!clipboardHasContent}
+          style={[
+            styles.pasteButtonOuter,
+            !onDismiss && styles.pasteButtonOuterNoClose,
+            !clipboardHasContent && styles.pasteButtonDisabled,
+          ]}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
           <IconSymbol name="doc.on.clipboard" size={15} color={colors.primary} />
@@ -826,9 +857,12 @@ const styles = StyleSheet.create({
   pasteButtonOuterNoClose: {
     right: 16,
   },
+  pasteButtonDisabled: {
+    opacity: 0.4,
+  },
   floatingActionsContainer: {
     position: 'absolute',
-    bottom: 136,
+    bottom: 170,
     left: 16,
     flexDirection: 'column',
     gap: 12,
@@ -864,9 +898,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingTop: 10,
     paddingHorizontal: 12,
-    paddingBottom: 12,
-    gap: 4,
-    minHeight: 129,
+    paddingBottom: 8,
+    justifyContent: 'space-between',
+    minHeight: 161,
   },
   imagesScroll: {
     maxHeight: 150,
@@ -911,7 +945,8 @@ const styles = StyleSheet.create({
   textInput: {
     fontSize: 16,
     color: colors.text,
-    minHeight: 55,
+    flex: 1,
+    minHeight: 69,
     maxHeight: 172.5,
     paddingVertical: 8,
     paddingHorizontal: 4,
