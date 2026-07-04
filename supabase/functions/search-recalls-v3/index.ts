@@ -138,6 +138,9 @@ Location intent rules:
 
 If a category is not found, use an empty array for keywords/people, empty string for location, and null for locationIntent.
 
+Example:
+User: "coffee shops near me"
+Output: {"keywords": ["coffee shops"], "people": [], "location": "", "locationIntent": "near_me"}
 
 Respond with valid JSON only, no markdown.`;
 
@@ -282,8 +285,7 @@ Deno.serve(async (req) => {
 
     console.log('User authenticated:', user.id);
 
-    // Change A: parse search_uploads from request body
-    const { query, userLocation, search_uploads } = await req.json();
+    const { query, userLocation, search_uploads, pre_extracted_entities } = await req.json();
 
     if (!query || typeof query !== 'string') {
       return new Response(JSON.stringify({ error: 'Query parameter is required' }), {
@@ -307,9 +309,27 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Step 1: Extract all entities in a single OpenAI call
+    // Step 1: Extract all entities — use on-device result if provided, otherwise call OpenAI
     const entityExtractionStart = Date.now();
-    const entities = await extractEntities(query, openaiApiKey);
+    const isValidPreExtracted = (
+      pre_extracted_entities &&
+      Array.isArray(pre_extracted_entities.keywords) &&
+      Array.isArray(pre_extracted_entities.people) &&
+      typeof pre_extracted_entities.location === 'string'
+    );
+    let entities: ExtractedEntities;
+    if (isValidPreExtracted) {
+      entities = {
+        keywords: pre_extracted_entities.keywords,
+        people: pre_extracted_entities.people,
+        location: pre_extracted_entities.location,
+        locationIntent: pre_extracted_entities.locationIntent ?? null,
+      };
+      console.log('[Entity Extraction] Mode: on-device', entities);
+    } else {
+      entities = await extractEntities(query, openaiApiKey);
+      console.log('[Entity Extraction] Mode: cloud', entities);
+    }
     const entityExtractionTime = Date.now() - entityExtractionStart;
     console.log(`[Timing] Entity extraction: ${entityExtractionTime}ms`);
 
@@ -708,6 +728,13 @@ Deno.serve(async (req) => {
         };
       });
 
+      // Build sourceNumber lookup: recallId → sourceNumber (1-based index in contextWithSources)
+      // This must be captured BEFORE the post-answer reorder so SOURCE_X numbers stay stable.
+      const recallSourceNumberMap = new Map<string, number>();
+      contextWithSources.forEach((c, idx) => {
+        recallSourceNumberMap.set(c.recallId, idx + 1);
+      });
+
       const context = contextWithSources.map(c => c.text).join('\n');
 
       // Change C: Updated QA system prompt with UPLOADED SEARCH IMAGES section
@@ -716,8 +743,9 @@ Deno.serve(async (req) => {
 CRITICAL RULES:
 - Prioritize your answer based on the recalls with the highest match percentages
 - Use bullet points when listing multiple items
+- Don't include URLs in your final answer
 - Provide a confidence score (0-100) based on how well the recalls answer the question
-- IMPORTANT: When referencing sources in your answer, use the format "SOURCE_X" (e.g., SOURCE_1, SOURCE_2) inline with the text
+- IMPORTANT: When referencing sources in your answer, use the format "SOURCE_X" inline with the text
 - Place source references immediately after the relevant information, like: "The restaurant is located in Collingwood SOURCE_1."
 - You can reference the same source multiple times if needed
 - Don't include explanatory text about sources - just use SOURCE_X inline
@@ -728,8 +756,7 @@ MATCH INFORMATION:
 
 LINKED PAGES AND DOCUMENTS:
 - Each recall may include "Linked pages" (content scraped from URLs) or "Documents" (extracted text from files) the user saved
-- When information comes from a linked page, attribute it clearly, e.g. "according to the linked article\u2026" or "the linked page states\u2026"
-- When information comes from an attached document, cite it: "according to the document <file_name>..."
+- When information comes from a linked page or attached document then attribute it clearly
 - Linked-page content is supplementary — always prefer the recall's own text when both are available
 
 UPLOADED SEARCH IMAGES:
@@ -738,7 +765,7 @@ UPLOADED SEARCH IMAGES:
 - Cross-reference image content with recall data to provide relevant answers
 - If the user asks "have I seen/had/been to this before?", use the image context to identify what "this" refers to
 
-Provide your answer in JSON format with inline source references: {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
+Provide your answer in JSON format with inline source references ALWAYS starting count of source answers at 1 (and incrementing for each answer): {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
 Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John mentioned he'll bring the presentation SOURCE_2.", "confidence": 90, "sources": ["SOURCE_1", "SOURCE_2"]}
 If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.
 
@@ -814,6 +841,7 @@ Respond with valid JSON only, no markdown.`;
 
       const matchResults = orderedRecalls.map(recall => ({
         id: recall.recall_id,
+        sourceNumber: recallSourceNumberMap.get(recall.recall_id) ?? null,
         latitude: recall.recall_data.latitude ?? null,
         longitude: recall.recall_data.longitude ?? null,
         matchPercentage: Math.round(recall.text_similarity * 100),
