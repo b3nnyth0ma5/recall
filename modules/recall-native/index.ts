@@ -13,7 +13,8 @@ function getModule() {
   if (!_module) {
     try {
       _module = requireNativeModule('EntityExtractionModule');
-    } catch {
+    } catch (e) {
+      console.warn('[EntityExtraction] Native module not available (requires a new native build):', e);
       _module = null;
     }
   }

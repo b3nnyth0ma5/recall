@@ -102,6 +102,26 @@ export default function SearchScreen() {
     });
   }, []);
 
+  // Reads the toggle directly from AsyncStorage at call time to avoid the
+  // race condition where fastSearchMode state hasn't resolved yet.
+  const tryOnDeviceExtraction = useCallback(async (query: string): Promise<ExtractedEntities | null> => {
+    if (Platform.OS !== 'ios') return null;
+    try {
+      const val = await AsyncStorage.getItem('search_mode_fast');
+      if (val !== 'true') return null;
+      const entities = await extractEntitiesOnDevice(query);
+      if (entities) {
+        console.log('[Search] On-device entity extraction succeeded:', entities);
+      } else {
+        console.warn('[Search] On-device extraction returned null (native module missing — new build required)');
+      }
+      return entities;
+    } catch (e) {
+      console.warn('[Search] On-device extraction failed, falling back to cloud:', e);
+      return null;
+    }
+  }, []);
+
   const CATEGORY_PAGE_SIZE = 10;
   // Tracks whether history has been loaded at least once — gates zero states
   const [hasLoadedHistoryOnce, setHasLoadedHistoryOnce] = useState(false);
@@ -264,8 +284,10 @@ export default function SearchScreen() {
       hasAutoSearchedRef.current = true;
       // donateSearch(decodedQuery); // recall-native disabled
       
-      searchNotes(decodedQuery, true).finally(() => {
-        setIsSearching(false);
+      tryOnDeviceExtraction(decodedQuery).then(preExtractedEntities => {
+        searchNotes(decodedQuery, true, undefined, preExtractedEntities).finally(() => {
+          setIsSearching(false);
+        });
       });
       
       setTimeout(() => {
@@ -276,7 +298,7 @@ export default function SearchScreen() {
         }
       }, 0);
     }
-  }, [params.q, params.autoSearch, searchNotes, router]);
+  }, [params.q, params.autoSearch, searchNotes, router, tryOnDeviceExtraction]);
 
   useEffect(() => {
     if (!params.q) {
@@ -447,18 +469,7 @@ export default function SearchScreen() {
     // Lock images so they stay visible during the search (no X button, no add-more)
     setAttachedImages(prev => prev.map(img => ({ ...img, locked: true })));
 
-    let preExtractedEntities: ExtractedEntities | null = null;
-    if (fastSearchMode && Platform.OS === 'ios') {
-      try {
-        preExtractedEntities = await extractEntitiesOnDevice(searchQuery);
-        if (preExtractedEntities) {
-          console.log('[Search] Using on-device entity extraction:', preExtractedEntities);
-        }
-      } catch (e) {
-        console.warn('[Search] On-device extraction failed, falling back to cloud:', e);
-        preExtractedEntities = null;
-      }
-    }
+    const preExtractedEntities = await tryOnDeviceExtraction(searchQuery);
 
     searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined, preExtractedEntities).finally(() => {
       setIsSearching(false);
@@ -466,7 +477,7 @@ export default function SearchScreen() {
         loadSearchHistory();
       }, 500);
     });
-  }, [searchQuery, searchNotes, loadSearchHistory, attachedImages, uriToBase64, user?.id, fastSearchMode]);
+  }, [searchQuery, searchNotes, loadSearchHistory, attachedImages, uriToBase64, user?.id, tryOnDeviceExtraction]);
 
   const handleHistoryItemPress = useCallback(async (item: SearchHistory) => {
     console.log('[SearchScreen] History item pressed:', item.search_text, '| has_uploads:', item.has_uploads);
@@ -509,10 +520,11 @@ export default function SearchScreen() {
       }
     }
 
-    searchNotes(item.search_text, true, searchUploads).finally(() => {
+    const preExtractedEntities = await tryOnDeviceExtraction(item.search_text);
+    searchNotes(item.search_text, true, searchUploads, preExtractedEntities).finally(() => {
       setIsSearching(false);
     });
-  }, [searchNotes]);
+  }, [searchNotes, tryOnDeviceExtraction]);
 
   const handleNotePress = useCallback((noteId: string, imageIndex?: number) => {
     console.log('[SearchScreen] Note card pressed, navigating to note editor for noteId:', noteId, 'imageIndex:', imageIndex);
