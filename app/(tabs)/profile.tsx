@@ -1,6 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform, TextInput, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Platform, TextInput, ActivityIndicator, Modal, Switch } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import RecallHeader from '@/components/RecallHeader';
 
 import { Stack, useRouter } from 'expo-router';
@@ -222,6 +223,20 @@ export default function ProfileScreen() {
     }
   };
 
+  const [fastSearchMode, setFastSearchMode] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('search_mode_fast').then(val => {
+      if (val === 'true') setFastSearchMode(true);
+    });
+  }, []);
+
+  const handleFastSearchToggle = (value: boolean) => {
+    console.log('[Profile] Fast search toggle changed:', value);
+    setFastSearchMode(value);
+    AsyncStorage.setItem('search_mode_fast', value ? 'true' : 'false');
+  };
+
   const deleteButtonEnabled = deleteConfirmInput.trim() === 'DELETE';
 
   return (
@@ -394,6 +409,33 @@ export default function ProfileScreen() {
             </View>
           )}
         </View>
+
+        {/* Search Section — iOS only */}
+        {Platform.OS === 'ios' && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol name="magnifyingglass" size={24} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Search</Text>
+            </View>
+            <View style={styles.searchToggleRow}>
+              <View style={styles.searchToggleLeft}>
+                <IconSymbol name="bolt.fill" size={20} color={colors.primary} />
+                <View style={styles.searchToggleLabelBlock}>
+                  <Text style={styles.searchToggleLabel}>Fast on-device search</Text>
+                  <Text style={styles.searchToggleDescription}>
+                    Uses on-device AI for faster searches. Standard mode uses cloud AI for best accuracy.
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={fastSearchMode}
+                onValueChange={handleFastSearchToggle}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+        )}
 
         {/* Account Section */}
         <View style={styles.section}>
@@ -757,5 +799,37 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  searchToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  searchToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    marginRight: 12,
+  },
+  searchToggleLabelBlock: {
+    flex: 1,
+  },
+  searchToggleLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  searchToggleDescription: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 16,
   },
 });

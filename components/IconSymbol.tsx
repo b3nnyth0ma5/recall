@@ -183,6 +183,11 @@ const MAPPING = {
   "lightbulb.fill": "lightbulb",
   "moon.fill": "dark-mode",
   "sun.max.fill": "light-mode",
+
+  // Security & Power
+  "lock.shield": "security",
+  "key.fill": "vpn-key",
+  "bolt.fill": "bolt",
 } as const;
 
 export type IconSymbolName = keyof typeof MAPPING;

@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { extractEntitiesOnDevice } from '@/modules/recall-native';
+import type { ExtractedEntities } from '@/modules/recall-native';
 import { debounce } from '@/utils/debounce';
 import {
   View,
@@ -88,7 +91,16 @@ export default function SearchScreen() {
   const [hasMoreCategoryRecalls, setHasMoreCategoryRecalls] = useState(false);
   const [isLoadingMoreCategoryRecalls, setIsLoadingMoreCategoryRecalls] = useState(false);
   const [categoryHasLocationRecalls, setCategoryHasLocationRecalls] = useState(false);
+  const [fastSearchMode, setFastSearchMode] = useState(false);
 
+  useEffect(() => {
+    AsyncStorage.getItem('search_mode_fast').then(val => {
+      if (val === 'true') {
+        console.log('[SearchScreen] Fast search mode enabled (on-device entity extraction)');
+        setFastSearchMode(true);
+      }
+    });
+  }, []);
 
   const CATEGORY_PAGE_SIZE = 10;
   // Tracks whether history has been loaded at least once — gates zero states
@@ -435,13 +447,26 @@ export default function SearchScreen() {
     // Lock images so they stay visible during the search (no X button, no add-more)
     setAttachedImages(prev => prev.map(img => ({ ...img, locked: true })));
 
-    searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined).finally(() => {
+    let preExtractedEntities: ExtractedEntities | null = null;
+    if (fastSearchMode && Platform.OS === 'ios') {
+      try {
+        preExtractedEntities = await extractEntitiesOnDevice(searchQuery);
+        if (preExtractedEntities) {
+          console.log('[Search] Using on-device entity extraction:', preExtractedEntities);
+        }
+      } catch (e) {
+        console.warn('[Search] On-device extraction failed, falling back to cloud:', e);
+        preExtractedEntities = null;
+      }
+    }
+
+    searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined, preExtractedEntities).finally(() => {
       setIsSearching(false);
       setTimeout(() => {
         loadSearchHistory();
       }, 500);
     });
-  }, [searchQuery, searchNotes, loadSearchHistory, attachedImages, uriToBase64, user?.id]);
+  }, [searchQuery, searchNotes, loadSearchHistory, attachedImages, uriToBase64, user?.id, fastSearchMode]);
 
   const handleHistoryItemPress = useCallback(async (item: SearchHistory) => {
     console.log('[SearchScreen] History item pressed:', item.search_text, '| has_uploads:', item.has_uploads);

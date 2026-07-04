@@ -776,6 +776,7 @@ export function useNotes() {
     query: string,
     useV2: boolean = false,
     searchUploads?: { text: string; explanation: string; cdn_url?: string | null }[],
+    preExtractedEntities?: import('@/modules/recall-native').ExtractedEntities | null,
   ) => {
     const userId = await getActiveUserId();
     if (!userId) {
@@ -839,11 +840,12 @@ export function useNotes() {
       if (__DEV__) console.log('Step 1: Calling unified entity extraction...');
       const entitySearchStart = Date.now();
       
-      console.log('[useNotes] Invoking search-recalls-v3, query:', query.trim(), 'searchUploads count:', searchUploads?.length ?? 0);
+      console.log('[useNotes] Invoking search-recalls-v3, query:', query.trim(), 'searchUploads count:', searchUploads?.length ?? 0, 'preExtractedEntities:', preExtractedEntities ? 'yes' : 'no');
       const { data: entityResult, error: entityError } = await supabase.functions.invoke('search-recalls-v3', {
         body: { 
           query: query.trim(),
           ...(searchUploads && searchUploads.length > 0 ? { search_uploads: searchUploads } : {}),
+          ...(preExtractedEntities ? { pre_extracted_entities: preExtractedEntities } : {}),
         },
       });
 
