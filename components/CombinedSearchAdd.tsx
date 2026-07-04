@@ -619,7 +619,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
           style={[styles.pasteButtonOuter, !onDismiss && styles.pasteButtonOuterNoClose]}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <IconSymbol name="doc.on.clipboard" size={14} color={colors.primary} />
+          <IconSymbol name="doc.on.clipboard" size={15} color={colors.primary} />
         </Pressable>
 
         {onDismiss && (
@@ -632,7 +632,7 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
             style={styles.closeButtonOuter}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <IconSymbol name="xmark" size={14} color={colors.primary} />
+            <IconSymbol name="xmark" size={15} color={colors.primary} />
           </Pressable>
         )}
 
@@ -794,9 +794,9 @@ const styles = StyleSheet.create({
   closeButtonOuter: {
     position: 'absolute',
     top: -14,
-    right: 16,
-    width: 28,
-    height: 28,
+    right: 20,
+    width: 30,
+    height: 30,
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: colors.primary,
@@ -810,9 +810,9 @@ const styles = StyleSheet.create({
   pasteButtonOuter: {
     position: 'absolute',
     top: -14,
-    right: 52,
-    width: 28,
-    height: 28,
+    right: 58,
+    width: 30,
+    height: 30,
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: colors.primary,
