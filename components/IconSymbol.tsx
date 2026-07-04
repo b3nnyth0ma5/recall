@@ -188,6 +188,9 @@ const MAPPING = {
   "lock.shield": "security",
   "key.fill": "vpn-key",
   "bolt.fill": "bolt",
+
+  // Clipboard
+  "doc.on.clipboard": "content-paste",
 } as const;
 
 export type IconSymbolName = keyof typeof MAPPING;

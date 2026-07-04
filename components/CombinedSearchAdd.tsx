@@ -19,6 +19,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import Animated, { 
@@ -503,6 +504,74 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
     }
   };
 
+  const handlePaste = async () => {
+    console.log('[CombinedSearchAdd] Paste button pressed');
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    try {
+      // 1. Try image first
+      const hasImage = await Clipboard.hasImageAsync();
+      if (hasImage) {
+        console.log('[CombinedSearchAdd] Clipboard has image, reading...');
+        const clipImage = await Clipboard.getImageAsync({ format: 'jpeg' });
+        if (clipImage?.data) {
+          // Convert base64 to a local file URI via FileSystem
+          const { FileSystem } = await import('expo-file-system');
+          const fileUri = FileSystem.cacheDirectory + `clipboard_${Date.now()}.jpg`;
+          await FileSystem.writeAsStringAsync(fileUri, clipImage.data, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          console.log('[CombinedSearchAdd] Clipboard image written to cache:', fileUri);
+          // Add as placeholder then optimise
+          const placeholder: ImageState = { uri: fileUri, isPlaceholder: true, originalUri: fileUri };
+          setImages(prev => [...prev, placeholder]);
+          const { compressImageForUpload } = await import('@/utils/imageOptimization');
+          const optimized = await compressImageForUpload(fileUri);
+          setImages(prev => {
+            const next = [...prev];
+            const idx = next.findIndex(img => img.isPlaceholder && img.originalUri === fileUri);
+            if (idx !== -1) next[idx] = { uri: optimized, isPlaceholder: false };
+            return next;
+          });
+          console.log('[CombinedSearchAdd] Clipboard image optimized and added');
+          return;
+        }
+      }
+
+      // 2. Try URL (iOS only)
+      if (Platform.OS === 'ios') {
+        const hasUrl = await Clipboard.hasUrlAsync();
+        if (hasUrl) {
+          const url = await Clipboard.getUrlAsync();
+          if (url) {
+            console.log('[CombinedSearchAdd] Pasting URL from clipboard:', url);
+            setText(prev => prev ? `${prev}\n${url}` : url);
+            return;
+          }
+        }
+      }
+
+      // 3. Try plain text
+      const hasText = await Clipboard.hasStringAsync();
+      if (hasText) {
+        const str = await Clipboard.getStringAsync();
+        if (str) {
+          console.log('[CombinedSearchAdd] Pasting text from clipboard, length:', str.length);
+          setText(prev => prev ? `${prev}\n${str}` : str);
+          return;
+        }
+      }
+
+      // 4. Nothing found
+      console.log('[CombinedSearchAdd] Clipboard is empty');
+      Alert.alert('Nothing to paste', 'Your clipboard is empty.');
+    } catch (err) {
+      console.error('[CombinedSearchAdd] Paste error:', err);
+      Alert.alert('Paste failed', 'Could not read clipboard content.');
+    }
+  };
+
   const dismissKeyboard = () => {
     Keyboard.dismiss();
   };
@@ -544,6 +613,14 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
             </Pressable>
           </Animated.View>
         )}
+
+        <Pressable
+          onPress={handlePaste}
+          style={[styles.pasteButtonOuter, !onDismiss && styles.pasteButtonOuterNoClose]}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <IconSymbol name="doc.on.clipboard" size={14} color={colors.primary} />
+        </Pressable>
 
         {onDismiss && (
           <Pressable
@@ -730,9 +807,28 @@ const styles = StyleSheet.create({
     boxShadow: '0px 2px 6px rgba(255, 107, 122, 0.35)',
     elevation: 6,
   },
+  pasteButtonOuter: {
+    position: 'absolute',
+    top: -14,
+    right: 52,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1003,
+    boxShadow: '0px 2px 6px rgba(255, 107, 122, 0.35)',
+    elevation: 6,
+  },
+  pasteButtonOuterNoClose: {
+    right: 16,
+  },
   floatingActionsContainer: {
     position: 'absolute',
-    bottom: 109.25,
+    bottom: 136,
     left: 16,
     flexDirection: 'column',
     gap: 12,
@@ -770,7 +866,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 12,
     gap: 4,
-    minHeight: 103.5,
+    minHeight: 129,
   },
   imagesScroll: {
     maxHeight: 150,
@@ -815,7 +911,7 @@ const styles = StyleSheet.create({
   textInput: {
     fontSize: 16,
     color: colors.text,
-    minHeight: 43.7,
+    minHeight: 55,
     maxHeight: 172.5,
     paddingVertical: 8,
     paddingHorizontal: 4,
