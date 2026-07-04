@@ -195,6 +195,91 @@ public class SiriShortcutsModule: Module {
 }
 `;
 
+const ENTITY_EXTRACTION_MODULE_SWIFT = `import ExpoModulesCore
+import NaturalLanguage
+import Foundation
+
+public class EntityExtractionModule: Module {
+  public func definition() -> ModuleDefinition {
+    Name("EntityExtractionModule")
+
+    AsyncFunction("extractEntities") { (query: String, promise: Promise) in
+      var keywords: [String] = []
+      var people: [String] = []
+      var location: String = ""
+      var locationIntent: String? = nil
+
+      // Named entity recognition
+      let tagger = NLTagger(tagSchemes: [.nameType, .lexicalClass])
+      tagger.string = query
+
+      let nameOptions: NLTagger.Options = [.omitPunctuation, .omitWhitespace, .joinNames]
+      tagger.enumerateTags(in: query.startIndex..<query.endIndex, unit: .word, scheme: .nameType, options: nameOptions) { tag, range in
+        guard let tag = tag else { return true }
+        let token = String(query[range])
+        switch tag {
+        case .personalName:
+          people.append(token)
+        case .placeName, .organizationName:
+          location = token
+        default:
+          break
+        }
+        return true
+      }
+
+      // Keyword extraction (nouns and adjectives)
+      let lexOptions: NLTagger.Options = [.omitPunctuation, .omitWhitespace]
+      tagger.enumerateTags(in: query.startIndex..<query.endIndex, unit: .word, scheme: .lexicalClass, options: lexOptions) { tag, range in
+        guard let tag = tag else { return true }
+        let token = String(query[range]).lowercased()
+        if (tag == .noun || tag == .adjective) && token.count > 2 {
+          if !keywords.contains(token) {
+            keywords.append(token)
+          }
+        }
+        return true
+      }
+
+      // Location intent detection
+      let lower = query.lowercased()
+      if lower.contains("near me") || lower.contains("nearby") || lower.contains("close to me") {
+        locationIntent = "near_me"
+      } else if lower.contains(" near ") {
+        locationIntent = "near"
+      } else if lower.contains(" in ") || lower.contains(" at ") || lower.contains(" from ") {
+        locationIntent = "in"
+      }
+
+      promise.resolve([
+        "keywords": keywords,
+        "people": people,
+        "location": location,
+        "locationIntent": locationIntent as Any
+      ])
+    }
+  }
+}
+`;
+
+/**
+ * Writes EntityExtractionModule.swift into ios/RecallNative/ during expo prebuild.
+ * Always overwrites (idempotent).
+ */
+const withEntityExtractionModule = (config) => {
+  return withDangerousMod(config, [
+    'ios',
+    async (config) => {
+      const targetDir = path.join(config.modRequest.projectRoot, 'ios', 'RecallNative');
+      fs.mkdirSync(targetDir, { recursive: true });
+      const targetFile = path.join(targetDir, 'EntityExtractionModule.swift');
+      fs.writeFileSync(targetFile, ENTITY_EXTRACTION_MODULE_SWIFT, 'utf8');
+      console.log('[withEntityExtractionModule] Wrote ios/RecallNative/EntityExtractionModule.swift');
+      return config;
+    },
+  ]);
+};
+
 /**
  * Writes AppGroupModule.swift into ios/RecallNative/ during expo prebuild.
  * Always overwrites (idempotent).
@@ -234,6 +319,7 @@ const withSiriShortcutsModule = (config) => {
 const withRecallConfig = (config) => {
   config = withFollyNoCoroutines(config);
   config = withStripDebugConfigFlag(config);
+  config = withEntityExtractionModule(config);
   // config = withAppGroupModule(config); // recall-native disabled
   // config = withSiriShortcutsModule(config); // recall-native disabled
   return config;
