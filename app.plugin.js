@@ -270,11 +270,11 @@ const withEntityExtractionModule = (config) => {
   return withDangerousMod(config, [
     'ios',
     async (config) => {
-      const targetDir = path.join(config.modRequest.projectRoot, 'ios', 'RecallNative');
+      const targetDir = path.join(config.modRequest.projectRoot, 'modules', 'recall-native');
       fs.mkdirSync(targetDir, { recursive: true });
       const targetFile = path.join(targetDir, 'EntityExtractionModule.swift');
       fs.writeFileSync(targetFile, ENTITY_EXTRACTION_MODULE_SWIFT, 'utf8');
-      console.log('[withEntityExtractionModule] Wrote ios/RecallNative/EntityExtractionModule.swift');
+      console.log('[withEntityExtractionModule] Wrote modules/recall-native/EntityExtractionModule.swift');
       return config;
     },
   ]);
