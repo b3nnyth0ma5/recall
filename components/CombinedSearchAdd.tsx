@@ -841,7 +841,7 @@ const styles = StyleSheet.create({
   pasteButtonOuter: {
     position: 'absolute',
     top: -14,
-    right: 58,
+    right: 60,
     width: 30,
     height: 30,
     borderRadius: 14,
@@ -862,7 +862,7 @@ const styles = StyleSheet.create({
   },
   floatingActionsContainer: {
     position: 'absolute',
-    bottom: 170,
+    bottom: 150,
     left: 16,
     flexDirection: 'column',
     gap: 12,
@@ -900,7 +900,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 8,
     justifyContent: 'space-between',
-    minHeight: 161,
+    minHeight: 150,
   },
   imagesScroll: {
     maxHeight: 150,
@@ -946,7 +946,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     flex: 1,
-    minHeight: 69,
+    minHeight: 60,
     maxHeight: 172.5,
     paddingVertical: 8,
     paddingHorizontal: 4,
