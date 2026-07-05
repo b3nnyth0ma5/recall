@@ -76,14 +76,14 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
 
       // Verify the write actually landed where the share extension will read.
       try {
-        let verifyAppGroupContainer: ((path: string) => Promise<unknown>) | null = null;
+        let verifyAppGroupContainer: (() => Promise<unknown>) | null = null;
         try {
           const mod = await import('recall-native');
           verifyAppGroupContainer = mod.verifyAppGroupContainer;
         } catch {
           // recall-native not available in this build — skip verify
         }
-        const verify = verifyAppGroupContainer ? await verifyAppGroupContainer(tokenPath) as any : null;
+        const verify = verifyAppGroupContainer ? await verifyAppGroupContainer() as any : null;
         console.log(
           '[AuthContext] Post-write verify:',
           JSON.stringify({

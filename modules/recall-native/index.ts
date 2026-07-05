@@ -99,4 +99,6 @@ export async function detectFacesOnDevice(imageUri: string): Promise<FaceDetecti
   }
 }
 
+export { getAppGroupContainerPath, verifyAppGroupContainer } from './src/AppGroupModule';
+
 export type { ExtractedEntities };

@@ -81,6 +81,7 @@ class ShareViewController: UIViewController {
         closeButton.layer.cornerRadius = 18
         closeButton.addTarget(self, action: #selector(handleCancel), for: .touchUpInside)
         view.addSubview(closeButton)
+        view.bringSubviewToFront(closeButton)
 
         // ── Bottom toolbar ────────────────────────────────────────────────────
         toolbarView = UIView()
@@ -994,7 +995,7 @@ class ShareViewController: UIViewController {
 
     @objc private func handleCancel() {
         print("[ShareViewController] Cancel tapped — dismissing extension")
-        noteTextView?.resignFirstResponder()
+        view.endEditing(true)
         extensionContext?.cancelRequest(withError: NSError(domain: "UserCancelled", code: 0))
     }
 
@@ -1278,6 +1279,9 @@ class ShareViewController: UIViewController {
 
                 // Handle documents (PDF, Word, etc.)
                 if !provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) &&
+                   !provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) &&
+                   !provider.hasItemConformingToTypeIdentifier("public.url") &&
+                   !provider.hasItemConformingToTypeIdentifier("public.plain-text") &&
                    (provider.hasItemConformingToTypeIdentifier(UTType.data.identifier) ||
                     provider.hasItemConformingToTypeIdentifier("public.item")) {
                     outerGroup.enter()
