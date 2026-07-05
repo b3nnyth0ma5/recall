@@ -897,6 +897,7 @@ export default function PersonRecallsScreen() {
                         personName={personName}
                         photoUrl={personPhotoUrl}
                         size={88}
+                        borderRadius={16}
                         style={styles.titleImage}
                       />
                     ) : (
@@ -905,6 +906,7 @@ export default function PersonRecallsScreen() {
                         personName={personName}
                         photoUrl={null}
                         size={88}
+                        borderRadius={16}
                         style={styles.titleImage}
                       />
                     )}
@@ -1068,7 +1070,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 44,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
   },

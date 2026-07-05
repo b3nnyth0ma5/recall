@@ -9,10 +9,9 @@ import {
   FlatList,
   Alert,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Animated,
   Dimensions,
+  Keyboard,
 } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -24,7 +23,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 
-const SHEET_HEIGHT = Dimensions.get('window').height * 0.6;
+const SHEET_COLLAPSED_TOP = Dimensions.get('window').height * 0.4; // 60% height sheet
 
 export interface FaceRow {
   id: string;
@@ -74,11 +73,11 @@ export function FaceLinkSheet({
   const [showCreateInput, setShowCreateInput] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
-  const animatedHeight = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+  const animatedTop = useRef(new Animated.Value(SHEET_COLLAPSED_TOP)).current;
 
   const insets = useSafeAreaInsets();
-  const fullHeight = Dimensions.get('window').height - insets.top;
 
   // Reset state when sheet opens/closes
   useEffect(() => {
@@ -90,31 +89,45 @@ export function FaceLinkSheet({
       setShowCreateInput(false);
       setIsLinking(false);
       setIsExpanded(false);
-      animatedHeight.setValue(SHEET_HEIGHT);
+      animatedTop.setValue(SHEET_COLLAPSED_TOP);
     } else {
       setIsExpanded(false);
     }
-  // animatedHeight is a stable Animated.Value ref — safe to omit
+  // animatedTop is a stable Animated.Value ref — safe to omit
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
+  // Keyboard listeners for paddingBottom adjustment
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hide = Keyboard.addListener('keyboardWillHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   const expandSheet = useCallback(() => {
     setIsExpanded(true);
-    Animated.timing(animatedHeight, {
-      toValue: fullHeight,
+    Animated.timing(animatedTop, {
+      toValue: insets.top,
       duration: 250,
       useNativeDriver: false,
     }).start();
-  }, [animatedHeight, fullHeight]);
+  }, [animatedTop, insets.top]);
 
   const collapseSheet = useCallback(() => {
     setIsExpanded(false);
-    Animated.timing(animatedHeight, {
-      toValue: SHEET_HEIGHT,
+    Animated.timing(animatedTop, {
+      toValue: SHEET_COLLAPSED_TOP,
       duration: 250,
       useNativeDriver: false,
     }).start();
-  }, [animatedHeight]);
+  }, [animatedTop]);
 
   // Search persons as user types
   useEffect(() => {
@@ -329,11 +342,12 @@ export function FaceLinkSheet({
         .from('recall_people')
         .upsert(
           { recall_id: recallId, person_id: personId, user_id: user.id },
-          { ignoreDuplicates: true }
+          { onConflict: 'recall_id,person_id', ignoreDuplicates: true }
         );
 
       if (recallPeopleError) {
-        console.warn('[FaceLinkSheet] recall_people upsert error (non-fatal):', recallPeopleError);
+        console.error('[FaceLinkSheet] recall_people upsert error:', recallPeopleError);
+        // Non-fatal — face is linked, just the recall tag failed
       }
 
       console.log('[FaceLinkSheet] Face linked successfully');
@@ -401,6 +415,8 @@ export function FaceLinkSheet({
 
   const borderRadius = isExpanded ? 0 : 24;
 
+  const sheetPaddingBottom = Math.max(keyboardHeight, insets.bottom + 40);
+
   const listEmptyComponent = searchQuery.trim() && !isSearching ? (
     <View>
       {!showCreateInput ? (
@@ -452,114 +468,120 @@ export function FaceLinkSheet({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <Pressable style={styles.overlay} onPress={onClose} />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.sheetWrapper}
-      >
+      <View style={styles.modalRoot}>
+        {/* Dark backdrop */}
+        <Pressable style={styles.overlay} onPress={onClose} />
+
+        {/* Sheet — absolutely positioned, fills from animatedTop to bottom:0 */}
         <Animated.View style={[
           styles.sheet,
           {
-            height: animatedHeight,
+            position: 'absolute',
+            top: animatedTop,
+            bottom: 0,
+            left: 0,
+            right: 0,
             borderTopLeftRadius: borderRadius,
             borderTopRightRadius: borderRadius,
           },
         ]}>
-          {/* Handle bar */}
-          <View style={styles.handleBar} />
+          {/* Inner content wrapper — carries keyboard-aware paddingBottom */}
+          <View style={[styles.sheetInner, { paddingBottom: sheetPaddingBottom }]}>
+            {/* Handle bar */}
+            <View style={styles.handleBar} />
 
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Who is this?</Text>
-            <Pressable
-              onPress={() => {
-                console.log('[FaceLinkSheet] Close button pressed');
-                onClose();
-              }}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <IconSymbol name="xmark" size={20} color={colors.textSecondary} />
-            </Pressable>
-          </View>
-
-          {/* Search input */}
-          <View style={styles.searchContainer}>
-            <IconSymbol name="magnifyingglass" size={16} color={colors.textSecondary} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search people..."
-              placeholderTextColor={colors.textSecondary}
-              value={searchQuery}
-              onFocus={() => {
-                console.log('[FaceLinkSheet] Search input focused — expanding sheet');
-                expandSheet();
-              }}
-              onBlur={() => {
-                if (!searchQuery.trim()) {
-                  console.log('[FaceLinkSheet] Search input blurred with empty query — collapsing sheet');
-                  collapseSheet();
-                }
-              }}
-              onChangeText={(text) => {
-                console.log('[FaceLinkSheet] Search query changed:', text);
-                setSearchQuery(text);
-                if (text.trim() && !isExpanded) {
-                  expandSheet();
-                }
-              }}
-              returnKeyType="search"
-            />
-            {isSearching && <ActivityIndicator size="small" color={colors.primary} />}
-          </View>
-
-          {/* Results list */}
-          <FlatList
-            data={searchResults}
-            keyExtractor={(item) => item.id}
-            style={styles.resultsList}
-            keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
+            {/* Header */}
+            <View style={styles.header}>
+              <Text style={styles.title}>Who is this?</Text>
               <Pressable
-                style={styles.personRow}
                 onPress={() => {
-                  console.log('[FaceLinkSheet] Person row pressed:', item.person_name);
-                  handlePersonSelect(item);
+                  console.log('[FaceLinkSheet] Close button pressed');
+                  onClose();
                 }}
-                disabled={isLoading}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <PersonAvatar
-                  personName={item.person_name}
-                  photoUrl={item.photo_url}
-                  size={40}
-                />
-                <Text style={styles.personName}>{item.person_name}</Text>
-                {isLinking && <ActivityIndicator size="small" color={colors.primary} />}
+                <IconSymbol name="xmark" size={20} color={colors.textSecondary} />
               </Pressable>
-            )}
-            ListEmptyComponent={listEmptyComponent}
-          />
+            </View>
+
+            {/* Search input */}
+            <View style={styles.searchContainer}>
+              <IconSymbol name="magnifyingglass" size={16} color={colors.textSecondary} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search people..."
+                placeholderTextColor={colors.textSecondary}
+                value={searchQuery}
+                onFocus={() => {
+                  console.log('[FaceLinkSheet] Search input focused — expanding sheet');
+                  expandSheet();
+                }}
+                onBlur={() => {
+                  if (!searchQuery.trim()) {
+                    console.log('[FaceLinkSheet] Search input blurred with empty query — collapsing sheet');
+                    collapseSheet();
+                  }
+                }}
+                onChangeText={(text) => {
+                  console.log('[FaceLinkSheet] Search query changed:', text);
+                  setSearchQuery(text);
+                  if (text.trim() && !isExpanded) {
+                    expandSheet();
+                  }
+                }}
+                returnKeyType="search"
+              />
+              {isSearching && <ActivityIndicator size="small" color={colors.primary} />}
+            </View>
+
+            {/* Results list */}
+            <FlatList
+              data={searchResults}
+              keyExtractor={(item) => item.id}
+              style={styles.resultsList}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => (
+                <Pressable
+                  style={styles.personRow}
+                  onPress={() => {
+                    console.log('[FaceLinkSheet] Person row pressed:', item.person_name);
+                    handlePersonSelect(item);
+                  }}
+                  disabled={isLoading}
+                >
+                  <PersonAvatar
+                    personName={item.person_name}
+                    photoUrl={item.photo_url}
+                    size={40}
+                  />
+                  <Text style={styles.personName}>{item.person_name}</Text>
+                  {isLinking && <ActivityIndicator size="small" color={colors.primary} />}
+                </Pressable>
+              )}
+              ListEmptyComponent={listEmptyComponent}
+            />
+          </View>
         </Animated.View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  modalRoot: {
+    flex: 1,
+  },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  sheetWrapper: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
   sheet: {
     backgroundColor: colors.card,
+  },
+  sheetInner: {
+    flex: 1,
     paddingTop: 12,
     paddingHorizontal: 20,
-    paddingBottom: 40,
   },
   handleBar: {
     width: 40,

@@ -9,6 +9,7 @@ interface PersonAvatarProps {
   personName: string;
   photoUrl?: string | null;
   size?: number;
+  borderRadius?: number;
   style?: any;
 }
 
@@ -59,10 +60,11 @@ const getAvatarColor = (name: string): string => {
   return colors[index];
 };
 
-export function PersonAvatar({ personName, photoUrl, size = 40, style }: PersonAvatarProps) {
+export function PersonAvatar({ personName, photoUrl, size = 40, borderRadius, style }: PersonAvatarProps) {
   const initials = getInitials(personName);
   const backgroundColor = getAvatarColor(personName);
   const fontSize = size * 0.4; // Font size is 40% of avatar size
+  const effectiveBorderRadius = borderRadius !== undefined ? borderRadius : size / 2;
 
   return (
     <View 
@@ -71,7 +73,7 @@ export function PersonAvatar({ personName, photoUrl, size = 40, style }: PersonA
         { 
           width: size, 
           height: size, 
-          borderRadius: size / 2,
+          borderRadius: effectiveBorderRadius,
           backgroundColor: photoUrl ? 'transparent' : backgroundColor,
         },
         style
@@ -85,7 +87,7 @@ export function PersonAvatar({ personName, photoUrl, size = 40, style }: PersonA
           style={{
             width: size,
             height: size,
-            borderRadius: size / 2,
+            borderRadius: effectiveBorderRadius,
           }}
           contentFit="cover"
           transition={150}
