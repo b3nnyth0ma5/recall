@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect, memo, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator, Modal, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system/legacy';
-import { uploadImageToCloudflare } from '@/utils/cloudflareCDN';
+
 import { useRouter, usePathname } from 'expo-router';
 import { Image } from 'expo-image';
 import { cdnVariant } from '@/utils/cdnVariant';
@@ -187,37 +185,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
   const uploadAndAttachPhoto = useCallback(async (uri: string) => {
     try {
       console.log('[NoteCard] Uploading photo for recall:', note.id);
-
-      const manipulated = await ImageManipulator.manipulateAsync(
-        uri,
-        [{ resize: { width: 1200 } }],
-        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
-      );
-
-      const base64 = await FileSystem.readAsStringAsync(manipulated.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      const fileName = `recall-${note.id}-${Date.now()}.jpg`;
-      const cdnUrl = await uploadImageToCloudflare(base64, fileName, 'image/jpeg');
-
-      if (!cdnUrl) throw new Error('Upload failed');
-
-      // Get supabase client from utils
-      const { supabase } = await import('@/utils/supabase');
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not signed in');
-
-      const { error } = await supabase
-        .from('recall_images')
-        .insert({
-          recall_id: note.id,
-          user_id: user.id,
-          cdn_url: cdnUrl,
-        });
-
-      if (error) throw error;
-
+      const { uploadImageToDatabase } = await import('@/utils/supabase');
+      await uploadImageToDatabase(uri, note.id);
       console.log('[NoteCard] Photo uploaded and attached to recall:', note.id);
       onPhotoAdded?.(note.id);
     } catch (error) {
@@ -226,45 +195,54 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
     }
   }, [note.id, onPhotoAdded]);
 
-  const handleAddPhoto = useCallback(async () => {
-    console.log('[NoteCard] User tapped Add/Take Photo for recall:', note.id);
+  const handleCamera = useCallback(async () => {
+    console.log('[NoteCard] User tapped Camera for recall:', note.id);
     setShowContextMenu(false);
-
-    // Small delay to let the modal close
     await new Promise(resolve => setTimeout(resolve, 300));
-
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        // Fall back to library if camera permission denied
-        const libStatus = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (libStatus.status !== 'granted') {
-          Alert.alert('Permission needed', 'Please grant camera or photo library permissions to add photos.');
-          return;
-        }
-        const libResult = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ['images'],
-          allowsEditing: false,
-          quality: 0.9,
-        });
-        if (!libResult.canceled && libResult.assets?.[0]) {
-          await uploadAndAttachPhoto(libResult.assets[0].uri);
-        }
+        Alert.alert('Permission needed', 'Please grant camera permission to take photos.');
         return;
       }
-
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
         quality: 0.9,
       });
-
       if (!result.canceled && result.assets?.[0]) {
         await uploadAndAttachPhoto(result.assets[0].uri);
       }
     } catch (error) {
-      console.error('[NoteCard] Error in handleAddPhoto:', error);
-      Alert.alert('Error', 'Failed to add photo. Please try again.');
+      console.error('[NoteCard] Error in handleCamera:', error);
+      Alert.alert('Error', 'Failed to open camera. Please try again.');
+    }
+  }, [note.id, uploadAndAttachPhoto]);
+
+  const handlePhotos = useCallback(async () => {
+    console.log('[NoteCard] User tapped Photos for recall:', note.id);
+    setShowContextMenu(false);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant photo library permission to add photos.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.9,
+        allowsMultipleSelection: true,
+      });
+      if (!result.canceled && result.assets?.length > 0) {
+        for (const asset of result.assets) {
+          await uploadAndAttachPhoto(asset.uri);
+        }
+      }
+    } catch (error) {
+      console.error('[NoteCard] Error in handlePhotos:', error);
+      Alert.alert('Error', 'Failed to open photo library. Please try again.');
     }
   }, [note.id, uploadAndAttachPhoto]);
 
@@ -894,6 +872,28 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
         }}>
           <Pressable style={styles.contextMenuContainer} onPress={e => e.stopPropagation()}>
             <View style={styles.contextMenuPanel}>
+              {/* Photo quick-action strip */}
+              <View style={styles.contextMenuIconStrip}>
+                <Pressable style={styles.contextMenuIconButton} onPress={async () => {
+                  if (Platform.OS !== 'web') {
+                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  }
+                  handleCamera();
+                }}>
+                  <IconSymbol name="camera.fill" size={22} color={colors.text} />
+                  <Text style={styles.contextMenuIconLabel}>Camera</Text>
+                </Pressable>
+                <Pressable style={styles.contextMenuIconButton} onPress={async () => {
+                  if (Platform.OS !== 'web') {
+                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  }
+                  handlePhotos();
+                }}>
+                  <IconSymbol name="photo.on.rectangle" size={22} color={colors.text} />
+                  <Text style={styles.contextMenuIconLabel}>Photos</Text>
+                </Pressable>
+              </View>
+              <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={async () => {
                 console.log('[NoteCard] User tapped Share Recall in context menu for recall:', note.id);
                 if (Platform.OS !== 'web') {
@@ -916,17 +916,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
               }}>
                 <IconSymbol name="person.crop.circle.badge.plus" size={22} color={colors.text} />
                 <Text style={styles.contextMenuLabel}>Add / Edit People</Text>
-              </Pressable>
-              <View style={styles.contextMenuSeparator} />
-              <Pressable style={styles.contextMenuRow} onPress={async () => {
-                console.log('[NoteCard] User tapped Add/Take Photo in context menu for recall:', note.id);
-                if (Platform.OS !== 'web') {
-                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                }
-                handleAddPhoto();
-              }}>
-                <IconSymbol name="camera.fill" size={22} color={colors.text} />
-                <Text style={styles.contextMenuLabel}>Add / Take Photo</Text>
               </Pressable>
               <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={async () => {
@@ -1245,5 +1234,21 @@ const styles = StyleSheet.create({
   },
   contextMenuDestructive: {
     color: '#FF3B30',
+  },
+  contextMenuIconStrip: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  contextMenuIconButton: {
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  contextMenuIconLabel: {
+    fontSize: 12,
+    color: colors.text,
+    fontWeight: '400',
   },
 });
