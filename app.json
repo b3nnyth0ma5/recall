@@ -39,6 +39,7 @@
     },
     "plugins": [
       "./app.plugin.js",
+      "@bacons/apple-targets",
       "expo-font",
       "expo-router",
       "expo-web-browser",
