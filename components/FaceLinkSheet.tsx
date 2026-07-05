@@ -21,10 +21,10 @@ import { supabase } from '@/utils/supabase';
 import { uploadImageToCloudflare } from '@/utils/cloudflareCDN';
 import { PersonAvatar } from '@/components/PersonAvatar';
 import { IconSymbol } from '@/components/IconSymbol';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 
 const SHEET_HEIGHT = Dimensions.get('window').height * 0.6;
-const FULL_HEIGHT = Dimensions.get('window').height;
 
 export interface FaceRow {
   id: string;
@@ -77,6 +77,9 @@ export function FaceLinkSheet({
 
   const animatedHeight = useRef(new Animated.Value(SHEET_HEIGHT)).current;
 
+  const insets = useSafeAreaInsets();
+  const fullHeight = Dimensions.get('window').height - insets.top;
+
   // Reset state when sheet opens/closes
   useEffect(() => {
     if (visible) {
@@ -98,11 +101,11 @@ export function FaceLinkSheet({
   const expandSheet = useCallback(() => {
     setIsExpanded(true);
     Animated.timing(animatedHeight, {
-      toValue: FULL_HEIGHT,
+      toValue: fullHeight,
       duration: 250,
       useNativeDriver: false,
     }).start();
-  }, [animatedHeight]);
+  }, [animatedHeight, fullHeight]);
 
   const collapseSheet = useCallback(() => {
     setIsExpanded(false);
@@ -186,12 +189,23 @@ export function FaceLinkSheet({
 
     console.log('[FaceLinkSheet] Crop region (pixels):', { pixelX, pixelY, pixelW, pixelH });
 
+    const localUri = `${FileSystem.cacheDirectory}face-crop-${Date.now()}.jpg`;
     try {
-      const manipResult = await ImageManipulator.manipulateAsync(
-        imageUrl,
-        [{ crop: { originX: pixelX, originY: pixelY, width: pixelW, height: pixelH } }],
-        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
-      );
+      console.log('[FaceLinkSheet] Downloading remote image to local cache:', localUri);
+      const downloadResult = await FileSystem.downloadAsync(imageUrl, localUri);
+      const localImageUri = downloadResult.uri;
+      console.log('[FaceLinkSheet] Download complete, local URI:', localImageUri);
+
+      let manipResult: ImageManipulator.ImageResult;
+      try {
+        manipResult = await ImageManipulator.manipulateAsync(
+          localImageUri,
+          [{ crop: { originX: pixelX, originY: pixelY, width: pixelW, height: pixelH } }],
+          { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
+        );
+      } finally {
+        await FileSystem.deleteAsync(localUri, { idempotent: true });
+      }
 
       console.log('[FaceLinkSheet] Crop result URI:', manipResult.uri);
 
@@ -292,6 +306,12 @@ export function FaceLinkSheet({
     console.log('[FaceLinkSheet] Linking face', faceRow.id, 'to person', personId, personName);
     setIsLinking(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'Not signed in.');
+        return;
+      }
+
       // Update recall_images_people
       const { error: updateError } = await supabase
         .from('recall_images_people')
@@ -308,7 +328,7 @@ export function FaceLinkSheet({
       const { error: recallPeopleError } = await supabase
         .from('recall_people')
         .upsert(
-          { recall_id: recallId, person_id: personId },
+          { recall_id: recallId, person_id: personId, user_id: user.id },
           { ignoreDuplicates: true }
         );
 
