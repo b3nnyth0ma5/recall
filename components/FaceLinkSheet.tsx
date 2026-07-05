@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -20,6 +22,9 @@ import { uploadImageToCloudflare } from '@/utils/cloudflareCDN';
 import { PersonAvatar } from '@/components/PersonAvatar';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
+
+const SHEET_HEIGHT = Dimensions.get('window').height * 0.6;
+const FULL_HEIGHT = Dimensions.get('window').height;
 
 export interface FaceRow {
   id: string;
@@ -68,8 +73,11 @@ export function FaceLinkSheet({
   const [newPersonName, setNewPersonName] = useState('');
   const [showCreateInput, setShowCreateInput] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
-  // Reset state when sheet opens
+  const animatedHeight = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+
+  // Reset state when sheet opens/closes
   useEffect(() => {
     if (visible) {
       setSearchQuery('');
@@ -78,8 +86,32 @@ export function FaceLinkSheet({
       setNewPersonName('');
       setShowCreateInput(false);
       setIsLinking(false);
+      setIsExpanded(false);
+      animatedHeight.setValue(SHEET_HEIGHT);
+    } else {
+      setIsExpanded(false);
     }
+  // animatedHeight is a stable Animated.Value ref — safe to omit
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  const expandSheet = useCallback(() => {
+    setIsExpanded(true);
+    Animated.timing(animatedHeight, {
+      toValue: FULL_HEIGHT,
+      duration: 250,
+      useNativeDriver: false,
+    }).start();
+  }, [animatedHeight]);
+
+  const collapseSheet = useCallback(() => {
+    setIsExpanded(false);
+    Animated.timing(animatedHeight, {
+      toValue: SHEET_HEIGHT,
+      duration: 250,
+      useNativeDriver: false,
+    }).start();
+  }, [animatedHeight]);
 
   // Search persons as user types
   useEffect(() => {
@@ -125,8 +157,12 @@ export function FaceLinkSheet({
     personName: string,
     existingPhotoUrl: string | null,
     faceId: string,
+    onResolved: (finalPhotoUrl: string | null) => void,
   ) => {
-    if (!faceRow || !imageUrl || naturalWidth === 0 || naturalHeight === 0) return;
+    if (!faceRow || !imageUrl || naturalWidth === 0 || naturalHeight === 0) {
+      onResolved(existingPhotoUrl);
+      return;
+    }
 
     console.log('[FaceLinkSheet] cropAndUpload called for person:', personName);
 
@@ -169,6 +205,7 @@ export function FaceLinkSheet({
 
       if (!cdnUrl) {
         console.warn('[FaceLinkSheet] Face crop upload returned null');
+        onResolved(existingPhotoUrl);
         return;
       }
 
@@ -181,32 +218,42 @@ export function FaceLinkSheet({
 
       if (updateError) {
         console.error('[FaceLinkSheet] Failed to update person photo_url:', updateError);
+        onResolved(existingPhotoUrl);
       } else {
         console.log('[FaceLinkSheet] Person photo_url updated successfully');
-        onLinked(faceId, personId, personName, cdnUrl);
+        onResolved(cdnUrl);
       }
     } catch (e) {
       console.error('[FaceLinkSheet] cropAndUpload error:', e);
+      onResolved(existingPhotoUrl);
     }
-  }, [faceRow, imageUrl, naturalWidth, naturalHeight, onLinked]);
+  }, [faceRow, imageUrl, naturalWidth, naturalHeight]);
 
   const promptPhotoUpdate = useCallback((
     personId: string,
     personName: string,
     existingPhotoUrl: string | null,
     faceId: string,
+    onResolved: (finalPhotoUrl: string | null) => void,
   ) => {
     if (!existingPhotoUrl) {
       Alert.alert(
         'Set profile photo?',
         `Use this face as ${personName}'s photo?`,
         [
-          { text: 'Not now', style: 'cancel' },
+          {
+            text: 'Not now',
+            style: 'cancel',
+            onPress: () => {
+              console.log('[FaceLinkSheet] User chose not to set profile photo for:', personName);
+              onResolved(existingPhotoUrl);
+            },
+          },
           {
             text: 'Set photo',
             onPress: () => {
               console.log('[FaceLinkSheet] User chose to set profile photo for:', personName);
-              cropAndUpload(personId, personName, existingPhotoUrl, faceId);
+              cropAndUpload(personId, personName, existingPhotoUrl, faceId, onResolved);
             },
           },
         ]
@@ -216,12 +263,19 @@ export function FaceLinkSheet({
         'Update profile photo?',
         `Replace ${personName}'s current photo with this face?`,
         [
-          { text: 'Keep existing', style: 'cancel' },
+          {
+            text: 'Keep existing',
+            style: 'cancel',
+            onPress: () => {
+              console.log('[FaceLinkSheet] User chose to keep existing photo for:', personName);
+              onResolved(existingPhotoUrl);
+            },
+          },
           {
             text: 'Replace',
             onPress: () => {
               console.log('[FaceLinkSheet] User chose to replace profile photo for:', personName);
-              cropAndUpload(personId, personName, existingPhotoUrl, faceId);
+              cropAndUpload(personId, personName, existingPhotoUrl, faceId, onResolved);
             },
           },
         ]
@@ -263,12 +317,17 @@ export function FaceLinkSheet({
       }
 
       console.log('[FaceLinkSheet] Face linked successfully');
-      onLinked(faceRow.id, personId, personName, existingPhotoUrl);
+
+      // Capture faceId before closing (faceRow may change)
+      const faceId = faceRow.id;
       onClose();
 
-      // Prompt for photo after closing sheet
+      // Prompt for photo after closing sheet; fire onLinked with the final URL
       setTimeout(() => {
-        promptPhotoUpdate(personId, personName, existingPhotoUrl, faceRow.id);
+        promptPhotoUpdate(personId, personName, existingPhotoUrl, faceId, (finalPhotoUrl) => {
+          console.log('[FaceLinkSheet] onLinked called with final photo URL:', finalPhotoUrl);
+          onLinked(faceId, personId, personName, finalPhotoUrl);
+        });
       }, 400);
     } catch (e) {
       console.error('[FaceLinkSheet] linkFace exception:', e);
@@ -320,6 +379,52 @@ export function FaceLinkSheet({
 
   const isLoading = isLinking || isCreating;
 
+  const borderRadius = isExpanded ? 0 : 24;
+
+  const listEmptyComponent = searchQuery.trim() && !isSearching ? (
+    <View>
+      {!showCreateInput ? (
+        <Pressable
+          style={styles.createRow}
+          onPress={handleCreateRowPress}
+        >
+          <View style={styles.createIconCircle}>
+            <IconSymbol name="plus" size={16} color={colors.primary} />
+          </View>
+          <Text style={styles.createRowText}>Create new person</Text>
+        </Pressable>
+      ) : (
+        <View style={styles.createInputRow}>
+          <TextInput
+            style={styles.createInput}
+            placeholder="Enter name..."
+            placeholderTextColor={colors.textSecondary}
+            value={newPersonName}
+            onChangeText={setNewPersonName}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={handleCreatePerson}
+          />
+          <Pressable
+            style={[styles.confirmButton, (!newPersonName.trim() || isCreating) && styles.confirmButtonDisabled]}
+            onPress={() => {
+              console.log('[FaceLinkSheet] Confirm create person pressed');
+              handleCreatePerson();
+            }}
+            disabled={!newPersonName.trim() || isCreating}
+          >
+            {isCreating ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.confirmButtonText}>Create</Text>
+            )}
+          </Pressable>
+        </View>
+      )}
+      <Text style={styles.emptyText}>No people found</Text>
+    </View>
+  ) : null;
+
   return (
     <Modal
       visible={visible}
@@ -332,7 +437,14 @@ export function FaceLinkSheet({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.sheetWrapper}
       >
-        <View style={styles.sheet}>
+        <Animated.View style={[
+          styles.sheet,
+          {
+            height: animatedHeight,
+            borderTopLeftRadius: borderRadius,
+            borderTopRightRadius: borderRadius,
+          },
+        ]}>
           {/* Handle bar */}
           <View style={styles.handleBar} />
 
@@ -350,46 +462,6 @@ export function FaceLinkSheet({
             </Pressable>
           </View>
 
-          {/* Create new person row */}
-          {!showCreateInput ? (
-            <Pressable
-              style={styles.createRow}
-              onPress={handleCreateRowPress}
-            >
-              <View style={styles.createIconCircle}>
-                <IconSymbol name="plus" size={18} color={colors.primary} />
-              </View>
-              <Text style={styles.createRowText}>Create new person</Text>
-            </Pressable>
-          ) : (
-            <View style={styles.createInputRow}>
-              <TextInput
-                style={styles.createInput}
-                placeholder="Enter name..."
-                placeholderTextColor={colors.textSecondary}
-                value={newPersonName}
-                onChangeText={setNewPersonName}
-                autoFocus
-                returnKeyType="done"
-                onSubmitEditing={handleCreatePerson}
-              />
-              <Pressable
-                style={[styles.confirmButton, (!newPersonName.trim() || isCreating) && styles.confirmButtonDisabled]}
-                onPress={() => {
-                  console.log('[FaceLinkSheet] Confirm create person pressed');
-                  handleCreatePerson();
-                }}
-                disabled={!newPersonName.trim() || isCreating}
-              >
-                {isCreating ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.confirmButtonText}>Create</Text>
-                )}
-              </Pressable>
-            </View>
-          )}
-
           {/* Search input */}
           <View style={styles.searchContainer}>
             <IconSymbol name="magnifyingglass" size={16} color={colors.textSecondary} />
@@ -398,9 +470,22 @@ export function FaceLinkSheet({
               placeholder="Search people..."
               placeholderTextColor={colors.textSecondary}
               value={searchQuery}
+              onFocus={() => {
+                console.log('[FaceLinkSheet] Search input focused — expanding sheet');
+                expandSheet();
+              }}
+              onBlur={() => {
+                if (!searchQuery.trim()) {
+                  console.log('[FaceLinkSheet] Search input blurred with empty query — collapsing sheet');
+                  collapseSheet();
+                }
+              }}
               onChangeText={(text) => {
                 console.log('[FaceLinkSheet] Search query changed:', text);
                 setSearchQuery(text);
+                if (text.trim() && !isExpanded) {
+                  expandSheet();
+                }
               }}
               returnKeyType="search"
             />
@@ -431,13 +516,9 @@ export function FaceLinkSheet({
                 {isLinking && <ActivityIndicator size="small" color={colors.primary} />}
               </Pressable>
             )}
-            ListEmptyComponent={
-              searchQuery.trim() && !isSearching ? (
-                <Text style={styles.emptyText}>No people found</Text>
-              ) : null
-            }
+            ListEmptyComponent={listEmptyComponent}
           />
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -456,12 +537,9 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: colors.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
     paddingTop: 12,
     paddingHorizontal: 20,
     paddingBottom: 40,
-    maxHeight: '75%',
   },
   handleBar: {
     width: 40,
@@ -488,12 +566,12 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 12,
     paddingHorizontal: 4,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   createIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: `${colors.primary}20`,
     justifyContent: 'center',
     alignItems: 'center',
@@ -556,7 +634,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   resultsList: {
-    maxHeight: 280,
+    flex: 1,
   },
   personRow: {
     flexDirection: 'row',

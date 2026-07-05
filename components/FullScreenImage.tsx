@@ -40,6 +40,7 @@ import { formatFileSize, getFileExtension, getDocumentColor } from '@/utils/docu
 // Lucide share icon — non-negotiable per spec
 import { Share } from 'lucide-react-native';
 import { FaceLinkSheet, FaceRow } from './FaceLinkSheet';
+import { useNotesContext } from '@/contexts/NotesContext';
 
 type MediaItem =
   | { kind: 'image'; url: string; id?: string }
@@ -360,6 +361,8 @@ export function FullScreenImage({
   const [showControls, setShowControls] = useState(true);
   const overlayOpacity = useSharedValue(1);
   const scrollViewRef = useRef<React.ElementRef<typeof ScrollView>>(null);
+
+  const { refreshPeopleForNote } = useNotesContext();
 
   // Face detection state
   const [facesPerImage, setFacesPerImage] = useState<Map<string, FaceRow[]>>(new Map());
@@ -861,7 +864,12 @@ export function FullScreenImage({
       return next;
     });
     setSelectedFace(null);
-  }, [effectiveMedia, currentImageIndex, imageIds]);
+
+    if (recallId) {
+      console.log('[FullScreenImage] Refreshing people for recall after face link:', recallId);
+      refreshPeopleForNote(recallId);
+    }
+  }, [effectiveMedia, currentImageIndex, imageIds, recallId, refreshPeopleForNote]);
 
   return (
     <Modal

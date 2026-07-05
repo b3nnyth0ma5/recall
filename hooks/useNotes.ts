@@ -1273,6 +1273,47 @@ export function useNotes() {
     setNotes(prev => prev.map(n => n.id === noteId ? { ...n, ...patch } : n));
   }, []);
 
+  /**
+   * Invalidates the people cache for a note and re-fetches from Supabase,
+   * then patches the note in local state. Called after a face is linked.
+   */
+  const refreshPeopleForNote = useCallback(async (noteId: string): Promise<void> => {
+    const userId = await getActiveUserId();
+    if (!userId) {
+      console.warn('[useNotes] refreshPeopleForNote: no active user');
+      return;
+    }
+    console.log('[useNotes] refreshPeopleForNote: invalidating cache and re-fetching for note', noteId);
+    peopleCache.remove(noteId);
+
+    try {
+      const { data, error } = await supabase
+        .from('recall_people')
+        .select('recall_id, person_id, persons!inner(id, person_name, photo_url)')
+        .eq('recall_id', noteId)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('[useNotes] refreshPeopleForNote: fetch error', error);
+        return;
+      }
+
+      const people = (data ?? []).map((rp: any) => ({
+        id: rp.persons.id,
+        person_name: rp.persons.person_name,
+        photo_url: rp.persons.photo_url,
+      }));
+
+      const cost = CostCalculator.forPeople(people);
+      peopleCache.set(noteId, people, cost);
+      console.log('[useNotes] refreshPeopleForNote: updated cache with', people.length, 'people for note', noteId);
+
+      setNotes(prevNotes => prevNotes.map(n => n.id === noteId ? { ...n, people } : n));
+    } catch (e) {
+      console.error('[useNotes] refreshPeopleForNote: exception', e);
+    }
+  }, [getActiveUserId]);
+
   const addNoteOptimistic = useCallback((note: Partial<Note> & { id: string; user_id: string }) => {
     console.log('[useNotes] addNoteOptimistic: prepending note', note.id);
     setNotes(prev => {
@@ -1333,5 +1374,6 @@ export function useNotes() {
     getUrlMetadataForRecall,
     getSearchHistory,
     getCachedNote,
+    refreshPeopleForNote,
   };
 }
