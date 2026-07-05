@@ -19,8 +19,8 @@ importers:
         specifier: ^7.28.4
         version: 7.29.7
       '@bacons/apple-targets':
-        specifier: ^3.0.6
-        version: 3.0.7
+        specifier: ^4.0.7
+        version: 4.0.7(expo@54.0.35)
       '@expo/metro-runtime':
         specifier: ~6.1.2
         version: 6.1.2(expo@54.0.35)(react-dom@19.1.0(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -1028,11 +1028,13 @@ packages:
     resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
     engines: {node: '>=6.9.0'}
 
-  '@bacons/apple-targets@3.0.7':
-    resolution: {integrity: sha512-RpzofKGvll8BPrvgf1Xj5raoHffJRW2qfWl7Q9F/25eo6lZeRa9R5NRIZCpUYoVnsL7whCQV9NIp0/ai4O+Ejw==}
+  '@bacons/apple-targets@4.0.7':
+    resolution: {integrity: sha512-DwD8gbz2vjbmLatR5qlWjrTocG/Ku4d2Kz/rIF4yzREPZtVBHMepVPCH7gEEgZw4PBTtWQe3XMGrPkomNp7QUg==}
+    peerDependencies:
+      expo: '>=52'
 
-  '@bacons/xcode@1.0.0-alpha.27':
-    resolution: {integrity: sha512-WlemTiwpwwVH8IMvg4VBsyxGUuFWUfzeWKzxhU+dRxd8MHvnX7F9PlWCf7T0ZXmtjbl39iEgQB+/Tf3wuGJbyg==}
+  '@bacons/xcode@1.0.0-alpha.32':
+    resolution: {integrity: sha512-OGpH7+yMbWC2cgYZon5B+VVadH9HsB2V/abtEiplA65XnSuV4GAYAVixOCDc5k182WkfoakfdM0zW6U9cbcsbw==}
 
   '@bcoe/v8-coverage@0.2.3':
     resolution: {integrity: sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==}
@@ -8489,16 +8491,17 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@bacons/apple-targets@3.0.7':
+  '@bacons/apple-targets@4.0.7(expo@54.0.35)':
     dependencies:
-      '@bacons/xcode': 1.0.0-alpha.27
+      '@bacons/xcode': 1.0.0-alpha.32
       '@react-native/normalize-colors': 0.79.7
       debug: 4.4.3
+      expo: 54.0.35(@babel/core@7.29.7)(@expo/metro-runtime@6.1.2)(expo-router@6.0.24)(react-native-webview@13.15.0(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
       glob: 10.5.0
     transitivePeerDependencies:
       - supports-color
 
-  '@bacons/xcode@1.0.0-alpha.27':
+  '@bacons/xcode@1.0.0-alpha.32':
     dependencies:
       '@expo/plist': 0.0.18
       debug: 4.4.3
