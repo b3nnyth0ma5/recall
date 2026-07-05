@@ -112,6 +112,10 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
   // Track if images are currently being uploaded
   const [isUploadingImages, setIsUploadingImages] = useState(false);
 
+  // Track pending upload/document counts for placeholder rendering
+  const [pendingUploadCount, setPendingUploadCount] = useState(0);
+  const [pendingDocumentCount, setPendingDocumentCount] = useState(0);
+
   // Animation values for deletion
   const opacity = useSharedValue(1);
   const scale = useSharedValue(1);
@@ -181,6 +185,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
     }
     setShowContextMenu(true);
+    // Pre-fetch permissions so Camera/Photos open instantly on tap
+    ImagePicker.requestCameraPermissionsAsync().catch(() => {});
+    ImagePicker.requestMediaLibraryPermissionsAsync().catch(() => {});
   }, [note.id]);
 
   const uploadAndAttachPhoto = useCallback(async (uri: string) => {
@@ -210,7 +217,16 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
         quality: 0.9,
       });
       if (!result.canceled && result.assets?.[0]) {
+        // Show placeholder immediately
+        setTotalImageCount(prev => prev + 1);
+        setIsUploadingImages(true);
+        setPendingUploadCount(prev => prev + 1);
         await uploadAndAttachPhoto(result.assets[0].uri);
+        setPendingUploadCount(prev => {
+          const next = prev - 1;
+          if (next <= 0) setIsUploadingImages(false);
+          return Math.max(0, next);
+        });
       }
     } catch (error) {
       console.error('[NoteCard] Error in handleCamera:', error);
@@ -233,8 +249,17 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
         allowsMultipleSelection: true,
       });
       if (!result.canceled && result.assets?.length > 0) {
+        // Show placeholders for all picked images immediately
+        setTotalImageCount(prev => prev + result.assets.length);
+        setIsUploadingImages(true);
+        setPendingUploadCount(prev => prev + result.assets.length);
         for (const asset of result.assets) {
           await uploadAndAttachPhoto(asset.uri);
+          setPendingUploadCount(prev => {
+            const next = prev - 1;
+            if (next <= 0) setIsUploadingImages(false);
+            return Math.max(0, next);
+          });
         }
       }
     } catch (error) {
@@ -251,12 +276,15 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
       const picked = await pickDocuments();
       if (picked && picked.length > 0) {
         console.log('[NoteCard] Uploading', picked.length, 'document(s) for recall:', note.id);
+        setPendingDocumentCount(prev => prev + picked.length);
         for (const doc of picked) {
           try {
             await uploadDocumentToDatabase(doc.uri, doc.name, doc.mimeType, note.id);
             console.log('[NoteCard] Document uploaded:', doc.name);
+            setPendingDocumentCount(prev => Math.max(0, prev - 1));
           } catch (e) {
             console.error('[NoteCard] Failed to upload document:', doc.name, e);
+            setPendingDocumentCount(prev => Math.max(0, prev - 1));
             Alert.alert('Upload failed', `Failed to upload ${doc.name}. Please try again.`);
           }
         }
@@ -602,6 +630,16 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
     ...(note.documents ?? []).map(doc => ({
       kind: 'document' as const,
       doc,
+    })),
+    ...Array.from({ length: pendingDocumentCount }, (_, i) => ({
+      kind: 'document' as const,
+      doc: {
+        id: `pending-doc-${i}`,
+        file_name: 'Uploading…',
+        content_type: 'application/pdf',
+        cdn_url: '',
+        upload_state: 'uploading' as const,
+      },
     })),
   ];
 

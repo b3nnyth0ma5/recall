@@ -14,6 +14,7 @@ import {
   Dimensions,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Modal,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -90,6 +91,8 @@ export default function NoteEditorScreen() {
   const [initialPeople, setInitialPeople] = useState<Person[]>([]);
   const [initialDocuments, setInitialDocuments] = useState<Document[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [pendingDeleteIndex, setPendingDeleteIndex] = useState<number | null>(null);
+  const [deletingImageIndex, setDeletingImageIndex] = useState<number | null>(null);
   const imageScrollRef = useRef<ScrollView>(null);
 
   const isEditing = !!params.id;
@@ -946,34 +949,27 @@ export default function NoteEditorScreen() {
   };
 
   const removeImage = async (index: number) => {
+    console.log('[NoteEditor] User tapped remove image at index:', index);
+    setPendingDeleteIndex(index);
+  };
+
+  const confirmDeleteImage = async () => {
+    if (pendingDeleteIndex === null) return;
+    const index = pendingDeleteIndex;
     const image = images[index];
-    
-    Alert.alert(
-      'Delete Image',
-      'Are you sure you want to delete this image?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            if (image.id) {
-              try {
-                await deleteImageRecord(image.id);
-              } catch (error) {
-                console.error('Error deleting image:', error);
-              }
-            }
-            
-            const newImages = images.filter((_, i) => i !== index);
-            setImages(newImages);
-          },
-        },
-      ]
-    );
+    console.log('[NoteEditor] User confirmed delete image at index:', index);
+    setPendingDeleteIndex(null);
+    setDeletingImageIndex(index);
+    try {
+      if (image.id) {
+        await deleteImageRecord(image.id);
+      }
+    } catch (error) {
+      console.error('Error deleting image:', error);
+    } finally {
+      setDeletingImageIndex(null);
+      setImages(prev => prev.filter((_, i) => i !== index));
+    }
   };
 
   const editImage = async (index: number) => {
@@ -1625,21 +1621,28 @@ export default function NoteEditorScreen() {
                     ) : (
                       <Image source={{ uri: displayImage.uri }} style={styles.image} contentFit="cover" transition={150} cachePolicy="memory-disk" />
                     )}
-                    <View style={styles.imageActions}>
-                      <Pressable
-                        onPress={() => removeImage(item.index)}
-                        style={styles.imageActionButton}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <View style={styles.actionButtonCircle}>
-                          <IconSymbol
-                            name="xmark"
-                            size={14}
-                            color="#FFFFFF"
-                          />
-                        </View>
-                      </Pressable>
-                    </View>
+                    {deletingImageIndex !== item.index && (
+                      <View style={styles.imageActions}>
+                        <Pressable
+                          onPress={() => removeImage(item.index)}
+                          style={styles.imageActionButton}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <View style={styles.actionButtonCircle}>
+                            <IconSymbol
+                              name="xmark"
+                              size={14}
+                              color="#FFFFFF"
+                            />
+                          </View>
+                        </Pressable>
+                      </View>
+                    )}
+                    {deletingImageIndex === item.index && (
+                      <View style={styles.deletingOverlay}>
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      </View>
+                    )}
                   </Pressable>
                 );
               })}
@@ -1780,6 +1783,45 @@ export default function NoteEditorScreen() {
           onClose={handleCloseFullScreenImage}
         />
       )}
+
+      {/* Delete image confirmation modal */}
+      <Modal
+        visible={pendingDeleteIndex !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPendingDeleteIndex(null)}
+      >
+        <View style={styles.deleteModalOverlay}>
+          <View style={styles.deleteModalCard}>
+            {pendingDeleteIndex !== null && images[pendingDeleteIndex]?.uri ? (
+              <Image
+                source={{ uri: images[pendingDeleteIndex].uri }}
+                style={styles.deleteModalThumb}
+                contentFit="cover"
+              />
+            ) : null}
+            <Text style={styles.deleteModalTitle}>Delete Image</Text>
+            <Text style={styles.deleteModalMessage}>This image will be permanently removed from this recall.</Text>
+            <View style={styles.deleteModalButtons}>
+              <Pressable
+                style={[styles.deleteModalBtn, styles.deleteModalBtnCancel]}
+                onPress={() => {
+                  console.log('[NoteEditor] User cancelled image delete');
+                  setPendingDeleteIndex(null);
+                }}
+              >
+                <Text style={styles.deleteModalBtnCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.deleteModalBtn, styles.deleteModalBtnDelete]}
+                onPress={confirmDeleteImage}
+              >
+                <Text style={styles.deleteModalBtnDeleteText}>Delete</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2051,5 +2093,71 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '700',
     marginTop: 2,
+  },
+  deletingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  deleteModalCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+    gap: 12,
+  },
+  deleteModalThumb: {
+    width: 120,
+    height: 90,
+    borderRadius: 8,
+  },
+  deleteModalTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  deleteModalMessage: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  deleteModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+    width: '100%',
+  },
+  deleteModalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  deleteModalBtnCancel: {
+    backgroundColor: colors.border,
+  },
+  deleteModalBtnDelete: {
+    backgroundColor: colors.primary,
+  },
+  deleteModalBtnCancelText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.text,
+  },
+  deleteModalBtnDeleteText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
