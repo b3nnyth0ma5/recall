@@ -110,15 +110,16 @@ class ShareViewController: UIViewController {
         toolbarView.addSubview(recallLabel)
 
         // Save pill button
-        saveButton = UIButton(type: .custom)
+        var config = UIButton.Configuration.filled()
+        config.title = "Create Recall"
+        config.baseForegroundColor = .white
+        config.baseBackgroundColor = colorPrimary
+        config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20)
+        config.cornerStyle = .capsule
+        let saveButton = UIButton(configuration: config)
         saveButton.translatesAutoresizingMaskIntoConstraints = false
-        saveButton.setTitle("Create Recall", for: .normal)
-        saveButton.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
-        saveButton.setTitleColor(.white, for: .normal)
-        saveButton.backgroundColor = colorPrimary
-        saveButton.layer.cornerRadius = 20
-        saveButton.contentEdgeInsets = UIEdgeInsets(top: 10, left: 20, bottom: 10, right: 20)
         saveButton.addTarget(self, action: #selector(handleSave), for: .touchUpInside)
+        self.saveButton = saveButton
         toolbarView.addSubview(saveButton)
 
         saveSpinner = UIActivityIndicatorView(style: .medium)
@@ -365,7 +366,7 @@ class ShareViewController: UIViewController {
     @objc private func openSharedURL() {
         guard let urlString = parsedURLs.first, let url = URL(string: urlString) else { return }
         print("[ShareViewController] Opening shared URL in Safari: \(urlString)")
-        UIApplication.shared.open(url)
+        self.extensionContext?.open(url, completionHandler: nil)
     }
 
     private func populateAttachmentStrip() {
