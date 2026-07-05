@@ -24,6 +24,13 @@ export interface SharedData {
   
   /** Timestamp when the data was shared */
   timestamp?: number;
+
+  /** Recall ID if the native extension already saved the recall (skip insert, run pipeline only) */
+  recall_id?: string;
+  /** True if the native extension already inserted the recall row */
+  already_saved?: boolean;
+  /** Document file names (parallel array to files) */
+  documentNames?: string[];
 }
 
 /**

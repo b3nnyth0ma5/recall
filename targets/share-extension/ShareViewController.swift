@@ -1092,9 +1092,17 @@ class ShareViewController: UIViewController {
 
                 print("[ShareViewController] Recall inserted id=\(rowId)")
 
-                if !imagePaths.isEmpty {
-                    self.saveSharedData(["text": "", "urls": [], "images": imagePaths, "documents": self.parsedDocumentPaths, "documentNames": self.parsedDocumentNames, "timestamp": Date().timeIntervalSince1970])
-                }
+                // Always write the success payload so the main app can trigger the edge function pipeline
+                self.saveSharedData([
+                    "recall_id": rowId,
+                    "text": self.noteTextView?.text ?? "",
+                    "urls": self.parsedURLs,
+                    "images": imagePaths,
+                    "documents": self.parsedDocumentPaths,
+                    "documentNames": self.parsedDocumentNames,
+                    "timestamp": Date().timeIntervalSince1970,
+                    "already_saved": true
+                ])
 
                 self.showSuccessAndDismiss()
             }

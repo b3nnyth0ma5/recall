@@ -1,7 +1,7 @@
 {
   "platforms": ["apple"],
   "apple": {
-    "modules": ["EntityExtractionModule"],
+    "modules": ["EntityExtractionModule", "AppGroupModule"],
     "podspecPath": "RecallNative.podspec"
   }
 }

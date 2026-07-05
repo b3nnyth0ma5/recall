@@ -30,8 +30,15 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
   }
 
   try {
-    // const { getAppGroupContainerPath } = await import('recall-native'); // recall-native disabled
-    const containerPath = null as string | null; // recall-native disabled
+    let getAppGroupContainerPath: (() => Promise<string | null>) | null = null;
+    try {
+      const mod = await import('recall-native');
+      getAppGroupContainerPath = mod.getAppGroupContainerPath;
+    } catch {
+      console.warn('[AuthContext] recall-native not available in this build — skipping App Group write');
+      return;
+    }
+    const containerPath = await getAppGroupContainerPath() as string | null;
 
     console.log(
       '[AuthContext] App Group container path:',
@@ -69,8 +76,14 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
 
       // Verify the write actually landed where the share extension will read.
       try {
-        // const { verifyAppGroupContainer } = await import('recall-native'); // recall-native disabled
-        const verify: any = null; // recall-native disabled
+        let verifyAppGroupContainer: ((path: string) => Promise<unknown>) | null = null;
+        try {
+          const mod = await import('recall-native');
+          verifyAppGroupContainer = mod.verifyAppGroupContainer;
+        } catch {
+          // recall-native not available in this build — skip verify
+        }
+        const verify = verifyAppGroupContainer ? await verifyAppGroupContainer(tokenPath) as any : null;
         console.log(
           '[AuthContext] Post-write verify:',
           JSON.stringify({

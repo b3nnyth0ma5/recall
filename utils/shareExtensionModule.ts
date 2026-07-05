@@ -26,8 +26,8 @@ export function getSharedContainerURL(): string | null {
 export async function getSharedContainerURLAsync(): Promise<string | null> {
   if (Platform.OS !== 'ios') return null;
   try {
-    // const { getAppGroupContainerPath } = await import('recall-native'); // recall-native disabled
-    const path = null as string | null; // recall-native disabled
+    const { getAppGroupContainerPath } = await import('recall-native');
+    const path = await getAppGroupContainerPath() as string | null;
     if (path) {
       const normalized = path.startsWith('file://') ? path : `file://${path}`;
       return normalized.endsWith('/') ? normalized : `${normalized}/`;

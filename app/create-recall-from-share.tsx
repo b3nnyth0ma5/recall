@@ -26,7 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, uploadImageToDatabase } from '@/utils/supabase';
+import { supabase, uploadImageToDatabase, triggerRecallEmbedding } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import { BlurView } from 'expo-blur';
@@ -82,6 +82,7 @@ export default function CreateRecallFromShareScreen() {
   } | null>(null);
   const [isLoadingShareData, setIsLoadingShareData] = useState(true);
   const [isScrapingUrl, setIsScrapingUrl] = useState(false);
+  const [alreadySavedRecallId, setAlreadySavedRecallId] = useState<string | null>(null);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [scrapedMetadata, setScrapedMetadata] = useState<{
     title?: string;
@@ -134,7 +135,15 @@ export default function CreateRecallFromShareScreen() {
             hasText: !!shareData.text,
             imageCount: shareData.images?.length || 0,
             urlCount: shareData.urls?.length || 0,
+            alreadySaved: !!(shareData as any).already_saved,
+            recallId: (shareData as any).recall_id ?? null,
           });
+
+          // Check if native extension already saved this recall
+          if ((shareData as any).already_saved && (shareData as any).recall_id) {
+            console.log('[CreateRecallFromShare] Native extension already saved recall:', (shareData as any).recall_id);
+            setAlreadySavedRecallId((shareData as any).recall_id);
+          }
 
           // Pre-populate note field with shared text so user can see and edit it
           if (shareData.text) {
@@ -342,6 +351,7 @@ export default function CreateRecallFromShareScreen() {
       console.log('[CreateRecallFromShare] Number of images:', images.length);
       console.log('[CreateRecallFromShare] Has location:', !!location);
       console.log('[CreateRecallFromShare] URLs to persist:', urls);
+      console.log('[CreateRecallFromShare] alreadySavedRecallId:', alreadySavedRecallId);
 
       // Build final text: note (includes shared text) + scraped title/description + URLs
       const parts: string[] = [];
@@ -353,30 +363,44 @@ export default function CreateRecallFromShareScreen() {
 
       console.log('[CreateRecallFromShare] Final text length:', finalText.length);
 
-      console.log('[CreateRecallFromShare] Writing text, finalText length:', finalText.length);
+      let recallId: string;
 
-      const { data: recallData, error: recallError } = await supabase
-        .from('recalls')
-        .insert({
-          text: finalText,
-          user_id: user.id,
-          latitude: location?.latitude,
-          longitude: location?.longitude,
-          location: location?.name,
-          location_primary_type: location?.primaryType || null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
+      if (alreadySavedRecallId) {
+        // Recall already inserted by native extension — skip insert, just run pipeline
+        console.log('[CreateRecallFromShare] Using existing recall from native extension:', alreadySavedRecallId);
+        recallId = alreadySavedRecallId;
+      } else {
+        console.log('[CreateRecallFromShare] Writing text, finalText length:', finalText.length);
 
-      if (recallError) {
-        console.error('[CreateRecallFromShare] Error creating recall:', recallError);
-        Alert.alert('Error', 'Failed to create recall');
-        return;
+        const { data: recallData, error: recallError } = await supabase
+          .from('recalls')
+          .insert({
+            text: finalText,
+            user_id: user.id,
+            latitude: location?.latitude,
+            longitude: location?.longitude,
+            location: location?.name,
+            location_primary_type: location?.primaryType || null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (recallError) {
+          console.error('[CreateRecallFromShare] Error creating recall:', recallError);
+          Alert.alert('Error', 'Failed to create recall');
+          return;
+        }
+
+        console.log('[CreateRecallFromShare] Recall created with ID:', recallData.id);
+        recallId = recallData.id;
       }
 
-      console.log('[CreateRecallFromShare] Recall created with ID:', recallData.id);
+      // Trigger recall text embedding (→ people-finder → category matching) fire-and-forget
+      triggerRecallEmbedding(recallId, finalText, location?.name, location?.primaryType).catch(e =>
+        console.error('[CreateRecallFromShare] triggerRecallEmbedding failed:', e)
+      );
 
       if (images.length > 0) {
         setSavingStage('Uploading Images...');
@@ -384,7 +408,7 @@ export default function CreateRecallFromShareScreen() {
 
         if (images[0]) {
           try {
-            const firstImageId = await uploadImageToDatabase(images[0], recallData.id, 'image/jpeg');
+            const firstImageId = await uploadImageToDatabase(images[0], recallId, 'image/jpeg');
             if (firstImageId) {
               console.log('[CreateRecallFromShare] First image uploaded:', firstImageId);
             }
@@ -397,7 +421,7 @@ export default function CreateRecallFromShareScreen() {
           (async () => {
             for (let i = 1; i < images.length; i++) {
               try {
-                const imageId = await uploadImageToDatabase(images[i], recallData.id, 'image/jpeg');
+                const imageId = await uploadImageToDatabase(images[i], recallId, 'image/jpeg');
                 if (imageId) {
                   console.log(`[CreateRecallFromShare] Image ${i + 1} uploaded:`, imageId);
                 }
@@ -408,6 +432,32 @@ export default function CreateRecallFromShareScreen() {
 
             console.log('[CreateRecallFromShare] All images uploaded, background processing complete');
           })();
+        }
+      }
+
+      // Trigger URL scraping + embedding for each shared URL (fire-and-forget)
+      if (urls.length > 0) {
+        setSavingStage('Processing URLs...');
+        for (const url of urls) {
+          try {
+            console.log('[CreateRecallFromShare] Inserting recall_url row for:', url);
+            // Insert recall_url row then trigger scrape-url-metadata (which chains to embedding-url)
+            const { data: urlRow, error: urlError } = await supabase
+              .from('recall_urls')
+              .insert({ recall_id: recallId, user_id: user.id, url })
+              .select('id')
+              .single();
+            if (!urlError && urlRow) {
+              console.log('[CreateRecallFromShare] recall_url row inserted:', urlRow.id, '— triggering scrape-url-metadata');
+              supabase.functions.invoke('scrape-url-metadata', {
+                body: { recall_url_id: urlRow.id, url },
+              }).catch(e => console.error('[CreateRecallFromShare] scrape-url-metadata failed:', e));
+            } else if (urlError) {
+              console.error('[CreateRecallFromShare] recall_url insert error:', urlError);
+            }
+          } catch (e) {
+            console.error('[CreateRecallFromShare] URL row insert failed:', e);
+          }
         }
       }
 

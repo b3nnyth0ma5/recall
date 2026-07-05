@@ -406,7 +406,7 @@ const withRecallConfig = (config) => {
   config = withFollyNoCoroutines(config);
   config = withStripDebugConfigFlag(config);
   config = withEntityExtractionModule(config);
-  // config = withAppGroupModule(config); // recall-native disabled
+  config = withAppGroupModule(config);
   // config = withSiriShortcutsModule(config); // recall-native disabled
   return config;
 };
