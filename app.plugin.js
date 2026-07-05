@@ -367,18 +367,18 @@ const withEntityExtractionModule = (config) => {
 };
 
 /**
- * Writes AppGroupModule.swift into ios/RecallNative/ during expo prebuild.
+ * Writes AppGroupModule.swift into modules/recall-native/ during expo prebuild.
  * Always overwrites (idempotent).
  */
 const withAppGroupModule = (config) => {
   return withDangerousMod(config, [
     'ios',
     async (config) => {
-      const targetDir = path.join(config.modRequest.projectRoot, 'ios', 'RecallNative');
+      const targetDir = path.join(config.modRequest.projectRoot, 'modules', 'recall-native');
       fs.mkdirSync(targetDir, { recursive: true });
       const targetFile = path.join(targetDir, 'AppGroupModule.swift');
       fs.writeFileSync(targetFile, APP_GROUP_MODULE_SWIFT, 'utf8');
-      console.log('[withAppGroupModule] Wrote ios/RecallNative/AppGroupModule.swift');
+      console.log('[withAppGroupModule] Wrote modules/recall-native/AppGroupModule.swift');
       return config;
     },
   ]);
