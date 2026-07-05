@@ -50,6 +50,7 @@ interface NoteCardProps {
   onDelete?: () => void;
   onPeopleUpdated?: (noteId: string) => void;
   onPhotoAdded?: (noteId: string) => void;
+  onDocumentAdded?: (noteId: string) => void;
   loading?: boolean;
   expectedImageCount?: number;
   scrollToImageIndex?: number;
@@ -77,7 +78,7 @@ const countNewlines = (text: string): number => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onImagePress, onDelete, onPeopleUpdated, onPhotoAdded, loading = false, expectedImageCount, scrollToImageIndex, processingStage, urlMeta }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onImagePress, onDelete, onPeopleUpdated, onPhotoAdded, onDocumentAdded, loading = false, expectedImageCount, scrollToImageIndex, processingStage, urlMeta }: NoteCardProps) {
   const { getUrlMetadataForRecall } = useNotesContext();
   const router = useRouter();
   const pathname = usePathname();
@@ -197,8 +198,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
 
   const handleCamera = useCallback(async () => {
     console.log('[NoteCard] User tapped Camera for recall:', note.id);
-    setShowContextMenu(false);
-    await new Promise(resolve => setTimeout(resolve, 300));
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
@@ -221,8 +220,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
 
   const handlePhotos = useCallback(async () => {
     console.log('[NoteCard] User tapped Photos for recall:', note.id);
-    setShowContextMenu(false);
-    await new Promise(resolve => setTimeout(resolve, 300));
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -245,6 +242,31 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
       Alert.alert('Error', 'Failed to open photo library. Please try again.');
     }
   }, [note.id, uploadAndAttachPhoto]);
+
+  const handleDocuments = useCallback(async () => {
+    console.log('[NoteCard] User tapped Documents for recall:', note.id);
+    try {
+      const { pickDocuments } = await import('@/utils/documentPicker');
+      const { uploadDocumentToDatabase } = await import('@/utils/supabase');
+      const picked = await pickDocuments();
+      if (picked && picked.length > 0) {
+        console.log('[NoteCard] Uploading', picked.length, 'document(s) for recall:', note.id);
+        for (const doc of picked) {
+          try {
+            await uploadDocumentToDatabase(doc.uri, doc.name, doc.mimeType, note.id);
+            console.log('[NoteCard] Document uploaded:', doc.name);
+          } catch (e) {
+            console.error('[NoteCard] Failed to upload document:', doc.name, e);
+            Alert.alert('Upload failed', `Failed to upload ${doc.name}. Please try again.`);
+          }
+        }
+        onDocumentAdded?.(note.id);
+      }
+    } catch (error) {
+      console.error('[NoteCard] Error in handleDocuments:', error);
+      Alert.alert('Error', 'Failed to open document picker. Please try again.');
+    }
+  }, [note.id, onDocumentAdded]);
 
   // Initialize with first TWO images for better performance
   useEffect(() => {
@@ -878,7 +900,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                   if (Platform.OS !== 'web') {
                     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                   }
-                  handleCamera();
+                  pendingActionRef.current = () => handleCamera();
+                  setShowContextMenu(false);
                 }}>
                   <IconSymbol name="camera.fill" size={22} color={colors.text} />
                   <Text style={styles.contextMenuIconLabel}>Camera</Text>
@@ -887,10 +910,21 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                   if (Platform.OS !== 'web') {
                     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                   }
-                  handlePhotos();
+                  pendingActionRef.current = () => handlePhotos();
+                  setShowContextMenu(false);
                 }}>
                   <IconSymbol name="photo.on.rectangle" size={22} color={colors.text} />
                   <Text style={styles.contextMenuIconLabel}>Photos</Text>
+                </Pressable>
+                <Pressable style={styles.contextMenuIconButton} onPress={async () => {
+                  if (Platform.OS !== 'web') {
+                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  }
+                  pendingActionRef.current = () => handleDocuments();
+                  setShowContextMenu(false);
+                }}>
+                  <IconSymbol name="doc.fill" size={22} color={colors.text} />
+                  <Text style={styles.contextMenuIconLabel}>Documents</Text>
                 </Pressable>
               </View>
               <View style={styles.contextMenuSeparator} />
