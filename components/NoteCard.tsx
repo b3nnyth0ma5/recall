@@ -1,5 +1,9 @@
 import React, { useState, useRef, useEffect, memo, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator, Modal, Alert } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system/legacy';
+import { uploadImageToCloudflare } from '@/utils/cloudflareCDN';
 import { useRouter, usePathname } from 'expo-router';
 import { Image } from 'expo-image';
 import { cdnVariant } from '@/utils/cdnVariant';
@@ -47,6 +51,7 @@ interface NoteCardProps {
   onImagePress?: () => void;
   onDelete?: () => void;
   onPeopleUpdated?: (noteId: string) => void;
+  onPhotoAdded?: (noteId: string) => void;
   loading?: boolean;
   expectedImageCount?: number;
   scrollToImageIndex?: number;
@@ -74,7 +79,7 @@ const countNewlines = (text: string): number => {
 };
 
 // Memoized component for better performance
-export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onImagePress, onDelete, onPeopleUpdated, loading = false, expectedImageCount, scrollToImageIndex, processingStage, urlMeta }: NoteCardProps) {
+export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onImagePress, onDelete, onPeopleUpdated, onPhotoAdded, loading = false, expectedImageCount, scrollToImageIndex, processingStage, urlMeta }: NoteCardProps) {
   const { getUrlMetadataForRecall } = useNotesContext();
   const router = useRouter();
   const pathname = usePathname();
@@ -178,6 +183,90 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
     }
     setShowContextMenu(true);
   }, [note.id]);
+
+  const uploadAndAttachPhoto = useCallback(async (uri: string) => {
+    try {
+      console.log('[NoteCard] Uploading photo for recall:', note.id);
+
+      const manipulated = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 1200 } }],
+        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
+      );
+
+      const base64 = await FileSystem.readAsStringAsync(manipulated.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const fileName = `recall-${note.id}-${Date.now()}.jpg`;
+      const cdnUrl = await uploadImageToCloudflare(base64, fileName, 'image/jpeg');
+
+      if (!cdnUrl) throw new Error('Upload failed');
+
+      // Get supabase client from utils
+      const { supabase } = await import('@/utils/supabase');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not signed in');
+
+      const { error } = await supabase
+        .from('recall_images')
+        .insert({
+          recall_id: note.id,
+          user_id: user.id,
+          cdn_url: cdnUrl,
+        });
+
+      if (error) throw error;
+
+      console.log('[NoteCard] Photo uploaded and attached to recall:', note.id);
+      onPhotoAdded?.(note.id);
+    } catch (error) {
+      console.error('[NoteCard] Error uploading photo:', error);
+      Alert.alert('Error', 'Failed to upload photo. Please try again.');
+    }
+  }, [note.id, onPhotoAdded]);
+
+  const handleAddPhoto = useCallback(async () => {
+    console.log('[NoteCard] User tapped Add/Take Photo for recall:', note.id);
+    setShowContextMenu(false);
+
+    // Small delay to let the modal close
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        // Fall back to library if camera permission denied
+        const libStatus = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (libStatus.status !== 'granted') {
+          Alert.alert('Permission needed', 'Please grant camera or photo library permissions to add photos.');
+          return;
+        }
+        const libResult = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: false,
+          quality: 0.9,
+        });
+        if (!libResult.canceled && libResult.assets?.[0]) {
+          await uploadAndAttachPhoto(libResult.assets[0].uri);
+        }
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.9,
+      });
+
+      if (!result.canceled && result.assets?.[0]) {
+        await uploadAndAttachPhoto(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('[NoteCard] Error in handleAddPhoto:', error);
+      Alert.alert('Error', 'Failed to add photo. Please try again.');
+    }
+  }, [note.id, uploadAndAttachPhoto]);
 
   // Initialize with first TWO images for better performance
   useEffect(() => {
@@ -464,13 +553,13 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
 
   const renderRightActions = () => (
     <View style={styles.swipeActionsRow}>
-      {/* <Pressable
+      <Pressable
         style={[styles.actionPill, styles.deletePill]}
         onPress={handleDelete}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       >
         <IconSymbol name="trash.fill" size={22} color="#FFFFFF" />
-      </Pressable> */}
+      </Pressable>
 
       <Pressable
         style={[styles.actionPill, styles.chatPill]}
@@ -830,6 +919,17 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
               </Pressable>
               <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={async () => {
+                console.log('[NoteCard] User tapped Add/Take Photo in context menu for recall:', note.id);
+                if (Platform.OS !== 'web') {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                }
+                handleAddPhoto();
+              }}>
+                <IconSymbol name="camera.fill" size={22} color={colors.text} />
+                <Text style={styles.contextMenuLabel}>Add / Take Photo</Text>
+              </Pressable>
+              <View style={styles.contextMenuSeparator} />
+              <Pressable style={styles.contextMenuRow} onPress={async () => {
                 console.log('[NoteCard] User tapped Chat with Recall in context menu for recall:', note.id);
                 if (Platform.OS !== 'web') {
                   await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -1065,7 +1165,7 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingRight: 16,
     paddingLeft: 8,
-    width: 144,
+    width: 196,
     backgroundColor: '#333232',
   },
   actionPill: {

@@ -337,17 +337,27 @@ export function FaceLinkSheet({
         return;
       }
 
-      // Upsert recall_people join
-      const { error: recallPeopleError } = await supabase
+      // Check if recall_people row already exists
+      const { data: existingRow } = await supabase
         .from('recall_people')
-        .upsert(
-          { recall_id: recallId, person_id: personId, user_id: user.id },
-          { onConflict: 'recall_id,person_id', ignoreDuplicates: true }
-        );
+        .select('recall_id')
+        .eq('recall_id', recallId)
+        .eq('person_id', personId)
+        .maybeSingle();
 
-      if (recallPeopleError) {
-        console.error('[FaceLinkSheet] recall_people upsert error:', recallPeopleError);
-        // Non-fatal — face is linked, just the recall tag failed
+      if (!existingRow) {
+        const { error: recallPeopleError } = await supabase
+          .from('recall_people')
+          .insert({ recall_id: recallId, person_id: personId, user_id: user.id });
+
+        if (recallPeopleError) {
+          console.error('[FaceLinkSheet] recall_people insert error:', recallPeopleError);
+          // Non-fatal — face is linked, just the recall tag failed
+        } else {
+          console.log('[FaceLinkSheet] recall_people row inserted successfully');
+        }
+      } else {
+        console.log('[FaceLinkSheet] recall_people row already exists, skipping insert');
       }
 
       console.log('[FaceLinkSheet] Face linked successfully');
