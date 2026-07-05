@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import { coalesce } from './requestCoalescer';
 
 // Initialize constants at module scope
@@ -684,9 +685,39 @@ export async function triggerOCRProcessing(imageId: string): Promise<{ success: 
     console.log('Image ID:', imageId);
     console.log('Note: OCR is normally triggered automatically by database trigger');
 
+    // Check fast-search toggle and attempt on-device OCR
+    let preExtractedOcrText: string | undefined;
+    if (Platform.OS === 'ios') {
+      try {
+        const fastSearch = await AsyncStorage.getItem('search_mode_fast');
+        if (fastSearch === 'true') {
+          const { extractTextFromImageOnDevice } = await import('@/modules/recall-native');
+          // imageId is a DB row ID, not a URI — we need the CDN URL
+          // Fetch it from the DB first
+          const { data: imgRow } = await supabase
+            .from('recall_images')
+            .select('cdn_url')
+            .eq('id', imageId)
+            .single();
+          if (imgRow?.cdn_url) {
+            const onDeviceText = await extractTextFromImageOnDevice(imgRow.cdn_url);
+            if (onDeviceText !== null) {
+              preExtractedOcrText = onDeviceText;
+              console.log('[triggerOCRProcessing] On-device OCR text length:', preExtractedOcrText.length);
+            } else {
+              console.log('[triggerOCRProcessing] On-device OCR unavailable, falling back to cloud');
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[triggerOCRProcessing] Fast-search toggle read failed:', e);
+      }
+    }
+
     const { data, error } = await supabase.functions.invoke('ocr-image', {
       body: { 
-        record: { id: imageId } 
+        record: { id: imageId },
+        ...(preExtractedOcrText !== undefined ? { pre_extracted_ocr_text: preExtractedOcrText } : {}),
       },
     });
 
@@ -910,6 +941,28 @@ export async function triggerPeopleFinder(
     }
     if (imageExplanation !== undefined && imageExplanation.trim().length > 0) {
       requestBody.image_explanation = imageExplanation;
+    }
+
+    // Check fast-search toggle and attempt on-device NER
+    if (Platform.OS === 'ios') {
+      try {
+        const fastSearch = await AsyncStorage.getItem('search_mode_fast');
+        if (fastSearch === 'true') {
+          const { extractPeopleFromTextOnDevice } = await import('@/modules/recall-native');
+          const combinedForNER = [text, imageExplanation].filter(Boolean).join(' ').trim();
+          if (combinedForNER.length > 0) {
+            const onDeviceNames = await extractPeopleFromTextOnDevice(combinedForNER);
+            if (onDeviceNames !== null) {
+              requestBody.pre_extracted_names = onDeviceNames;
+              console.log('[triggerPeopleFinder] On-device NER result:', onDeviceNames);
+            } else {
+              console.log('[triggerPeopleFinder] On-device NER unavailable, falling back to cloud');
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[triggerPeopleFinder] Fast-search toggle read failed:', e);
+      }
     }
 
     const { data, error } = await supabase.functions.invoke('people-finder', {

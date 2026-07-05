@@ -38,4 +38,38 @@ export async function extractEntitiesOnDevice(query: string): Promise<ExtractedE
   }
 }
 
+export async function extractPeopleFromTextOnDevice(text: string): Promise<string[] | null> {
+  console.log('[EntityExtraction] extractPeopleFromTextOnDevice called, text length:', text.length);
+  const mod = getModule();
+  if (!mod) {
+    console.log('[EntityExtraction] Native module not available, returning null');
+    return null;
+  }
+  try {
+    const result = await (mod as any).extractPeopleFromText(text);
+    console.log('[EntityExtraction] extractPeopleFromText result:', result);
+    return result as string[];
+  } catch (e) {
+    console.error('[EntityExtraction] extractPeopleFromText error:', e);
+    return null;
+  }
+}
+
+export async function extractTextFromImageOnDevice(imageUri: string): Promise<string | null> {
+  console.log('[EntityExtraction] extractTextFromImageOnDevice called:', imageUri);
+  const mod = getModule();
+  if (!mod) {
+    console.log('[EntityExtraction] Native module not available, returning null');
+    return null;
+  }
+  try {
+    const result = await (mod as any).extractTextFromImage(imageUri);
+    console.log('[EntityExtraction] extractTextFromImage result length:', (result as string)?.length ?? 0);
+    return result as string;
+  } catch (e) {
+    console.error('[EntityExtraction] extractTextFromImage error:', e);
+    return null;
+  }
+}
+
 export type { ExtractedEntities };

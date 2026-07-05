@@ -536,62 +536,72 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     try {
-      // 1. Try image first
-      const hasImage = await Clipboard.hasImageAsync();
-      if (hasImage) {
-        console.log('[CombinedSearchAdd] Clipboard has image, reading...');
-        const clipImage = await Clipboard.getImageAsync({ format: 'jpeg' });
-        if (clipImage?.data) {
-          // Convert base64 to a local file URI via FileSystem
-          const { FileSystem } = await import('expo-file-system');
-          const fileUri = FileSystem.cacheDirectory + `clipboard_${Date.now()}.jpg`;
-          await FileSystem.writeAsStringAsync(fileUri, clipImage.data, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          console.log('[CombinedSearchAdd] Clipboard image written to cache:', fileUri);
-          // Add as placeholder then optimise
-          const placeholder: ImageState = { uri: fileUri, isPlaceholder: true, originalUri: fileUri };
-          setImages(prev => [...prev, placeholder]);
-          const { compressImageForUpload } = await import('@/utils/imageOptimization');
-          const optimized = await compressImageForUpload(fileUri);
-          setImages(prev => {
-            const next = [...prev];
-            const idx = next.findIndex(img => img.isPlaceholder && img.originalUri === fileUri);
-            if (idx !== -1) next[idx] = { uri: optimized, isPlaceholder: false };
-            return next;
-          });
-          console.log('[CombinedSearchAdd] Clipboard image optimized and added');
-          return;
-        }
+      // Read all clipboard availability checks in parallel
+      const [hasImage, hasUrl, hasText] = await Promise.all([
+        Clipboard.hasImageAsync(),
+        Platform.OS === 'ios' ? Clipboard.hasUrlAsync() : Promise.resolve(false),
+        Clipboard.hasStringAsync(),
+      ]);
+
+      console.log('[CombinedSearchAdd] Clipboard check — image:', hasImage, 'url:', hasUrl, 'text:', hasText);
+
+      if (!hasImage && !hasUrl && !hasText) {
+        console.log('[CombinedSearchAdd] Clipboard is empty');
+        Alert.alert('Nothing to paste', 'Your clipboard is empty.');
+        return;
       }
 
-      // 2. Try URL (iOS only)
-      if (Platform.OS === 'ios') {
-        const hasUrl = await Clipboard.hasUrlAsync();
-        if (hasUrl) {
-          const url = await Clipboard.getUrlAsync();
-          if (url) {
-            console.log('[CombinedSearchAdd] Pasting URL from clipboard:', url);
-            setText(prev => prev ? `${prev}\n${url}` : url);
-            return;
-          }
-        }
+      // Fetch all available content in parallel
+      const [imageResult, urlResult, textResult] = await Promise.all([
+        hasImage ? Clipboard.getImageAsync({ format: 'jpeg' }) : Promise.resolve(null),
+        hasUrl ? Clipboard.getUrlAsync() : Promise.resolve(null),
+        hasText ? Clipboard.getStringAsync() : Promise.resolve(null),
+      ]);
+
+      let didSomething = false;
+
+      // Process image — add to images strip
+      if (imageResult?.data) {
+        console.log('[CombinedSearchAdd] Processing clipboard image...');
+        const { FileSystem } = await import('expo-file-system');
+        const fileUri = FileSystem.cacheDirectory + `clipboard_${Date.now()}.jpg`;
+        await FileSystem.writeAsStringAsync(fileUri, imageResult.data, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const placeholder: ImageState = { uri: fileUri, isPlaceholder: true, originalUri: fileUri };
+        setImages(prev => [...prev, placeholder]);
+        const { compressImageForUpload } = await import('@/utils/imageOptimization');
+        const optimized = await compressImageForUpload(fileUri);
+        setImages(prev => {
+          const next = [...prev];
+          const idx = next.findIndex(img => img.isPlaceholder && img.originalUri === fileUri);
+          if (idx !== -1) next[idx] = { uri: optimized, isPlaceholder: false };
+          return next;
+        });
+        console.log('[CombinedSearchAdd] Clipboard image added to strip');
+        didSomething = true;
       }
 
-      // 3. Try plain text
-      const hasText = await Clipboard.hasStringAsync();
-      if (hasText) {
-        const str = await Clipboard.getStringAsync();
-        if (str) {
-          console.log('[CombinedSearchAdd] Pasting text from clipboard, length:', str.length);
-          setText(prev => prev ? `${prev}\n${str}` : str);
-          return;
-        }
+      // Process URL — append to text field
+      // Prefer URL over plain text if both present (URL is more specific)
+      // But if text contains the URL already, skip the URL to avoid duplication
+      let textToAppend = '';
+      if (urlResult) {
+        textToAppend = urlResult;
+        console.log('[CombinedSearchAdd] Clipboard URL:', urlResult);
+      } else if (textResult) {
+        textToAppend = textResult;
+        console.log('[CombinedSearchAdd] Clipboard text length:', textResult.length);
       }
 
-      // 4. Nothing found
-      console.log('[CombinedSearchAdd] Clipboard is empty');
-      Alert.alert('Nothing to paste', 'Your clipboard is empty.');
+      if (textToAppend) {
+        setText(prev => prev ? `${prev}\n${textToAppend}` : textToAppend);
+        didSomething = true;
+      }
+
+      if (!didSomething) {
+        Alert.alert('Nothing to paste', 'Your clipboard is empty.');
+      }
     } catch (err) {
       console.error('[CombinedSearchAdd] Paste error:', err);
       Alert.alert('Paste failed', 'Could not read clipboard content.');
