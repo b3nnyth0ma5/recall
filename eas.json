@@ -12,8 +12,7 @@
       },
       "ios": {
         "simulator": true,
-        "buildConfiguration": "Debug",
-        "prebuildCommand": "npx expo prebuild -p ios --clean"
+        "buildConfiguration": "Debug"
       },
       "android": {
         "buildType": "apk"
@@ -26,8 +25,7 @@
       },
       "ios": {
         "simulator": false,
-        "buildConfiguration": "Release",
-        "prebuildCommand": "npx expo prebuild -p ios --clean"
+        "buildConfiguration": "Release"
       },
       "android": {
         "buildType": "apk"
@@ -40,8 +38,7 @@
       },
       "ios": {
         "simulator": false,
-        "buildConfiguration": "Release",
-        "prebuildCommand": "npx expo prebuild -p ios --clean"
+        "buildConfiguration": "Release"
       },
       "android": {
         "buildType": "app-bundle"
