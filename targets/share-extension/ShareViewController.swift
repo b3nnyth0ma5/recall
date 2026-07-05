@@ -10,18 +10,20 @@ class ShareViewController: UIViewController {
     private let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4"
 
     // MARK: - Colors
-    private let colorBackground   = UIColor(hex: "#1A1A1A")
-    private let colorCard         = UIColor(hex: "#2A2A2A")
-    private let colorBorder       = UIColor(hex: "#3A3A3A")
-    private let colorPrimary      = UIColor(hex: "#FF6B7A")
-    private let colorTextPrimary  = UIColor(hex: "#FFFFFF")
+    private let colorBackground    = UIColor(hex: "#1A1A1A")
+    private let colorCard          = UIColor(hex: "#2A2A2A")
+    private let colorBorder        = UIColor(hex: "#3A3A3A")
+    private let colorPrimary       = UIColor(hex: "#FF6B7A")
+    private let colorTextPrimary   = UIColor(hex: "#FFFFFF")
     private let colorTextSecondary = UIColor(hex: "#B0B0B0")
-    private let colorTextTertiary = UIColor(hex: "#808080")
+    private let colorTextTertiary  = UIColor(hex: "#808080")
 
     // MARK: - Parsed data
     private var parsedTexts: [String] = []
     private var parsedURLs: [String] = []
     private var parsedImagePaths: [String] = []
+    private var parsedDocumentPaths: [String] = []
+    private var parsedDocumentNames: [String] = []
     private var firstImageData: Data?
 
     // MARK: - Scraped metadata
@@ -31,186 +33,93 @@ class ShareViewController: UIViewController {
     private var isScraping = false
 
     // MARK: - UI
-    private var sheetView: UIView!
-    private var blurView: UIVisualEffectView!
-    private var previewCard: UIView!
-    private var previewIconView: UIImageView!
-    private var previewDomainLabel: UILabel!
-    private var previewURLLabel: UILabel!
-    private var previewImageView: UIImageView!
-    private var previewFilenameLabel: UILabel!
-    private var previewTextLabel: UILabel!
-    private var previewHeroImageView: UIImageView!
-    private var previewHeroHeightConstraint: NSLayoutConstraint!
-    private var previewSpinner: UIActivityIndicatorView!
-    private var previewLoadingLabel: UILabel!
     private var noteTextView: UITextView!
     private var notePlaceholderLabel: UILabel!
     private var saveButton: UIButton!
     private var saveSpinner: UIActivityIndicatorView!
-    private var cancelButton: UIButton!
-    private var sheetBottomConstraint: NSLayoutConstraint!
-    private var noteHeightConstraint: NSLayoutConstraint!
+    private var statusLabel: UILabel!
+    private var errorBannerView: UIView!
+    private var errorStageLbl: UILabel!
+    private var errorDetailLbl: UILabel!
+    private var sharedContentLabel: UILabel!
+    private var attachmentScrollView: UIScrollView!
+    private var attachmentStackView: UIStackView!
+    private var attachmentStripContainer: UIView!
+    private var toolbarView: UIView!
+    private var toolbarBottomConstraint: NSLayoutConstraint!
+    private var contentScrollView: UIScrollView!
+
+    // Attachment item tracking for removal
+    private var attachmentImageViews: [UIImageView] = []
+    private var attachmentFileViews: [UIView] = []
 
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor.clear
-        setupSheetUI()
+        view.backgroundColor = colorBackground
+        buildFullScreenLayout()
         setupKeyboardObservers()
         processSharedItems()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        animateSheetIn()
+        noteTextView.becomeFirstResponder()
     }
 
-    // MARK: - Sheet UI
+    // MARK: - Full-Screen Layout
 
-    private func setupSheetUI() {
-        // Dimmed background tap to cancel
-        let tapDismiss = UITapGestureRecognizer(target: self, action: #selector(handleCancel))
-        view.addGestureRecognizer(tapDismiss)
-
-        // Sheet container
-        sheetView = UIView()
-        sheetView.translatesAutoresizingMaskIntoConstraints = false
-        sheetView.layer.cornerRadius = 20
-        sheetView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        sheetView.clipsToBounds = true
-        view.addSubview(sheetView)
-
-        // Blur background
-        blurView = UIVisualEffectView(effect: UIBlurEffect(style: .dark))
-        blurView.translatesAutoresizingMaskIntoConstraints = false
-        sheetView.addSubview(blurView)
-
-        // Solid overlay on top of blur for the dark card feel
-        let overlayView = UIView()
-        overlayView.translatesAutoresizingMaskIntoConstraints = false
-        overlayView.backgroundColor = colorBackground.withAlphaComponent(0.85)
-        sheetView.addSubview(overlayView)
-
-        // Content container (sits above blur + overlay)
-        let contentView = UIView()
-        contentView.translatesAutoresizingMaskIntoConstraints = false
-        contentView.backgroundColor = .clear
-        sheetView.addSubview(contentView)
-
-        sheetBottomConstraint = sheetView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: 500)
-        NSLayoutConstraint.activate([
-            sheetView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            sheetView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            sheetBottomConstraint,
-
-            blurView.topAnchor.constraint(equalTo: sheetView.topAnchor),
-            blurView.leadingAnchor.constraint(equalTo: sheetView.leadingAnchor),
-            blurView.trailingAnchor.constraint(equalTo: sheetView.trailingAnchor),
-            blurView.bottomAnchor.constraint(equalTo: sheetView.bottomAnchor),
-
-            overlayView.topAnchor.constraint(equalTo: sheetView.topAnchor),
-            overlayView.leadingAnchor.constraint(equalTo: sheetView.leadingAnchor),
-            overlayView.trailingAnchor.constraint(equalTo: sheetView.trailingAnchor),
-            overlayView.bottomAnchor.constraint(equalTo: sheetView.bottomAnchor),
-
-            contentView.topAnchor.constraint(equalTo: sheetView.topAnchor),
-            contentView.leadingAnchor.constraint(equalTo: sheetView.leadingAnchor),
-            contentView.trailingAnchor.constraint(equalTo: sheetView.trailingAnchor),
-            contentView.bottomAnchor.constraint(equalTo: sheetView.bottomAnchor),
-        ])
-
-        buildContentLayout(in: contentView)
-    }
-
-    private func buildContentLayout(in container: UIView) {
-        // Drag handle
-        let handle = UIView()
-        handle.translatesAutoresizingMaskIntoConstraints = false
-        handle.backgroundColor = colorBorder
-        handle.layer.cornerRadius = 2
-        container.addSubview(handle)
-
-        // Header row
-        let headerRow = UIView()
-        headerRow.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(headerRow)
-
-        // App icon
-        let iconConfig = UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
-        let iconImage = UIImage(systemName: "bookmark.fill", withConfiguration: iconConfig)
-        let iconView = UIImageView(image: iconImage)
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.tintColor = colorPrimary
-        iconView.contentMode = .scaleAspectFit
-        headerRow.addSubview(iconView)
-
-        // Title
-        let titleLabel = UILabel()
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.text = "Save to Recall"
-        titleLabel.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
-        titleLabel.textColor = colorTextPrimary
-        headerRow.addSubview(titleLabel)
-
-        // Close button
+    private func buildFullScreenLayout() {
+        // ── Close button (top-right) ──────────────────────────────────────────
         let closeButton = UIButton(type: .custom)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
-        let closeConfig = UIImage.SymbolConfiguration(pointSize: 13, weight: .medium)
-        let closeImage = UIImage(systemName: "xmark", withConfiguration: closeConfig)
-        closeButton.setImage(closeImage, for: .normal)
+        let closeConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        closeButton.setImage(UIImage(systemName: "xmark", withConfiguration: closeConfig), for: .normal)
         closeButton.tintColor = colorTextPrimary
         closeButton.backgroundColor = colorCard
-        closeButton.layer.cornerRadius = 15
+        closeButton.layer.cornerRadius = 18
         closeButton.addTarget(self, action: #selector(handleCancel), for: .touchUpInside)
-        headerRow.addSubview(closeButton)
+        view.addSubview(closeButton)
 
-        // Preview card
-        previewCard = makeCard()
-        container.addSubview(previewCard)
-        buildPreviewCardContent()
+        // ── Bottom toolbar ────────────────────────────────────────────────────
+        toolbarView = UIView()
+        toolbarView.translatesAutoresizingMaskIntoConstraints = false
+        toolbarView.backgroundColor = colorBackground.withAlphaComponent(0.95)
+        view.addSubview(toolbarView)
 
-        // Note label
-        let noteLabel = UILabel()
-        noteLabel.translatesAutoresizingMaskIntoConstraints = false
-        noteLabel.text = "NOTE"
-        noteLabel.font = UIFont.systemFont(ofSize: 12, weight: .medium)
-        noteLabel.textColor = colorTextTertiary
-        noteLabel.letterSpacing(0.8)
-        container.addSubview(noteLabel)
+        // Toolbar top border
+        let borderLine = UIView()
+        borderLine.translatesAutoresizingMaskIntoConstraints = false
+        borderLine.backgroundColor = colorBorder
+        toolbarView.addSubview(borderLine)
 
-        // Note card
-        let noteCard = makeCard()
-        container.addSubview(noteCard)
+        // Bookmark icon + "Recall" label
+        let bookmarkConfig = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
+        let bookmarkIcon = UIImageView(image: UIImage(systemName: "bookmark.fill", withConfiguration: bookmarkConfig))
+        bookmarkIcon.translatesAutoresizingMaskIntoConstraints = false
+        bookmarkIcon.tintColor = colorPrimary
+        bookmarkIcon.contentMode = .scaleAspectFit
+        toolbarView.addSubview(bookmarkIcon)
 
-        noteTextView = UITextView()
-        noteTextView.translatesAutoresizingMaskIntoConstraints = false
-        noteTextView.backgroundColor = .clear
-        noteTextView.font = UIFont.systemFont(ofSize: 15)
-        noteTextView.textColor = colorTextPrimary
-        noteTextView.tintColor = colorPrimary
-        noteTextView.delegate = self
-        noteTextView.textContainerInset = UIEdgeInsets(top: 12, left: 10, bottom: 12, right: 10)
-        noteCard.addSubview(noteTextView)
+        let recallLabel = UILabel()
+        recallLabel.translatesAutoresizingMaskIntoConstraints = false
+        recallLabel.text = "Recall"
+        recallLabel.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+        recallLabel.textColor = colorTextPrimary
+        toolbarView.addSubview(recallLabel)
 
-        notePlaceholderLabel = UILabel()
-        notePlaceholderLabel.translatesAutoresizingMaskIntoConstraints = false
-        notePlaceholderLabel.text = "Add a note (optional)"
-        notePlaceholderLabel.font = UIFont.systemFont(ofSize: 15)
-        notePlaceholderLabel.textColor = colorTextTertiary
-        noteCard.addSubview(notePlaceholderLabel)
-
-        // Save button
+        // Save pill button
         saveButton = UIButton(type: .custom)
         saveButton.translatesAutoresizingMaskIntoConstraints = false
-        saveButton.setTitle("Save to Recall", for: .normal)
-        saveButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        saveButton.setTitleColor(colorTextPrimary, for: .normal)
+        saveButton.setTitle("Create Recall", for: .normal)
+        saveButton.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+        saveButton.setTitleColor(.white, for: .normal)
         saveButton.backgroundColor = colorPrimary
-        saveButton.layer.cornerRadius = 14
+        saveButton.layer.cornerRadius = 20
+        saveButton.contentEdgeInsets = UIEdgeInsets(top: 10, left: 20, bottom: 10, right: 20)
         saveButton.addTarget(self, action: #selector(handleSave), for: .touchUpInside)
-        container.addSubview(saveButton)
+        toolbarView.addSubview(saveButton)
 
         saveSpinner = UIActivityIndicatorView(style: .medium)
         saveSpinner.translatesAutoresizingMaskIntoConstraints = false
@@ -218,404 +127,410 @@ class ShareViewController: UIViewController {
         saveSpinner.hidesWhenStopped = true
         saveButton.addSubview(saveSpinner)
 
-        // Cancel button
-        cancelButton = UIButton(type: .custom)
-        cancelButton.translatesAutoresizingMaskIntoConstraints = false
-        cancelButton.setTitle("Cancel", for: .normal)
-        cancelButton.titleLabel?.font = UIFont.systemFont(ofSize: 15)
-        cancelButton.setTitleColor(colorTextSecondary, for: .normal)
-        cancelButton.addTarget(self, action: #selector(handleCancel), for: .touchUpInside)
-        container.addSubview(cancelButton)
+        // ── Content scroll view (fills between close button and toolbar) ──────
+        contentScrollView = UIScrollView()
+        contentScrollView.translatesAutoresizingMaskIntoConstraints = false
+        contentScrollView.keyboardDismissMode = .interactive
+        contentScrollView.alwaysBounceVertical = true
+        view.addSubview(contentScrollView)
 
-        // Note height constraint (dynamic)
-        noteHeightConstraint = noteTextView.heightAnchor.constraint(equalToConstant: 80)
-        noteHeightConstraint.priority = .defaultHigh
+        let contentContainer = UIView()
+        contentContainer.translatesAutoresizingMaskIntoConstraints = false
+        contentScrollView.addSubview(contentContainer)
+
+        // ── Note text view ────────────────────────────────────────────────────
+        noteTextView = UITextView()
+        noteTextView.translatesAutoresizingMaskIntoConstraints = false
+        noteTextView.backgroundColor = .clear
+        noteTextView.font = UIFont.systemFont(ofSize: 17)
+        noteTextView.textColor = colorTextPrimary
+        noteTextView.tintColor = colorPrimary
+        noteTextView.delegate = self
+        noteTextView.textContainerInset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        noteTextView.textContainer.lineFragmentPadding = 0
+        noteTextView.isScrollEnabled = false
+        contentContainer.addSubview(noteTextView)
+
+        notePlaceholderLabel = UILabel()
+        notePlaceholderLabel.translatesAutoresizingMaskIntoConstraints = false
+        notePlaceholderLabel.text = "Add a note…"
+        notePlaceholderLabel.font = UIFont.systemFont(ofSize: 17)
+        notePlaceholderLabel.textColor = colorTextTertiary
+        contentContainer.addSubview(notePlaceholderLabel)
+
+        // ── Shared content label ──────────────────────────────────────────────
+        sharedContentLabel = UILabel()
+        sharedContentLabel.translatesAutoresizingMaskIntoConstraints = false
+        sharedContentLabel.numberOfLines = 3
+        sharedContentLabel.isHidden = true
+        contentContainer.addSubview(sharedContentLabel)
+
+        // ── Status label ──────────────────────────────────────────────────────
+        statusLabel = UILabel()
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.font = UIFont.systemFont(ofSize: 13)
+        statusLabel.textColor = colorTextSecondary
+        statusLabel.textAlignment = .center
+        statusLabel.isHidden = true
+        contentContainer.addSubview(statusLabel)
+
+        // ── Error banner ──────────────────────────────────────────────────────
+        errorBannerView = UIView()
+        errorBannerView.translatesAutoresizingMaskIntoConstraints = false
+        errorBannerView.backgroundColor = colorCard
+        errorBannerView.layer.cornerRadius = 8
+        errorBannerView.isHidden = true
+
+        // Left accent border
+        let accentBorder = UIView()
+        accentBorder.translatesAutoresizingMaskIntoConstraints = false
+        accentBorder.backgroundColor = colorPrimary
+        accentBorder.layer.cornerRadius = 1.5
+        errorBannerView.addSubview(accentBorder)
+
+        errorStageLbl = UILabel()
+        errorStageLbl.translatesAutoresizingMaskIntoConstraints = false
+        errorStageLbl.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
+        errorStageLbl.textColor = colorTextPrimary
+        errorBannerView.addSubview(errorStageLbl)
+
+        errorDetailLbl = UILabel()
+        errorDetailLbl.translatesAutoresizingMaskIntoConstraints = false
+        errorDetailLbl.font = UIFont.systemFont(ofSize: 12)
+        errorDetailLbl.textColor = colorTextSecondary
+        errorDetailLbl.numberOfLines = 4
+        errorBannerView.addSubview(errorDetailLbl)
+
+        contentContainer.addSubview(errorBannerView)
+
+        // ── Attachment strip ──────────────────────────────────────────────────
+        attachmentStripContainer = UIView()
+        attachmentStripContainer.translatesAutoresizingMaskIntoConstraints = false
+        attachmentStripContainer.isHidden = true
+        contentContainer.addSubview(attachmentStripContainer)
+
+        attachmentScrollView = UIScrollView()
+        attachmentScrollView.translatesAutoresizingMaskIntoConstraints = false
+        attachmentScrollView.showsHorizontalScrollIndicator = false
+        attachmentScrollView.alwaysBounceHorizontal = true
+        attachmentStripContainer.addSubview(attachmentScrollView)
+
+        attachmentStackView = UIStackView()
+        attachmentStackView.translatesAutoresizingMaskIntoConstraints = false
+        attachmentStackView.axis = .horizontal
+        attachmentStackView.spacing = 10
+        attachmentStackView.alignment = .center
+        attachmentScrollView.addSubview(attachmentStackView)
+
+        // ── Toolbar bottom constraint (keyboard avoidance) ────────────────────
+        toolbarBottomConstraint = toolbarView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
 
         NSLayoutConstraint.activate([
-            // Drag handle
-            handle.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
-            handle.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            handle.widthAnchor.constraint(equalToConstant: 40),
-            handle.heightAnchor.constraint(equalToConstant: 4),
+            // Close button
+            closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            closeButton.widthAnchor.constraint(equalToConstant: 36),
+            closeButton.heightAnchor.constraint(equalToConstant: 36),
 
-            // Header row
-            headerRow.topAnchor.constraint(equalTo: handle.bottomAnchor, constant: 14),
-            headerRow.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-            headerRow.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
-            headerRow.heightAnchor.constraint(equalToConstant: 36),
+            // Toolbar
+            toolbarView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            toolbarView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            toolbarView.heightAnchor.constraint(equalToConstant: 56),
+            toolbarBottomConstraint,
 
-            iconView.leadingAnchor.constraint(equalTo: headerRow.leadingAnchor),
-            iconView.centerYAnchor.constraint(equalTo: headerRow.centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 20),
-            iconView.heightAnchor.constraint(equalToConstant: 20),
+            borderLine.topAnchor.constraint(equalTo: toolbarView.topAnchor),
+            borderLine.leadingAnchor.constraint(equalTo: toolbarView.leadingAnchor),
+            borderLine.trailingAnchor.constraint(equalTo: toolbarView.trailingAnchor),
+            borderLine.heightAnchor.constraint(equalToConstant: 0.5),
 
-            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
-            titleLabel.centerYAnchor.constraint(equalTo: headerRow.centerYAnchor),
+            bookmarkIcon.leadingAnchor.constraint(equalTo: toolbarView.leadingAnchor, constant: 16),
+            bookmarkIcon.centerYAnchor.constraint(equalTo: toolbarView.centerYAnchor),
+            bookmarkIcon.widthAnchor.constraint(equalToConstant: 22),
+            bookmarkIcon.heightAnchor.constraint(equalToConstant: 22),
 
-            closeButton.trailingAnchor.constraint(equalTo: headerRow.trailingAnchor),
-            closeButton.centerYAnchor.constraint(equalTo: headerRow.centerYAnchor),
-            closeButton.widthAnchor.constraint(equalToConstant: 30),
-            closeButton.heightAnchor.constraint(equalToConstant: 30),
+            recallLabel.leadingAnchor.constraint(equalTo: bookmarkIcon.trailingAnchor, constant: 12),
+            recallLabel.centerYAnchor.constraint(equalTo: toolbarView.centerYAnchor),
 
-            // Preview card
-            previewCard.topAnchor.constraint(equalTo: headerRow.bottomAnchor, constant: 16),
-            previewCard.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-            previewCard.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
-
-            // Note label
-            noteLabel.topAnchor.constraint(equalTo: previewCard.bottomAnchor, constant: 16),
-            noteLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-
-            // Note card
-            noteCard.topAnchor.constraint(equalTo: noteLabel.bottomAnchor, constant: 6),
-            noteCard.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-            noteCard.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
-
-            // Note text view inside card
-            noteTextView.topAnchor.constraint(equalTo: noteCard.topAnchor),
-            noteTextView.leadingAnchor.constraint(equalTo: noteCard.leadingAnchor),
-            noteTextView.trailingAnchor.constraint(equalTo: noteCard.trailingAnchor),
-            noteTextView.bottomAnchor.constraint(equalTo: noteCard.bottomAnchor),
-            noteHeightConstraint,
-
-            // Placeholder
-            notePlaceholderLabel.topAnchor.constraint(equalTo: noteCard.topAnchor, constant: 12),
-            notePlaceholderLabel.leadingAnchor.constraint(equalTo: noteCard.leadingAnchor, constant: 14),
-
-            // Save button
-            saveButton.topAnchor.constraint(equalTo: noteCard.bottomAnchor, constant: 20),
-            saveButton.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-            saveButton.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
-            saveButton.heightAnchor.constraint(equalToConstant: 52),
+            saveButton.trailingAnchor.constraint(equalTo: toolbarView.trailingAnchor, constant: -16),
+            saveButton.centerYAnchor.constraint(equalTo: toolbarView.centerYAnchor),
 
             saveSpinner.centerXAnchor.constraint(equalTo: saveButton.centerXAnchor),
             saveSpinner.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
 
-            // Cancel button
-            cancelButton.topAnchor.constraint(equalTo: saveButton.bottomAnchor, constant: 8),
-            cancelButton.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            cancelButton.heightAnchor.constraint(equalToConstant: 44),
-            cancelButton.bottomAnchor.constraint(lessThanOrEqualTo: container.safeAreaLayoutGuide.bottomAnchor, constant: -8),
+            // Content scroll view
+            contentScrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            contentScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            contentScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            contentScrollView.bottomAnchor.constraint(equalTo: toolbarView.topAnchor),
+
+            // Content container inside scroll view
+            contentContainer.topAnchor.constraint(equalTo: contentScrollView.topAnchor),
+            contentContainer.leadingAnchor.constraint(equalTo: contentScrollView.leadingAnchor),
+            contentContainer.trailingAnchor.constraint(equalTo: contentScrollView.trailingAnchor),
+            contentContainer.bottomAnchor.constraint(equalTo: contentScrollView.bottomAnchor),
+            contentContainer.widthAnchor.constraint(equalTo: contentScrollView.widthAnchor),
+
+            // Note text view — top of content, leaves room for close button
+            noteTextView.topAnchor.constraint(equalTo: contentContainer.topAnchor, constant: 68),
+            noteTextView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor, constant: 20),
+            noteTextView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor, constant: -20),
+
+            notePlaceholderLabel.topAnchor.constraint(equalTo: noteTextView.topAnchor),
+            notePlaceholderLabel.leadingAnchor.constraint(equalTo: noteTextView.leadingAnchor),
+
+            // Shared content label
+            sharedContentLabel.topAnchor.constraint(equalTo: noteTextView.bottomAnchor, constant: 12),
+            sharedContentLabel.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor, constant: 20),
+            sharedContentLabel.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor, constant: -20),
+
+            // Status label
+            statusLabel.topAnchor.constraint(equalTo: sharedContentLabel.bottomAnchor, constant: 12),
+            statusLabel.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor, constant: 20),
+            statusLabel.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor, constant: -20),
+
+            // Error banner
+            errorBannerView.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 8),
+            errorBannerView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor, constant: 16),
+            errorBannerView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor, constant: -16),
+
+            accentBorder.topAnchor.constraint(equalTo: errorBannerView.topAnchor, constant: 8),
+            accentBorder.bottomAnchor.constraint(equalTo: errorBannerView.bottomAnchor, constant: -8),
+            accentBorder.leadingAnchor.constraint(equalTo: errorBannerView.leadingAnchor, constant: 8),
+            accentBorder.widthAnchor.constraint(equalToConstant: 3),
+
+            errorStageLbl.topAnchor.constraint(equalTo: errorBannerView.topAnchor, constant: 10),
+            errorStageLbl.leadingAnchor.constraint(equalTo: accentBorder.trailingAnchor, constant: 10),
+            errorStageLbl.trailingAnchor.constraint(equalTo: errorBannerView.trailingAnchor, constant: -10),
+
+            errorDetailLbl.topAnchor.constraint(equalTo: errorStageLbl.bottomAnchor, constant: 4),
+            errorDetailLbl.leadingAnchor.constraint(equalTo: accentBorder.trailingAnchor, constant: 10),
+            errorDetailLbl.trailingAnchor.constraint(equalTo: errorBannerView.trailingAnchor, constant: -10),
+            errorDetailLbl.bottomAnchor.constraint(equalTo: errorBannerView.bottomAnchor, constant: -10),
+
+            // Attachment strip
+            attachmentStripContainer.topAnchor.constraint(equalTo: errorBannerView.bottomAnchor, constant: 8),
+            attachmentStripContainer.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
+            attachmentStripContainer.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
+            attachmentStripContainer.heightAnchor.constraint(equalToConstant: 88),
+            attachmentStripContainer.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor, constant: -12),
+
+            attachmentScrollView.topAnchor.constraint(equalTo: attachmentStripContainer.topAnchor, constant: 12),
+            attachmentScrollView.bottomAnchor.constraint(equalTo: attachmentStripContainer.bottomAnchor, constant: -12),
+            attachmentScrollView.leadingAnchor.constraint(equalTo: attachmentStripContainer.leadingAnchor),
+            attachmentScrollView.trailingAnchor.constraint(equalTo: attachmentStripContainer.trailingAnchor),
+
+            attachmentStackView.topAnchor.constraint(equalTo: attachmentScrollView.topAnchor),
+            attachmentStackView.bottomAnchor.constraint(equalTo: attachmentScrollView.bottomAnchor),
+            attachmentStackView.leadingAnchor.constraint(equalTo: attachmentScrollView.leadingAnchor, constant: 16),
+            attachmentStackView.trailingAnchor.constraint(equalTo: attachmentScrollView.trailingAnchor, constant: -16),
+            attachmentStackView.heightAnchor.constraint(equalTo: attachmentScrollView.heightAnchor),
         ])
-    }
-
-    private func buildPreviewCardContent() {
-        // Hero image (hidden by default, shown when og:image is available)
-        previewHeroImageView = UIImageView()
-        previewHeroImageView.translatesAutoresizingMaskIntoConstraints = false
-        previewHeroImageView.contentMode = .scaleAspectFill
-        previewHeroImageView.clipsToBounds = true
-        previewHeroImageView.layer.cornerRadius = 12
-        previewHeroImageView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        previewHeroImageView.isHidden = true
-        previewCard.addSubview(previewHeroImageView)
-
-        previewHeroHeightConstraint = previewHeroImageView.heightAnchor.constraint(equalToConstant: 180)
-
-        // URL row
-        let urlRow = UIView()
-        urlRow.translatesAutoresizingMaskIntoConstraints = false
-        previewCard.addSubview(urlRow)
-
-        previewIconView = UIImageView()
-        previewIconView.translatesAutoresizingMaskIntoConstraints = false
-        previewIconView.contentMode = .scaleAspectFit
-        previewIconView.tintColor = colorTextTertiary
-        urlRow.addSubview(previewIconView)
-
-        previewDomainLabel = UILabel()
-        previewDomainLabel.translatesAutoresizingMaskIntoConstraints = false
-        previewDomainLabel.font = UIFont.systemFont(ofSize: 13)
-        previewDomainLabel.textColor = colorTextSecondary
-        urlRow.addSubview(previewDomainLabel)
-
-        previewURLLabel = UILabel()
-        previewURLLabel.translatesAutoresizingMaskIntoConstraints = false
-        previewURLLabel.font = UIFont.systemFont(ofSize: 13)
-        previewURLLabel.textColor = colorTextTertiary
-        previewURLLabel.numberOfLines = 2
-        previewCard.addSubview(previewURLLabel)
-
-        // Image row (hidden by default, for image shares)
-        previewImageView = UIImageView()
-        previewImageView.translatesAutoresizingMaskIntoConstraints = false
-        previewImageView.contentMode = .scaleAspectFill
-        previewImageView.clipsToBounds = true
-        previewImageView.layer.cornerRadius = 8
-        previewImageView.isHidden = true
-        previewCard.addSubview(previewImageView)
-
-        previewFilenameLabel = UILabel()
-        previewFilenameLabel.translatesAutoresizingMaskIntoConstraints = false
-        previewFilenameLabel.font = UIFont.systemFont(ofSize: 13)
-        previewFilenameLabel.textColor = colorTextSecondary
-        previewFilenameLabel.numberOfLines = 2
-        previewFilenameLabel.isHidden = true
-        previewCard.addSubview(previewFilenameLabel)
-
-        // Text preview (hidden by default)
-        previewTextLabel = UILabel()
-        previewTextLabel.translatesAutoresizingMaskIntoConstraints = false
-        previewTextLabel.font = UIFont.systemFont(ofSize: 13)
-        previewTextLabel.textColor = colorTextTertiary
-        previewTextLabel.numberOfLines = 3
-        previewTextLabel.isHidden = true
-        previewCard.addSubview(previewTextLabel)
-
-        // Scraping spinner + label (hidden by default)
-        previewSpinner = UIActivityIndicatorView(style: .medium)
-        previewSpinner.translatesAutoresizingMaskIntoConstraints = false
-        previewSpinner.color = UIColor(hex: "#808080")
-        previewSpinner.hidesWhenStopped = true
-        previewCard.addSubview(previewSpinner)
-
-        previewLoadingLabel = UILabel()
-        previewLoadingLabel.translatesAutoresizingMaskIntoConstraints = false
-        previewLoadingLabel.text = "Loading preview..."
-        previewLoadingLabel.font = UIFont.systemFont(ofSize: 13)
-        previewLoadingLabel.textColor = colorTextTertiary
-        previewLoadingLabel.isHidden = true
-        previewCard.addSubview(previewLoadingLabel)
-
-        NSLayoutConstraint.activate([
-            // Hero image at top of card
-            previewHeroImageView.topAnchor.constraint(equalTo: previewCard.topAnchor),
-            previewHeroImageView.leadingAnchor.constraint(equalTo: previewCard.leadingAnchor),
-            previewHeroImageView.trailingAnchor.constraint(equalTo: previewCard.trailingAnchor),
-            previewHeroHeightConstraint,
-
-            // URL row — below hero image when visible, else at top
-            urlRow.topAnchor.constraint(equalTo: previewHeroImageView.bottomAnchor, constant: 12),
-            urlRow.leadingAnchor.constraint(equalTo: previewCard.leadingAnchor, constant: 12),
-            urlRow.trailingAnchor.constraint(equalTo: previewCard.trailingAnchor, constant: -12),
-            urlRow.heightAnchor.constraint(equalToConstant: 20),
-
-            previewIconView.leadingAnchor.constraint(equalTo: urlRow.leadingAnchor),
-            previewIconView.centerYAnchor.constraint(equalTo: urlRow.centerYAnchor),
-            previewIconView.widthAnchor.constraint(equalToConstant: 16),
-            previewIconView.heightAnchor.constraint(equalToConstant: 16),
-
-            previewDomainLabel.leadingAnchor.constraint(equalTo: previewIconView.trailingAnchor, constant: 6),
-            previewDomainLabel.centerYAnchor.constraint(equalTo: urlRow.centerYAnchor),
-            previewDomainLabel.trailingAnchor.constraint(equalTo: urlRow.trailingAnchor),
-
-            previewURLLabel.topAnchor.constraint(equalTo: urlRow.bottomAnchor, constant: 6),
-            previewURLLabel.leadingAnchor.constraint(equalTo: previewCard.leadingAnchor, constant: 12),
-            previewURLLabel.trailingAnchor.constraint(equalTo: previewCard.trailingAnchor, constant: -12),
-            previewURLLabel.bottomAnchor.constraint(equalTo: previewCard.bottomAnchor, constant: -12),
-
-            // Image layout (for image shares)
-            previewImageView.topAnchor.constraint(equalTo: previewCard.topAnchor, constant: 12),
-            previewImageView.leadingAnchor.constraint(equalTo: previewCard.leadingAnchor, constant: 12),
-            previewImageView.widthAnchor.constraint(equalToConstant: 60),
-            previewImageView.heightAnchor.constraint(equalToConstant: 60),
-            previewImageView.bottomAnchor.constraint(lessThanOrEqualTo: previewCard.bottomAnchor, constant: -12),
-
-            previewFilenameLabel.leadingAnchor.constraint(equalTo: previewImageView.trailingAnchor, constant: 12),
-            previewFilenameLabel.centerYAnchor.constraint(equalTo: previewImageView.centerYAnchor),
-            previewFilenameLabel.trailingAnchor.constraint(equalTo: previewCard.trailingAnchor, constant: -12),
-
-            // Text preview layout
-            previewTextLabel.topAnchor.constraint(equalTo: previewCard.topAnchor, constant: 12),
-            previewTextLabel.leadingAnchor.constraint(equalTo: previewCard.leadingAnchor, constant: 12),
-            previewTextLabel.trailingAnchor.constraint(equalTo: previewCard.trailingAnchor, constant: -12),
-            previewTextLabel.bottomAnchor.constraint(equalTo: previewCard.bottomAnchor, constant: -12),
-
-            // Scraping state
-            previewSpinner.leadingAnchor.constraint(equalTo: previewCard.leadingAnchor, constant: 12),
-            previewSpinner.centerYAnchor.constraint(equalTo: previewLoadingLabel.centerYAnchor),
-
-            previewLoadingLabel.topAnchor.constraint(equalTo: previewCard.topAnchor, constant: 14),
-            previewLoadingLabel.leadingAnchor.constraint(equalTo: previewSpinner.trailingAnchor, constant: 8),
-            previewLoadingLabel.trailingAnchor.constraint(equalTo: previewCard.trailingAnchor, constant: -12),
-            previewLoadingLabel.bottomAnchor.constraint(equalTo: previewCard.bottomAnchor, constant: -14),
-        ])
-
-        // Hero image starts with zero height (hidden)
-        previewHeroHeightConstraint.isActive = false
-    }
-
-    private func makeCard() -> UIView {
-        let card = UIView()
-        card.translatesAutoresizingMaskIntoConstraints = false
-        card.backgroundColor = colorCard
-        card.layer.cornerRadius = 12
-        card.layer.borderWidth = 1
-        card.layer.borderColor = colorBorder.cgColor
-        return card
     }
 
     // MARK: - Populate preview after parsing
 
     private func populatePreview() {
-        if !parsedImagePaths.isEmpty, let imgData = firstImageData {
-            // Image share mode
-            showImagePreview(imageData: imgData)
-        } else if !parsedURLs.isEmpty {
-            // URL mode — show basic preview immediately, then scrape in parallel
-            showURLPreview(urlString: parsedURLs[0])
-            scrapeURLMetadata(urlString: parsedURLs[0])
-        } else if !parsedTexts.isEmpty {
-            // Text-only mode
-            showTextPreview(text: parsedTexts[0])
-        } else {
-            // Fallback
-            showTextPreview(text: "Shared content")
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.populateSharedContentLabel()
+            self.populateAttachmentStrip()
         }
     }
 
-    private func showURLPreview(urlString: String) {
-        let iconConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        previewIconView.image = UIImage(systemName: "link", withConfiguration: iconConfig)
-
-        if let url = URL(string: urlString), let host = url.host {
-            let domain = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-            previewDomainLabel.text = domain
+    private func populateSharedContentLabel() {
+        if !parsedURLs.isEmpty {
+            let urlString = parsedURLs[0]
+            sharedContentLabel.text = urlString
+            sharedContentLabel.font = UIFont.systemFont(ofSize: 15)
+            sharedContentLabel.textColor = colorPrimary
+            sharedContentLabel.numberOfLines = 2
+            sharedContentLabel.isUserInteractionEnabled = true
+            let tap = UITapGestureRecognizer(target: self, action: #selector(openSharedURL))
+            sharedContentLabel.addGestureRecognizer(tap)
+            sharedContentLabel.isHidden = false
+        } else if parsedImagePaths.isEmpty && parsedDocumentPaths.isEmpty && !parsedTexts.isEmpty {
+            let text = parsedTexts[0]
+            let truncated = text.count > 120 ? String(text.prefix(120)) + "…" : text
+            sharedContentLabel.text = truncated
+            sharedContentLabel.font = UIFont.italicSystemFont(ofSize: 14)
+            sharedContentLabel.textColor = colorTextSecondary
+            sharedContentLabel.numberOfLines = 3
+            sharedContentLabel.isUserInteractionEnabled = false
+            sharedContentLabel.isHidden = false
         } else {
-            previewDomainLabel.text = urlString
+            sharedContentLabel.isHidden = true
         }
-        previewURLLabel.text = urlString
-
-        // Ensure URL mode views visible, others hidden
-        previewHeroImageView.isHidden = true
-        previewHeroHeightConstraint.isActive = false
-        previewIconView.isHidden = false
-        previewDomainLabel.isHidden = false
-        previewURLLabel.isHidden = false
-        previewImageView.isHidden = true
-        previewFilenameLabel.isHidden = true
-        previewTextLabel.isHidden = true
-        previewSpinner.stopAnimating()
-        previewLoadingLabel.isHidden = true
     }
 
-    private func showImagePreview(imageData: Data) {
-        previewImageView.image = UIImage(data: imageData)
-        previewFilenameLabel.text = "Shared image"
-
-        previewHeroImageView.isHidden = true
-        previewHeroHeightConstraint.isActive = false
-        previewImageView.isHidden = false
-        previewFilenameLabel.isHidden = false
-        previewIconView.isHidden = true
-        previewDomainLabel.isHidden = true
-        previewURLLabel.isHidden = true
-        previewTextLabel.isHidden = true
-        previewSpinner.stopAnimating()
-        previewLoadingLabel.isHidden = true
+    @objc private func openSharedURL() {
+        guard let urlString = parsedURLs.first, let url = URL(string: urlString) else { return }
+        print("[ShareViewController] Opening shared URL in Safari: \(urlString)")
+        UIApplication.shared.open(url)
     }
 
-    private func showTextPreview(text: String) {
-        let iconConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        previewIconView.image = UIImage(systemName: "text.quote", withConfiguration: iconConfig)
-        previewDomainLabel.text = "Text"
-        let truncated = text.count > 80 ? String(text.prefix(80)) + "…" : text
-        previewURLLabel.text = truncated
+    private func populateAttachmentStrip() {
+        // Clear existing items
+        attachmentStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        attachmentImageViews.removeAll()
+        attachmentFileViews.removeAll()
 
-        previewHeroImageView.isHidden = true
-        previewHeroHeightConstraint.isActive = false
-        previewIconView.isHidden = false
-        previewDomainLabel.isHidden = false
-        previewURLLabel.isHidden = false
-        previewImageView.isHidden = true
-        previewFilenameLabel.isHidden = true
-        previewTextLabel.isHidden = true
-        previewSpinner.stopAnimating()
-        previewLoadingLabel.isHidden = true
+        var itemCount = 0
+
+        // Image thumbnails
+        for (index, imagePath) in parsedImagePaths.prefix(10).enumerated() {
+            guard let imageData = try? Data(contentsOf: URL(fileURLWithPath: imagePath)),
+                  let image = UIImage(data: imageData) else { continue }
+            let container = makeImageAttachmentView(image: image, index: index)
+            attachmentStackView.addArrangedSubview(container)
+            attachmentImageViews.append(container.subviews.compactMap { $0 as? UIImageView }.first ?? UIImageView())
+            itemCount += 1
+            if itemCount >= 10 { break }
+        }
+
+        // Document chips
+        for (index, fileName) in parsedDocumentNames.prefix(10 - itemCount).enumerated() {
+            let chip = makeDocumentChipView(fileName: fileName, index: index)
+            attachmentStackView.addArrangedSubview(chip)
+            attachmentFileViews.append(chip)
+            itemCount += 1
+            if itemCount >= 10 { break }
+        }
+
+        attachmentStripContainer.isHidden = itemCount == 0
     }
 
-    // MARK: - Scraping state
+    private func makeImageAttachmentView(image: UIImage, index: Int) -> UIView {
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.widthAnchor.constraint(equalToConstant: 64).isActive = true
+        container.heightAnchor.constraint(equalToConstant: 64).isActive = true
 
-    private func showScrapingState() {
-        previewHeroImageView.isHidden = true
-        previewHeroHeightConstraint.isActive = false
-        previewIconView.isHidden = true
-        previewDomainLabel.isHidden = true
-        previewURLLabel.isHidden = true
-        previewImageView.isHidden = true
-        previewFilenameLabel.isHidden = true
-        previewTextLabel.isHidden = true
-        previewLoadingLabel.isHidden = false
-        previewSpinner.startAnimating()
+        let imageView = UIImageView(image: image)
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = 10
+        container.addSubview(imageView)
+
+        NSLayoutConstraint.activate([
+            imageView.topAnchor.constraint(equalTo: container.topAnchor),
+            imageView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            imageView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+
+        // Remove badge
+        let badge = makeRemoveBadge()
+        badge.tag = index
+        badge.addTarget(self, action: #selector(removeImageAttachment(_:)), for: .touchUpInside)
+        container.addSubview(badge)
+        NSLayoutConstraint.activate([
+            badge.topAnchor.constraint(equalTo: container.topAnchor, constant: -4),
+            badge.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: 4),
+            badge.widthAnchor.constraint(equalToConstant: 18),
+            badge.heightAnchor.constraint(equalToConstant: 18),
+        ])
+
+        return container
     }
 
-    private func showRichPreview(urlString: String, title: String?, description: String?, siteName: String?, imageURLString: String?) {
-        // Update domain/site name row
-        let iconConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        previewIconView.image = UIImage(systemName: "link", withConfiguration: iconConfig)
-        previewIconView.tintColor = colorTextTertiary
+    private func makeDocumentChipView(fileName: String, index: Int) -> UIView {
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.backgroundColor = colorCard
+        container.layer.cornerRadius = 8
+        container.layer.borderWidth = 1
+        container.layer.borderColor = colorBorder.cgColor
 
-        if let site = siteName, !site.isEmpty {
-            previewDomainLabel.text = site
-        } else if let url = URL(string: urlString), let host = url.host {
-            let domain = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-            previewDomainLabel.text = domain
-        } else {
-            previewDomainLabel.text = urlString
-        }
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        let iconName = ext == "pdf" ? "doc.fill" : "doc.text.fill"
+        let iconConfig = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+        let iconView = UIImageView(image: UIImage(systemName: iconName, withConfiguration: iconConfig))
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.tintColor = colorTextSecondary
+        iconView.contentMode = .scaleAspectFit
+        container.addSubview(iconView)
 
-        // Build rich text content in previewURLLabel
-        if let t = title, !t.isEmpty {
-            // Show title as primary text (white, semibold) and description below
-            let titleAttr = NSMutableAttributedString(string: t, attributes: [
-                .font: UIFont.systemFont(ofSize: 15, weight: .semibold),
-                .foregroundColor: colorTextPrimary
-            ])
-            if let d = description, !d.isEmpty {
-                let truncatedDesc = d.count > 120 ? String(d.prefix(120)) + "…" : d
-                let descAttr = NSAttributedString(string: "\n" + truncatedDesc, attributes: [
-                    .font: UIFont.systemFont(ofSize: 13),
-                    .foregroundColor: colorTextSecondary
-                ])
-                titleAttr.append(descAttr)
-            }
-            previewURLLabel.attributedText = titleAttr
-            previewURLLabel.numberOfLines = 4
-        } else {
-            previewURLLabel.text = urlString
-            previewURLLabel.numberOfLines = 2
-        }
+        let nameLabel = UILabel()
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        let baseName = (fileName as NSString).deletingPathExtension
+        let truncatedBase = baseName.count > 20 ? String(baseName.prefix(20)) : baseName
+        let displayName = ext.isEmpty ? truncatedBase : "\(truncatedBase).\(ext)"
+        nameLabel.text = displayName
+        nameLabel.font = UIFont.systemFont(ofSize: 13)
+        nameLabel.textColor = colorTextSecondary
+        container.addSubview(nameLabel)
 
-        // Show/hide spinner
-        previewSpinner.stopAnimating()
-        previewLoadingLabel.isHidden = true
+        let badge = makeRemoveBadge()
+        badge.tag = index
+        badge.addTarget(self, action: #selector(removeDocumentAttachment(_:)), for: .touchUpInside)
+        container.addSubview(badge)
 
-        // Show text rows
-        previewIconView.isHidden = false
-        previewDomainLabel.isHidden = false
-        previewURLLabel.isHidden = false
-        previewImageView.isHidden = true
-        previewFilenameLabel.isHidden = true
-        previewTextLabel.isHidden = true
+        NSLayoutConstraint.activate([
+            iconView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            iconView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 18),
+            iconView.heightAnchor.constraint(equalToConstant: 18),
 
-        // Load hero image if available
-        if let imgURLString = imageURLString, let imgURL = URL(string: imgURLString) {
-            URLSession.shared.dataTask(with: imgURL) { [weak self] data, _, _ in
-                guard let self = self, let data = data, let image = UIImage(data: data) else { return }
-                DispatchQueue.main.async {
-                    self.previewHeroImageView.image = image
-                    self.previewHeroImageView.isHidden = false
-                    self.previewHeroHeightConstraint.isActive = true
-                    UIView.animate(withDuration: 0.25) {
-                        self.previewCard.layoutIfNeeded()
-                    }
-                }
-            }.resume()
-        } else {
-            previewHeroImageView.isHidden = true
-            previewHeroHeightConstraint.isActive = false
-        }
+            nameLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 6),
+            nameLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            nameLabel.trailingAnchor.constraint(equalTo: badge.leadingAnchor, constant: -6),
+
+            badge.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -6),
+            badge.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            badge.widthAnchor.constraint(equalToConstant: 18),
+            badge.heightAnchor.constraint(equalToConstant: 18),
+
+            container.topAnchor.constraint(equalTo: container.topAnchor),
+            container.heightAnchor.constraint(equalToConstant: 36),
+        ])
+
+        // Fix leading/trailing to drive intrinsic width
+        let leadingPin = iconView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10)
+        let trailingPin = badge.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -6)
+        leadingPin.isActive = true
+        trailingPin.isActive = true
+
+        return container
+    }
+
+    private func makeRemoveBadge() -> UIButton {
+        let btn = UIButton(type: .custom)
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        btn.backgroundColor = colorCard
+        btn.layer.cornerRadius = 9
+        btn.layer.borderWidth = 1
+        btn.layer.borderColor = colorBorder.cgColor
+        let xConfig = UIImage.SymbolConfiguration(pointSize: 10, weight: .medium)
+        btn.setImage(UIImage(systemName: "xmark", withConfiguration: xConfig), for: .normal)
+        btn.tintColor = colorTextSecondary
+        return btn
+    }
+
+    @objc private func removeImageAttachment(_ sender: UIButton) {
+        let index = sender.tag
+        print("[ShareViewController] Remove image attachment at index \(index)")
+        guard index < parsedImagePaths.count else { return }
+        parsedImagePaths.remove(at: index)
+        populateAttachmentStrip()
+    }
+
+    @objc private func removeDocumentAttachment(_ sender: UIButton) {
+        let index = sender.tag
+        print("[ShareViewController] Remove document attachment at index \(index)")
+        guard index < parsedDocumentPaths.count else { return }
+        parsedDocumentPaths.remove(at: index)
+        parsedDocumentNames.remove(at: index)
+        populateAttachmentStrip()
     }
 
     // MARK: - URL Scraping
 
     private func scrapeURLMetadata(urlString: String) {
         isScraping = true
-        DispatchQueue.main.async { self.showScrapingState() }
 
         guard let url = URL(string: urlString) else {
             isScraping = false
-            DispatchQueue.main.async { self.showURLPreview(urlString: urlString) }
             return
         }
 
@@ -628,15 +543,12 @@ class ShareViewController: UIViewController {
 
             guard let data = data, error == nil,
                   let rawHtml = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
-                DispatchQueue.main.async { self.showURLPreview(urlString: urlString) }
                 return
             }
-            // Cap HTML at 512KB to stay within iOS share-extension memory limits on heavy pages
             let maxBytes = 512 * 1024
             let html: String
             if rawHtml.utf8.count > maxBytes {
-                let truncated = rawHtml.prefix(maxBytes)
-                html = String(truncated)
+                html = String(rawHtml.prefix(maxBytes))
             } else {
                 html = rawHtml
             }
@@ -664,27 +576,13 @@ class ShareViewController: UIViewController {
             self.scrapedImageURL = imageURLString
 
             print("[ShareViewController] Scraped metadata — title: \(title ?? "nil"), siteName: \(siteName ?? "nil"), hasImage: \(imageURLString != nil)")
-
-            DispatchQueue.main.async {
-                self.showRichPreview(
-                    urlString: urlString,
-                    title: title,
-                    description: description,
-                    siteName: siteName,
-                    imageURLString: imageURLString
-                )
-            }
         }.resume()
     }
 
     // MARK: - HTML Parsing Helpers
 
-    /// Parses all <meta> tags in the HTML and returns a dictionary keyed by the
-    /// lowercased `property` or `name` attribute value. Attribute order-independent —
-    /// handles Shopify/Wix-style markup where `content` precedes `property`.
     private func extractAllMetaTags(html: String) -> [String: String] {
         var tags: [String: String] = [:]
-        // Match every <meta ...> tag (self-closing or not)
         guard let metaRegex = try? NSRegularExpression(
             pattern: "<meta\\s+([^>]*?)/?>",
             options: [.caseInsensitive, .dotMatchesLineSeparators]
@@ -696,7 +594,6 @@ class ShareViewController: UIViewController {
                   let attrsRange = Range(match.range(at: 1), in: html) else { continue }
             let attrs = String(html[attrsRange])
 
-            // Find key (property=... or name=...) and content=... in any order
             let keyRegex = try? NSRegularExpression(
                 pattern: "(?:property|name)\\s*=\\s*[\"']([^\"']+)[\"']",
                 options: [.caseInsensitive]
@@ -715,7 +612,6 @@ class ShareViewController: UIViewController {
 
             let key = String(attrs[keyRange]).lowercased()
             let value = String(attrs[contentRange])
-            // First occurrence wins (some sites duplicate meta tags)
             if tags[key] == nil {
                 tags[key] = value
             }
@@ -732,15 +628,10 @@ class ShareViewController: UIViewController {
         return nil
     }
 
-    /// Decodes HTML character entities in a string. Handles named entities, hex numeric
-    /// entities (&#xNNNN;) and decimal numeric entities (&#NNN;), including full Unicode
-    /// code points (emoji, supplementary characters). Matches the JS decodeHtmlEntities
-    /// function in the scrape-url-metadata edge function.
     private func decodeHtmlEntities(_ text: String) -> String {
         if text.isEmpty { return text }
         var result = text
 
-        // Named entities — match the JS decoder
         let namedEntities: [(String, String)] = [
             ("&amp;", "&"),
             ("&lt;", "<"),
@@ -760,11 +651,9 @@ class ShareViewController: UIViewController {
             result = result.replacingOccurrences(of: entity, with: replacement)
         }
 
-        // Hex numeric entities &#x...; — up to 6 hex digits, full Unicode incl. emojis
         if let hexRegex = try? NSRegularExpression(pattern: "&#x([0-9a-fA-F]{1,6});", options: []) {
             let nsResult = NSMutableString(string: result)
             let matches = hexRegex.matches(in: result, range: NSRange(result.startIndex..., in: result))
-            // Iterate matches in reverse so ranges remain valid as we mutate
             for match in matches.reversed() {
                 guard match.numberOfRanges >= 2,
                       let hexRange = Range(match.range(at: 1), in: result),
@@ -782,11 +671,9 @@ class ShareViewController: UIViewController {
             result = nsResult as String
         }
 
-        // Decimal numeric entities &#NNN; — up to 7 digits
         if let decRegex = try? NSRegularExpression(pattern: "&#([0-9]{1,7});", options: []) {
             let nsResult = NSMutableString(string: result)
             let matches = decRegex.matches(in: result, range: NSRange(result.startIndex..., in: result))
-            // Iterate matches in reverse so ranges remain valid as we mutate
             for match in matches.reversed() {
                 guard match.numberOfRanges >= 2,
                       let decRange = Range(match.range(at: 1), in: result),
@@ -896,7 +783,6 @@ class ShareViewController: UIViewController {
     }
 
     private func loadAuthToken() -> TokenLoadResult {
-        // Stage 1 — App Group container
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
             print("[ShareViewController] loadAuthToken stage 1 FAILED — App Group containerURL is nil for groupID=\(appGroupID)")
             return .failure(.containerUnavailable)
@@ -906,7 +792,6 @@ class ShareViewController: UIViewController {
         let tokenURL = containerURL.appendingPathComponent("auth-token.json")
         let tokenPath = tokenURL.path
 
-        // Stage 2 — file exists
         guard FileManager.default.fileExists(atPath: tokenPath) else {
             print("[ShareViewController] loadAuthToken stage 2 FAILED — auth-token.json does not exist at \(tokenPath)")
             return .failure(.fileMissing(path: tokenPath))
@@ -920,7 +805,6 @@ class ShareViewController: UIViewController {
         }
         print("[ShareViewController] loadAuthToken stage 2 OK — auth-token.json exists, size=\(fileSize) bytes, mtime=\(fileMtime)")
 
-        // Stage 3 — read file
         let data: Data
         do {
             data = try Data(contentsOf: tokenURL)
@@ -930,7 +814,6 @@ class ShareViewController: UIViewController {
         }
         print("[ShareViewController] loadAuthToken stage 3 OK — read \(data.count) bytes")
 
-        // Stage 4 — JSON parse
         let json: [String: Any]
         do {
             let parsed = try JSONSerialization.jsonObject(with: data)
@@ -951,7 +834,6 @@ class ShareViewController: UIViewController {
         let hasUserId = json["user_id"] is String
         print("[ShareViewController] loadAuthToken stage 4 OK — keys present: access=\(hasAccess) refresh=\(hasRefresh) userId=\(hasUserId)")
 
-        // Stage 5 — required fields
         guard let token = json["access_token"] as? String,
               let refreshToken = json["refresh_token"] as? String,
               let userId = json["user_id"] as? String else {
@@ -963,11 +845,11 @@ class ShareViewController: UIViewController {
         return .success(accessToken: token, refreshToken: refreshToken, userId: userId, expiresAt: expiresAt)
     }
 
-    private func refreshAccessToken(refreshToken: String, completion: @escaping (String?) -> Void) {
+    private func refreshAccessToken(refreshToken: String, completion: @escaping (String?, Double) -> Void) {
         let urlString = "\(supabaseURL)/auth/v1/token?grant_type=refresh_token"
         guard let url = URL(string: urlString) else {
             print("[ShareViewController] refreshAccessToken — invalid URL")
-            completion(nil)
+            completion(nil, 0)
             return
         }
         var request = URLRequest(url: url)
@@ -977,14 +859,15 @@ class ShareViewController: UIViewController {
         let body = ["refresh_token": refreshToken]
         guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
             print("[ShareViewController] refreshAccessToken — failed to serialize body")
-            completion(nil)
+            completion(nil, 0)
             return
         }
         request.httpBody = httpBody
 
         print("[ShareViewController] POST \(urlString) [refresh token request — token redacted]")
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             let bodyStr: String
             if let data = data, let str = String(data: data, encoding: .utf8) {
@@ -992,14 +875,18 @@ class ShareViewController: UIViewController {
             } else {
                 bodyStr = "<no body>"
             }
-            print("[ShareViewController] refreshAccessToken response — status: \(statusCode), error: \(String(describing: error?.localizedDescription)), body: \(bodyStr)")
 
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let newAccessToken = json["access_token"] as? String else {
-                completion(nil)
+                print("[ShareViewController] Token refresh FAILED — HTTP \(statusCode), body: \(bodyStr.prefix(300))")
+                completion(nil, 0)
                 return
             }
+
+            let newExpiresAt = (json["expires_at"] as? Double) ?? 0
+            print("[ShareViewController] Token refresh SUCCESS — new token expires at: \(newExpiresAt), userId: \(self.appGroupID)")
+
             // Persist the new tokens back to App Group
             if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: self.appGroupID) {
                 let tokenURL = containerURL.appendingPathComponent("auth-token.json")
@@ -1011,24 +898,8 @@ class ShareViewController: UIViewController {
                     try? updatedData.write(to: tokenURL)
                 }
             }
-            completion(newAccessToken)
+            completion(newAccessToken, newExpiresAt)
         }.resume()
-    }
-
-    // MARK: - Animation
-
-    private func animateSheetIn() {
-        sheetBottomConstraint.constant = 0
-        UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0.5, options: .curveEaseOut) {
-            self.view.layoutIfNeeded()
-        }
-    }
-
-    private func animateSheetOut(completion: @escaping () -> Void) {
-        sheetBottomConstraint.constant = 500
-        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseIn, animations: {
-            self.view.layoutIfNeeded()
-        }, completion: { _ in completion() })
     }
 
     // MARK: - Keyboard
@@ -1043,14 +914,14 @@ class ShareViewController: UIViewController {
               let keyboardFrame = info[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
               let duration = info[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double else { return }
         let keyboardHeight = keyboardFrame.height
-        sheetBottomConstraint.constant = -keyboardHeight
+        toolbarBottomConstraint.constant = -keyboardHeight
         UIView.animate(withDuration: duration) { self.view.layoutIfNeeded() }
     }
 
     @objc private func keyboardWillHide(_ notification: Notification) {
         guard let info = notification.userInfo,
               let duration = info[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double else { return }
-        sheetBottomConstraint.constant = 0
+        toolbarBottomConstraint.constant = 0
         UIView.animate(withDuration: duration) { self.view.layoutIfNeeded() }
     }
 
@@ -1066,21 +937,25 @@ class ShareViewController: UIViewController {
 
         switch loadAuthToken() {
         case .success(let accessToken, let refreshToken, let userId, _):
-            // Write success marker so debug screen reflects the freshest state
-            persistSuccess(userId: userId)
+            // Pre-flight auth check
+            guard !userId.isEmpty && !accessToken.isEmpty else {
+                print("[ShareViewController] PRE-FLIGHT FAIL — userId empty: \(userId.isEmpty), token empty: \(accessToken.isEmpty)")
+                showInFormError(stage: "Auth", message: "Missing user ID or token — open Recall and try again")
+                return
+            }
 
-            // Attempt to refresh the token first to ensure it's valid
-            refreshAccessToken(refreshToken: refreshToken) { [weak self] freshToken in
+            persistSuccess(userId: userId)
+            updateStatus("Authenticating…")
+
+            refreshAccessToken(refreshToken: refreshToken) { [weak self] freshToken, newExpiresAt in
                 guard let self = self else { return }
 
-                // If refresh failed, we'll try the stored token once.
-                // If that also fails with 401/403, showErrorState will be called from insertRecall.
                 let finalAccessToken: String
                 if let fresh = freshToken {
-                    print("[ShareViewController] Using refreshed access token")
+                    print("[ShareViewController] Using refreshed token for insert")
                     finalAccessToken = fresh
                 } else {
-                    print("[ShareViewController] Token refresh failed — attempting insert with stored access token")
+                    print("[ShareViewController] Using stored token for insert")
                     finalAccessToken = accessToken
                 }
 
@@ -1099,6 +974,11 @@ class ShareViewController: UIViewController {
                 let finalText = parts.joined(separator: "\n\n")
 
                 print("[ShareViewController] Inserting recall — userId: \(userId), textLength: \(finalText.count), tokenSource: \(freshToken != nil ? "refreshed" : "stored")")
+
+                DispatchQueue.main.async {
+                    self.updateStatus("Saving recall…")
+                }
+
                 self.insertRecall(text: finalText, urls: self.parsedURLs, imagePaths: self.parsedImagePaths, userId: userId, accessToken: finalAccessToken)
             }
 
@@ -1107,18 +987,14 @@ class ShareViewController: UIViewController {
             persistLastFailure(stageFail)
             print("[ShareViewController] No auth token — \(stageFail). Showing user message: \(userMessage)")
             writeRecoveryPayloadToAppGroup()
-            DispatchQueue.main.async { [weak self] in
-                self?.showErrorState(message: userMessage)
-            }
+            showInFormError(stage: "Auth Failed", message: userMessage)
         }
     }
 
     @objc private func handleCancel() {
         print("[ShareViewController] Cancel tapped — dismissing extension")
         noteTextView?.resignFirstResponder()
-        animateSheetOut { [weak self] in
-            self?.extensionContext?.cancelRequest(withError: NSError(domain: "UserCancelled", code: 0))
-        }
+        extensionContext?.cancelRequest(withError: NSError(domain: "UserCancelled", code: 0))
     }
 
     // MARK: - Supabase Insert
@@ -1128,9 +1004,7 @@ class ShareViewController: UIViewController {
         guard let url = URL(string: urlString) else {
             print("[ShareViewController] insertRecall — invalid URL")
             writeRecoveryPayloadToAppGroup()
-            DispatchQueue.main.async { [weak self] in
-                self?.showErrorState(message: "Save unconfirmed — try again")
-            }
+            showInFormError(stage: "Save Failed", message: "Invalid endpoint URL — try again")
             return
         }
 
@@ -1145,24 +1019,24 @@ class ShareViewController: UIViewController {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        // Use return=representation so PostgREST returns the inserted row with its id
         request.setValue("return=representation", forHTTPHeaderField: "Prefer")
 
         guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
             print("[ShareViewController] insertRecall — failed to serialize body")
             writeRecoveryPayloadToAppGroup()
-            DispatchQueue.main.async { [weak self] in
-                self?.showErrorState(message: "Save unconfirmed — try again")
-            }
+            showInFormError(stage: "Save Failed", message: "Failed to serialize request body")
             return
         }
         request.httpBody = httpBody
 
-        print("[ShareViewController] POST \(urlString) — userId: \(userId), textLength: \(text.count) [token redacted]")
+        print("[ShareViewController] INSERT PRE-FLIGHT — url: \(urlString), userId present: \(!userId.isEmpty), tokenLength: \(accessToken.count), bodyKeys: \(body.keys.sorted())")
+
+        let startTime = Date().timeIntervalSince1970
 
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { return }
 
+            let elapsed = Int((Date().timeIntervalSince1970 - startTime) * 1000)
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             let bodyStr: String
             if let data = data, let str = String(data: data, encoding: .utf8) {
@@ -1170,42 +1044,38 @@ class ShareViewController: UIViewController {
             } else {
                 bodyStr = "<no body>"
             }
-            print("[ShareViewController] insertRecall response — status: \(statusCode), error: \(String(describing: error?.localizedDescription)), body: \(bodyStr)")
+
+            print("[ShareViewController] INSERT RESPONSE — status: \(statusCode), elapsed: \(elapsed)ms, userId: \(userId), body: \(bodyStr.prefix(300))")
 
             DispatchQueue.main.async {
-                // Network error (no response at all)
                 if error != nil && statusCode == 0 {
                     self.writeRecoveryPayloadToAppGroup()
-                    self.showErrorState(message: "No internet — try again")
+                    self.showInFormError(stage: "No Internet", message: "Network error — check your connection and try again")
                     return
                 }
 
-                // Auth failures
                 if statusCode == 401 || statusCode == 403 {
                     self.writeRecoveryPayloadToAppGroup()
-                    self.showErrorState(message: "Session expired — open Recall")
+                    self.showInFormError(stage: "Session Expired", message: "Your session has expired — open Recall to sign in again")
                     return
                 }
 
-                // Other 4xx
+                if statusCode >= 500 {
+                    self.writeRecoveryPayloadToAppGroup()
+                    self.showInFormError(stage: "Server Error (HTTP \(statusCode))", message: "Server error — try again later. Body: \(bodyStr.prefix(200))")
+                    return
+                }
+
                 if statusCode >= 400 && statusCode < 500 {
                     print("[ShareViewController] Insert 4xx error — PostgREST body: \(bodyStr)")
                     self.writeRecoveryPayloadToAppGroup()
-                    self.showErrorState(message: "Couldn't save (HTTP \(statusCode))")
+                    self.showInFormError(stage: "Save Failed (HTTP \(statusCode))", message: bodyStr)
                     return
                 }
 
-                // 5xx
-                if statusCode >= 500 {
-                    self.writeRecoveryPayloadToAppGroup()
-                    self.showErrorState(message: "Server error — try again")
-                    return
-                }
-
-                // Must be 2xx — now verify the response body contains the inserted row with an id
                 guard statusCode >= 200 && statusCode < 300 else {
                     self.writeRecoveryPayloadToAppGroup()
-                    self.showErrorState(message: "Save unconfirmed — try again")
+                    self.showInFormError(stage: "Save Failed (HTTP \(statusCode))", message: "Unexpected status code — try again")
                     return
                 }
 
@@ -1216,16 +1086,14 @@ class ShareViewController: UIViewController {
                       !rowId.isEmpty else {
                     print("[ShareViewController] Insert returned 2xx but response body missing id — body: \(bodyStr)")
                     self.writeRecoveryPayloadToAppGroup()
-                    self.showErrorState(message: "Save unconfirmed — try again")
+                    self.showInFormError(stage: "Save Failed", message: "Save unconfirmed — response missing row ID")
                     return
                 }
 
-                // Confirmed: row was created in Supabase
                 print("[ShareViewController] Recall inserted id=\(rowId)")
 
-                // Write image paths to App Group for main app to upload later (images only, not a recovery payload)
                 if !imagePaths.isEmpty {
-                    self.saveSharedData(["text": "", "urls": [], "images": imagePaths, "timestamp": Date().timeIntervalSince1970])
+                    self.saveSharedData(["text": "", "urls": [], "images": imagePaths, "documents": self.parsedDocumentPaths, "documentNames": self.parsedDocumentNames, "timestamp": Date().timeIntervalSince1970])
                 }
 
                 self.showSuccessAndDismiss()
@@ -1233,45 +1101,51 @@ class ShareViewController: UIViewController {
         }.resume()
     }
 
-    // MARK: - Success / Error UI
+    // MARK: - Status / Error UI
 
-    /// The ONLY place showSuccessAndDismiss() is called — inside the confirmed-insert branch of insertRecall.
+    private func showInFormError(stage: String, message: String) {
+        print("[ShareViewController] IN-FORM ERROR — stage: \(stage), message: \(message)")
+        DispatchQueue.main.async {
+            self.errorStageLbl.text = stage
+            self.errorDetailLbl.text = message
+            self.errorBannerView.alpha = 0
+            self.errorBannerView.transform = CGAffineTransform(translationX: 0, y: 8)
+            self.errorBannerView.isHidden = false
+            UIView.animate(withDuration: 0.25) {
+                self.errorBannerView.alpha = 1
+                self.errorBannerView.transform = .identity
+            }
+            self.saveButton.isEnabled = true
+            self.saveButton.alpha = 1.0
+            self.saveButton.setTitle("Create Recall", for: .normal)
+            self.saveSpinner.stopAnimating()
+            self.statusLabel.isHidden = true
+        }
+    }
+
+    private func updateStatus(_ text: String, isSuccess: Bool = false) {
+        DispatchQueue.main.async {
+            self.statusLabel.text = text
+            self.statusLabel.textColor = isSuccess ? UIColor(hex: "#4CAF50") : self.colorTextSecondary
+            self.statusLabel.isHidden = false
+            self.errorBannerView.isHidden = true
+        }
+    }
+
     private func showSuccessAndDismiss() {
-        saveSpinner.stopAnimating()
-        saveButton.setTitle("✓  Saved", for: .normal)
-        saveButton.backgroundColor = UIColor(hex: "#4CAF50")
-        saveButton.alpha = 1.0
-
+        updateStatus("Done ✓", isSuccess: true)
+        DispatchQueue.main.async {
+            self.saveSpinner.stopAnimating()
+            self.saveButton.setTitle("Create Recall", for: .normal)
+            self.saveButton.alpha = 1.0
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
         }
     }
 
-    private func showErrorState(message: String) {
-        saveSpinner.stopAnimating()
-        saveButton.setTitle(message, for: .normal)
-        saveButton.backgroundColor = UIColor(hex: "#FF4444")
-        saveButton.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        saveButton.alpha = 1.0
-        saveButton.isEnabled = true
-
-        print("[ShareViewController] Showing error state: \"\(message)\"")
-
-        // After 3 seconds, restore the save button to its original state
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-            guard let self = self else { return }
-            self.saveButton.setTitle("Save to Recall", for: .normal)
-            self.saveButton.backgroundColor = self.colorPrimary
-            self.saveButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-            self.saveButton.isEnabled = true
-            self.saveButton.alpha = 1.0
-        }
-    }
-
     // MARK: - App Group Recovery Payload
 
-    /// Writes the current unsaved content to the App Group so the main app can recover it.
-    /// Called from every error path. NEVER called on the success path.
     private func writeRecoveryPayloadToAppGroup() {
         let noteText = noteTextView?.text ?? ""
         let sharedText = parsedTexts.joined(separator: "\n\n")
@@ -1281,6 +1155,8 @@ class ShareViewController: UIViewController {
             "text": combined,
             "urls": parsedURLs,
             "images": parsedImagePaths,
+            "documents": parsedDocumentPaths,
+            "documentNames": parsedDocumentNames,
             "timestamp": Date().timeIntervalSince1970,
         ]
         if let title = scrapedTitle { payload["scrapedTitle"] = title }
@@ -1302,6 +1178,8 @@ class ShareViewController: UIViewController {
         var texts: [String] = []
         var urls: [String] = []
         var imagePaths: [String] = []
+        var documentPaths: [String] = []
+        var documentNames: [String] = []
         var capturedImageData: Data?
 
         let outerGroup = DispatchGroup()
@@ -1309,7 +1187,6 @@ class ShareViewController: UIViewController {
         for item in extensionItems {
             guard let attachments = item.attachments else { continue }
 
-            // Collect caption/subject text from the item
             if let title = item.attributedTitle?.string, !title.isEmpty {
                 texts.append(title)
             }
@@ -1318,9 +1195,6 @@ class ShareViewController: UIViewController {
             }
 
             for provider in attachments {
-                // Check ALL types independently — do NOT use else if
-                // A single provider can conform to multiple types simultaneously
-
                 // Handle images
                 if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
                     outerGroup.enter()
@@ -1329,7 +1203,6 @@ class ShareViewController: UIViewController {
                         guard let self = self, error == nil else { return }
 
                         var imageData: Data?
-
                         if let url = item as? URL {
                             imageData = try? Data(contentsOf: url)
                         } else if let image = item as? UIImage {
@@ -1359,7 +1232,6 @@ class ShareViewController: UIViewController {
                         guard error == nil else { return }
                         if let url = item as? URL {
                             let urlString = url.absoluteString
-                            // Only add if not already captured and not a file:// URL (those are images/files, not web links)
                             if !urls.contains(urlString) && !urlString.hasPrefix("file://") {
                                 urls.append(urlString)
                             }
@@ -1382,8 +1254,6 @@ class ShareViewController: UIViewController {
                 // Handle public.url (Safari, Chrome, Instagram link shares)
                 if provider.hasItemConformingToTypeIdentifier("public.url") &&
                    !provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
-                    // Only load as public.url if UTType.url wasn't already handled above
-                    // to avoid duplicate entries
                     outerGroup.enter()
                     provider.loadItem(forTypeIdentifier: "public.url", options: nil) { item, error in
                         defer { outerGroup.leave() }
@@ -1396,6 +1266,50 @@ class ShareViewController: UIViewController {
                         }
                     }
                 }
+
+                // Handle documents (PDF, Word, etc.)
+                if !provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) &&
+                   (provider.hasItemConformingToTypeIdentifier(UTType.data.identifier) ||
+                    provider.hasItemConformingToTypeIdentifier("public.item")) {
+                    outerGroup.enter()
+                    let typeId = provider.hasItemConformingToTypeIdentifier(UTType.data.identifier)
+                        ? UTType.data.identifier : "public.item"
+                    provider.loadItem(forTypeIdentifier: typeId, options: nil) { [weak self] item, error in
+                        defer { outerGroup.leave() }
+                        guard let self = self, error == nil else {
+                            print("[ShareViewController] Document load error: \(String(describing: error))")
+                            return
+                        }
+                        var sourceURL: URL?
+                        if let url = item as? URL { sourceURL = url }
+                        else if let data = item as? Data,
+                                let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: self.appGroupID) {
+                            let fileName = "shared-doc-\(UUID().uuidString).bin"
+                            let fileURL = containerURL.appendingPathComponent(fileName)
+                            try? data.write(to: fileURL)
+                            sourceURL = fileURL
+                        }
+                        guard let src = sourceURL else { return }
+                        let fileName = src.lastPathComponent
+                        print("[ShareViewController] Document received: \(fileName), path: \(src.path)")
+                        if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: self.appGroupID) {
+                            let destURL = containerURL.appendingPathComponent("shared-doc-\(UUID().uuidString)-\(fileName)")
+                            do {
+                                if src.startAccessingSecurityScopedResource() {
+                                    defer { src.stopAccessingSecurityScopedResource() }
+                                    try FileManager.default.copyItem(at: src, to: destURL)
+                                } else {
+                                    try FileManager.default.copyItem(at: src, to: destURL)
+                                }
+                                documentPaths.append(destURL.path)
+                                documentNames.append(fileName)
+                                print("[ShareViewController] Document copied to App Group: \(destURL.path)")
+                            } catch {
+                                print("[ShareViewController] Document copy failed: \(error.localizedDescription)")
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -1404,9 +1318,15 @@ class ShareViewController: UIViewController {
             self.parsedTexts = texts
             self.parsedURLs = urls
             self.parsedImagePaths = imagePaths
+            self.parsedDocumentPaths = documentPaths
+            self.parsedDocumentNames = documentNames
             self.firstImageData = capturedImageData
-            print("[ShareViewController] Parsed — urls: \(urls.count), images: \(imagePaths.count), texts: \(texts.count)")
+            print("[ShareViewController] Parsed — urls: \(urls.count), images: \(imagePaths.count), texts: \(texts.count), documents: \(documentPaths.count)")
             self.populatePreview()
+            // Kick off URL scraping in background if URL was shared
+            if let firstURL = urls.first {
+                self.scrapeURLMetadata(urlString: firstURL)
+            }
         }
     }
 
@@ -1435,11 +1355,6 @@ class ShareViewController: UIViewController {
 extension ShareViewController: UITextViewDelegate {
     func textViewDidChange(_ textView: UITextView) {
         notePlaceholderLabel.isHidden = !textView.text.isEmpty
-        let fittingHeight = min(max(textView.contentSize.height, 80), 160)
-        if noteHeightConstraint.constant != fittingHeight {
-            noteHeightConstraint.constant = fittingHeight
-            UIView.animate(withDuration: 0.2) { self.view.layoutIfNeeded() }
-        }
     }
 
     func textViewDidBeginEditing(_ textView: UITextView) {
