@@ -1239,7 +1239,7 @@ const styles = StyleSheet.create({
   },
   contextMenuContainer: {
     paddingBottom: 100,
-    width: SCREEN_WIDTH * 0.5,
+    width: SCREEN_WIDTH * 0.6,
   },
   contextMenuPanel: {
     backgroundColor: '#1C1C1E',
