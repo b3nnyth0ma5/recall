@@ -108,5 +108,44 @@ public class EntityExtractionModule: Module {
         promise.reject("ERR_OCR", error.localizedDescription)
       }
     }
+
+    AsyncFunction("detectFaces") { (imageUri: String, promise: Promise) in
+      guard let url = URL(string: imageUri),
+            let imageData = try? Data(contentsOf: url),
+            let uiImage = UIImage(data: imageData),
+            let cgImage = uiImage.cgImage else {
+        promise.resolve([])
+        return
+      }
+
+      let request = VNDetectFaceRectanglesRequest { request, error in
+        if let error = error {
+          promise.reject("ERR_FACE", error.localizedDescription)
+          return
+        }
+        let observations = request.results as? [VNFaceObservation] ?? []
+        let faces = observations.map { obs -> [String: Any] in
+          let bbox = obs.boundingBox
+          // Vision uses bottom-left origin — flip Y for top-left UI coordinates
+          return [
+            "faceUuid": obs.uuid.uuidString,
+            "bboxX": Double(bbox.origin.x),
+            "bboxY": Double(1.0 - bbox.origin.y - bbox.size.height),
+            "bboxW": Double(bbox.size.width),
+            "bboxH": Double(bbox.size.height),
+            "roll": obs.roll?.doubleValue ?? 0.0,
+            "yaw": obs.yaw?.doubleValue ?? 0.0,
+          ]
+        }
+        promise.resolve(faces)
+      }
+
+      let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+      do {
+        try handler.perform([request])
+      } catch {
+        promise.reject("ERR_FACE", error.localizedDescription)
+      }
+    }
   }
 }

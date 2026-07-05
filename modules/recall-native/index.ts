@@ -72,4 +72,31 @@ export async function extractTextFromImageOnDevice(imageUri: string): Promise<st
   }
 }
 
+export interface FaceDetection {
+  faceUuid: string;
+  bboxX: number;
+  bboxY: number;
+  bboxW: number;
+  bboxH: number;
+  roll: number;
+  yaw: number;
+}
+
+export async function detectFacesOnDevice(imageUri: string): Promise<FaceDetection[] | null> {
+  console.log('[EntityExtraction] detectFacesOnDevice called:', imageUri);
+  const mod = getModule();
+  if (!mod) {
+    console.log('[EntityExtraction] Native module not available, returning null');
+    return null;
+  }
+  try {
+    const result = await (mod as any).detectFaces(imageUri);
+    console.log('[EntityExtraction] detectFaces result count:', (result as FaceDetection[])?.length ?? 0);
+    return result as FaceDetection[];
+  } catch (e) {
+    console.error('[EntityExtraction] detectFaces error:', e);
+    return null;
+  }
+}
+
 export type { ExtractedEntities };

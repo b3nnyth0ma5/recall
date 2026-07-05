@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Image as RNImage,
 } from 'react-native';
 import { Image } from 'expo-image';
 import Animated, { 
@@ -32,12 +33,13 @@ import * as WebBrowser from 'expo-web-browser';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
-import { getImageDataUrl, getDocumentSignedUrl } from '@/utils/supabase';
+import { getImageDataUrl, getDocumentSignedUrl, supabase } from '@/utils/supabase';
 import { SkeletonLoader } from './SkeletonLoader';
 import { Document } from '@/types/Document';
 import { formatFileSize, getFileExtension, getDocumentColor } from '@/utils/documentPicker';
 // Lucide share icon — non-negotiable per spec
 import { Share } from 'lucide-react-native';
+import { FaceLinkSheet, FaceRow } from './FaceLinkSheet';
 
 type MediaItem =
   | { kind: 'image'; url: string; id?: string }
@@ -49,6 +51,7 @@ interface FullScreenImageProps {
   imageIds?: string[];
   media?: MediaItem[];
   initialIndex?: number;
+  recallId?: string;
   onClose: () => void;
 }
 
@@ -58,6 +61,25 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const DISMISS_THRESHOLD = 100;
 const MIN_SCALE = 1;
 const MAX_SCALE = 4;
+
+// ─── Letterbox helper ────────────────────────────────────────────────────────
+
+function computeImageRect(
+  naturalWidth: number,
+  naturalHeight: number,
+  screenWidth: number,
+  screenHeight: number,
+): { x: number; y: number; width: number; height: number } {
+  if (naturalWidth === 0 || naturalHeight === 0) {
+    return { x: 0, y: 0, width: screenWidth, height: screenHeight };
+  }
+  const scale = Math.min(screenWidth / naturalWidth, screenHeight / naturalHeight);
+  const renderedW = naturalWidth * scale;
+  const renderedH = naturalHeight * scale;
+  const offsetX = (screenWidth - renderedW) / 2;
+  const offsetY = (screenHeight - renderedH) / 2;
+  return { x: offsetX, y: offsetY, width: renderedW, height: renderedH };
+}
 
 /**
  * Standalone full-screen image viewer component with integrated OCR functionality
@@ -75,6 +97,7 @@ const MAX_SCALE = 4;
  * - Loads all images from imageIds when opened
  * - Skeleton placeholders instead of loading spinner
  * - "Tap to preview" pill overlay for document slides
+ * - Face detection overlays with tap-to-link sheet
  */
 
 interface ZoomableImageProps {
@@ -83,9 +106,23 @@ interface ZoomableImageProps {
   isLoaded: boolean;
   onLoad: (index: number) => void;
   resetTrigger: number;
+  faces: FaceRow[];
+  naturalDims: { width: number; height: number } | null;
+  showControls: boolean;
+  onFaceTap: (face: FaceRow) => void;
 }
 
-function ZoomableImage({ imageUrl, index, isLoaded, onLoad, resetTrigger }: ZoomableImageProps) {
+function ZoomableImage({
+  imageUrl,
+  index,
+  isLoaded,
+  onLoad,
+  resetTrigger,
+  faces,
+  naturalDims,
+  showControls,
+  onFaceTap,
+}: ZoomableImageProps) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -176,6 +213,11 @@ function ZoomableImage({ imageUrl, index, isLoaded, onLoad, resetTrigger }: Zoom
     ],
   }));
 
+  // Compute letterbox rect for face overlays
+  const imageRect = naturalDims
+    ? computeImageRect(naturalDims.width, naturalDims.height, SCREEN_WIDTH, SCREEN_HEIGHT)
+    : null;
+
   return (
     <GestureDetector gesture={composedGesture}>
       <View style={styles.imageWrapper}>
@@ -208,6 +250,42 @@ function ZoomableImage({ imageUrl, index, isLoaded, onLoad, resetTrigger }: Zoom
             />
           </View>
         )}
+
+        {/* Face overlays — only when controls are visible and we have letterbox data */}
+        {showControls && imageRect && faces.length > 0 && faces.map((face) => {
+          const faceX = imageRect.x + face.bbox_x * imageRect.width;
+          const faceY = imageRect.y + face.bbox_y * imageRect.height;
+          const faceW = face.bbox_w * imageRect.width;
+          const faceH = face.bbox_h * imageRect.height;
+          const labelText = face.person_name ?? '?';
+          const isLinked = !!face.person_id;
+
+          return (
+            <Pressable
+              key={face.face_uuid}
+              style={[
+                styles.faceBox,
+                {
+                  left: faceX,
+                  top: faceY,
+                  width: faceW,
+                  height: faceH,
+                  borderColor: isLinked ? colors.primary : 'rgba(255,255,255,0.8)',
+                },
+              ]}
+              onPress={() => {
+                console.log('[FullScreenImage] Face box tapped:', face.face_uuid, 'person:', face.person_name);
+                onFaceTap(face);
+              }}
+            >
+              <View style={[styles.faceLabelContainer, isLinked && styles.faceLabelLinked]}>
+                <Text style={styles.faceLabelText} numberOfLines={1}>
+                  {labelText}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
       </View>
     </GestureDetector>
   );
@@ -265,6 +343,7 @@ export function FullScreenImage({
   imageIds,
   media,
   initialIndex = 0,
+  recallId,
   onClose,
 }: FullScreenImageProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(initialIndex);
@@ -281,6 +360,11 @@ export function FullScreenImage({
   const [showControls, setShowControls] = useState(true);
   const overlayOpacity = useSharedValue(1);
   const scrollViewRef = useRef<React.ElementRef<typeof ScrollView>>(null);
+
+  // Face detection state
+  const [facesPerImage, setFacesPerImage] = useState<Map<string, FaceRow[]>>(new Map());
+  const [naturalDimsPerIndex, setNaturalDimsPerIndex] = useState<Map<number, { width: number; height: number }>>(new Map());
+  const [selectedFace, setSelectedFace] = useState<FaceRow | null>(null);
 
   // Animated values for swipe-to-dismiss gesture
   const translateY = useSharedValue(0);
@@ -354,6 +438,83 @@ export function FullScreenImage({
   useEffect(() => {
     setResetTrigger(prev => prev + 1);
   }, [currentImageIndex]);
+
+  // Fetch faces for the current image when index changes or modal opens
+  useEffect(() => {
+    if (!visible) return;
+    const item = effectiveMedia[currentImageIndex];
+    if (!item || item.kind !== 'image') return;
+    const imageId = item.id ?? imageIds?.[currentImageIndex];
+    if (!imageId) return;
+
+    // Already cached
+    if (facesPerImage.has(imageId)) return;
+
+    console.log('[FullScreenImage] Fetching faces for imageId:', imageId);
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('recall_images_people')
+          .select('id, face_uuid, bbox_x, bbox_y, bbox_w, bbox_h, person_id, confirmed_by_user, persons(person_name, photo_url)')
+          .eq('recall_image_id', imageId);
+
+        if (error) {
+          console.warn('[FullScreenImage] Face fetch error (non-fatal):', error);
+          return;
+        }
+
+        const rows: FaceRow[] = (data ?? []).map((row: any) => ({
+          id: row.id,
+          face_uuid: row.face_uuid,
+          bbox_x: row.bbox_x,
+          bbox_y: row.bbox_y,
+          bbox_w: row.bbox_w,
+          bbox_h: row.bbox_h,
+          person_id: row.person_id ?? null,
+          person_name: row.persons?.person_name ?? null,
+          photo_url: row.persons?.photo_url ?? null,
+          confirmed_by_user: row.confirmed_by_user ?? false,
+        }));
+
+        console.log('[FullScreenImage] Fetched', rows.length, 'face(s) for imageId:', imageId);
+        setFacesPerImage(prev => {
+          const next = new Map(prev);
+          next.set(imageId, rows);
+          return next;
+        });
+      } catch (e) {
+        console.warn('[FullScreenImage] Face fetch exception (non-fatal):', e);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, currentImageIndex]);
+
+  // Fetch natural dimensions for the current image URL
+  useEffect(() => {
+    if (!visible) return;
+    const item = effectiveMedia[currentImageIndex];
+    if (!item || item.kind !== 'image') return;
+    if (naturalDimsPerIndex.has(currentImageIndex)) return;
+
+    const resolvedUrl = loadedImages[currentImageIndex] ?? (item.kind === 'image' ? item.url : '');
+    if (!resolvedUrl) return;
+
+    RNImage.getSize(
+      resolvedUrl,
+      (width, height) => {
+        console.log('[FullScreenImage] Natural dims for index', currentImageIndex, ':', width, 'x', height);
+        setNaturalDimsPerIndex(prev => {
+          const next = new Map(prev);
+          next.set(currentImageIndex, { width, height });
+          return next;
+        });
+      },
+      (err) => {
+        console.warn('[FullScreenImage] getSize error (non-fatal):', err);
+      }
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, currentImageIndex, loadedImages]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
@@ -652,6 +813,56 @@ export function FullScreenImage({
   const currentImageId = getCurrentImageId();
   const hasAnalysisTarget = isCurrentDocument ? !!currentDoc?.id : !!currentImageId;
 
+  // Current faces for the active image
+  const currentFaces: FaceRow[] = (() => {
+    const item = effectiveMedia[currentImageIndex];
+    if (!item || item.kind !== 'image') return [];
+    const imageId = item.id ?? imageIds?.[currentImageIndex];
+    if (!imageId) return [];
+    return facesPerImage.get(imageId) ?? [];
+  })();
+
+  const currentNaturalDims = naturalDimsPerIndex.get(currentImageIndex) ?? null;
+
+  // Current image URL for FaceLinkSheet crop
+  const currentImageUrl = (() => {
+    const item = resolvedMedia[currentImageIndex];
+    if (item?.kind === 'image') return item.url;
+    return '';
+  })();
+
+  const handleFaceTap = useCallback((face: FaceRow) => {
+    console.log('[FullScreenImage] Face tapped, opening FaceLinkSheet for face:', face.face_uuid);
+    setSelectedFace(face);
+  }, []);
+
+  const handleFaceLinked = useCallback((
+    faceId: string,
+    personId: string,
+    personName: string,
+    photoUrl: string | null,
+  ) => {
+    console.log('[FullScreenImage] Face linked:', faceId, '->', personId, personName);
+    // Update the facesPerImage map entry
+    const item = effectiveMedia[currentImageIndex];
+    if (!item || item.kind !== 'image') return;
+    const imageId = item.id ?? imageIds?.[currentImageIndex];
+    if (!imageId) return;
+
+    setFacesPerImage(prev => {
+      const next = new Map(prev);
+      const existing = next.get(imageId) ?? [];
+      const updated = existing.map(f =>
+        f.id === faceId
+          ? { ...f, person_id: personId, person_name: personName, photo_url: photoUrl, confirmed_by_user: true }
+          : f
+      );
+      next.set(imageId, updated);
+      return next;
+    });
+    setSelectedFace(null);
+  }, [effectiveMedia, currentImageIndex, imageIds]);
+
   return (
     <Modal
       visible={visible}
@@ -734,6 +945,10 @@ export function FullScreenImage({
                       isLoaded={!!imageLoadStates[index]}
                       onLoad={handleImageLoad}
                       resetTrigger={currentImageIndex === index ? 0 : resetTrigger}
+                      faces={index === currentImageIndex ? currentFaces : []}
+                      naturalDims={index === currentImageIndex ? currentNaturalDims : null}
+                      showControls={showControls}
+                      onFaceTap={handleFaceTap}
                     />
                   );
                 })}
@@ -881,6 +1096,21 @@ export function FullScreenImage({
           </View>
         </View>
       </Modal>
+
+      {/* Face Link Sheet */}
+      <FaceLinkSheet
+        visible={!!selectedFace}
+        faceRow={selectedFace}
+        imageUrl={currentImageUrl}
+        recallId={recallId ?? ''}
+        naturalWidth={currentNaturalDims?.width ?? 0}
+        naturalHeight={currentNaturalDims?.height ?? 0}
+        onClose={() => {
+          console.log('[FullScreenImage] FaceLinkSheet closed');
+          setSelectedFace(null);
+        }}
+        onLinked={handleFaceLinked}
+      />
     </Modal>
   );
 }
@@ -939,6 +1169,31 @@ const styles = StyleSheet.create({
     height: SCREEN_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  // ── Face overlays ────────────────────────────────────────────────────────
+  faceBox: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  faceLabelContainer: {
+    position: 'absolute',
+    bottom: -22,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  faceLabelLinked: {},
+  faceLabelText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
   },
   // ── Tap-to-preview pill ──────────────────────────────────────────────────
   tapToPreviewContainer: {
