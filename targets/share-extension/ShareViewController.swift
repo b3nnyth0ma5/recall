@@ -71,6 +71,65 @@ class ShareViewController: UIViewController {
     // MARK: - Full-Screen Layout
 
     private func buildFullScreenLayout() {
+        // ── Top-left header: app icon + "Recall" label ────────────────────────
+        let headerContainer = UIView()
+        headerContainer.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(headerContainer)
+
+        // App icon (32×32, cornerRadius 7) — loaded from AppIcon asset
+        let appIconView: UIView
+        if let appIconImage = UIImage(named: "AppIcon") {
+            let iconImageView = UIImageView(image: appIconImage)
+            iconImageView.translatesAutoresizingMaskIntoConstraints = false
+            iconImageView.contentMode = .scaleAspectFill
+            iconImageView.clipsToBounds = true
+            iconImageView.layer.cornerRadius = 7
+            headerContainer.addSubview(iconImageView)
+            NSLayoutConstraint.activate([
+                iconImageView.leadingAnchor.constraint(equalTo: headerContainer.leadingAnchor),
+                iconImageView.centerYAnchor.constraint(equalTo: headerContainer.centerYAnchor),
+                iconImageView.widthAnchor.constraint(equalToConstant: 32),
+                iconImageView.heightAnchor.constraint(equalToConstant: 32),
+            ])
+            appIconView = iconImageView
+        } else {
+            // Fallback: colored view with "R" label
+            let fallbackView = UIView()
+            fallbackView.translatesAutoresizingMaskIntoConstraints = false
+            fallbackView.backgroundColor = colorPrimary
+            fallbackView.layer.cornerRadius = 7
+            let rLabel = UILabel()
+            rLabel.translatesAutoresizingMaskIntoConstraints = false
+            rLabel.text = "R"
+            rLabel.font = UIFont.systemFont(ofSize: 18, weight: .bold)
+            rLabel.textColor = .white
+            rLabel.textAlignment = .center
+            fallbackView.addSubview(rLabel)
+            headerContainer.addSubview(fallbackView)
+            NSLayoutConstraint.activate([
+                fallbackView.leadingAnchor.constraint(equalTo: headerContainer.leadingAnchor),
+                fallbackView.centerYAnchor.constraint(equalTo: headerContainer.centerYAnchor),
+                fallbackView.widthAnchor.constraint(equalToConstant: 32),
+                fallbackView.heightAnchor.constraint(equalToConstant: 32),
+                rLabel.centerXAnchor.constraint(equalTo: fallbackView.centerXAnchor),
+                rLabel.centerYAnchor.constraint(equalTo: fallbackView.centerYAnchor),
+            ])
+            appIconView = fallbackView
+        }
+
+        let headerLabel = UILabel()
+        headerLabel.translatesAutoresizingMaskIntoConstraints = false
+        headerLabel.text = "Recall"
+        headerLabel.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        headerLabel.textColor = colorTextPrimary
+        headerContainer.addSubview(headerLabel)
+
+        NSLayoutConstraint.activate([
+            headerLabel.leadingAnchor.constraint(equalTo: appIconView.trailingAnchor, constant: 10),
+            headerLabel.centerYAnchor.constraint(equalTo: headerContainer.centerYAnchor),
+            headerLabel.trailingAnchor.constraint(equalTo: headerContainer.trailingAnchor),
+        ])
+
         // ── Close button (top-right) ──────────────────────────────────────────
         let closeButton = UIButton(type: .custom)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
@@ -95,21 +154,6 @@ class ShareViewController: UIViewController {
         borderLine.backgroundColor = colorBorder
         toolbarView.addSubview(borderLine)
 
-        // Bookmark icon + "Recall" label
-        let bookmarkConfig = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
-        let bookmarkIcon = UIImageView(image: UIImage(systemName: "bookmark.fill", withConfiguration: bookmarkConfig))
-        bookmarkIcon.translatesAutoresizingMaskIntoConstraints = false
-        bookmarkIcon.tintColor = colorPrimary
-        bookmarkIcon.contentMode = .scaleAspectFit
-        toolbarView.addSubview(bookmarkIcon)
-
-        let recallLabel = UILabel()
-        recallLabel.translatesAutoresizingMaskIntoConstraints = false
-        recallLabel.text = "Recall"
-        recallLabel.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
-        recallLabel.textColor = colorTextPrimary
-        toolbarView.addSubview(recallLabel)
-
         // Save pill button
         var config = UIButton.Configuration.filled()
         config.title = "Create Recall"
@@ -129,7 +173,7 @@ class ShareViewController: UIViewController {
         saveSpinner.hidesWhenStopped = true
         saveButton.addSubview(saveSpinner)
 
-        // ── Content scroll view (fills between close button and toolbar) ──────
+        // ── Content scroll view (starts below the header row) ────────────────
         contentScrollView = UIScrollView()
         contentScrollView.translatesAutoresizingMaskIntoConstraints = false
         contentScrollView.keyboardDismissMode = .interactive
@@ -228,7 +272,12 @@ class ShareViewController: UIViewController {
         toolbarBottomConstraint = toolbarView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
 
         NSLayoutConstraint.activate([
-            // Close button
+            // Header container (top-left, vertically centred with close button)
+            headerContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 14),
+            headerContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            headerContainer.heightAnchor.constraint(equalToConstant: 36),
+
+            // Close button (top-right, same vertical band as header)
             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             closeButton.widthAnchor.constraint(equalToConstant: 36),
@@ -245,22 +294,14 @@ class ShareViewController: UIViewController {
             borderLine.trailingAnchor.constraint(equalTo: toolbarView.trailingAnchor),
             borderLine.heightAnchor.constraint(equalToConstant: 0.5),
 
-            bookmarkIcon.leadingAnchor.constraint(equalTo: toolbarView.leadingAnchor, constant: 16),
-            bookmarkIcon.centerYAnchor.constraint(equalTo: toolbarView.centerYAnchor),
-            bookmarkIcon.widthAnchor.constraint(equalToConstant: 22),
-            bookmarkIcon.heightAnchor.constraint(equalToConstant: 22),
-
-            recallLabel.leadingAnchor.constraint(equalTo: bookmarkIcon.trailingAnchor, constant: 12),
-            recallLabel.centerYAnchor.constraint(equalTo: toolbarView.centerYAnchor),
-
             saveButton.trailingAnchor.constraint(equalTo: toolbarView.trailingAnchor, constant: -16),
             saveButton.centerYAnchor.constraint(equalTo: toolbarView.centerYAnchor),
 
             saveSpinner.centerXAnchor.constraint(equalTo: saveButton.centerXAnchor),
             saveSpinner.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
 
-            // Content scroll view
-            contentScrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            // Content scroll view — starts below the header row (56pt below safeArea top)
+            contentScrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 56),
             contentScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             contentScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             contentScrollView.bottomAnchor.constraint(equalTo: toolbarView.topAnchor),
@@ -272,8 +313,8 @@ class ShareViewController: UIViewController {
             contentContainer.bottomAnchor.constraint(equalTo: contentScrollView.bottomAnchor),
             contentContainer.widthAnchor.constraint(equalTo: contentScrollView.widthAnchor),
 
-            // Note text view — top of content, leaves room for close button
-            noteTextView.topAnchor.constraint(equalTo: contentContainer.topAnchor, constant: 68),
+            // Note text view — scroll view already clears the header, just add normal padding
+            noteTextView.topAnchor.constraint(equalTo: contentContainer.topAnchor, constant: 16),
             noteTextView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor, constant: 20),
             noteTextView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor, constant: -20),
 

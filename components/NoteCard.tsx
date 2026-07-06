@@ -942,7 +942,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                   setShowContextMenu(false);
                 }}>
                   <IconSymbol name="camera.fill" size={22} color={colors.text} />
-                  <Text style={styles.contextMenuIconLabel}>Camera</Text>
+                  <Text style={styles.contextMenuIconLabel} numberOfLines={1}>Camera</Text>
                 </Pressable>
                 <Pressable style={styles.contextMenuIconButton} onPress={async () => {
                   if (Platform.OS !== 'web') {
@@ -952,7 +952,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                   setShowContextMenu(false);
                 }}>
                   <IconSymbol name="photo.on.rectangle" size={22} color={colors.text} />
-                  <Text style={styles.contextMenuIconLabel}>Photos</Text>
+                  <Text style={styles.contextMenuIconLabel} numberOfLines={1}>Photos</Text>
                 </Pressable>
                 <Pressable style={styles.contextMenuIconButton} onPress={async () => {
                   if (Platform.OS !== 'web') {
@@ -961,8 +961,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                   pendingActionRef.current = () => handleDocuments();
                   setShowContextMenu(false);
                 }}>
-                  <IconSymbol name="doc.fill" size={22} color={colors.text} />
-                  <Text style={styles.contextMenuIconLabel}>Documents</Text>
+                  <IconSymbol name="doc.on.doc.fill" size={22} color={colors.text} />
+                  <Text style={styles.contextMenuIconLabel} numberOfLines={1}>Documents</Text>
                 </Pressable>
               </View>
               <View style={styles.contextMenuSeparator} />
@@ -1309,7 +1309,7 @@ const styles = StyleSheet.create({
   },
   contextMenuIconStrip: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'flex-start',
     paddingVertical: 12,
     paddingHorizontal: 16,
   },
