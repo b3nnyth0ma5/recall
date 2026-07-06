@@ -1,0 +1,26 @@
+diff --git a/build/with-bacons-xcode.js b/build/with-bacons-xcode.js
+--- a/build/with-bacons-xcode.js
++++ b/build/with-bacons-xcode.js
+@@ -30,7 +30,8 @@
+ const xcode_1 = require("@bacons/xcode");
+ const xcodeParse = __importStar(require("@bacons/xcode/json"));
+ const config_plugins_1 = require("expo/config-plugins");
++const createBaseMod_1 = require("@expo/config-plugins/build/plugins/createBaseMod");
+ const fs_1 = __importDefault(require("fs"));
+ const customModName = "xcodeProjectBeta2";
+ const withXcodeProjectBeta = (config, action) => {
+@@ -41,9 +42,9 @@
+ exports.withXcodeProjectBeta = withXcodeProjectBeta;
+ const withXcodeProjectBetaBaseModInternal = (config) => {
+-    return config_plugins_1.BaseMods.withGeneratedBaseMods(config, {
++    return createBaseMod_1.withGeneratedBaseMods(config, {
+         platform: "ios",
+         saveToInternal: true,
+         skipEmptyMod: false,
+         providers: {
+             // Append a custom rule to supply AppDelegate header data to mods on `mods.ios.AppClipInfoPlist`
+-            [customModName]: config_plugins_1.BaseMods.provider({
++            [customModName]: createBaseMod_1.provider({
+                 isIntrospective: false,
+                 // isIntrospective: true,
+                 async getFilePath({ modRequest, _internal }) {

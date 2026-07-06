@@ -591,6 +591,8 @@ export default function HomeScreen() {
           onCardPress={handleCardPress}
           onDelete={() => handleDeleteNote(item.id)}
           onPeopleUpdated={(noteId) => refreshSingleNote(noteId)}
+          onPhotoAdded={(noteId) => { console.log('[NoteCard] onPhotoAdded called, refreshing note:', noteId); refreshSingleNote(noteId); }}
+          onDocumentAdded={(noteId) => { console.log('[NoteCard] onDocumentAdded called, refreshing note:', noteId); refreshSingleNote(noteId); }}
           loading={false}
           expectedImageCount={getExpectedImageCount(item.id)}
           processingStage={creatingRecallId === item.id ? savingStage : undefined}
