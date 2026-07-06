@@ -16,7 +16,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.b3nny1nc.recall",
       "entitlements": {
-        "com.apple.security.application-groups": ["group.com.b3nny1nc.recall"]
+        "com.apple.security.application-groups": [
+          "group.com.b3nny1nc.recall"
+        ]
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
