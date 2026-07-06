@@ -209,12 +209,21 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
           .in('id', recall.imageIds);
         if (fetchedImages) imageData = fetchedImages;
       }
+      // Fetch URL metadata
+      let urlData: { url: string; og_title?: string | null; og_description?: string | null; og_site_name?: string | null }[] = [];
+      const { data: fetchedUrls } = await supabase
+        .from('recall_urls')
+        .select('url, og_title, og_description, og_site_name')
+        .eq('recall_id', recall.id);
+      if (fetchedUrls) urlData = fetchedUrls;
+      console.log('[RecallChat] Fetched', urlData.length, 'URLs for recall:', recall.id);
       const recallData = {
         id: recall.id,
         text: recall.text || '',
         location: recall.location,
         location_primary_type: recall.location_primary_type,
         images: imageData,
+        urls: urlData,
       };
       console.log('[RecallChat] Calling chat-with-recalls for suggested questions (empty question)');
       const { data, error } = await supabase.functions.invoke('chat-with-recalls', {
@@ -398,6 +407,15 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
         }
       }
 
+      // Fetch URL metadata
+      let urlData: { url: string; og_title?: string | null; og_description?: string | null; og_site_name?: string | null }[] = [];
+      const { data: fetchedUrls } = await supabase
+        .from('recall_urls')
+        .select('url, og_title, og_description, og_site_name')
+        .eq('recall_id', recall.id);
+      if (fetchedUrls) urlData = fetchedUrls;
+      console.log('Fetched', urlData.length, 'URLs for recall:', recall.id);
+
       // Prepare recall data for API with complete image information
       const recallData = {
         id: recall.id,
@@ -405,9 +423,10 @@ export const RecallChatModal: React.FC<RecallChatModalProps> = ({
         location: recall.location,
         location_primary_type: recall.location_primary_type,
         images: imageData,
+        urls: urlData,
       };
 
-      console.log('Calling chat-with-recalls edge function with', imageData.length, 'images');
+      console.log('Calling chat-with-recalls edge function with', imageData.length, 'images and', urlData.length, 'URLs');
 
       const { data, error } = await supabase.functions.invoke('chat-with-recalls', {
         body: {
