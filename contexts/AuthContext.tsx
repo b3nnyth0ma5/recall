@@ -3,7 +3,6 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/utils/supabase';
-import * as FileSystem from 'expo-file-system/legacy';
 
 interface AuthContextType {
   session: Session | null;
@@ -30,32 +29,21 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
   }
 
   try {
-    let getAppGroupContainerPath: (() => Promise<string | null>) | null = null;
+    let writeTokenFile: ((json: string) => Promise<boolean>) | null = null;
+    let deleteTokenFile: (() => Promise<boolean>) | null = null;
     try {
       const mod = await import('recall-native');
-      getAppGroupContainerPath = mod.getAppGroupContainerPath;
+      writeTokenFile = mod.writeTokenFile;
+      deleteTokenFile = mod.deleteTokenFile;
     } catch {
       console.warn('[AuthContext] recall-native not available in this build — skipping App Group write');
       return;
     }
-    const containerPath = await getAppGroupContainerPath() as string | null;
 
-    console.log(
-      '[AuthContext] App Group container path:',
-      containerPath ?? 'NULL'
-    );
-
-    if (!containerPath) {
-      console.warn('[AuthContext] writeTokenToAppGroup — containerPath is null, aborting');
+    if (!writeTokenFile || !deleteTokenFile) {
+      console.warn('[AuthContext] writeTokenFile/deleteTokenFile not exported from recall-native — skipping');
       return;
     }
-
-    const normalized = containerPath.startsWith('file://')
-      ? containerPath
-      : `file://${containerPath}`;
-    const tokenPath = normalized.endsWith('/')
-      ? `${normalized}auth-token.json`
-      : `${normalized}/auth-token.json`;
 
     if (newSession) {
       const payload = JSON.stringify({
@@ -65,23 +53,25 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
         expires_at: newSession.expires_at ?? 0,
       });
       console.log(
-        '[AuthContext] Writing token file to:',
-        tokenPath,
-        '| payload size:',
+        '[AuthContext] Writing token via native bridge — payload size:',
         payload.length,
         'bytes'
       );
-      await FileSystem.writeAsStringAsync(tokenPath, payload);
-      console.log('[AuthContext] Token file written successfully');
+      const success = await writeTokenFile(payload);
+      if (success) {
+        console.log('[AuthContext] Token file written successfully via native bridge');
+      } else {
+        console.error('[AuthContext] writeTokenFile returned false — token may not have been written');
+      }
 
-      // Verify the write actually landed where the share extension will read.
+      // Verify the write landed
       try {
         let verifyAppGroupContainer: (() => Promise<unknown>) | null = null;
         try {
           const mod = await import('recall-native');
           verifyAppGroupContainer = mod.verifyAppGroupContainer;
         } catch {
-          // recall-native not available in this build — skip verify
+          // skip verify
         }
         const verify = verifyAppGroupContainer ? await verifyAppGroupContainer() as any : null;
         console.log(
@@ -95,7 +85,7 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
           })
         );
         if (!verify?.tokenFileExists) {
-          console.error('[AuthContext] Post-write verify FAILED — file not found after write. Container path may differ between JS write and Swift read.');
+          console.error('[AuthContext] Post-write verify FAILED — file not found after write.');
         } else if (verify.tokenFileSize !== payload.length) {
           console.error(
             `[AuthContext] Post-write verify SIZE MISMATCH — wrote ${payload.length} bytes, Swift sees ${verify.tokenFileSize} bytes.`
@@ -105,9 +95,9 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
         console.warn('[AuthContext] Post-write verify threw:', String(verifyErr));
       }
     } else {
-      console.log('[AuthContext] Deleting token file at:', tokenPath);
-      await FileSystem.deleteAsync(tokenPath, { idempotent: true });
-      console.log('[AuthContext] Token file deleted successfully');
+      console.log('[AuthContext] Deleting token file via native bridge');
+      const deleted = await deleteTokenFile();
+      console.log('[AuthContext] Token file delete result:', deleted);
     }
   } catch (e) {
     console.error(

@@ -166,6 +166,42 @@ public class AppGroupModule: Module {
         promise.resolve(false)
       }
     }
+
+    AsyncFunction("writeTokenFile") { (appGroupId: String, json: String, promise: Promise) in
+      guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
+        promise.reject("ERR_APP_GROUP", "Could not resolve container URL for app group: \\(appGroupId)")
+        return
+      }
+      let tokenURL = containerURL.appendingPathComponent("auth-token.json")
+      do {
+        try json.write(to: tokenURL, atomically: true, encoding: .utf8)
+        print("[AppGroupModule] writeTokenFile — wrote \\(json.count) chars to \\(tokenURL.path)")
+        promise.resolve(true)
+      } catch {
+        print("[AppGroupModule] writeTokenFile — write failed: \\(error.localizedDescription)")
+        promise.reject("ERR_APP_GROUP_WRITE", error.localizedDescription)
+      }
+    }
+
+    AsyncFunction("deleteTokenFile") { (appGroupId: String, promise: Promise) in
+      guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
+        promise.resolve(false)
+        return
+      }
+      let tokenURL = containerURL.appendingPathComponent("auth-token.json")
+      guard FileManager.default.fileExists(atPath: tokenURL.path) else {
+        promise.resolve(false)
+        return
+      }
+      do {
+        try FileManager.default.removeItem(at: tokenURL)
+        print("[AppGroupModule] deleteTokenFile — deleted \\(tokenURL.path)")
+        promise.resolve(true)
+      } catch {
+        print("[AppGroupModule] deleteTokenFile — delete failed: \\(error.localizedDescription)")
+        promise.resolve(false)
+      }
+    }
   }
 }
 `;

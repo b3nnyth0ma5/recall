@@ -12,7 +12,8 @@
       },
       "ios": {
         "simulator": true,
-        "buildConfiguration": "Debug"
+        "buildConfiguration": "Debug",
+        "image": "latest"
       },
       "android": {
         "buildType": "apk"
@@ -25,7 +26,8 @@
       },
       "ios": {
         "simulator": false,
-        "buildConfiguration": "Release"
+        "buildConfiguration": "Release",
+        "image": "latest"
       },
       "android": {
         "buildType": "apk"
@@ -38,7 +40,8 @@
       },
       "ios": {
         "simulator": false,
-        "buildConfiguration": "Release"
+        "buildConfiguration": "Release",
+        "image": "latest"
       },
       "android": {
         "buildType": "app-bundle"

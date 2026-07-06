@@ -183,3 +183,46 @@ export async function clearLastShareExtensionError(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Write the auth token JSON string directly to the App Group container
+ * using native FileManager — bypasses expo-file-system's sandbox.
+ * Returns true on success.
+ */
+export async function writeTokenFile(jsonPayload: string): Promise<boolean> {
+  if (Platform.OS !== 'ios') return false;
+  const mod = getNativeModule();
+  if (!mod) {
+    console.warn('[AppGroupModule] writeTokenFile — native module unavailable');
+    return false;
+  }
+  try {
+    const result = await mod.writeTokenFile(APP_GROUP_ID, jsonPayload);
+    console.log('[AppGroupModule] writeTokenFile result:', result);
+    return result ?? false;
+  } catch (e: any) {
+    console.error('[AppGroupModule] writeTokenFile threw:', String(e));
+    return false;
+  }
+}
+
+/**
+ * Delete the auth token file from the App Group container using native FileManager.
+ * Returns true if the file was removed, false if it didn't exist or on error.
+ */
+export async function deleteTokenFile(): Promise<boolean> {
+  if (Platform.OS !== 'ios') return false;
+  const mod = getNativeModule();
+  if (!mod) {
+    console.warn('[AppGroupModule] deleteTokenFile — native module unavailable');
+    return false;
+  }
+  try {
+    const result = await mod.deleteTokenFile(APP_GROUP_ID);
+    console.log('[AppGroupModule] deleteTokenFile result:', result);
+    return result ?? false;
+  } catch (e: any) {
+    console.error('[AppGroupModule] deleteTokenFile threw:', String(e));
+    return false;
+  }
+}
