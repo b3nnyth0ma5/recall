@@ -15,6 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.b3nny1nc.recall",
+      "appleTeamId": "9PWN6F3TK8",
       "entitlements": {
         "com.apple.security.application-groups": [
           "group.com.b3nny1nc.recall"
