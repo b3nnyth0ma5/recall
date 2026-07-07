@@ -2,5 +2,5 @@ overrides:
   '@expo/prebuild-config': '~54.0.8'
   '@supabase/supabase-js': '2.105.0'
 
-patchedDependencies:
-  '@bacons/apple-targets@4.0.7': 'patches/@bacons+apple-targets@4.0.7.patch'
+# patchedDependencies:
+#  '@bacons/apple-targets@4.0.7': 'patches/@bacons+apple-targets@4.0.7.patch'
