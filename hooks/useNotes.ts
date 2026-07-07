@@ -1400,6 +1400,10 @@ export function useNotes() {
     });
   }, []);
 
+  const updateAiAnswerTiming = useCallback((durationMs: number) => {
+    setSearchTimings(prev => ({ ...prev, aiAnswerMs: durationMs }));
+  }, []);
+
   return {
     notes,
     loading,
@@ -1433,5 +1437,6 @@ export function useNotes() {
     getCachedNote,
     refreshPeopleForNote,
     patchNotesForOnDeviceAnswer,
+    updateAiAnswerTiming,
   };
 }

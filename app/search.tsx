@@ -73,6 +73,7 @@ export default function SearchScreen() {
     getUrlMetadataForRecall,
     urlMetadataByRecallId,
     patchNotesForOnDeviceAnswer,
+    updateAiAnswerTiming,
   } = useNotesContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
@@ -515,6 +516,7 @@ export default function SearchScreen() {
       if (onDeviceResult && onDeviceResult.answer) {
         console.log('[Search] handleSearch: on-device answer generated, durationMs:', onDeviceResult.durationMs);
         setOnDeviceAnswerMs(onDeviceResult.durationMs);
+        updateAiAnswerTiming(onDeviceResult.durationMs);
         patchNotesForOnDeviceAnswer(
           onDeviceResult.sources,
           searchResult.results ?? [],
@@ -522,9 +524,33 @@ export default function SearchScreen() {
           onDeviceResult.confidence,
         );
       } else {
-        console.log('[Search] handleSearch: on-device answer returned null, falling back to cloud answer');
-        // Re-run without skipAnswer to get cloud answer
-        await searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined, preExtractedEntities, false);
+        // On-device failed — call QA-only path on the edge function using already-returned context.
+        // This avoids resetting UI state or re-running vector search.
+        console.log('[Search] handleSearch: on-device answer returned null, falling back to cloud QA-only path');
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            const { data: qaResult } = await supabase.functions.invoke('search-recalls-v3', {
+              body: {
+                query: searchQuery.trim(),
+                generate_answer_only: true,
+                context_for_answer: searchResult.context_for_answer,
+                uploaded_images_context: searchResult.uploaded_images_context ?? '',
+              },
+            });
+            if (qaResult?.answer) {
+              console.log('[Search] handleSearch: cloud QA-only fallback succeeded');
+              patchNotesForOnDeviceAnswer(
+                qaResult.sources ?? [],
+                searchResult.results ?? [],
+                qaResult.answer,
+                qaResult.confidence ?? 0,
+              );
+            }
+          }
+        } catch (qaErr) {
+          console.error('[Search] handleSearch: cloud QA-only fallback failed:', qaErr);
+        }
       }
     }
 
@@ -532,7 +558,7 @@ export default function SearchScreen() {
     setTimeout(() => {
       loadSearchHistory();
     }, 500);
-  }, [searchQuery, searchNotes, loadSearchHistory, attachedImages, uriToBase64, user?.id, tryOnDeviceExtraction, checkAndNotifyFoundationModels, patchNotesForOnDeviceAnswer]);
+  }, [searchQuery, searchNotes, loadSearchHistory, attachedImages, uriToBase64, user?.id, tryOnDeviceExtraction, checkAndNotifyFoundationModels, patchNotesForOnDeviceAnswer, updateAiAnswerTiming]);
 
   const handleHistoryItemPress = useCallback(async (item: SearchHistory) => {
     console.log('[SearchScreen] History item pressed:', item.search_text, '| has_uploads:', item.has_uploads);
@@ -593,6 +619,7 @@ export default function SearchScreen() {
       if (onDeviceResult && onDeviceResult.answer) {
         console.log('[Search] handleHistoryItemPress: on-device answer generated, durationMs:', onDeviceResult.durationMs);
         setOnDeviceAnswerMs(onDeviceResult.durationMs);
+        updateAiAnswerTiming(onDeviceResult.durationMs);
         patchNotesForOnDeviceAnswer(
           onDeviceResult.sources,
           searchResult.results ?? [],
@@ -600,13 +627,36 @@ export default function SearchScreen() {
           onDeviceResult.confidence,
         );
       } else {
-        console.log('[Search] handleHistoryItemPress: on-device answer returned null, falling back to cloud answer');
-        await searchNotes(item.search_text, true, searchUploads, preExtractedEntities, false);
+        console.log('[Search] handleHistoryItemPress: on-device answer returned null, falling back to cloud QA-only path');
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            const { data: qaResult } = await supabase.functions.invoke('search-recalls-v3', {
+              body: {
+                query: item.search_text.trim(),
+                generate_answer_only: true,
+                context_for_answer: searchResult.context_for_answer,
+                uploaded_images_context: searchResult.uploaded_images_context ?? '',
+              },
+            });
+            if (qaResult?.answer) {
+              console.log('[Search] handleHistoryItemPress: cloud QA-only fallback succeeded');
+              patchNotesForOnDeviceAnswer(
+                qaResult.sources ?? [],
+                searchResult.results ?? [],
+                qaResult.answer,
+                qaResult.confidence ?? 0,
+              );
+            }
+          }
+        } catch (qaErr) {
+          console.error('[Search] handleHistoryItemPress: cloud QA-only fallback failed:', qaErr);
+        }
       }
     }
 
     setIsSearching(false);
-  }, [searchNotes, tryOnDeviceExtraction, checkAndNotifyFoundationModels, patchNotesForOnDeviceAnswer]);
+  }, [searchNotes, tryOnDeviceExtraction, checkAndNotifyFoundationModels, patchNotesForOnDeviceAnswer, updateAiAnswerTiming]);
 
   const handleNotePress = useCallback((noteId: string, imageIndex?: number) => {
     console.log('[SearchScreen] Note card pressed, navigating to note editor for noteId:', noteId, 'imageIndex:', imageIndex);

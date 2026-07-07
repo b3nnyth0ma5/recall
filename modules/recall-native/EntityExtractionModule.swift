@@ -13,7 +13,7 @@ public class EntityExtractionModule: Module {
       var location: String = ""
       var locationIntent: String? = nil
 
-      // Named entity recognition
+      // Named entity recognition — primary pass
       let tagger = NLTagger(tagSchemes: [.nameType, .lexicalClass])
       tagger.string = query
 
@@ -23,13 +23,34 @@ public class EntityExtractionModule: Module {
         let token = String(query[range])
         switch tag {
         case .personalName:
-          people.append(token)
+          if !people.contains(token) {
+            people.append(token)
+          }
         case .placeName, .organizationName:
-          location = token
+          if location.isEmpty {
+            location = token
+          }
         default:
           break
         }
         return true
+      }
+
+      // Fallback heuristic: capture capitalized tokens not at sentence start
+      // that NLTagger may have missed as personalName
+      let words = query.components(separatedBy: .whitespaces)
+      for (idx, word) in words.enumerated() {
+        let stripped = word.trimmingCharacters(in: .punctuationCharacters)
+        guard stripped.count > 1,
+              let first = stripped.first, first.isUppercase,
+              idx > 0 else { continue }
+        // Skip if already captured as a person or location
+        if people.contains(stripped) { continue }
+        if stripped.lowercased() == location.lowercased() { continue }
+        // Skip common non-name capitalised words
+        let stopWords: Set<String> = ["I", "The", "A", "An", "In", "At", "On", "For", "With", "And", "Or", "But", "My", "Your", "His", "Her", "Their", "Our", "Its", "This", "That", "These", "Those", "What", "When", "Where", "Who", "How", "Why"]
+        if stopWords.contains(stripped) { continue }
+        people.append(stripped)
       }
 
       // Keyword extraction (nouns and adjectives)
@@ -44,6 +65,10 @@ public class EntityExtractionModule: Module {
         }
         return true
       }
+
+      // Deduplicate: remove keywords that are already captured as people names
+      let peopleNormalized = Set(people.map { $0.lowercased() })
+      keywords = keywords.filter { !peopleNormalized.contains($0.lowercased()) }
 
       // Location intent detection
       let lower = query.lowercased()
