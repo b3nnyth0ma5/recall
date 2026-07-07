@@ -778,7 +778,7 @@ export function useNotes() {
     searchUploads?: { text: string; explanation: string; cdn_url?: string | null }[],
     preExtractedEntities?: import('@/modules/recall-native').ExtractedEntities | null,
     skipAnswer?: boolean,
-  ): Promise<{ context_for_answer?: string; uploaded_images_context?: string } | undefined> => {
+  ): Promise<{ context_for_answer?: string; uploaded_images_context?: string; results?: { id: string; sourceNumber: number }[] } | undefined> => {
     const userId = await getActiveUserId();
     if (!userId) {
       console.error('[useNotes] searchNotes: no active user');
@@ -1164,6 +1164,7 @@ export function useNotes() {
         return {
           context_for_answer: entityResult.context_for_answer as string,
           uploaded_images_context: entityResult.uploaded_images_context as string | undefined,
+          results: (entityResult.results as { id: string; sourceNumber: number }[] | undefined) ?? [],
         };
       }
       return undefined;
@@ -1286,6 +1287,50 @@ export function useNotes() {
   }, []);
 
   /**
+   * Patches the current notes list to mark which recalls were cited by an
+   * on-device answer, and injects the answer/confidence into search state.
+   *
+   * @param sources - cited source strings from the on-device answer (e.g. ["SOURCE_1", "SOURCE_3"])
+   * @param allResults - the results array from the edge function ({ id, sourceNumber })
+   * @param answer - the on-device answer text
+   * @param confidence - the on-device confidence score
+   */
+  const patchNotesForOnDeviceAnswer = useCallback((
+    sources: string[],
+    allResults: { id: string; sourceNumber: number }[],
+    answer: string,
+    confidence: number,
+  ) => {
+    console.log('[useNotes] patchNotesForOnDeviceAnswer: sources:', sources, 'allResults count:', allResults.length);
+
+    // Parse cited source numbers from strings like "SOURCE_1" → 1
+    const citedNumbers = new Set<number>();
+    sources.forEach(s => {
+      const match = s.match(/SOURCE_(\d+)/i);
+      if (match) citedNumbers.add(parseInt(match[1], 10));
+    });
+
+    // Build set of cited recall IDs
+    const citedIds = new Set<string>();
+    allResults.forEach(r => {
+      if (citedNumbers.has(r.sourceNumber)) citedIds.add(r.id);
+    });
+
+    console.log('[useNotes] patchNotesForOnDeviceAnswer: citedNumbers:', [...citedNumbers], 'citedIds:', [...citedIds]);
+
+    setNotes(prev => prev.map(note => ({
+      ...note,
+      used_for_answer: citedIds.has(note.id),
+      source_number: citedIds.has(note.id)
+        ? (allResults.find(r => r.id === note.id)?.sourceNumber ?? null)
+        : null,
+    })));
+
+    setSearchAnswer(answer);
+    setSearchConfidence(confidence);
+  }, []);
+
+  /**
    * Invalidates the people cache for a note and re-fetches from Supabase,
    * then patches the note in local state. Called after a face is linked.
    */
@@ -1387,5 +1432,6 @@ export function useNotes() {
     getSearchHistory,
     getCachedNote,
     refreshPeopleForNote,
+    patchNotesForOnDeviceAnswer,
   };
 }
