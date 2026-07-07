@@ -2,6 +2,7 @@
   "name": "Natively",
   "version": "1.0.0",
   "main": "index.ts",
+  "packageManager": "pnpm@10.11.0",
   "scripts": {
     "dev": "EXPO_NO_TELEMETRY=1 expo start --tunnel",
     "android": "EXPO_NO_TELEMETRY=1 expo start --android",
