@@ -14,5 +14,7 @@ Pod::Spec.new do |s|
   s.swift_version  = '5.4'
   s.source         = { :path => '.' }
   s.source_files   = '*.swift'
+  s.frameworks     = 'NaturalLanguage', 'Vision'
+  s.weak_frameworks = 'FoundationModels'
   s.dependency 'ExpoModulesCore'
 end

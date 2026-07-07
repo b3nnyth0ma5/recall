@@ -30,6 +30,7 @@ interface SearchProgressIndicatorProps {
     totalMs?: number;
   };
   shouldShowTimings?: boolean;
+  onDeviceAnswerMs?: number | null;
 }
 
 interface StepConfig {
@@ -79,6 +80,7 @@ export function SearchProgressIndicator({
   locationInfo,
   searchTimings,
   shouldShowTimings = false,
+  onDeviceAnswerMs,
 }: SearchProgressIndicatorProps) {
   const heightValue = useSharedValue(isExpanded ? 1 : 0);
 
@@ -172,7 +174,17 @@ export function SearchProgressIndicator({
           {STEPS.map((step, index) => {
             const status = getStepStatus(step);
             const isLast = index === STEPS.length - 1;
-            const timing = step.timingKey && searchTimings ? searchTimings[step.timingKey] : undefined;
+            // For the answer generation step, use onDeviceAnswerMs if available
+            const isAnswerStep = step.id === 'searching';
+            const timing = isAnswerStep && onDeviceAnswerMs != null
+              ? onDeviceAnswerMs
+              : (step.timingKey && searchTimings ? searchTimings[step.timingKey] : undefined);
+            const stepTitle = isAnswerStep && onDeviceAnswerMs != null
+              ? 'On-device answer'
+              : getStepTitle(step);
+            const stepIcon = isAnswerStep && onDeviceAnswerMs != null
+              ? 'bolt.fill'
+              : step.icon;
 
             return (
               <React.Fragment key={step.id}>
@@ -182,7 +194,8 @@ export function SearchProgressIndicator({
                   locationName={locationName}
                   personNames={personNames}
                   extractedKeywords={extractedKeywords}
-                  title={getStepTitle(step)}
+                  title={stepTitle}
+                  iconOverride={stepIcon}
                   isSearchComplete={stage === 'complete'}
                   locationInfo={locationInfo}
                   timing={timing}
@@ -206,6 +219,7 @@ interface StepItemProps {
   personNames?: string[];
   extractedKeywords?: string[];
   title: string;
+  iconOverride?: string;
   isSearchComplete: boolean;
   locationInfo?: {
     proximity?: number;
@@ -225,6 +239,7 @@ function StepItem({
   personNames, 
   extractedKeywords,
   title,
+  iconOverride,
   isSearchComplete,
   locationInfo,
   timing,
@@ -275,7 +290,7 @@ function StepItem({
     <View style={styles.stepItem}>
       <Animated.View style={[styles.iconContainer, iconContainerStyle]}>
         <IconSymbol
-          name={status === 'complete' ? 'checkmark.circle.fill' : step.icon}
+          name={status === 'complete' ? 'checkmark.circle.fill' : (iconOverride ?? step.icon)}
           size={28}
           color={iconColor}
         />

@@ -423,7 +423,7 @@ export default function ProfileScreen() {
                 <View style={styles.searchToggleLabelBlock}>
                   <Text style={styles.searchToggleLabel}>Fast on-device search</Text>
                   <Text style={styles.searchToggleDescription}>
-                    Uses on-device AI for faster searches. Standard mode uses cloud AI for best accuracy.
+                    Uses on-device AI for faster, private searches. On supported devices (iPhone 15 Pro or later with Apple Intelligence enabled), answers are also generated on-device.
                   </Text>
                 </View>
               </View>

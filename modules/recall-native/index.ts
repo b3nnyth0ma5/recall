@@ -7,7 +7,31 @@ interface ExtractedEntities {
   locationIntent: 'in' | 'near' | 'near_me' | null;
 }
 
+export type FoundationModelsStatus =
+  | 'available'
+  | 'apple_intelligence_disabled'
+  | 'device_not_eligible'
+  | 'model_not_ready'
+  | 'unavailable';
+
 let _module: { extractEntities: (query: string) => Promise<ExtractedEntities> } | null = null;
+
+let _fmModule: {
+  checkAvailability: () => Promise<string>;
+  generateAnswer: (contextString: string, query: string, uploadedImagesContext: string) => Promise<{ answer: string; confidence: number; sources: string[]; durationMs: number }>;
+} | null = null;
+
+function getFoundationModelModule() {
+  if (!_fmModule) {
+    try {
+      _fmModule = requireNativeModule('FoundationModelAnswerModule');
+    } catch (e) {
+      console.warn('[FoundationModelAnswer] Native module not available (requires a new native build):', e);
+      _fmModule = null;
+    }
+  }
+  return _fmModule;
+}
 
 function getModule() {
   if (!_module) {
@@ -95,6 +119,44 @@ export async function detectFacesOnDevice(imageUri: string): Promise<FaceDetecti
     return result as FaceDetection[];
   } catch (e) {
     console.error('[EntityExtraction] detectFaces error:', e);
+    return null;
+  }
+}
+
+export async function checkFoundationModelsAvailability(): Promise<FoundationModelsStatus> {
+  console.log('[FoundationModelAnswer] checkFoundationModelsAvailability called');
+  const mod = getFoundationModelModule();
+  if (!mod) {
+    console.log('[FoundationModelAnswer] Native module not available, returning unavailable');
+    return 'unavailable';
+  }
+  try {
+    const status = await mod.checkAvailability();
+    console.log('[FoundationModelAnswer] checkAvailability result:', status);
+    return status as FoundationModelsStatus;
+  } catch (e) {
+    console.error('[FoundationModelAnswer] checkAvailability error:', e);
+    return 'unavailable';
+  }
+}
+
+export async function generateAnswerOnDevice(
+  contextString: string,
+  query: string,
+  uploadedImagesContext: string,
+): Promise<{ answer: string; confidence: number; sources: string[]; durationMs: number } | null> {
+  console.log('[FoundationModelAnswer] generateAnswerOnDevice called, query:', query, 'contextLength:', contextString.length);
+  const mod = getFoundationModelModule();
+  if (!mod) {
+    console.log('[FoundationModelAnswer] Native module not available, returning null');
+    return null;
+  }
+  try {
+    const result = await mod.generateAnswer(contextString, query, uploadedImagesContext);
+    console.log('[FoundationModelAnswer] generateAnswer result: answer length:', result?.answer?.length ?? 0, 'confidence:', result?.confidence, 'durationMs:', result?.durationMs);
+    return result;
+  } catch (e) {
+    console.error('[FoundationModelAnswer] generateAnswer error:', e);
     return null;
   }
 }

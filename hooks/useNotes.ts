@@ -777,7 +777,8 @@ export function useNotes() {
     useV2: boolean = false,
     searchUploads?: { text: string; explanation: string; cdn_url?: string | null }[],
     preExtractedEntities?: import('@/modules/recall-native').ExtractedEntities | null,
-  ) => {
+    skipAnswer?: boolean,
+  ): Promise<{ context_for_answer?: string; uploaded_images_context?: string } | undefined> => {
     const userId = await getActiveUserId();
     if (!userId) {
       console.error('[useNotes] searchNotes: no active user');
@@ -800,7 +801,7 @@ export function useNotes() {
       setSearchTimeMs(undefined);
       setSearchTimings({});
       await refreshNotes();
-      return;
+      return undefined;
     }
     
     try {
@@ -840,12 +841,13 @@ export function useNotes() {
       if (__DEV__) console.log('Step 1: Calling unified entity extraction...');
       const entitySearchStart = Date.now();
       
-      console.log('[useNotes] Invoking search-recalls-v3, query:', query.trim(), 'searchUploads count:', searchUploads?.length ?? 0, 'preExtractedEntities:', preExtractedEntities ? 'yes' : 'no');
+      console.log('[useNotes] Invoking search-recalls-v3, query:', query.trim(), 'searchUploads count:', searchUploads?.length ?? 0, 'preExtractedEntities:', preExtractedEntities ? 'yes' : 'no', 'skipAnswer:', skipAnswer ?? false);
       const { data: entityResult, error: entityError } = await supabase.functions.invoke('search-recalls-v3', {
         body: { 
           query: query.trim(),
           ...(searchUploads && searchUploads.length > 0 ? { search_uploads: searchUploads } : {}),
           ...(preExtractedEntities ? { pre_extracted_entities: preExtractedEntities } : {}),
+          ...(skipAnswer ? { skip_answer: true } : {}),
         },
       });
 
@@ -875,7 +877,7 @@ export function useNotes() {
           totalMs: totalSearchTime,
         });
         
-        return;
+        return undefined;
       }
 
       if (__DEV__) console.log('[Entity Search] Results:', entityResult);
@@ -1155,6 +1157,16 @@ export function useNotes() {
 
       if (__DEV__) console.log('=== UNIFIED ENTITY SEARCH COMPLETE ===');
       if (__DEV__) console.log(`Total search time: ${totalSearchTime}ms`);
+
+      // Return context fields for on-device answer generation when skipAnswer was requested
+      if (skipAnswer && entityResult.context_for_answer) {
+        console.log('[useNotes] searchNotes: returning context_for_answer for on-device generation, length:', entityResult.context_for_answer.length);
+        return {
+          context_for_answer: entityResult.context_for_answer as string,
+          uploaded_images_context: entityResult.uploaded_images_context as string | undefined,
+        };
+      }
+      return undefined;
     } catch (error) {
       console.error('=== SEARCH EXCEPTION ===');
       console.error('Error searching recalls:', error);

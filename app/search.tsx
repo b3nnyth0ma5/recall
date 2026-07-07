@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { extractEntitiesOnDevice } from '@/modules/recall-native';
+import { extractEntitiesOnDevice, checkFoundationModelsAvailability, generateAnswerOnDevice } from '@/modules/recall-native';
 import type { ExtractedEntities } from '@/modules/recall-native';
 import { debounce } from '@/utils/debounce';
 import {
@@ -92,6 +92,8 @@ export default function SearchScreen() {
   const [isLoadingMoreCategoryRecalls, setIsLoadingMoreCategoryRecalls] = useState(false);
   const [categoryHasLocationRecalls, setCategoryHasLocationRecalls] = useState(false);
   const [fastSearchMode, setFastSearchMode] = useState(false);
+  const [onDeviceAnswerMs, setOnDeviceAnswerMs] = useState<number | null>(null);
+  const [onDeviceAnswerOverride, setOnDeviceAnswerOverride] = useState<{ answer: string; confidence: number } | null>(null);
 
   useEffect(() => {
     AsyncStorage.getItem('search_mode_fast').then(val => {
@@ -122,6 +124,28 @@ export default function SearchScreen() {
     }
   }, []);
 
+  const checkAndNotifyFoundationModels = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS !== 'ios') return false;
+    const val = await AsyncStorage.getItem('search_mode_fast');
+    if (val !== 'true') return false;
+
+    console.log('[Search] Checking Foundation Models availability');
+    const status = await checkFoundationModelsAvailability();
+    console.log('[Search] Foundation Models status:', status);
+
+    if (status === 'available') return true;
+
+    if (status === 'apple_intelligence_disabled') {
+      Alert.alert(
+        'Apple Intelligence Not Enabled',
+        'Your device supports on-device AI answer generation, but Apple Intelligence is currently disabled.\n\nTo enable it:\n1. Open the Settings app\n2. Tap "Apple Intelligence & Siri"\n3. Turn on "Apple Intelligence"\n4. Wait for the model to download\n\nFor now, your search will use cloud AI for answer generation.',
+        [{ text: 'OK' }]
+      );
+    }
+
+    return false;
+  }, []);
+
   const CATEGORY_PAGE_SIZE = 10;
   // Tracks whether history has been loaded at least once — gates zero states
   const [hasLoadedHistoryOnce, setHasLoadedHistoryOnce] = useState(false);
@@ -136,6 +160,10 @@ export default function SearchScreen() {
   const prevQueryRef = useRef('');
 
   const shouldShowSearchTime = user?.email === 'benny_thomas21@yahoo.co.in';
+
+  // Use on-device answer override when available, otherwise fall back to cloud answer
+  const effectiveAnswer = onDeviceAnswerOverride?.answer ?? searchAnswer;
+  const effectiveConfidence = onDeviceAnswerOverride?.confidence ?? searchConfidence;
 
   // Change 3: always filter to used_for_answer when hasSearched is true
   const filteredNotes = useMemo(() => {
@@ -470,14 +498,60 @@ export default function SearchScreen() {
     setAttachedImages(prev => prev.map(img => ({ ...img, locked: true })));
 
     const preExtractedEntities = await tryOnDeviceExtraction(searchQuery);
+    const canUseOnDeviceAnswer = await checkAndNotifyFoundationModels();
+    console.log('[Search] handleSearch: canUseOnDeviceAnswer:', canUseOnDeviceAnswer);
 
-    searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined, preExtractedEntities).finally(() => {
-      setIsSearching(false);
-      setTimeout(() => {
-        loadSearchHistory();
-      }, 500);
-    });
-  }, [searchQuery, searchNotes, loadSearchHistory, attachedImages, uriToBase64, user?.id, tryOnDeviceExtraction]);
+    setOnDeviceAnswerMs(null);
+
+    const searchResult = await searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined, preExtractedEntities, canUseOnDeviceAnswer);
+
+    if (canUseOnDeviceAnswer && searchResult?.context_for_answer) {
+      console.log('[Search] handleSearch: attempting on-device answer generation');
+      const onDeviceResult = await generateAnswerOnDevice(
+        searchResult.context_for_answer,
+        searchQuery,
+        searchResult.uploaded_images_context ?? '',
+      );
+      if (onDeviceResult && onDeviceResult.answer) {
+        console.log('[Search] handleSearch: on-device answer generated, durationMs:', onDeviceResult.durationMs);
+        setOnDeviceAnswerMs(onDeviceResult.durationMs);
+        // Inject on-device answer into search state via context setters exposed by useNotes
+        // We do this by calling searchNotes again without skipAnswer to get the cloud answer
+        // only if on-device returned null — here it succeeded so we set state directly
+        // The answer/confidence/sources are set via the NotesContext which owns those states.
+        // Since we can't call setSearchAnswer directly, re-run without skipAnswer is the fallback.
+        // For the success path: the on-device answer is already in onDeviceResult; we need to
+        // surface it. We call searchNotes again without skipAnswer to let the cloud path set
+        // the answer state, but only if on-device failed.
+        // SUCCESS: on-device answer available — re-invoke searchNotes without skipAnswer=true
+        // but pass the answer directly. Since useNotes owns the answer state, we re-run
+        // the full search without skip_answer so the edge function generates the answer too,
+        // but that defeats the purpose. Instead, we call searchNotes with skipAnswer=false
+        // only as a fallback. For the success path we need to inject the answer.
+        // The cleanest approach: call searchNotes one more time without skipAnswer to get
+        // the full result including answer set in state. But that's a second network call.
+        // Better: expose a way to set answer from outside. Since we can't, we re-run without
+        // skipAnswer only on failure. On success, we accept the cloud answer was already set
+        // by the first call (which returned context_for_answer but also set notes/entities).
+        // The answer state from the first call will be empty (skip_answer=true means no answer
+        // from cloud). So we need to inject it. We'll use a local state override approach.
+        // Store on-device answer in local state and render it instead of searchAnswer.
+        setOnDeviceAnswerOverride({ answer: onDeviceResult.answer, confidence: onDeviceResult.confidence });
+      } else {
+        console.log('[Search] handleSearch: on-device answer returned null, falling back to cloud answer');
+        setOnDeviceAnswerOverride(null);
+        // Re-run without skipAnswer to get cloud answer
+        await searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined, preExtractedEntities, false);
+      }
+    } else {
+      setOnDeviceAnswerOverride(null);
+    }
+
+    setIsSearching(false);
+    setTimeout(() => {
+      loadSearchHistory();
+    }, 500);
+  }, [searchQuery, searchNotes, loadSearchHistory, attachedImages, uriToBase64, user?.id, tryOnDeviceExtraction, checkAndNotifyFoundationModels]);
 
   const handleHistoryItemPress = useCallback(async (item: SearchHistory) => {
     console.log('[SearchScreen] History item pressed:', item.search_text, '| has_uploads:', item.has_uploads);
@@ -521,10 +595,36 @@ export default function SearchScreen() {
     }
 
     const preExtractedEntities = await tryOnDeviceExtraction(item.search_text);
-    searchNotes(item.search_text, true, searchUploads, preExtractedEntities).finally(() => {
-      setIsSearching(false);
-    });
-  }, [searchNotes, tryOnDeviceExtraction]);
+    const canUseOnDeviceAnswer = await checkAndNotifyFoundationModels();
+    console.log('[Search] handleHistoryItemPress: canUseOnDeviceAnswer:', canUseOnDeviceAnswer);
+
+    setOnDeviceAnswerMs(null);
+    setOnDeviceAnswerOverride(null);
+
+    const searchResult = await searchNotes(item.search_text, true, searchUploads, preExtractedEntities, canUseOnDeviceAnswer);
+
+    if (canUseOnDeviceAnswer && searchResult?.context_for_answer) {
+      console.log('[Search] handleHistoryItemPress: attempting on-device answer generation');
+      const onDeviceResult = await generateAnswerOnDevice(
+        searchResult.context_for_answer,
+        item.search_text,
+        searchResult.uploaded_images_context ?? '',
+      );
+      if (onDeviceResult && onDeviceResult.answer) {
+        console.log('[Search] handleHistoryItemPress: on-device answer generated, durationMs:', onDeviceResult.durationMs);
+        setOnDeviceAnswerMs(onDeviceResult.durationMs);
+        setOnDeviceAnswerOverride({ answer: onDeviceResult.answer, confidence: onDeviceResult.confidence });
+      } else {
+        console.log('[Search] handleHistoryItemPress: on-device answer returned null, falling back to cloud answer');
+        setOnDeviceAnswerOverride(null);
+        await searchNotes(item.search_text, true, searchUploads, preExtractedEntities, false);
+      }
+    } else {
+      setOnDeviceAnswerOverride(null);
+    }
+
+    setIsSearching(false);
+  }, [searchNotes, tryOnDeviceExtraction, checkAndNotifyFoundationModels]);
 
   const handleNotePress = useCallback((noteId: string, imageIndex?: number) => {
     console.log('[SearchScreen] Note card pressed, navigating to note editor for noteId:', noteId, 'imageIndex:', imageIndex);
@@ -600,6 +700,8 @@ export default function SearchScreen() {
     setShowAttachFABs(false);
     setSelectedPill(null);
     setCategoryRecalls([]);
+    setOnDeviceAnswerMs(null);
+    setOnDeviceAnswerOverride(null);
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -618,6 +720,8 @@ export default function SearchScreen() {
     setIsProgressExpanded(true);
     setSelectedPill(null);
     setCategoryRecalls([]);
+    setOnDeviceAnswerMs(null);
+    setOnDeviceAnswerOverride(null);
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -665,7 +769,7 @@ export default function SearchScreen() {
   }, []);
 
   const handleShareAnswer = useCallback(async () => {
-    if (!searchAnswer) {
+    if (!effectiveAnswer) {
       console.log('[SearchScreen] No answer to share');
       return;
     }
@@ -679,7 +783,7 @@ export default function SearchScreen() {
       }
 
       // Clean the answer text by removing SOURCE_ references for sharing
-      const cleanedAnswer = searchAnswer.replace(/\s*SOURCE_\d+/g, '');
+      const cleanedAnswer = effectiveAnswer.replace(/\s*SOURCE_\d+/g, '');
 
       // Prepare share message
       const shareMessage = `Answer from Recall:\n\n${cleanedAnswer}\n\n---\nSearched phrase: "${searchQuery}"`;
@@ -730,7 +834,7 @@ export default function SearchScreen() {
         visibilityTime: 3000,
       });
     }
-  }, [searchAnswer, searchQuery]);
+  }, [effectiveAnswer, searchQuery]);
 
   const renderHistoryRightActions = useCallback(
     (
@@ -1153,6 +1257,7 @@ export default function SearchScreen() {
                   locationInfo={locationInfo}
                   searchTimings={searchTimings}
                   shouldShowTimings={shouldShowSearchTime}
+                  onDeviceAnswerMs={onDeviceAnswerMs}
                 />
 
                 {isSearching ? (
@@ -1174,7 +1279,7 @@ export default function SearchScreen() {
                       </Animated.View>
                     ) : (
                       <React.Fragment>
-                        {searchAnswer && searchConfidence !== undefined && (
+                        {effectiveAnswer && effectiveConfidence !== undefined && (
                           <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
                             <View style={styles.answerHeader}>
                               <View style={styles.answerHeaderLeft}>
@@ -1184,7 +1289,7 @@ export default function SearchScreen() {
                               <View style={styles.answerHeaderRight}>
                                 <View style={styles.confidenceBadge}>
                                   <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
-                                  <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
+                                  <Text style={styles.confidenceText}>{effectiveConfidence}% confident</Text>
                                 </View>
                                 <Pressable
                                   onPress={handleShareAnswer}
@@ -1197,12 +1302,12 @@ export default function SearchScreen() {
                             </View>
                             <View style={styles.answerContent}>
                               <MarkdownAnswer
-                                content={isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
+                                content={isAnswerExpanded ? effectiveAnswer : getAnswerPreview(effectiveAnswer)}
                                 recallReferences={recallReferences}
                                 onRecallPress={handleRecallLinkPress}
                               />
                             </View>
-                            {shouldShowAnswerToggle(searchAnswer) && (
+                            {shouldShowAnswerToggle(effectiveAnswer) && (
                               <Pressable
                                 onPress={() => setIsAnswerExpanded(!isAnswerExpanded)}
                                 style={styles.answerToggleContainer}
