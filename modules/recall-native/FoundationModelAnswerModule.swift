@@ -16,12 +16,14 @@ public class FoundationModelAnswerModule: Module {
         switch availability {
         case .available:
           promise.resolve("available")
-        case .appleIntelligenceNotEnabled:
+        case .unavailable(.appleIntelligenceNotEnabled):
           promise.resolve("apple_intelligence_disabled")
-        case .deviceNotEligible:
+        case .unavailable(.deviceNotEligible):
           promise.resolve("device_not_eligible")
-        case .modelNotReady:
+        case .unavailable(.modelNotReady):
           promise.resolve("model_not_ready")
+        case .unavailable:
+          promise.resolve("unavailable")
         @unknown default:
           promise.resolve("unavailable")
         }
