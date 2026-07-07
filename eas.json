@@ -6,10 +6,11 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "pnpm": "11.10.0"
+      "pnpm": "11.10.0",
       "distribution": "internal",
       "env": {
-        "EAS_BUILD_NO_EXPO_GO_WARNING": "true"
+        "EAS_BUILD_NO_EXPO_GO_WARNING": "true",
+        "EAS_NO_FROZEN_LOCKFILE": "1"
       },
       "ios": {
         "simulator": true,
@@ -36,7 +37,7 @@
     },
     "production": {
       "autoIncrement": true,
-      "pnpm": "11.10.0"
+      "pnpm": "11.10.0",
       "env": {
         "EAS_BUILD_NO_EXPO_GO_WARNING": "true",
         "EAS_NO_FROZEN_LOCKFILE": "1"
