@@ -11,7 +11,7 @@ Pod::Spec.new do |s|
   s.author         = { 'Recall' => 'recall@recall.app' }
   s.homepage       = 'https://github.com/recall/recall'
   s.platform       = :ios, '15.1'
-  s.swift_version  = '5.4'
+  s.swift_version  = '5.9'
   s.source         = { :path => '.' }
   s.source_files   = '*.swift'
   s.frameworks     = 'NaturalLanguage', 'Vision'

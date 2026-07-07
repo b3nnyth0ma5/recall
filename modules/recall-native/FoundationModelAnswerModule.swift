@@ -33,7 +33,7 @@ public class FoundationModelAnswerModule: Module {
       #endif
     }
 
-    AsyncFunction("generateAnswer") { (contextString: String, query: String, uploadedImagesContext: String, promise: Promise) in
+    AsyncFunction("generateAnswer") { (contextString: String, query: String, uploadedImagesContext: String, promise: Promise) async in
       #if compiler(>=6.0)
       if #available(iOS 26.0, *) {
         guard SystemLanguageModel.default.isAvailable else {
@@ -77,35 +77,31 @@ Respond with valid JSON only, no markdown.
 """
 
         let fullMessage = systemPrompt + "\n\nQuestion: \(query)\(uploadedImagesContext)\n\nAvailable Recalls (sorted by highest match percentage first):\n\(contextString)"
-let startTime = Date()
-Task {
-  do {
-    let session = LanguageModelSession()
-    let response = try await session.respond(to: fullMessage)
-            let responseText = response.content
+        let startTime = Date()
+        do {
+          let session = LanguageModelSession()
+          let response = try await session.respond(to: fullMessage)
+          let responseText = response.content
+          let durationMs = Int(Date().timeIntervalSince(startTime) * 1000)
 
-            let durationMs = Int(Date().timeIntervalSince(startTime) * 1000)
-
-            // Parse JSON response
-            guard let data = responseText.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-              promise.reject("ERR_GENERATION", "Failed to parse JSON response from model")
-              return
-            }
-
-            let answer = json["answer"] as? String ?? ""
-            let confidence = json["confidence"] as? Int ?? 0
-            let sources = json["sources"] as? [String] ?? []
-
-            promise.resolve([
-              "answer": answer,
-              "confidence": confidence,
-              "sources": sources,
-              "durationMs": durationMs,
-            ] as [String: Any])
-          } catch {
-            promise.reject("ERR_GENERATION", "Foundation Models generation failed: \(error.localizedDescription)")
+          guard let data = responseText.data(using: .utf8),
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            promise.reject("ERR_GENERATION", "Failed to parse JSON response from model")
+            return
           }
+
+          let answer = json["answer"] as? String ?? ""
+          let confidence = json["confidence"] as? Int ?? 0
+          let sources = json["sources"] as? [String] ?? []
+
+          promise.resolve([
+            "answer": answer,
+            "confidence": confidence,
+            "sources": sources,
+            "durationMs": durationMs,
+          ] as [String: Any])
+        } catch {
+          promise.reject("ERR_GENERATION", "Foundation Models generation failed: \(error.localizedDescription)")
         }
       } else {
         promise.reject("ERR_UNAVAILABLE", "Foundation Models requires iOS 26.0 or later")
