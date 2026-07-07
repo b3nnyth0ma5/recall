@@ -30,7 +30,7 @@ module.exports = {
     "@typescript-eslint/no-empty-object-type": "off",
     "@typescript-eslint/no-wrapper-object-types": "off",
     "react/no-unescaped-entities": "off",
-    "import/no-unresolved": ["error", { "ignore": ["react-native", "recall-native", "@10play/tentap-editor", "expo-image", "expo-blur", "expo-haptics", "expo-symbols", "expo-linear-gradient", "expo-location", "expo-clipboard", "expo-sharing", "expo-web-browser", "expo-constants", "expo-font", "expo-asset", "expo-status-bar", "expo-splash-screen", "expo-system-ui", "expo-network", "expo-media-library", "expo-image-picker", "expo-image-manipulator", "expo-document-picker", "expo-file-system", "expo-linking", "expo-build-properties"] }],
+    "import/no-unresolved": ["error", { "ignore": ["react-native", "recall-native", "@10play/tentap-editor", "expo-image", "expo-blur", "expo-haptics", "expo-symbols", "expo-linear-gradient", "expo-location", "expo-clipboard", "expo-sharing", "expo-web-browser", "expo-constants", "expo-font", "expo-asset", "expo-status-bar", "expo-splash-screen", "expo-system-ui", "expo-network", "expo-media-library", "expo-image-picker", "expo-image-manipulator", "expo-document-picker", "expo-file-system", "expo-linking", "expo-build-properties", "@gorhom/portal", "expo-apple-authentication", "expo-secure-store", "date-fns", "@supabase/supabase-js"] }],
     "@typescript-eslint/no-require-imports": "off",
     "import/namespace": "off",
     "prefer-const": "off",
