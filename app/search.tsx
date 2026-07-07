@@ -536,6 +536,7 @@ export default function SearchScreen() {
                 generate_answer_only: true,
                 context_for_answer: searchResult.context_for_answer,
                 uploaded_images_context: searchResult.uploaded_images_context ?? '',
+                pre_extracted_entities: preExtractedEntities ?? undefined,
               },
             });
             if (qaResult?.answer) {
@@ -637,6 +638,7 @@ export default function SearchScreen() {
                 generate_answer_only: true,
                 context_for_answer: searchResult.context_for_answer,
                 uploaded_images_context: searchResult.uploaded_images_context ?? '',
+                pre_extracted_entities: preExtractedEntities ?? undefined,
               },
             });
             if (qaResult?.answer) {
