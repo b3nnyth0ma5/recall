@@ -115,19 +115,6 @@
     "typescript": "^5.8.3",
     "webpack-cli": "^6.0.1"
   },
-  "resolutions": {
-    "@expo/prebuild-config": "~54.0.8"
-  },
-  "private": true,
-  "pnpm": {
-    "overrides": {
-			"@expo/prebuild-config": "~54.0.8",
-      "@supabase/supabase-js": "2.105.0"
-    },
-    "patchedDependencies": {
-      "@bacons/apple-targets@4.0.7": "patches/@bacons+apple-targets@4.0.7.patch"
-    }
-  },
   "expo": {
     "autolinking": {
       "nativeModulesDir": "./modules"
