@@ -94,6 +94,8 @@ export default function SearchScreen() {
   const [isLoadingMoreCategoryRecalls, setIsLoadingMoreCategoryRecalls] = useState(false);
   const [categoryHasLocationRecalls, setCategoryHasLocationRecalls] = useState(false);
   const [onDeviceAnswerMs, setOnDeviceAnswerMs] = useState<number | null>(null);
+  const [streamingAnswer, setStreamingAnswer] = useState('');
+  const [isStreamingComplete, setIsStreamingComplete] = useState(false);
 
   // Reads the toggle directly from AsyncStorage at call time to avoid the
   // race condition where fastSearchMode state hasn't resolved yet.
@@ -140,6 +142,117 @@ export default function SearchScreen() {
 
     return false;
   }, []);
+
+  const streamCloudAnswer = useCallback(async (
+    query: string,
+    contextForAnswer: string,
+    uploadedImagesContext: string,
+    preExtractedEntities: import('@/modules/recall-native').ExtractedEntities | null,
+    searchResults: { id: string; sourceNumber: number }[],
+  ) => {
+    console.log('[Search] streamCloudAnswer: starting stream for query:', query.trim());
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.error('[Search] streamCloudAnswer: no session, aborting');
+      return;
+    }
+
+    setStreamingAnswer('');
+    setIsStreamingComplete(false);
+
+    const response = await fetch(
+      'https://cesmsdnblkdjkskmiqib.supabase.co/functions/v1/search-recalls-v3',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4',
+        },
+        body: JSON.stringify({
+          query: query.trim(),
+          generate_answer_only: true,
+          context_for_answer: contextForAnswer,
+          uploaded_images_context: uploadedImagesContext,
+          ...(preExtractedEntities ? { pre_extracted_entities: preExtractedEntities } : {}),
+        }),
+      }
+    );
+
+    if (!response.ok || !response.body) {
+      console.error('[Search] streamCloudAnswer: response not ok or no body', response.status);
+      return;
+    }
+
+    console.log('[Search] streamCloudAnswer: stream opened, reading tokens');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let tokenBatch = '';
+    let batchTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flushBatch = () => {
+      if (tokenBatch) {
+        const batch = tokenBatch;
+        tokenBatch = '';
+        setStreamingAnswer(prev => prev + batch);
+        // Collapse search steps on first token
+        setIsProgressExpanded(false);
+      }
+      batchTimer = null;
+    };
+
+    try {
+      let done = false;
+      while (!done) {
+        const result = await reader.read();
+        done = result.done;
+        const value = result.value;
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6);
+
+          if (data.startsWith('[DONE]')) {
+            // Flush any remaining batch immediately
+            if (batchTimer) clearTimeout(batchTimer);
+            flushBatch();
+
+            // Parse final payload
+            try {
+              const payload = JSON.parse(data.slice(7)); // '[DONE] {...}'
+              console.log('[Search] streamCloudAnswer: DONE received, confidence:', payload.confidence, 'sources:', payload.sources);
+              patchNotesForOnDeviceAnswer(
+                payload.sources ?? [],
+                searchResults,
+                payload.answer ?? '',
+                payload.confidence ?? 0,
+              );
+            } catch (e) {
+              console.error('[Search] streamCloudAnswer: failed to parse DONE payload', e);
+            }
+            setIsStreamingComplete(true);
+            return;
+          }
+
+          // Accumulate token into batch
+          tokenBatch += data;
+          if (!batchTimer) {
+            batchTimer = setTimeout(flushBatch, 50);
+          }
+        }
+      }
+    } finally {
+      if (batchTimer) clearTimeout(batchTimer);
+      flushBatch();
+      reader.releaseLock();
+    }
+  }, [patchNotesForOnDeviceAnswer]);
 
   const CATEGORY_PAGE_SIZE = 10;
   // Tracks whether history has been loaded at least once — gates zero states
@@ -304,52 +417,49 @@ export default function SearchScreen() {
       // donateSearch(decodedQuery); // recall-native disabled
       
       (async () => {
+        setStreamingAnswer('');
+        setIsStreamingComplete(false);
         const preExtractedEntities = await tryOnDeviceExtraction(decodedQuery);
         const canUseOnDeviceAnswer = await checkAndNotifyFoundationModels();
-        const searchResult = await searchNotes(decodedQuery, true, undefined, preExtractedEntities, canUseOnDeviceAnswer);
-        if (canUseOnDeviceAnswer && searchResult?.context_for_answer) {
-          const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
-          const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
-          console.log('[Search] autoSearch: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
-          const onDeviceResult = await generateAnswerOnDevice(
-            safeContext,
-            decodedQuery,
-            searchResult.uploaded_images_context ?? '',
-          );
-          if (onDeviceResult && onDeviceResult.answer) {
-            setOnDeviceAnswerMs(onDeviceResult.durationMs);
-            updateAiAnswerTiming(onDeviceResult.durationMs);
-            patchNotesForOnDeviceAnswer(
-              onDeviceResult.sources,
-              searchResult.results ?? [],
-              onDeviceResult.answer,
-              onDeviceResult.confidence,
+        const searchResult = await searchNotes(decodedQuery, true, undefined, preExtractedEntities);
+        if (searchResult?.context_for_answer) {
+          if (canUseOnDeviceAnswer) {
+            const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
+            const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
+            console.log('[Search] autoSearch: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
+            const onDeviceResult = await generateAnswerOnDevice(
+              safeContext,
+              decodedQuery,
+              searchResult.uploaded_images_context ?? '',
             );
-          } else if (searchResult.context_for_answer) {
-            try {
-              const { data: { session } } = await supabase.auth.getSession();
-              if (session) {
-                const { data: qaResult } = await supabase.functions.invoke('search-recalls-v3', {
-                  body: {
-                    query: decodedQuery.trim(),
-                    generate_answer_only: true,
-                    context_for_answer: searchResult.context_for_answer,
-                    uploaded_images_context: searchResult.uploaded_images_context ?? '',
-                    pre_extracted_entities: preExtractedEntities ?? undefined,
-                  },
-                });
-                if (qaResult?.answer) {
-                  patchNotesForOnDeviceAnswer(
-                    qaResult.sources ?? [],
-                    searchResult.results ?? [],
-                    qaResult.answer,
-                    qaResult.confidence ?? 0,
-                  );
-                }
-              }
-            } catch (qaErr) {
-              console.error('[Search] autoSearch: cloud QA-only fallback failed:', qaErr);
+            if (onDeviceResult && onDeviceResult.answer) {
+              setOnDeviceAnswerMs(onDeviceResult.durationMs);
+              updateAiAnswerTiming(onDeviceResult.durationMs);
+              patchNotesForOnDeviceAnswer(
+                onDeviceResult.sources,
+                searchResult.results ?? [],
+                onDeviceResult.answer,
+                onDeviceResult.confidence,
+              );
+            } else {
+              console.log('[Search] autoSearch: on-device answer returned null, falling back to streaming cloud');
+              await streamCloudAnswer(
+                decodedQuery,
+                searchResult.context_for_answer,
+                searchResult.uploaded_images_context ?? '',
+                preExtractedEntities,
+                searchResult.results ?? [],
+              );
             }
+          } else {
+            console.log('[Search] autoSearch: cloud-only path, streaming answer');
+            await streamCloudAnswer(
+              decodedQuery,
+              searchResult.context_for_answer,
+              searchResult.uploaded_images_context ?? '',
+              preExtractedEntities,
+              searchResult.results ?? [],
+            );
           }
         }
         setIsSearching(false);
@@ -363,7 +473,7 @@ export default function SearchScreen() {
         }
       }, 0);
     }
-  }, [params.q, params.autoSearch, searchNotes, router, tryOnDeviceExtraction]);
+  }, [params.q, params.autoSearch, searchNotes, router, tryOnDeviceExtraction, streamCloudAnswer, checkAndNotifyFoundationModels, patchNotesForOnDeviceAnswer, updateAiAnswerTiming]);
 
   useEffect(() => {
     if (!params.q) {
@@ -478,6 +588,8 @@ export default function SearchScreen() {
     setIsAnswerExpanded(false);
     setIsSearching(true);
     setIsProgressExpanded(true);
+    setStreamingAnswer('');
+    setIsStreamingComplete(false);
 
     // Only use images that have finished optimising
     const readyImages = attachedImages.filter(img => !img.isOptimising);
@@ -540,57 +652,48 @@ export default function SearchScreen() {
 
     setOnDeviceAnswerMs(null);
 
-    const searchResult = await searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined, preExtractedEntities, canUseOnDeviceAnswer);
+    const searchResult = await searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined, preExtractedEntities);
 
-    if (canUseOnDeviceAnswer && searchResult?.context_for_answer) {
-      console.log('[Search] handleSearch: attempting on-device answer generation');
-      const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
-      const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
-      console.log('[Search] handleSearch: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
-      const onDeviceResult = await generateAnswerOnDevice(
-        safeContext,
-        searchQuery,
-        searchResult.uploaded_images_context ?? '',
-      );
-      if (onDeviceResult && onDeviceResult.answer) {
-        console.log('[Search] handleSearch: on-device answer generated, durationMs:', onDeviceResult.durationMs);
-        setOnDeviceAnswerMs(onDeviceResult.durationMs);
-        updateAiAnswerTiming(onDeviceResult.durationMs);
-        patchNotesForOnDeviceAnswer(
-          onDeviceResult.sources,
-          searchResult.results ?? [],
-          onDeviceResult.answer,
-          onDeviceResult.confidence,
+    if (searchResult?.context_for_answer) {
+      if (canUseOnDeviceAnswer) {
+        console.log('[Search] handleSearch: attempting on-device answer generation');
+        const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
+        const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
+        console.log('[Search] handleSearch: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
+        const onDeviceResult = await generateAnswerOnDevice(
+          safeContext,
+          searchQuery,
+          searchResult.uploaded_images_context ?? '',
         );
-      } else {
-        // On-device failed — call QA-only path on the edge function using already-returned context.
-        // This avoids resetting UI state or re-running vector search.
-        console.log('[Search] handleSearch: on-device answer returned null, falling back to cloud QA-only path');
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            const { data: qaResult } = await supabase.functions.invoke('search-recalls-v3', {
-              body: {
-                query: searchQuery.trim(),
-                generate_answer_only: true,
-                context_for_answer: searchResult.context_for_answer,
-                uploaded_images_context: searchResult.uploaded_images_context ?? '',
-                pre_extracted_entities: preExtractedEntities ?? undefined,
-              },
-            });
-            if (qaResult?.answer) {
-              console.log('[Search] handleSearch: cloud QA-only fallback succeeded');
-              patchNotesForOnDeviceAnswer(
-                qaResult.sources ?? [],
-                searchResult.results ?? [],
-                qaResult.answer,
-                qaResult.confidence ?? 0,
-              );
-            }
-          }
-        } catch (qaErr) {
-          console.error('[Search] handleSearch: cloud QA-only fallback failed:', qaErr);
+        if (onDeviceResult && onDeviceResult.answer) {
+          console.log('[Search] handleSearch: on-device answer generated, durationMs:', onDeviceResult.durationMs);
+          setOnDeviceAnswerMs(onDeviceResult.durationMs);
+          updateAiAnswerTiming(onDeviceResult.durationMs);
+          patchNotesForOnDeviceAnswer(
+            onDeviceResult.sources,
+            searchResult.results ?? [],
+            onDeviceResult.answer,
+            onDeviceResult.confidence,
+          );
+        } else {
+          console.log('[Search] handleSearch: on-device answer returned null, falling back to streaming cloud');
+          await streamCloudAnswer(
+            searchQuery,
+            searchResult.context_for_answer,
+            searchResult.uploaded_images_context ?? '',
+            preExtractedEntities,
+            searchResult.results ?? [],
+          );
         }
+      } else {
+        console.log('[Search] handleSearch: cloud-only path, streaming answer');
+        await streamCloudAnswer(
+          searchQuery,
+          searchResult.context_for_answer,
+          searchResult.uploaded_images_context ?? '',
+          preExtractedEntities,
+          searchResult.results ?? [],
+        );
       }
     }
 
@@ -598,7 +701,7 @@ export default function SearchScreen() {
     setTimeout(() => {
       loadSearchHistory();
     }, 500);
-  }, [searchQuery, searchNotes, loadSearchHistory, attachedImages, uriToBase64, user?.id, tryOnDeviceExtraction, checkAndNotifyFoundationModels, patchNotesForOnDeviceAnswer, updateAiAnswerTiming]);
+  }, [searchQuery, searchNotes, loadSearchHistory, attachedImages, uriToBase64, user?.id, tryOnDeviceExtraction, checkAndNotifyFoundationModels, patchNotesForOnDeviceAnswer, updateAiAnswerTiming, streamCloudAnswer]);
 
   const handleHistoryItemPress = useCallback(async (item: SearchHistory) => {
     console.log('[SearchScreen] History item pressed:', item.search_text, '| has_uploads:', item.has_uploads);
@@ -610,6 +713,8 @@ export default function SearchScreen() {
     setIsAnswerExpanded(false);
     setIsSearching(true);
     setIsProgressExpanded(true);
+    setStreamingAnswer('');
+    setIsStreamingComplete(false);
 
     let searchUploads: { text: string; explanation: string }[] | undefined;
 
@@ -647,60 +752,53 @@ export default function SearchScreen() {
 
     setOnDeviceAnswerMs(null);
 
-    const searchResult = await searchNotes(item.search_text, true, searchUploads, preExtractedEntities, canUseOnDeviceAnswer);
+    const searchResult = await searchNotes(item.search_text, true, searchUploads, preExtractedEntities);
 
-    if (canUseOnDeviceAnswer && searchResult?.context_for_answer) {
-      console.log('[Search] handleHistoryItemPress: attempting on-device answer generation');
-      const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
-      const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
-      console.log('[Search] handleHistoryItemPress: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
-      const onDeviceResult = await generateAnswerOnDevice(
-        safeContext,
-        item.search_text,
-        searchResult.uploaded_images_context ?? '',
-      );
-      if (onDeviceResult && onDeviceResult.answer) {
-        console.log('[Search] handleHistoryItemPress: on-device answer generated, durationMs:', onDeviceResult.durationMs);
-        setOnDeviceAnswerMs(onDeviceResult.durationMs);
-        updateAiAnswerTiming(onDeviceResult.durationMs);
-        patchNotesForOnDeviceAnswer(
-          onDeviceResult.sources,
-          searchResult.results ?? [],
-          onDeviceResult.answer,
-          onDeviceResult.confidence,
+    if (searchResult?.context_for_answer) {
+      if (canUseOnDeviceAnswer) {
+        console.log('[Search] handleHistoryItemPress: attempting on-device answer generation');
+        const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
+        const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
+        console.log('[Search] handleHistoryItemPress: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
+        const onDeviceResult = await generateAnswerOnDevice(
+          safeContext,
+          item.search_text,
+          searchResult.uploaded_images_context ?? '',
         );
-      } else {
-        console.log('[Search] handleHistoryItemPress: on-device answer returned null, falling back to cloud QA-only path');
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            const { data: qaResult } = await supabase.functions.invoke('search-recalls-v3', {
-              body: {
-                query: item.search_text.trim(),
-                generate_answer_only: true,
-                context_for_answer: searchResult.context_for_answer,
-                uploaded_images_context: searchResult.uploaded_images_context ?? '',
-                pre_extracted_entities: preExtractedEntities ?? undefined,
-              },
-            });
-            if (qaResult?.answer) {
-              console.log('[Search] handleHistoryItemPress: cloud QA-only fallback succeeded');
-              patchNotesForOnDeviceAnswer(
-                qaResult.sources ?? [],
-                searchResult.results ?? [],
-                qaResult.answer,
-                qaResult.confidence ?? 0,
-              );
-            }
-          }
-        } catch (qaErr) {
-          console.error('[Search] handleHistoryItemPress: cloud QA-only fallback failed:', qaErr);
+        if (onDeviceResult && onDeviceResult.answer) {
+          console.log('[Search] handleHistoryItemPress: on-device answer generated, durationMs:', onDeviceResult.durationMs);
+          setOnDeviceAnswerMs(onDeviceResult.durationMs);
+          updateAiAnswerTiming(onDeviceResult.durationMs);
+          patchNotesForOnDeviceAnswer(
+            onDeviceResult.sources,
+            searchResult.results ?? [],
+            onDeviceResult.answer,
+            onDeviceResult.confidence,
+          );
+        } else {
+          console.log('[Search] handleHistoryItemPress: on-device answer returned null, falling back to streaming cloud');
+          await streamCloudAnswer(
+            item.search_text,
+            searchResult.context_for_answer,
+            searchResult.uploaded_images_context ?? '',
+            preExtractedEntities,
+            searchResult.results ?? [],
+          );
         }
+      } else {
+        console.log('[Search] handleHistoryItemPress: cloud-only path, streaming answer');
+        await streamCloudAnswer(
+          item.search_text,
+          searchResult.context_for_answer,
+          searchResult.uploaded_images_context ?? '',
+          preExtractedEntities,
+          searchResult.results ?? [],
+        );
       }
     }
 
     setIsSearching(false);
-  }, [searchNotes, tryOnDeviceExtraction, checkAndNotifyFoundationModels, patchNotesForOnDeviceAnswer, updateAiAnswerTiming]);
+  }, [searchNotes, tryOnDeviceExtraction, checkAndNotifyFoundationModels, patchNotesForOnDeviceAnswer, updateAiAnswerTiming, streamCloudAnswer]);
 
   const handleNotePress = useCallback((noteId: string, imageIndex?: number) => {
     console.log('[SearchScreen] Note card pressed, navigating to note editor for noteId:', noteId, 'imageIndex:', imageIndex);
@@ -777,6 +875,8 @@ export default function SearchScreen() {
     setSelectedPill(null);
     setCategoryRecalls([]);
     setOnDeviceAnswerMs(null);
+    setStreamingAnswer('');
+    setIsStreamingComplete(false);
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -796,6 +896,8 @@ export default function SearchScreen() {
     setSelectedPill(null);
     setCategoryRecalls([]);
     setOnDeviceAnswerMs(null);
+    setStreamingAnswer('');
+    setIsStreamingComplete(false);
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -1336,11 +1438,63 @@ export default function SearchScreen() {
                   onDeviceUsed={onDeviceAnswerMs != null}
                 />
 
-                {isSearching ? (
+                {/* Show answer card as soon as streaming starts, even while still searching */}
+                {(streamingAnswer || searchAnswer) ? (
+                  <Animated.View entering={FadeIn.duration(300)} style={styles.answerContainer}>
+                    <View style={styles.answerHeader}>
+                      <View style={styles.answerHeaderLeft}>
+                        <IconSymbol name="lightbulb.fill" size={20} color={colors.primary} />
+                        <Text style={styles.answerTitle}>Answer</Text>
+                      </View>
+                      <View style={styles.answerHeaderRight}>
+                        {isStreamingComplete && searchConfidence !== undefined && (
+                          <View style={styles.confidenceBadge}>
+                            <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
+                            <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
+                          </View>
+                        )}
+                        {isStreamingComplete && (
+                          <Pressable
+                            onPress={handleShareAnswer}
+                            style={styles.shareAnswerButton}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <ShareIcon size={18} color={colors.primary} strokeWidth={2.2} />
+                          </Pressable>
+                        )}
+                      </View>
+                    </View>
+                    <View style={styles.answerContent}>
+                      {isStreamingComplete ? (
+                        <MarkdownAnswer
+                          content={isAnswerExpanded ? (searchAnswer ?? '') : getAnswerPreview(searchAnswer ?? '')}
+                          recallReferences={recallReferences}
+                          onRecallPress={handleRecallLinkPress}
+                        />
+                      ) : (
+                        <Text style={styles.answerText}>{streamingAnswer}</Text>
+                      )}
+                    </View>
+                    {isStreamingComplete && shouldShowAnswerToggle(searchAnswer ?? '') && (
+                      <Pressable
+                        onPress={() => {
+                          console.log('[SearchScreen] Answer toggle pressed, isAnswerExpanded:', !isAnswerExpanded);
+                          setIsAnswerExpanded(!isAnswerExpanded);
+                        }}
+                        style={styles.answerToggleContainer}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Text style={styles.answerToggleText}>
+                          {isAnswerExpanded ? 'Show less' : 'Show more'}
+                        </Text>
+                      </Pressable>
+                    )}
+                  </Animated.View>
+                ) : isSearching ? (
                   <View style={styles.searchingPlaceholder} />
                 ) : (
                   <React.Fragment>
-                    {filteredNotes.length === 0 && !searchAnswer && searchStage === 'complete' ? (
+                    {filteredNotes.length === 0 && !searchAnswer && searchStage === 'complete' && (
                       <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
                         <IconSymbol name="doc.text.magnifyingglass" size={80} color={colors.textTertiary} />
                         <Text style={styles.emptyTitle}>No Results Found</Text>
@@ -1353,52 +1507,7 @@ export default function SearchScreen() {
                           }
                         </Text>
                       </Animated.View>
-                    ) : (
-                      <React.Fragment>
-                        {searchAnswer && searchConfidence !== undefined && (
-                          <Animated.View entering={FadeIn.duration(600)} style={styles.answerContainer}>
-                            <View style={styles.answerHeader}>
-                              <View style={styles.answerHeaderLeft}>
-                                <IconSymbol name="lightbulb.fill" size={20} color={colors.primary} />
-                                <Text style={styles.answerTitle}>Answer</Text>
-                              </View>
-                              <View style={styles.answerHeaderRight}>
-                                <View style={styles.confidenceBadge}>
-                                  <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
-                                  <Text style={styles.confidenceText}>{searchConfidence}% confident</Text>
-                                </View>
-                                <Pressable
-                                  onPress={handleShareAnswer}
-                                  style={styles.shareAnswerButton}
-                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                >
-                                  <ShareIcon size={18} color={colors.primary} strokeWidth={2.2} />
-                                </Pressable>
-                              </View>
-                            </View>
-                            <View style={styles.answerContent}>
-                              <MarkdownAnswer
-                                content={isAnswerExpanded ? searchAnswer : getAnswerPreview(searchAnswer)}
-                                recallReferences={recallReferences}
-                                onRecallPress={handleRecallLinkPress}
-                              />
-                            </View>
-                            {shouldShowAnswerToggle(searchAnswer) && (
-                              <Pressable
-                                onPress={() => setIsAnswerExpanded(!isAnswerExpanded)}
-                                style={styles.answerToggleContainer}
-                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                              >
-                                <Text style={styles.answerToggleText}>
-                                  {isAnswerExpanded ? 'Show less' : 'Show more'}
-                                </Text>
-                              </Pressable>
-                            )}
-                          </Animated.View>
-                        )}
-                      </React.Fragment>
                     )}
-
                   </React.Fragment>
                 )}
               </Animated.View>

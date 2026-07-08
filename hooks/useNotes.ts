@@ -777,7 +777,6 @@ export function useNotes() {
     useV2: boolean = false,
     searchUploads?: { text: string; explanation: string; cdn_url?: string | null }[],
     preExtractedEntities?: import('@/modules/recall-native').ExtractedEntities | null,
-    skipAnswer?: boolean,
   ): Promise<{ context_for_answer?: string; uploaded_images_context?: string; results?: { id: string; sourceNumber: number }[] } | undefined> => {
     const userId = await getActiveUserId();
     if (!userId) {
@@ -838,13 +837,13 @@ export function useNotes() {
       if (__DEV__) console.log('Step 1: Calling unified entity extraction...');
       const entitySearchStart = Date.now();
       
-      console.log('[useNotes] Invoking search-recalls-v3, query:', query.trim(), 'searchUploads count:', searchUploads?.length ?? 0, 'preExtractedEntities:', preExtractedEntities ? 'yes' : 'no', 'skipAnswer:', skipAnswer ?? false);
+      console.log('[useNotes] Invoking search-recalls-v3, query:', query.trim(), 'searchUploads count:', searchUploads?.length ?? 0, 'preExtractedEntities:', preExtractedEntities ? 'yes' : 'no', 'skip_answer: true');
       const { data: entityResult, error: entityError } = await supabase.functions.invoke('search-recalls-v3', {
         body: { 
           query: query.trim(),
           ...(searchUploads && searchUploads.length > 0 ? { search_uploads: searchUploads } : {}),
           ...(preExtractedEntities ? { pre_extracted_entities: preExtractedEntities } : {}),
-          ...(skipAnswer ? { skip_answer: true } : {}),
+          skip_answer: true,
         },
       });
 
@@ -1159,7 +1158,7 @@ export function useNotes() {
 
       // Always return context_for_answer when present so on-device answer generation can use it
       if (entityResult.context_for_answer) {
-        console.log('[useNotes] searchNotes: returning context_for_answer, length:', entityResult.context_for_answer.length, 'skipAnswer:', skipAnswer ?? false);
+        console.log('[useNotes] searchNotes: returning context_for_answer, length:', entityResult.context_for_answer.length);
         return {
           context_for_answer: entityResult.context_for_answer as string,
           uploaded_images_context: entityResult.uploaded_images_context as string | undefined,
