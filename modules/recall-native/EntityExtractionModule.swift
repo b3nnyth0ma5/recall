@@ -36,23 +36,6 @@ public class EntityExtractionModule: Module {
         return true
       }
 
-      // Fallback heuristic: capture capitalized tokens not at sentence start
-      // that NLTagger may have missed as personalName
-      let words = query.components(separatedBy: .whitespaces)
-      for (idx, word) in words.enumerated() {
-        let stripped = word.trimmingCharacters(in: .punctuationCharacters)
-        guard stripped.count > 1,
-              let first = stripped.first, first.isUppercase,
-              idx > 0 else { continue }
-        // Skip if already captured as a person or location
-        if people.contains(stripped) { continue }
-        if stripped.lowercased() == location.lowercased() { continue }
-        // Skip common non-name capitalised words
-        let stopWords: Set<String> = ["I", "The", "A", "An", "In", "At", "On", "For", "With", "And", "Or", "But", "My", "Your", "His", "Her", "Their", "Our", "Its", "This", "That", "These", "Those", "What", "When", "Where", "Who", "How", "Why"]
-        if stopWords.contains(stripped) { continue }
-        people.append(stripped)
-      }
-
       // Keyword extraction (nouns and adjectives)
       let lexOptions: NLTagger.Options = [.omitPunctuation, .omitWhitespace]
       tagger.enumerateTags(in: query.startIndex..<query.endIndex, unit: .word, scheme: .lexicalClass, options: lexOptions) { tag, range in

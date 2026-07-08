@@ -107,10 +107,16 @@ Respond with valid JSON only, no markdown.
             "sources": sources,
             "durationMs": durationMs,
           ] as [String: Any])
-        } catch LanguageModelSession.GenerationError.exceededContextWindowSize {
-          promise.reject("ERR_CONTEXT_TOO_LARGE", "Input exceeded the on-device model context window — falling back to cloud")
+        } catch let genError as LanguageModelSession.GenerationError {
+          switch genError {
+          case .exceededContextWindowSize:
+            promise.reject("ERR_CONTEXT_TOO_LARGE", "Input exceeded the on-device model context window — falling back to cloud")
+          default:
+            promise.reject("ERR_GENERATION", "Foundation Models generation error: \(genError.localizedDescription)")
+          }
         } catch {
-          promise.reject("ERR_GENERATION", "Foundation Models generation failed: \(error.localizedDescription)")
+          // Catches errors from LanguageModelSession(instructions:) initialiser AND respond(to:)
+          promise.reject("ERR_GENERATION", "Foundation Models failed: \(error.localizedDescription)")
         }
       } else {
         promise.reject("ERR_UNAVAILABLE", "Foundation Models requires iOS 26.0 or later")
