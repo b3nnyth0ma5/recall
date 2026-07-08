@@ -11,7 +11,7 @@ public class FoundationModelAnswerModule: Module {
 
     AsyncFunction("checkAvailability") { (promise: Promise) in
       #if compiler(>=6.0)
-      if #available(iOS 26.0, *) {
+      if #available(iOS 26.1, *) {
         let availability = SystemLanguageModel.default.availability
         switch availability {
         case .available:
@@ -37,8 +37,8 @@ public class FoundationModelAnswerModule: Module {
 
     AsyncFunction("generateAnswer") { (contextString: String, query: String, uploadedImagesContext: String, promise: Promise) async in
       #if compiler(>=6.0)
-      if #available(iOS 26.0, *) {
-        guard SystemLanguageModel.default.isAvailable else {
+      if #available(iOS 26.1, *) {
+        guard case .available = SystemLanguageModel.default.availability else {
           promise.reject("ERR_UNAVAILABLE", "Foundation Models not available on this device")
           return
         }
@@ -71,16 +71,14 @@ If insufficient information: {"answer": "I don't have enough information in the 
 
         let fullMessage = "Question: \(query)\(uploadedImagesContext)\n\nAvailable Recalls (sorted by highest match percentage first):\n\(truncatedContext)"
 
-        // Step 1: create session — initialiser errors are caught separately
-        let session: LanguageModelSession
-        do {
-          session = LanguageModelSession(instructions: Instructions(systemPrompt))
-        } catch {
-          promise.reject("ERR_SESSION_INIT", "Failed to create on-device model session: \(error.localizedDescription)")
+        // Re-check availability immediately before creating the session — model can become unavailable between the initial check and here
+        guard case .available = SystemLanguageModel.default.availability else {
+          promise.reject("ERR_UNAVAILABLE", "Foundation Models became unavailable")
           return
         }
+        // Create session — LanguageModelSession.init does not throw; kept short to avoid instruction token budget trap
+        let session = LanguageModelSession(instructions: Instructions(systemPrompt))
 
-        // Step 2: generate response
         let startTime = Date()
         do {
           let response = try await session.respond(to: fullMessage)
@@ -114,7 +112,7 @@ If insufficient information: {"answer": "I don't have enough information in the 
           promise.reject("ERR_GENERATION", "Foundation Models failed: \(error.localizedDescription)")
         }
       } else {
-        promise.reject("ERR_UNAVAILABLE", "Foundation Models requires iOS 26.0 or later")
+        promise.reject("ERR_UNAVAILABLE", "Foundation Models requires iOS 26.1 or later")
       }
       #else
       promise.reject("ERR_UNAVAILABLE", "Foundation Models not available (requires Swift 6.0+ compiler)")

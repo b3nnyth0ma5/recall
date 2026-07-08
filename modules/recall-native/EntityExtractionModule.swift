@@ -17,7 +17,12 @@ public class EntityExtractionModule: Module {
       let scheme: NLTagScheme = .lexicalClass
       let language: NLLanguage = .english
       if !NLTagger.availableTagSchemes(for: .word, language: language).contains(scheme) {
-        try? await NLTagger.requestAssets(for: language, tagScheme: scheme)
+        do {
+          try await NLTagger.requestAssets(for: language, tagScheme: scheme)
+        } catch {
+          // Asset download failed — tagger will still run with reduced accuracy
+          print("[EntityExtraction] NLTagger asset download failed: \(error.localizedDescription)")
+        }
       }
 
       // Named entity recognition — primary pass
