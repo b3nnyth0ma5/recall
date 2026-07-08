@@ -889,6 +889,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
             imageIds={note.imageIds}
             media={displayMedia}
             initialIndex={fullScreenImageIndex}
+            recallId={note.id}
             onClose={() => setShowFullScreenImage(false)}
           />
         </React.Suspense>

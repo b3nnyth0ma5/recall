@@ -314,7 +314,7 @@ export function FaceLinkSheet({
         .eq('person_id', personId)
         .maybeSingle();
 
-      if (!existingRow) {
+      if (!existingRow && recallId) {
         const { error: recallPeopleError } = await supabase
           .from('recall_people')
           .insert({ recall_id: recallId, person_id: personId, user_id: user.id });

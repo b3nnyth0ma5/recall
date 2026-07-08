@@ -1780,6 +1780,7 @@ export default function NoteEditorScreen() {
           images={images.map(img => img.uri)}
           imageIds={images.map(img => img.id).filter((id): id is string => id !== undefined)}
           initialIndex={fullScreenImageIndex}
+          recallId={params.id as string | undefined}
           onClose={handleCloseFullScreenImage}
         />
       )}

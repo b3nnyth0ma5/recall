@@ -1110,7 +1110,7 @@ export function FullScreenImage({
         visible={!!selectedFace}
         faceRow={selectedFace}
         imageUrl={currentImageUrl}
-        recallId={recallId ?? ''}
+        recallId={recallId}
         naturalWidth={currentNaturalDims?.width ?? 0}
         naturalHeight={currentNaturalDims?.height ?? 0}
         onClose={() => {
