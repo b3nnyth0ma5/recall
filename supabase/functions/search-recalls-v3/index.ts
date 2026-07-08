@@ -285,7 +285,7 @@ Deno.serve(async (req) => {
 
     console.log('User authenticated:', user.id);
 
-    // Change 1: Extended destructure with fast-mode fields
+    // Step 1: Parse all request fields including fast-mode fields
     const {
       query,
       userLocation,
@@ -294,10 +294,8 @@ Deno.serve(async (req) => {
       skip_answer,
       generate_answer_only,
       context_for_answer: clientContextForAnswer,
-      uploaded_images_context: clientUploadedImagesContext
+      uploaded_images_context: uploadedImagesContextParam
     } = await req.json();
-    const skipAnswer = skip_answer === true;
-    const generateAnswerOnly = generate_answer_only === true;
 
     if (!query || typeof query !== 'string') {
       return new Response(JSON.stringify({ error: 'Query parameter is required' }), {
@@ -311,6 +309,7 @@ Deno.serve(async (req) => {
       console.log(`Search includes ${search_uploads.length} uploaded image(s)`);
     }
 
+    // Step 2: Retrieve and validate API keys (must happen before generate_answer_only check)
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     const googleApiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
 
@@ -321,9 +320,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Change 2: generate_answer_only short-circuit — skip all entity extraction, embedding, and vector search
-    if (generateAnswerOnly && clientContextForAnswer) {
+    // Step 3: generate_answer_only short-circuit — skip all vector search, just run QA on provided context
+    if (generate_answer_only && clientContextForAnswer) {
       console.log('[Answer Generation] Generating answer via OpenAI cloud (generate_answer_only path), context length:', clientContextForAnswer.length);
+
       const qaSystemPrompt = `You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
 
 CRITICAL RULES:
@@ -356,13 +356,26 @@ Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John me
 If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.
 
 Respond with valid JSON only, no markdown.`;
-      const uploadedCtx = clientUploadedImagesContext ?? '';
+
+      const uploadedCtx = uploadedImagesContextParam ?? '';
       const qaUserMessage = `Question: ${query}${uploadedCtx}\n\n${clientContextForAnswer}`;
+
       const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${openaiApiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'gpt-4.1-mini', max_tokens: 2048, messages: [{ role: 'system', content: qaSystemPrompt }, { role: 'user', content: qaUserMessage }] })
+        headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4.1-mini',
+          max_tokens: 2048,
+          messages: [
+            { role: 'system', content: qaSystemPrompt },
+            { role: 'user', content: qaUserMessage }
+          ]
+        })
       });
+
       if (qaResponse.ok) {
         const qaData = await qaResponse.json();
         const qaContent = qaData.choices?.[0]?.message?.content;
@@ -380,10 +393,16 @@ Respond with valid JSON only, no markdown.`;
           } catch {}
         }
       }
-      return new Response(JSON.stringify({ answer: null, confidence: 0, sources: [], results: [], processingTimeMs: Date.now() - startTime }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({
+        answer: null,
+        confidence: 0,
+        sources: [],
+        results: [],
+        processingTimeMs: Date.now() - startTime
+      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Step 1: Extract all entities — use on-device result if provided, otherwise call OpenAI
+    // Step 4: Extract all entities — use on-device result if provided, otherwise call OpenAI
     const entityExtractionStart = Date.now();
     const isValidPreExtracted = (
       pre_extracted_entities &&
@@ -407,7 +426,7 @@ Respond with valid JSON only, no markdown.`;
     const entityExtractionTime = Date.now() - entityExtractionStart;
     console.log(`[Timing] Entity extraction: ${entityExtractionTime}ms`);
 
-    // Step 2: Generate single query embedding + location + people lookup in parallel
+    // Step 5: Generate single query embedding + location + people lookup in parallel
     const embeddingStart = Date.now();
 
     const resolveLocation = async (): Promise<{ latitude: number; longitude: number; displayName: string; proximity: number } | null> => {
@@ -429,7 +448,7 @@ Respond with valid JSON only, no markdown.`;
       return null;
     };
 
-    // Change 3: resolvePersonIds with partial name matching
+    // resolvePersonIds with partial name matching
     const resolvePersonIds = async (): Promise<{ ids: string[]; matchedNames: string[] }> => {
       if (entities.people.length === 0) return { ids: [], matchedNames: [] };
       const { data: personsData, error: personsError } = await supabase
@@ -442,17 +461,17 @@ Respond with valid JSON only, no markdown.`;
       for (const detectedName of entities.people) {
         const normalizedDetected = detectedName.toLowerCase().trim();
         for (const person of personsData) {
-          const normalizedStored = person.person_name.toLowerCase().trim();
-          const detectedParts = normalizedDetected.split(/\s+/);
-          const storedParts = normalizedStored.split(/\s+/);
-          const isMatch =
-            normalizedStored === normalizedDetected ||
-            normalizedStored.includes(normalizedDetected) ||
-            normalizedDetected.includes(normalizedStored) ||
-            (detectedParts[0] && storedParts[0] && detectedParts[0] === storedParts[0]);
-          if (isMatch && !ids.includes(person.id)) {
-            ids.push(person.id);
-            matchedNames.push(person.person_name);
+          const normalizedPerson = person.person_name.toLowerCase().trim();
+          // Match if either name contains the other (handles "John" matching "John Smith")
+          if (
+            normalizedPerson === normalizedDetected ||
+            normalizedPerson.includes(normalizedDetected) ||
+            normalizedDetected.includes(normalizedPerson)
+          ) {
+            if (!ids.includes(person.id)) {
+              ids.push(person.id);
+              matchedNames.push(person.person_name);
+            }
           }
         }
       }
@@ -473,7 +492,7 @@ Respond with valid JSON only, no markdown.`;
     const embeddingTime = Date.now() - embeddingStart;
     console.log(`[Timing] Query embedding + location + people (parallel): ${embeddingTime}ms`);
 
-    // Step 3: Call pgvector RPC functions for similarity search in the database
+    // Step 6: Call pgvector RPC functions for similarity search in the database
     const dbQueryStart = Date.now();
 
     // Convert embedding array to pgvector string format
@@ -481,24 +500,18 @@ Respond with valid JSON only, no markdown.`;
 
     const embeddingArray = queryEmbedding;
     const [recallsResult, imagesResult, urlsResult, docRes, recallPeopleResult] = await Promise.all([
-      // distance <= 0.6 means similarity >= 0.4, matching TEXT_SIMILARITY_THRESHOLD
-      // (RPC uses cosine distance: 0=identical, 1=opposite)
       supabase.rpc('match_recalls', {
         query_embedding: embeddingStr,
         match_threshold: 0.6,
         match_count: 30,
         user_id_filter: user.id
       }),
-      // distance <= 0.75 means similarity >= 0.25, matching IMAGE_SIMILARITY_THRESHOLD
-      // (RPC uses cosine distance: 0=identical, 1=opposite)
       supabase.rpc('match_recall_images', {
         query_embedding: embeddingStr,
         match_threshold: 0.75,
         match_count: 50,
         user_id_filter: user.id
       }),
-      // distance <= 0.6 means similarity >= 0.4, matching URL_SIMILARITY_THRESHOLD
-      // (RPC uses cosine distance: 0=identical, 1=opposite)
       supabase.rpc('match_recall_urls', {
         query_embedding: embeddingStr,
         match_threshold: 0.6,
@@ -548,7 +561,7 @@ Respond with valid JSON only, no markdown.`;
     console.log(`[Timing] Database vector search (RPC): ${dbQueryTime}ms`);
     console.log(`Found ${(recallsResult.data || []).length} recall matches, ${(imagesResult.data || []).length} image matches, ${(urlsResult.data || []).length} url matches from DB`);
 
-    // Step 4: Filter and score recalls
+    // Step 7: Filter and score recalls
     const filteringStart = Date.now();
 
     const allRecalls = recallsResult.data || [];
@@ -684,14 +697,14 @@ Respond with valid JSON only, no markdown.`;
           text_similarity: recall.textSimilarity,
           image_similarities: imageSimilarities,
           url_similarities: urlSimilarities,
-          keyword_matches: isKeywordMatch? 1:0,
+          keyword_matches: isKeywordMatch ? 1 : 0,
           recall_data: {
-          text: recall.text||'',
-          location: recall.location||'',
-          location_primary_type: recall.location_primary_type||'',
-          created_at: recall.created_at,
-          latitude: recall.latitude??null,
-          longitude: recall.longitude??null,
+            text: recall.text || '',
+            location: recall.location || '',
+            location_primary_type: recall.location_primary_type || '',
+            created_at: recall.created_at,
+            latitude: recall.latitude ?? null,
+            longitude: recall.longitude ?? null,
           },
           images_data: imagesData,
           urls_data: urlsData,
@@ -711,7 +724,7 @@ Respond with valid JSON only, no markdown.`;
           isPeopleMatch,
           isKeywordMatch,
           isUrlMatch: hasUrlMatch
-          });
+        });
       }
     }
 
@@ -719,7 +732,7 @@ Respond with valid JSON only, no markdown.`;
     console.log(`[Timing] Filtering and scoring: ${filteringTime}ms`);
     console.log(`Found ${recallMatches.length} matching recalls`);
 
-    // Step 5: Sort recalls by match quality
+    // Step 8: Sort recalls by match quality
     recallMatches.sort((a, b) => {
       const scoreA = (a.text_similarity * 100) + (a.isLocationMatch ? 50 : 0) + (a.isPeopleMatch ? 50 : 0);
       const scoreB = (b.text_similarity * 100) + (b.isLocationMatch ? 50 : 0) + (b.isPeopleMatch ? 50 : 0);
@@ -733,14 +746,7 @@ Respond with valid JSON only, no markdown.`;
       return dateB - dateA;
     });
 
-    // Step 6: Generate answer using OpenAI
-    const answerStart = Date.now();
-
-    let answer = null;
-    let confidence = 0;
-    let sourcesUsed: string[] = [];
-
-    // Change 7: Build uploadedImagesContext before the recallMatches block so it's available in no-matches path too
+    // Step 9: Build uploadedImagesContext before the recallMatches block
     let uploadedImagesContext = '';
     if (search_uploads && Array.isArray(search_uploads) && search_uploads.length > 0) {
       uploadedImagesContext = `\n\nUPLOADED IMAGES CONTEXT (from images the user attached to this search):\n`;
@@ -755,6 +761,100 @@ Respond with valid JSON only, no markdown.`;
       });
       uploadedImagesContext += `\nUse the above image context to help answer the question. For example, if the user uploaded a photo of a product and asks "have I seen this before?", use the image description and text to search for matching recalls.`;
     }
+
+    // Step 10: skip_answer early-exit — return top recalls as context for on-device answer generation
+    if (skip_answer) {
+      const topRecalls = recallMatches.slice(0, 8);
+
+      // Build context string for on-device answer generation
+      const contextForAnswer = topRecalls.map((recall, idx) => {
+        const sourceId = `SOURCE_${idx + 1}`;
+        const matchTypes: string[] = [];
+        if (recall.isLocationMatch) matchTypes.push('LOCATION');
+        if (recall.isPeopleMatch) matchTypes.push('PEOPLE');
+        if (recall.isKeywordMatch) matchTypes.push('KEYWORD');
+        const matchTypeStr = matchTypes.length > 0 ? ` [${matchTypes.join(' + ')}]` : '';
+
+        let contextText = `${sourceId} (${Math.round(recall.text_similarity * 100)}% match${matchTypeStr}):\n`;
+        contextText += `Text: ${recall.recall_data.text}\n`;
+        if (recall.recall_data.location) contextText += `Location: ${recall.recall_data.location}\n`;
+
+        if (recall.images_data && recall.images_data.length > 0) {
+          recall.images_data.forEach((img, imgIdx) => {
+            if (img.image_explanation) contextText += `Image ${imgIdx + 1} description: ${img.image_explanation}\n`;
+            if (img.ocr_text) contextText += `Image ${imgIdx + 1} text: ${img.ocr_text}\n`;
+          });
+        }
+
+        if (recall.urls_data && recall.urls_data.length > 0) {
+          recall.urls_data.forEach((url) => {
+            if (url.og_title) contextText += `Linked page: ${url.og_title}\n`;
+            if (url.url_data) contextText += `Page content: ${url.url_data.slice(0, 400)}\n`;
+          });
+        }
+
+        return contextText;
+      }).join('\n---\n');
+
+      // Cap at 12,000 chars to stay within on-device model limits
+      const cappedContext = contextForAnswer.slice(0, 12_000);
+
+      const matchResults = topRecalls.map((recall, idx) => ({
+        id: recall.recall_id,
+        sourceNumber: idx + 1,
+        latitude: recall.recall_data.latitude ?? null,
+        longitude: recall.recall_data.longitude ?? null,
+        matchPercentage: Math.round(recall.text_similarity * 100),
+        usedForAnswer: false,
+        keywordMatches: recall.keyword_matches || 0,
+        totalKeywords: entities.keywords.length || 0,
+        isLocationMatch: recall.isLocationMatch,
+        isPeopleMatch: recall.isPeopleMatch,
+        isKeywordMatch: recall.isKeywordMatch,
+      }));
+
+      const processingTime = Date.now() - startTime;
+      console.log(`[skip_answer] Returning ${topRecalls.length} recalls as context (${cappedContext.length} chars)`);
+
+      return new Response(JSON.stringify({
+        answer: null,
+        confidence: 0,
+        results: matchResults,
+        context_for_answer: cappedContext,
+        uploaded_images_context: uploadedImagesContext,
+        processingTimeMs: processingTime,
+        locationInfo: locationCoords ? {
+          location: entities.location,
+          resolvedPlace: locationCoords.displayName,
+          proximity: locationCoords.proximity,
+          intentType: entities.locationIntent,
+          coordinates: { latitude: locationCoords.latitude, longitude: locationCoords.longitude }
+        } : null,
+        personInfo: entities.people.length > 0 ? {
+          detectedNames: entities.people,
+          matchedNames: matchedPersonNames
+        } : null,
+        extractedKeywords: entities.keywords,
+        timings: {
+          entityExtractionMs: entityExtractionTime,
+          parallelSetupMs: embeddingTime,
+          dbQueryMs: dbQueryTime,
+          filteringMs: filteringTime,
+          answerMs: 0,
+          totalMs: processingTime
+        }
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Step 11: Normal answer generation path
+    const answerStart = Date.now();
+
+    let answer = null;
+    let confidence = 0;
+    let sourcesUsed: string[] = [];
 
     if (recallMatches.length > 0) {
       const contextWithSources = recallMatches.map((recall, idx) => {
@@ -828,7 +928,6 @@ Respond with valid JSON only, no markdown.`;
       });
 
       // Build sourceNumber lookup: recallId → sourceNumber (1-based index in contextWithSources)
-      // This must be captured BEFORE the post-answer reorder so SOURCE_X numbers stay stable.
       const recallSourceNumberMap = new Map<string, number>();
       contextWithSources.forEach((c, idx) => {
         recallSourceNumberMap.set(c.recallId, idx + 1);
@@ -836,48 +935,9 @@ Respond with valid JSON only, no markdown.`;
 
       const context = contextWithSources.map(c => c.text).join('\n');
 
-      // Change 4: Build contextForAnswer before the QA / skip_answer block
+      // Build contextForAnswer to include in response
       const contextForAnswer = `Available Recalls (sorted by highest match percentage first):\n${context}`;
 
-      // Change 5: skip_answer early-exit — return context for on-device answer generation
-      if (skipAnswer) {
-        console.log('[Answer Generation] Skipping OpenAI QA (skip_answer=true), returning context for on-device answer');
-        // Limit to top 8 recalls and cap at 12,000 chars for on-device model
-        const topRecalls = recallMatches.slice(0, 8);
-        const topContext = topRecalls.map((_, idx) => contextWithSources[idx]?.text ?? '').join('\n');
-        const cappedContext = topContext.length > 12_000
-          ? topContext.slice(0, 12_000) + '\n\n[Context truncated to fit on-device model limits]'
-          : topContext;
-        const cappedContextForAnswer = `Available Recalls (sorted by highest match percentage first):\n${cappedContext}`;
-        const matchResults = recallMatches.map(recall => ({
-          id: recall.recall_id,
-          sourceNumber: null,
-          latitude: recall.recall_data.latitude ?? null,
-          longitude: recall.recall_data.longitude ?? null,
-          matchPercentage: Math.round(recall.text_similarity * 100),
-          usedForAnswer: false,
-          keywordMatches: recall.keyword_matches || 0,
-          totalKeywords: entities.keywords.length || 0,
-          isLocationMatch: recall.isLocationMatch,
-          isPeopleMatch: recall.isPeopleMatch,
-          isKeywordMatch: recall.isKeywordMatch,
-        }));
-        const processingTime = Date.now() - startTime;
-        return new Response(JSON.stringify({
-          answer: null,
-          confidence: 0,
-          results: matchResults,
-          context_for_answer: cappedContextForAnswer,
-          uploaded_images_context: uploadedImagesContext,
-          processingTimeMs: processingTime,
-          locationInfo: locationCoords ? { location: entities.location, resolvedPlace: locationCoords.displayName, proximity: locationCoords.proximity, intentType: entities.locationIntent, coordinates: { latitude: locationCoords.latitude, longitude: locationCoords.longitude } } : null,
-          personInfo: entities.people.length > 0 ? { detectedNames: entities.people, matchedNames: matchedPersonNames } : null,
-          extractedKeywords: entities.keywords,
-          timings: { entityExtractionMs: entityExtractionTime, parallelSetupMs: embeddingTime, dbQueryMs: dbQueryTime, filteringMs: filteringTime, answerMs: 0, totalMs: processingTime }
-        }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-
-      // Change C: Updated QA system prompt with UPLOADED SEARCH IMAGES section
       const qaSystemPrompt = `You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
 
 CRITICAL RULES:
@@ -911,7 +971,6 @@ If the recalls don't contain the requested information, respond with: {"answer":
 
 Respond with valid JSON only, no markdown.`;
 
-      // Change B: Build qaUserMessage with optional uploaded images context
       const qaUserMessage = `Question: ${query}${uploadedImagesContext}\n\nAvailable Recalls (sorted by highest match percentage first):\n${context}`;
 
       const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -985,12 +1044,11 @@ Respond with valid JSON only, no markdown.`;
       console.log('=== Search Recalls V3 completed successfully ===');
       console.log('Total processing time:', processingTime, 'ms');
 
-      // Change 6: Add context_for_answer and uploaded_images_context to cloud QA success response
       return new Response(JSON.stringify({
         answer,
         confidence,
         results: matchResults,
-        context_for_answer: contextForAnswer,
+        context_for_answer: contextForAnswer.slice(0, 12_000),
         uploaded_images_context: uploadedImagesContext,
         processingTimeMs: processingTime,
         locationInfo: locationCoords ? {
@@ -1023,13 +1081,12 @@ Respond with valid JSON only, no markdown.`;
     }
 
     // No matches found
-    // Change 7: Add context_for_answer and uploaded_images_context to no-matches response
     const processingTime = Date.now() - startTime;
     return new Response(JSON.stringify({
       answer: null,
       confidence: 0,
       results: [],
-      context_for_answer: null,
+      context_for_answer: '',
       uploaded_images_context: uploadedImagesContext,
       processingTimeMs: processingTime,
       locationInfo: locationCoords ? {
