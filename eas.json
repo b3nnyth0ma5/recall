@@ -29,7 +29,20 @@
       "ios": {
         "simulator": false,
         "buildConfiguration": "Release",
-        "image": "latest"
+        "image": "latest",
+        "experimental": {
+          "ios": {
+            "appExtensions": [
+              {
+                "targetName": "ShareExtension",
+                "bundleIdentifier": "com.b3nny1nc.recall.ShareExtension",
+                "entitlements": {
+                  "com.apple.security.application-groups": ["group.com.b3nny1nc.recall"]
+                }
+              }
+            ]
+          }
+        }
       },
       "android": {
         "buildType": "apk"
@@ -45,7 +58,20 @@
       "ios": {
         "simulator": false,
         "buildConfiguration": "Release",
-        "image": "latest"
+        "image": "latest",
+        "experimental": {
+          "ios": {
+            "appExtensions": [
+              {
+                "targetName": "ShareExtension",
+                "bundleIdentifier": "com.b3nny1nc.recall.ShareExtension",
+                "entitlements": {
+                  "com.apple.security.application-groups": ["group.com.b3nny1nc.recall"]
+                }
+              }
+            ]
+          }
+        }
       },
       "android": {
         "buildType": "app-bundle"

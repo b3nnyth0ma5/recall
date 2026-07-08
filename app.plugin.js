@@ -438,9 +438,32 @@ const withSiriShortcutsModule = (config) => {
   ]);
 };
 
+/**
+ * Scopes ASSETCATALOG_COMPILER_APPICON_NAME to the app target only.
+ * Fixes Expo SDK 54 bug where this setting is written at the project level,
+ * causing every extension target (share extension, etc.) to fail icon lookup.
+ * See: https://github.com/expo/expo/pull/41536
+ */
+const withScopeIconToAppTarget = (config) => {
+  return withXcodeProject(config, (config) => {
+    const buildConfigs = config.modResults.pbxXCBuildConfigurationSection();
+    Object.values(buildConfigs).forEach((buildConfig) => {
+      const settings = buildConfig.buildSettings;
+      if (settings !== undefined && settings['PRODUCT_BUNDLE_IDENTIFIER'] === undefined) {
+        if (settings['ASSETCATALOG_COMPILER_APPICON_NAME'] !== undefined) {
+          delete settings['ASSETCATALOG_COMPILER_APPICON_NAME'];
+          console.log('[withScopeIconToAppTarget] Removed ASSETCATALOG_COMPILER_APPICON_NAME from project-level build config');
+        }
+      }
+    });
+    return config;
+  });
+};
+
 const withRecallConfig = (config) => {
   config = withFollyNoCoroutines(config);
   config = withStripDebugConfigFlag(config);
+  config = withScopeIconToAppTarget(config);
   config = withEntityExtractionModule(config);
   config = withAppGroupModule(config);
   // config = withSiriShortcutsModule(config); // recall-native disabled
