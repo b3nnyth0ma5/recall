@@ -2,6 +2,7 @@
 module.exports = (config) => ({
   type: "share",
   name: "ShareExtension",
+  displayName: "Recall",
   bundleIdentifier: "com.b3nny1nc.recall.ShareExtension",
   deploymentTarget: "15.1",
   entitlements: {

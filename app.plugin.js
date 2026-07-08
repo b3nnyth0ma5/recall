@@ -449,10 +449,16 @@ const withScopeIconToAppTarget = (config) => {
     const buildConfigs = config.modResults.pbxXCBuildConfigurationSection();
     Object.values(buildConfigs).forEach((buildConfig) => {
       const settings = buildConfig.buildSettings;
-      if (settings !== undefined && settings['PRODUCT_BUNDLE_IDENTIFIER'] === undefined) {
+      if (!settings) return;
+      const bundleId = settings['PRODUCT_BUNDLE_IDENTIFIER'];
+      // Remove from share extension target configs — its asset catalog has no AppIcon set
+      if (
+        bundleId === '"com.b3nny1nc.recall.ShareExtension"' ||
+        bundleId === 'com.b3nny1nc.recall.ShareExtension'
+      ) {
         if (settings['ASSETCATALOG_COMPILER_APPICON_NAME'] !== undefined) {
           delete settings['ASSETCATALOG_COMPILER_APPICON_NAME'];
-          console.log('[withScopeIconToAppTarget] Removed ASSETCATALOG_COMPILER_APPICON_NAME from project-level build config');
+          console.log('[withScopeIconToAppTarget] Removed ASSETCATALOG_COMPILER_APPICON_NAME from ShareExtension build config');
         }
       }
     });
