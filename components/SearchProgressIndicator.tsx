@@ -32,6 +32,7 @@ interface SearchProgressIndicatorProps {
   shouldShowTimings?: boolean;
   onDeviceAnswerMs?: number | null;
   fastModeActive?: boolean;
+  onDeviceUsed?: boolean;
 }
 
 interface StepConfig {
@@ -83,6 +84,7 @@ export function SearchProgressIndicator({
   shouldShowTimings = false,
   onDeviceAnswerMs,
   fastModeActive = false,
+  onDeviceUsed = false,
 }: SearchProgressIndicatorProps) {
   const heightValue = useSharedValue(isExpanded ? 1 : 0);
 
@@ -133,6 +135,9 @@ export function SearchProgressIndicator({
 
   // Determine the header title based on stage
   const getHeaderTitle = (): string => {
+    if (stage === 'complete' && onDeviceUsed) {
+      return 'Search Completed · On-device';
+    }
     if (stage === 'complete') {
       return 'Search Completed';
     }
@@ -141,9 +146,8 @@ export function SearchProgressIndicator({
 
   // Format timing for display
   const formatTiming = (ms?: number): string => {
-    if (ms === undefined) {
-      return '';
-    }
+    if (ms === undefined) return '';
+    if (ms < 1000) return `${Math.round(ms)}ms`;
     return `${(ms / 1000).toFixed(2)}s`;
   };
 

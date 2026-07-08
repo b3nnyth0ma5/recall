@@ -78,10 +78,15 @@ If the recalls don't contain the requested information, respond with: {"answer":
 Respond with valid JSON only, no markdown.
 """
 
-        let fullMessage = systemPrompt + "\n\nQuestion: \(query)\(uploadedImagesContext)\n\nAvailable Recalls (sorted by highest match percentage first):\n\(contextString)"
+        let maxContextChars = 10_000
+        let truncatedContext = contextString.count > maxContextChars
+          ? String(contextString.prefix(maxContextChars)) + "\n\n[Context truncated to fit on-device model limits]"
+          : contextString
+
+        let fullMessage = "Question: \(query)\(uploadedImagesContext)\n\nAvailable Recalls (sorted by highest match percentage first):\n\(truncatedContext)"
         let startTime = Date()
         do {
-          let session = LanguageModelSession()
+          let session = LanguageModelSession(instructions: Instructions(systemPrompt))
           let response = try await session.respond(to: fullMessage)
           let responseText = response.content
           let durationMs = Int(Date().timeIntervalSince(startTime) * 1000)
@@ -102,6 +107,8 @@ Respond with valid JSON only, no markdown.
             "sources": sources,
             "durationMs": durationMs,
           ] as [String: Any])
+        } catch LanguageModelSession.GenerationError.exceededContextWindowSize {
+          promise.reject("ERR_CONTEXT_TOO_LARGE", "Input exceeded the on-device model context window — falling back to cloud")
         } catch {
           promise.reject("ERR_GENERATION", "Foundation Models generation failed: \(error.localizedDescription)")
         }

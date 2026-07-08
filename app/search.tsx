@@ -318,8 +318,11 @@ export default function SearchScreen() {
         const canUseOnDeviceAnswer = await checkAndNotifyFoundationModels();
         const searchResult = await searchNotes(decodedQuery, true, undefined, preExtractedEntities, canUseOnDeviceAnswer);
         if (canUseOnDeviceAnswer && searchResult?.context_for_answer) {
+          const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
+          const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
+          console.log('[Search] autoSearch: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
           const onDeviceResult = await generateAnswerOnDevice(
-            searchResult.context_for_answer,
+            safeContext,
             decodedQuery,
             searchResult.uploaded_images_context ?? '',
           );
@@ -551,8 +554,11 @@ export default function SearchScreen() {
 
     if (canUseOnDeviceAnswer && searchResult?.context_for_answer) {
       console.log('[Search] handleSearch: attempting on-device answer generation');
+      const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
+      const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
+      console.log('[Search] handleSearch: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
       const onDeviceResult = await generateAnswerOnDevice(
-        searchResult.context_for_answer,
+        safeContext,
         searchQuery,
         searchResult.uploaded_images_context ?? '',
       );
@@ -655,8 +661,11 @@ export default function SearchScreen() {
 
     if (canUseOnDeviceAnswer && searchResult?.context_for_answer) {
       console.log('[Search] handleHistoryItemPress: attempting on-device answer generation');
+      const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
+      const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
+      console.log('[Search] handleHistoryItemPress: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
       const onDeviceResult = await generateAnswerOnDevice(
-        searchResult.context_for_answer,
+        safeContext,
         item.search_text,
         searchResult.uploaded_images_context ?? '',
       );
@@ -1334,6 +1343,7 @@ export default function SearchScreen() {
                   shouldShowTimings={shouldShowSearchTime}
                   onDeviceAnswerMs={onDeviceAnswerMs}
                   fastModeActive={fastSearchMode}
+                  onDeviceUsed={onDeviceAnswerMs != null}
                 />
 
                 {isSearching ? (
