@@ -36,22 +36,70 @@ public class EntityExtractionModule: Module {
         return true
       }
 
-      // Keyword extraction (nouns and adjectives)
-      let lexOptions: NLTagger.Options = [.omitPunctuation, .omitWhitespace]
-      tagger.enumerateTags(in: query.startIndex..<query.endIndex, unit: .word, scheme: .lexicalClass, options: lexOptions) { tag, range in
+      // Keyword extraction: single words AND multi-word noun phrases
+      // Strategy: scan for consecutive noun/adjective tokens and group them into phrases
+      let lexOptions2: NLTagger.Options = [.omitPunctuation, .omitWhitespace]
+      let tagger2 = NLTagger(tagSchemes: [.lexicalClass])
+      tagger2.string = query
+
+      // Collect all (token, tag, range) tuples
+      var tokenTags: [(token: String, tag: NLTag, range: Range<String.Index>)] = []
+      tagger2.enumerateTags(in: query.startIndex..<query.endIndex, unit: .word, scheme: .lexicalClass, options: lexOptions2) { tag, range in
         guard let tag = tag else { return true }
-        let token = String(query[range]).lowercased()
-        if (tag == .noun || tag == .adjective) && token.count > 2 {
-          if !keywords.contains(token) {
-            keywords.append(token)
-          }
-        }
+        let token = String(query[range])
+        tokenTags.append((token: token, tag: tag, range: range))
         return true
+      }
+
+      // Slide over tokens: build phrases from consecutive noun/adjective runs
+      var i = 0
+      while i < tokenTags.count {
+        let t = tokenTags[i]
+        if t.tag == .noun || t.tag == .adjective {
+          // Start a phrase run
+          var phraseTokens: [String] = [t.token]
+          var j = i + 1
+          while j < tokenTags.count {
+            let next = tokenTags[j]
+            if next.tag == .noun || next.tag == .adjective {
+              phraseTokens.append(next.token)
+              j += 1
+            } else {
+              break
+            }
+          }
+          // Add the full phrase (if multi-word) and individual words (if long enough)
+          if phraseTokens.count > 1 {
+            let phrase = phraseTokens.joined(separator: " ").lowercased()
+            if !keywords.contains(phrase) {
+              keywords.append(phrase)
+            }
+          }
+          // Also add individual words that are long enough
+          for tok in phraseTokens {
+            let lower = tok.lowercased()
+            if lower.count > 2 && !keywords.contains(lower) {
+              keywords.append(lower)
+            }
+          }
+          i = j
+        } else {
+          i += 1
+        }
       }
 
       // Deduplicate: remove keywords that are already captured as people names
       let peopleNormalized = Set(people.map { $0.lowercased() })
       keywords = keywords.filter { !peopleNormalized.contains($0.lowercased()) }
+
+      // Deduplication: remove shorter keywords that are already covered by a longer phrase
+      keywords = keywords.filter { kw in
+        // Keep this keyword if no other keyword in the list contains it as a substring
+        // (and is longer than it, meaning it's a more specific phrase)
+        !keywords.contains(where: { other in
+          other != kw && other.contains(kw) && other.count > kw.count
+        })
+      }
 
       // Location intent detection
       let lower = query.lowercased()
