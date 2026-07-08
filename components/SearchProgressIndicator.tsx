@@ -31,6 +31,7 @@ interface SearchProgressIndicatorProps {
   };
   shouldShowTimings?: boolean;
   onDeviceAnswerMs?: number | null;
+  fastModeActive?: boolean;
 }
 
 interface StepConfig {
@@ -81,6 +82,7 @@ export function SearchProgressIndicator({
   searchTimings,
   shouldShowTimings = false,
   onDeviceAnswerMs,
+  fastModeActive = false,
 }: SearchProgressIndicatorProps) {
   const heightValue = useSharedValue(isExpanded ? 1 : 0);
 
@@ -179,12 +181,9 @@ export function SearchProgressIndicator({
             const timing = isAnswerStep && onDeviceAnswerMs != null
               ? onDeviceAnswerMs
               : (step.timingKey && searchTimings ? searchTimings[step.timingKey] : undefined);
-            const stepTitle = isAnswerStep && onDeviceAnswerMs != null
-              ? 'On-device answer'
-              : getStepTitle(step);
-            const stepIcon = isAnswerStep && onDeviceAnswerMs != null
-              ? 'bolt.fill'
-              : step.icon;
+            const isOnDevice = isAnswerStep && (onDeviceAnswerMs != null || fastModeActive);
+            const stepTitle = isOnDevice ? 'On-device answer' : getStepTitle(step);
+            const stepIcon = isOnDevice ? 'bolt.fill' : step.icon;
 
             return (
               <React.Fragment key={step.id}>

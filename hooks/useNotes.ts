@@ -834,9 +834,6 @@ export function useNotes() {
         return;
       }
 
-      // Add a small delay to ensure "resolving" stage is visible
-      await new Promise(resolve => setTimeout(resolve, 100));
-
       // Step 1: Call the unified entity extraction function
       if (__DEV__) console.log('Step 1: Calling unified entity extraction...');
       const entitySearchStart = Date.now();
@@ -893,7 +890,6 @@ export function useNotes() {
         };
         setPersonInfo(personInfoData);
         setSearchPersonNames(entityResult.personInfo.matchedNames);
-        await new Promise(resolve => setTimeout(resolve, 100));
       } else {
         setPersonInfo(null);
         setSearchPersonNames(undefined);
@@ -903,7 +899,6 @@ export function useNotes() {
       if (entityResult.extractedKeywords?.length > 0) {
         setSearchStage('keywords');
         setSearchExtractedKeywords(entityResult.extractedKeywords);
-        await new Promise(resolve => setTimeout(resolve, 100));
       } else {
         setSearchExtractedKeywords(undefined);
       }
@@ -913,7 +908,6 @@ export function useNotes() {
         setSearchStage('resolving');
         setSearchLocationName(entityResult.locationInfo.resolvedPlace);
         setLocationInfo(entityResult.locationInfo);
-        await new Promise(resolve => setTimeout(resolve, 100));
       } else {
         setLocationInfo(null);
         setSearchLocationName(undefined);
@@ -1149,8 +1143,13 @@ export function useNotes() {
 
       const totalSearchTime = Date.now() - searchStartTime;
       setSearchTimeMs(totalSearchTime);
+      // Use granular timings from edge function for accuracy
+      const edgeEntityMs = (entityResult.timings?.entityExtractionMs ?? 0) +
+        (entityResult.timings?.parallelSetupMs ?? 0) +
+        (entityResult.timings?.dbQueryMs ?? 0) +
+        (entityResult.timings?.filteringMs ?? 0);
       setSearchTimings({
-        entitySearchMs: entitySearchTime,
+        entitySearchMs: edgeEntityMs > 0 ? edgeEntityMs : entitySearchTime,
         aiAnswerMs: aiAnswerTime,
         totalMs: totalSearchTime,
       });
@@ -1158,9 +1157,9 @@ export function useNotes() {
       if (__DEV__) console.log('=== UNIFIED ENTITY SEARCH COMPLETE ===');
       if (__DEV__) console.log(`Total search time: ${totalSearchTime}ms`);
 
-      // Return context fields for on-device answer generation when skipAnswer was requested
-      if (skipAnswer && entityResult.context_for_answer) {
-        console.log('[useNotes] searchNotes: returning context_for_answer for on-device generation, length:', entityResult.context_for_answer.length);
+      // Always return context_for_answer when present so on-device answer generation can use it
+      if (entityResult.context_for_answer) {
+        console.log('[useNotes] searchNotes: returning context_for_answer, length:', entityResult.context_for_answer.length, 'skipAnswer:', skipAnswer ?? false);
         return {
           context_for_answer: entityResult.context_for_answer as string,
           uploaded_images_context: entityResult.uploaded_images_context as string | undefined,

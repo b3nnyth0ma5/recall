@@ -313,11 +313,54 @@ export default function SearchScreen() {
       hasAutoSearchedRef.current = true;
       // donateSearch(decodedQuery); // recall-native disabled
       
-      tryOnDeviceExtraction(decodedQuery).then(preExtractedEntities => {
-        searchNotes(decodedQuery, true, undefined, preExtractedEntities).finally(() => {
-          setIsSearching(false);
-        });
-      });
+      (async () => {
+        const preExtractedEntities = await tryOnDeviceExtraction(decodedQuery);
+        const canUseOnDeviceAnswer = await checkAndNotifyFoundationModels();
+        const searchResult = await searchNotes(decodedQuery, true, undefined, preExtractedEntities, canUseOnDeviceAnswer);
+        if (canUseOnDeviceAnswer && searchResult?.context_for_answer) {
+          const onDeviceResult = await generateAnswerOnDevice(
+            searchResult.context_for_answer,
+            decodedQuery,
+            searchResult.uploaded_images_context ?? '',
+          );
+          if (onDeviceResult && onDeviceResult.answer) {
+            setOnDeviceAnswerMs(onDeviceResult.durationMs);
+            updateAiAnswerTiming(onDeviceResult.durationMs);
+            patchNotesForOnDeviceAnswer(
+              onDeviceResult.sources,
+              searchResult.results ?? [],
+              onDeviceResult.answer,
+              onDeviceResult.confidence,
+            );
+          } else if (searchResult.context_for_answer) {
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session) {
+                const { data: qaResult } = await supabase.functions.invoke('search-recalls-v3', {
+                  body: {
+                    query: decodedQuery.trim(),
+                    generate_answer_only: true,
+                    context_for_answer: searchResult.context_for_answer,
+                    uploaded_images_context: searchResult.uploaded_images_context ?? '',
+                    pre_extracted_entities: preExtractedEntities ?? undefined,
+                  },
+                });
+                if (qaResult?.answer) {
+                  patchNotesForOnDeviceAnswer(
+                    qaResult.sources ?? [],
+                    searchResult.results ?? [],
+                    qaResult.answer,
+                    qaResult.confidence ?? 0,
+                  );
+                }
+              }
+            } catch (qaErr) {
+              console.error('[Search] autoSearch: cloud QA-only fallback failed:', qaErr);
+            }
+          }
+        }
+        setIsSearching(false);
+      })();
       
       setTimeout(() => {
         try {
@@ -1290,6 +1333,7 @@ export default function SearchScreen() {
                   searchTimings={searchTimings}
                   shouldShowTimings={shouldShowSearchTime}
                   onDeviceAnswerMs={onDeviceAnswerMs}
+                  fastModeActive={fastSearchMode}
                 />
 
                 {isSearching ? (
