@@ -26,7 +26,10 @@ public class AppGroupModule: Module {
       }
 
       let containerPath = containerURL.path
-      let containerExists = FileManager.default.fileExists(atPath: containerPath)
+      // containerURL being non-nil already proves the entitlement is provisioned;
+      // check that the directory is actually reachable as a sanity guard
+      var isDir: ObjCBool = false
+      let containerExists = FileManager.default.fileExists(atPath: containerPath, isDirectory: &isDir) && isDir.boolValue
 
       let tokenURL = containerURL.appendingPathComponent("auth-token.json")
       let tokenPath = tokenURL.path
@@ -93,6 +96,70 @@ public class AppGroupModule: Module {
         print("[AppGroupModule] clearLastShareExtensionError groupId=\(groupId) — delete failed: \(error.localizedDescription)")
         promise.resolve(false)
       }
+    }
+
+    AsyncFunction("writeTokenFile") { (groupId: String, jsonPayload: String, promise: Promise) in
+      guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId) else {
+        print("[AppGroupModule] writeTokenFile — containerURL is nil for groupId=\(groupId)")
+        promise.resolve(false)
+        return
+      }
+      let tokenURL = containerURL.appendingPathComponent("auth-token.json")
+      guard let data = jsonPayload.data(using: .utf8) else {
+        print("[AppGroupModule] writeTokenFile — failed to encode payload as UTF-8")
+        promise.resolve(false)
+        return
+      }
+      var coordinatorError: NSError?
+      var writeSuccess = false
+      let coordinator = NSFileCoordinator()
+      coordinator.coordinate(writingItemAt: tokenURL, options: .forReplacing, error: &coordinatorError) { url in
+        do {
+          try data.write(to: url, options: .atomic)
+          writeSuccess = true
+          print("[AppGroupModule] writeTokenFile — wrote \(data.count) bytes to \(url.path)")
+        } catch {
+          print("[AppGroupModule] writeTokenFile — write failed: \(error.localizedDescription)")
+        }
+      }
+      if let err = coordinatorError {
+        print("[AppGroupModule] writeTokenFile — coordinator error: \(err.localizedDescription)")
+        promise.resolve(false)
+        return
+      }
+      promise.resolve(writeSuccess)
+    }
+
+    AsyncFunction("deleteTokenFile") { (groupId: String, promise: Promise) in
+      guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId) else {
+        print("[AppGroupModule] deleteTokenFile — containerURL is nil for groupId=\(groupId)")
+        promise.resolve(false)
+        return
+      }
+      let tokenURL = containerURL.appendingPathComponent("auth-token.json")
+      guard FileManager.default.fileExists(atPath: tokenURL.path) else {
+        print("[AppGroupModule] deleteTokenFile — file does not exist, nothing to delete")
+        promise.resolve(false)
+        return
+      }
+      var coordinatorError: NSError?
+      var deleteSuccess = false
+      let coordinator = NSFileCoordinator()
+      coordinator.coordinate(writingItemAt: tokenURL, options: .forDeleting, error: &coordinatorError) { url in
+        do {
+          try FileManager.default.removeItem(at: url)
+          deleteSuccess = true
+          print("[AppGroupModule] deleteTokenFile — deleted \(url.path)")
+        } catch {
+          print("[AppGroupModule] deleteTokenFile — delete failed: \(error.localizedDescription)")
+        }
+      }
+      if let err = coordinatorError {
+        print("[AppGroupModule] deleteTokenFile — coordinator error: \(err.localizedDescription)")
+        promise.resolve(false)
+        return
+      }
+      promise.resolve(deleteSuccess)
     }
   }
 }

@@ -9,8 +9,6 @@ import {
   FlatList,
   Alert,
   ActivityIndicator,
-  Animated,
-  Dimensions,
   Keyboard,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -22,8 +20,6 @@ import { PersonAvatar } from '@/components/PersonAvatar';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
-
-const SHEET_COLLAPSED_TOP = Dimensions.get('window').height * 0.4; // 60% height sheet
 
 export interface FaceRow {
   id: string;
@@ -72,10 +68,7 @@ export function FaceLinkSheet({
   const [newPersonName, setNewPersonName] = useState('');
   const [showCreateInput, setShowCreateInput] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-
-  const animatedTop = useRef(new Animated.Value(SHEET_COLLAPSED_TOP)).current;
 
   const insets = useSafeAreaInsets();
 
@@ -88,13 +81,7 @@ export function FaceLinkSheet({
       setNewPersonName('');
       setShowCreateInput(false);
       setIsLinking(false);
-      setIsExpanded(false);
-      animatedTop.setValue(SHEET_COLLAPSED_TOP);
-    } else {
-      setIsExpanded(false);
     }
-  // animatedTop is a stable Animated.Value ref — safe to omit
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   // Keyboard listeners for paddingBottom adjustment
@@ -110,24 +97,6 @@ export function FaceLinkSheet({
       hide.remove();
     };
   }, []);
-
-  const expandSheet = useCallback(() => {
-    setIsExpanded(true);
-    Animated.timing(animatedTop, {
-      toValue: insets.top,
-      duration: 250,
-      useNativeDriver: false,
-    }).start();
-  }, [animatedTop, insets.top]);
-
-  const collapseSheet = useCallback(() => {
-    setIsExpanded(false);
-    Animated.timing(animatedTop, {
-      toValue: SHEET_COLLAPSED_TOP,
-      duration: 250,
-      useNativeDriver: false,
-    }).start();
-  }, [animatedTop]);
 
   // Search persons as user types
   useEffect(() => {
@@ -423,8 +392,6 @@ export function FaceLinkSheet({
 
   const isLoading = isLinking || isCreating;
 
-  const borderRadius = isExpanded ? 0 : 24;
-
   const sheetPaddingBottom = Math.max(keyboardHeight, insets.bottom + 40);
 
   const listEmptyComponent = searchQuery.trim() && !isSearching ? (
@@ -482,17 +449,15 @@ export function FaceLinkSheet({
         {/* Dark backdrop */}
         <Pressable style={styles.overlay} onPress={onClose} />
 
-        {/* Sheet — absolutely positioned, fills from animatedTop to bottom:0 */}
-        <Animated.View style={[
+        {/* Sheet — full screen from insets.top to bottom */}
+        <View style={[
           styles.sheet,
           {
             position: 'absolute',
-            top: animatedTop,
+            top: insets.top,
             bottom: 0,
             left: 0,
             right: 0,
-            borderTopLeftRadius: borderRadius,
-            borderTopRightRadius: borderRadius,
           },
         ]}>
           {/* Inner content wrapper — carries keyboard-aware paddingBottom */}
@@ -522,22 +487,10 @@ export function FaceLinkSheet({
                 placeholder="Search people..."
                 placeholderTextColor={colors.textSecondary}
                 value={searchQuery}
-                onFocus={() => {
-                  console.log('[FaceLinkSheet] Search input focused — expanding sheet');
-                  expandSheet();
-                }}
-                onBlur={() => {
-                  if (!searchQuery.trim()) {
-                    console.log('[FaceLinkSheet] Search input blurred with empty query — collapsing sheet');
-                    collapseSheet();
-                  }
-                }}
+                autoFocus
                 onChangeText={(text) => {
                   console.log('[FaceLinkSheet] Search query changed:', text);
                   setSearchQuery(text);
-                  if (text.trim() && !isExpanded) {
-                    expandSheet();
-                  }
                 }}
                 returnKeyType="search"
               />
@@ -571,7 +524,7 @@ export function FaceLinkSheet({
               ListEmptyComponent={listEmptyComponent}
             />
           </View>
-        </Animated.View>
+        </View>
       </View>
     </Modal>
   );
@@ -587,6 +540,8 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: colors.card,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
   },
   sheetInner: {
     flex: 1,

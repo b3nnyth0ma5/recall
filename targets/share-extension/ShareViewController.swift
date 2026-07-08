@@ -848,12 +848,20 @@ class ShareViewController: UIViewController {
         }
         print("[ShareViewController] loadAuthToken stage 2 OK — auth-token.json exists, size=\(fileSize) bytes, mtime=\(fileMtime)")
 
-        let data: Data
-        do {
-            data = try Data(contentsOf: tokenURL)
-        } catch {
-            print("[ShareViewController] loadAuthToken stage 3 FAILED — Data(contentsOf:) error: \(error.localizedDescription)")
-            return .failure(.fileUnreadable(path: tokenPath, error: error.localizedDescription))
+        // Fix 2 (read): wrap with NSFileCoordinator to prevent races with the main app
+        var tokenData: Data?
+        let readCoordinator = NSFileCoordinator()
+        var readCoordinatorError: NSError?
+        readCoordinator.coordinate(readingItemAt: tokenURL, options: .withoutChanges, error: &readCoordinatorError) { coordURL in
+            tokenData = try? Data(contentsOf: coordURL)
+        }
+        if let err = readCoordinatorError {
+            print("[ShareViewController] NSFileCoordinator read error: \(err.localizedDescription)")
+        }
+        guard let data = tokenData else {
+            let errMsg = readCoordinatorError?.localizedDescription ?? "NSFileCoordinator read returned nil data"
+            print("[ShareViewController] loadAuthToken stage 3 FAILED — \(errMsg)")
+            return .failure(.fileUnreadable(path: tokenPath, error: errMsg))
         }
         print("[ShareViewController] loadAuthToken stage 3 OK — read \(data.count) bytes")
 
@@ -888,7 +896,9 @@ class ShareViewController: UIViewController {
         return .success(accessToken: token, refreshToken: refreshToken, userId: userId, expiresAt: expiresAt)
     }
 
-    private func refreshAccessToken(refreshToken: String, completion: @escaping (String?, Double) -> Void) {
+    // Fix 1: userId is passed in explicitly from the already-loaded token data so the
+    // write-back never needs to re-read the file (which could fail or return stale data).
+    private func refreshAccessToken(refreshToken: String, userId: String, completion: @escaping (String?, Double) -> Void) {
         let urlString = "\(supabaseURL)/auth/v1/token?grant_type=refresh_token"
         guard let url = URL(string: urlString) else {
             print("[ShareViewController] refreshAccessToken — invalid URL")
@@ -928,17 +938,25 @@ class ShareViewController: UIViewController {
             }
 
             let newExpiresAt = (json["expires_at"] as? Double) ?? 0
-            print("[ShareViewController] Token refresh SUCCESS — new token expires at: \(newExpiresAt), userId: \(self.appGroupID)")
+            print("[ShareViewController] Token refresh SUCCESS — new token expires at: \(newExpiresAt), userId: \(userId)")
 
-            // Persist the new tokens back to App Group
+            // Fix 1 + Fix 2 (write): use the userId captured from the original loadAuthToken()
+            // result (never re-read the file), and wrap the write with NSFileCoordinator.
             if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: self.appGroupID) {
                 let tokenURL = containerURL.appendingPathComponent("auth-token.json")
                 var updatedJson = json
-                if let userId = (try? JSONSerialization.jsonObject(with: (try? Data(contentsOf: tokenURL)) ?? Data()) as? [String: Any])?["user_id"] as? String {
-                    updatedJson["user_id"] = userId
-                }
+                updatedJson["user_id"] = userId  // userId captured from the original loadAuthToken() result
                 if let updatedData = try? JSONSerialization.data(withJSONObject: updatedJson) {
-                    try? updatedData.write(to: tokenURL)
+                    let writeCoordinator = NSFileCoordinator()
+                    var writeCoordinatorError: NSError?
+                    writeCoordinator.coordinate(writingItemAt: tokenURL, options: .forReplacing, error: &writeCoordinatorError) { coordURL in
+                        try? updatedData.write(to: coordURL, options: .atomic)
+                    }
+                    if let err = writeCoordinatorError {
+                        print("[ShareViewController] NSFileCoordinator write error: \(err.localizedDescription)")
+                    } else {
+                        print("[ShareViewController] Token refreshed and written back for user: \(userId)")
+                    }
                 }
             }
             completion(newAccessToken, newExpiresAt)
@@ -990,7 +1008,9 @@ class ShareViewController: UIViewController {
             persistSuccess(userId: userId)
             updateStatus("Authenticating…")
 
-            refreshAccessToken(refreshToken: refreshToken) { [weak self] freshToken, newExpiresAt in
+            // Pass userId explicitly so refreshAccessToken can safely write it back
+            // without re-reading the file.
+            refreshAccessToken(refreshToken: refreshToken, userId: userId) { [weak self] freshToken, newExpiresAt in
                 guard let self = self else { return }
 
                 let finalAccessToken: String

@@ -124,6 +124,19 @@ export async function clearSharedData(): Promise<boolean> {
       await FileSystem.deleteAsync(filePath, { idempotent: true });
       console.log('[ShareExtensionModule] Shared data cleared successfully');
 
+      // Clean up any orphaned shared-image-*.jpg files in the container
+      try {
+        const dirInfo = await FileSystem.readDirectoryAsync(containerURL);
+        const imageFiles = dirInfo.filter((f: string) => f.startsWith('shared-image-') && f.endsWith('.jpg'));
+        await Promise.all(imageFiles.map((f: string) =>
+          FileSystem.deleteAsync(`${containerURL}${f}`, { idempotent: true })
+            .then(() => console.log('[ShareExtensionModule] Deleted orphaned image:', f))
+            .catch((e: unknown) => console.warn('[ShareExtensionModule] Failed to delete image:', f, e))
+        ));
+      } catch (e) {
+        console.warn('[ShareExtensionModule] Error cleaning up shared images:', e);
+      }
+
       return true;
     }
 

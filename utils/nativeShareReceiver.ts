@@ -5,13 +5,12 @@
  * Unified interface for receiving share intents from both iOS and Android
  */
 
-import { Platform, Linking, AppState, AppStateStatus } from 'react-native'; // Linking kept for listenForShareIntents deep link listener
+import { Platform, Linking } from 'react-native'; // Linking kept for listenForShareIntents deep link listener
 import type { ReceivedShareData, ShareIntentCallback, ShareIntentCleanup } from '@/types/ShareExtension';
 import { getSharedData, clearSharedData, copySharedImages } from './shareExtensionModule';
 
 let shareIntentListeners: ShareIntentCallback[] = [];
 let linkingListener: any = null;
-let appStateListener: any = null;
 let isProcessingShare = false;
 let readLock: Promise<void> | null = null;
 
@@ -74,6 +73,13 @@ async function checkForIOSSharedData() {
     const sharedData = await getSharedData();
     if (!sharedData) {
       console.log('[NativeShareReceiver] No shared data found');
+      return;
+    }
+
+    // Respect already_saved flag — share extension already persisted this recall
+    if (sharedData.already_saved === true) {
+      console.log('[NativeShareReceiver] already_saved=true — share extension already saved this recall, clearing and skipping');
+      await clearSharedData();
       return;
     }
 
@@ -168,6 +174,13 @@ export async function getInitialShareData(): Promise<ReceivedShareData | null> {
       return null;
     }
 
+    // Respect already_saved flag — share extension already persisted this recall
+    if (sharedData.already_saved === true) {
+      console.log('[NativeShareReceiver] already_saved=true — share extension already saved this recall, clearing and skipping');
+      await clearSharedData();
+      return null;
+    }
+
     console.log('[NativeShareReceiver] Found shared data in App Group:', {
       hasText: !!sharedData.text,
       urlCount: sharedData.urls?.length || 0,
@@ -226,16 +239,6 @@ export function listenForShareIntents(callback: ShareIntentCallback): ShareInten
     });
   }
 
-  // Set up app state listener for iOS (to check for shared data when app becomes active)
-  if (Platform.OS === 'ios' && !appStateListener) {
-    appStateListener = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'active') {
-        console.log('[NativeShareReceiver] App became active, checking for shared data...');
-        checkForIOSSharedData();
-      }
-    });
-  }
-
   // Return cleanup function
   return () => {
     console.log('[NativeShareReceiver] Removing share intent listener');
@@ -249,10 +252,6 @@ export function listenForShareIntents(callback: ShareIntentCallback): ShareInten
       if (linkingListener) {
         linkingListener.remove();
         linkingListener = null;
-      }
-      if (appStateListener) {
-        appStateListener.remove();
-        appStateListener = null;
       }
     }
   };
