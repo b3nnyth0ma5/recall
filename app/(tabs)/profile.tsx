@@ -223,18 +223,28 @@ export default function ProfileScreen() {
     }
   };
 
-  const [fastSearchMode, setFastSearchMode] = useState(false);
+  const [onDeviceNer, setOnDeviceNer] = useState(false);
+  const [onDeviceAnswer, setOnDeviceAnswer] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem('search_mode_fast').then(val => {
-      if (val === 'true') setFastSearchMode(true);
+    AsyncStorage.getItem('search_ner_ondevice').then(val => {
+      if (val === 'true') setOnDeviceNer(true);
+    });
+    AsyncStorage.getItem('search_answer_ondevice').then(val => {
+      if (val === 'true') setOnDeviceAnswer(true);
     });
   }, []);
 
-  const handleFastSearchToggle = (value: boolean) => {
-    console.log('[Profile] Fast search toggle changed:', value);
-    setFastSearchMode(value);
-    AsyncStorage.setItem('search_mode_fast', value ? 'true' : 'false');
+  const handleOnDeviceNerToggle = (value: boolean) => {
+    console.log('[Profile] On-device NER toggle changed:', value);
+    setOnDeviceNer(value);
+    AsyncStorage.setItem('search_ner_ondevice', value ? 'true' : 'false');
+  };
+
+  const handleOnDeviceAnswerToggle = (value: boolean) => {
+    console.log('[Profile] On-device answer generation toggle changed:', value);
+    setOnDeviceAnswer(value);
+    AsyncStorage.setItem('search_answer_ondevice', value ? 'true' : 'false');
   };
 
   const deleteButtonEnabled = deleteConfirmInput.trim() === 'DELETE';
@@ -417,19 +427,40 @@ export default function ProfileScreen() {
               <IconSymbol name="magnifyingglass" size={24} color={colors.primary} />
               <Text style={styles.sectionTitle}>Search</Text>
             </View>
+
+            {/* On-device NER toggle */}
             <View style={styles.searchToggleRow}>
               <View style={styles.searchToggleLeft}>
-                <IconSymbol name="bolt.fill" size={20} color={colors.primary} />
+                <IconSymbol name="text.alignleft" size={20} color={colors.primary} />
                 <View style={styles.searchToggleLabelBlock}>
-                  <Text style={styles.searchToggleLabel}>Fast on-device search</Text>
+                  <Text style={styles.searchToggleLabel}>On-device NER</Text>
                   <Text style={styles.searchToggleDescription}>
-                    Uses on-device AI for faster, private searches. On supported devices (iPhone 15 Pro or later with Apple Intelligence enabled), answers are also generated on-device.
+                    Uses on-device AI to extract names, locations, and keywords from your search query privately, without sending the query to the cloud.
                   </Text>
                 </View>
               </View>
               <Switch
-                value={fastSearchMode}
-                onValueChange={handleFastSearchToggle}
+                value={onDeviceNer}
+                onValueChange={handleOnDeviceNerToggle}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            {/* On-device Answer Generation toggle */}
+            <View style={[styles.searchToggleRow, { marginTop: 12 }]}>
+              <View style={styles.searchToggleLeft}>
+                <IconSymbol name="sparkles" size={20} color={colors.primary} />
+                <View style={styles.searchToggleLabelBlock}>
+                  <Text style={styles.searchToggleLabel}>On-device Answer Generation</Text>
+                  <Text style={styles.searchToggleDescription}>
+                    Generates answers using Apple Intelligence on-device (iPhone 15 Pro or later with Apple Intelligence enabled). Faster and fully private. Falls back to cloud if unavailable.
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={onDeviceAnswer}
+                onValueChange={handleOnDeviceAnswerToggle}
                 trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor="#FFFFFF"
               />

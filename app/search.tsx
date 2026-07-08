@@ -93,24 +93,14 @@ export default function SearchScreen() {
   const [hasMoreCategoryRecalls, setHasMoreCategoryRecalls] = useState(false);
   const [isLoadingMoreCategoryRecalls, setIsLoadingMoreCategoryRecalls] = useState(false);
   const [categoryHasLocationRecalls, setCategoryHasLocationRecalls] = useState(false);
-  const [fastSearchMode, setFastSearchMode] = useState(false);
   const [onDeviceAnswerMs, setOnDeviceAnswerMs] = useState<number | null>(null);
-
-  useEffect(() => {
-    AsyncStorage.getItem('search_mode_fast').then(val => {
-      if (val === 'true') {
-        console.log('[SearchScreen] Fast search mode enabled (on-device entity extraction)');
-        setFastSearchMode(true);
-      }
-    });
-  }, []);
 
   // Reads the toggle directly from AsyncStorage at call time to avoid the
   // race condition where fastSearchMode state hasn't resolved yet.
   const tryOnDeviceExtraction = useCallback(async (query: string): Promise<ExtractedEntities | null> => {
     if (Platform.OS !== 'ios') return null;
     try {
-      const val = await AsyncStorage.getItem('search_mode_fast');
+      const val = await AsyncStorage.getItem('search_ner_ondevice');
       if (val !== 'true') return null;
       const entities = await extractEntitiesOnDevice(query);
       if (entities) {
@@ -127,7 +117,7 @@ export default function SearchScreen() {
 
   const checkAndNotifyFoundationModels = useCallback(async (): Promise<boolean> => {
     if (Platform.OS !== 'ios') return false;
-    const val = await AsyncStorage.getItem('search_mode_fast');
+    const val = await AsyncStorage.getItem('search_answer_ondevice');
     if (val !== 'true') return false;
 
     console.log('[Search] Checking Foundation Models availability');
@@ -1342,7 +1332,7 @@ export default function SearchScreen() {
                   searchTimings={searchTimings}
                   shouldShowTimings={shouldShowSearchTime}
                   onDeviceAnswerMs={onDeviceAnswerMs}
-                  fastModeActive={fastSearchMode}
+                  fastModeActive={false}
                   onDeviceUsed={onDeviceAnswerMs != null}
                 />
 
