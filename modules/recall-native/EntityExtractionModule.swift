@@ -13,6 +13,13 @@ public class EntityExtractionModule: Module {
       var location: String = ""
       var locationIntent: String? = nil
 
+      // Ensure lexical class assets are available before tagging
+      let scheme: NLTagScheme = .lexicalClass
+      let language: NLLanguage = .english
+      if !NLTagger.availableTagSchemes(for: .word, language: language).contains(scheme) {
+        try? await NLTagger.requestAssets(for: language, tagScheme: scheme)
+      }
+
       // Named entity recognition — primary pass
       let tagger = NLTagger(tagSchemes: [.nameType, .lexicalClass])
       tagger.string = query
@@ -36,11 +43,36 @@ public class EntityExtractionModule: Module {
         return true
       }
 
-      // Keyword extraction: single words AND multi-word noun phrases
-      // Strategy: scan for consecutive noun/adjective tokens and group them into phrases
+      // Keyword extraction: single words AND multi-word content-word phrases
+      // Strategy: scan for consecutive content-word tokens and group them into phrases
       let lexOptions2: NLTagger.Options = [.omitPunctuation, .omitWhitespace]
       let tagger2 = NLTagger(tagSchemes: [.lexicalClass])
       tagger2.string = query
+
+      // Tags that are function words / punctuation — excluded from phrase building
+      let excludedTags: Set<NLTag> = [
+        .determiner, .particle, .preposition, .conjunction, .interjection,
+        .classifier, .idiom, .otherPunctuation, .sentenceTerminator,
+        .openQuote, .closeQuote, .openParenthesis, .closeParenthesis,
+        .wordJoiner, .dash
+      ]
+
+      // Stopwords that add no search value even if tagged as content words
+      let stopwords: Set<String> = [
+        "my", "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+        "have", "has", "had", "do", "does", "did", "will", "would", "could", "should",
+        "may", "might", "shall", "can", "need", "dare", "ought", "used",
+        "to", "of", "in", "for", "on", "with", "at", "by", "from", "up", "about",
+        "into", "through", "during", "before", "after", "above", "below", "between",
+        "out", "off", "over", "under", "again", "further", "then", "once",
+        "i", "me", "we", "our", "you", "your", "he", "she", "it", "they", "them",
+        "what", "which", "who", "this", "that", "these", "those",
+        "and", "but", "or", "so", "yet", "both", "either", "not", "no", "nor",
+        "just", "than", "too", "very", "s", "t", "don",
+        "how", "when", "where", "why",
+        "all", "any", "each", "few", "more", "most", "other", "some", "such",
+        "own", "same", "also"
+      ]
 
       // Collect all (token, tag, range) tuples
       var tokenTags: [(token: String, tag: NLTag, range: Range<String.Index>)] = []
@@ -51,24 +83,32 @@ public class EntityExtractionModule: Module {
         return true
       }
 
-      // Slide over tokens: build phrases from consecutive noun/adjective runs
+      // Helper: determine if a token is a content word
+      func isContentWord(_ t: (token: String, tag: NLTag, range: Range<String.Index>)) -> Bool {
+        let lower = t.token.lowercased()
+        if excludedTags.contains(t.tag) { return false }
+        if stopwords.contains(lower) { return false }
+        return true
+      }
+
+      // Slide over tokens: build phrases from consecutive content-word runs
       var i = 0
       while i < tokenTags.count {
         let t = tokenTags[i]
-        if t.tag == .noun || t.tag == .adjective {
+        if isContentWord(t) {
           // Start a phrase run
           var phraseTokens: [String] = [t.token]
           var j = i + 1
           while j < tokenTags.count {
             let next = tokenTags[j]
-            if next.tag == .noun || next.tag == .adjective {
+            if isContentWord(next) {
               phraseTokens.append(next.token)
               j += 1
             } else {
               break
             }
           }
-          // Add the full phrase (if multi-word) and individual words (if long enough)
+          // Add the full phrase (if multi-word)
           if phraseTokens.count > 1 {
             let phrase = phraseTokens.joined(separator: " ").lowercased()
             if !keywords.contains(phrase) {

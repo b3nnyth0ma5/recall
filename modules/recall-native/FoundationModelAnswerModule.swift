@@ -43,39 +43,25 @@ public class FoundationModelAnswerModule: Module {
           return
         }
 
+        // Condensed system prompt — kept under 800 chars to stay within instruction token budget
         let systemPrompt = """
-You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
+You are a search assistant. Answer questions using only the provided recalls.
 
-CRITICAL RULES:
-- Prioritize your answer based on the recalls with the highest match percentages
-- Use bullet points when listing multiple items
-- Don't include URLs in your final answer
-- Provide a confidence score (0-100) based on how well the recalls answer the question
-- IMPORTANT: When referencing sources in your answer, use the format "SOURCE_X" inline with the text
-- Place source references immediately after the relevant information, like: "The restaurant is located in Collingwood SOURCE_1."
-- You can reference the same source multiple times if needed
-- Don't include explanatory text about sources - just use SOURCE_X inline
+Rules:
+- Prioritise recalls with highest match percentages
+- Use bullet points for multiple items
+- No URLs in answers
+- Include a confidence score (0-100)
+- Cite sources inline as SOURCE_1, SOURCE_2 etc immediately after relevant text
+- Same source may appear multiple times
+- [LOCATION], [PEOPLE], [KEYWORD] tags indicate match type
+- Linked pages and documents are supplementary to recall text
+- Uploaded images context helps identify what the user is searching for
 
-MATCH INFORMATION:
-- Pay attention to match type indicators: [LOCATION], [PEOPLE], [KEYWORD]
-- Pay attention to keyword match counts - more matched keywords indicate better relevance
+Respond in JSON only (no markdown):
+{"answer": "text with SOURCE_X inline", "confidence": 85, "sources": ["SOURCE_1"]}
 
-LINKED PAGES AND DOCUMENTS:
-- Each recall may include "Linked pages" (content scraped from URLs) or "Documents" (extracted text from files) the user saved
-- When information comes from a linked page or attached document then attribute it clearly
-- Linked-page content is supplementary — always prefer the recall's own text when both are available
-
-UPLOADED SEARCH IMAGES:
-- The user may have attached images to their search query (shown as "UPLOADED IMAGES CONTEXT" in the user message)
-- Use the image descriptions and extracted text to understand what the user is looking for
-- Cross-reference image content with recall data to provide relevant answers
-- If the user asks "have I seen/had/been to this before?", use the image context to identify what "this" refers to
-
-Provide your answer in JSON format with inline source references ALWAYS starting count of source answers at 1 (and incrementing for each answer): {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
-Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John mentioned he'll bring the presentation SOURCE_2.", "confidence": 90, "sources": ["SOURCE_1", "SOURCE_2"]}
-If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.
-
-Respond with valid JSON only, no markdown.
+If insufficient information: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}
 """
 
         let maxContextChars = 10_000
@@ -84,9 +70,19 @@ Respond with valid JSON only, no markdown.
           : contextString
 
         let fullMessage = "Question: \(query)\(uploadedImagesContext)\n\nAvailable Recalls (sorted by highest match percentage first):\n\(truncatedContext)"
+
+        // Step 1: create session — initialiser errors are caught separately
+        let session: LanguageModelSession
+        do {
+          session = LanguageModelSession(instructions: Instructions(systemPrompt))
+        } catch {
+          promise.reject("ERR_SESSION_INIT", "Failed to create on-device model session: \(error.localizedDescription)")
+          return
+        }
+
+        // Step 2: generate response
         let startTime = Date()
         do {
-          let session = LanguageModelSession(instructions: Instructions(systemPrompt))
           let response = try await session.respond(to: fullMessage)
           let responseText = response.content
           let durationMs = Int(Date().timeIntervalSince(startTime) * 1000)
@@ -115,7 +111,6 @@ Respond with valid JSON only, no markdown.
             promise.reject("ERR_GENERATION", "Foundation Models generation error: \(genError.localizedDescription)")
           }
         } catch {
-          // Catches errors from LanguageModelSession(instructions:) initialiser AND respond(to:)
           promise.reject("ERR_GENERATION", "Foundation Models failed: \(error.localizedDescription)")
         }
       } else {
