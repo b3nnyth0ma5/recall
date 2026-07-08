@@ -285,7 +285,19 @@ Deno.serve(async (req) => {
 
     console.log('User authenticated:', user.id);
 
-    const { query, userLocation, search_uploads, pre_extracted_entities } = await req.json();
+    // Change 1: Extended destructure with fast-mode fields
+    const {
+      query,
+      userLocation,
+      search_uploads,
+      pre_extracted_entities,
+      skip_answer,
+      generate_answer_only,
+      context_for_answer: clientContextForAnswer,
+      uploaded_images_context: clientUploadedImagesContext
+    } = await req.json();
+    const skipAnswer = skip_answer === true;
+    const generateAnswerOnly = generate_answer_only === true;
 
     if (!query || typeof query !== 'string') {
       return new Response(JSON.stringify({ error: 'Query parameter is required' }), {
@@ -307,6 +319,68 @@ Deno.serve(async (req) => {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
+    }
+
+    // Change 2: generate_answer_only short-circuit — skip all entity extraction, embedding, and vector search
+    if (generateAnswerOnly && clientContextForAnswer) {
+      console.log('[Answer Generation] Generating answer via OpenAI cloud (generate_answer_only path), context length:', clientContextForAnswer.length);
+      const qaSystemPrompt = `You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
+
+CRITICAL RULES:
+- Prioritize your answer based on the recalls with the highest match percentages
+- Use bullet points when listing multiple items
+- Don't include URLs in your final answer
+- Provide a confidence score (0-100) based on how well the recalls answer the question
+- IMPORTANT: When referencing sources in your answer, use the format "SOURCE_X" inline with the text
+- Place source references immediately after the relevant information, like: "The restaurant is located in Collingwood SOURCE_1."
+- You can reference the same source multiple times if needed
+- Don't include explanatory text about sources - just use SOURCE_X inline
+
+MATCH INFORMATION:
+- Pay attention to match type indicators: [LOCATION], [PEOPLE], [KEYWORD]
+- Pay attention to keyword match counts - more matched keywords indicate better relevance
+
+LINKED PAGES AND DOCUMENTS:
+- Each recall may include "Linked pages" (content scraped from URLs) or "Documents" (extracted text from files) the user saved
+- When information comes from a linked page or attached document then attribute it clearly
+- Linked-page content is supplementary — always prefer the recall's own text when both are available
+
+UPLOADED SEARCH IMAGES:
+- The user may have attached images to their search query (shown as "UPLOADED IMAGES CONTEXT" in the user message)
+- Use the image descriptions and extracted text to understand what the user is looking for
+- Cross-reference image content with recall data to provide relevant answers
+- If the user asks "have I seen/had/been to this before?", use the image context to identify what "this" refers to
+
+Provide your answer in JSON format with inline source references ALWAYS starting count of source answers at 1 (and incrementing for each answer): {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
+Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John mentioned he'll bring the presentation SOURCE_2.", "confidence": 90, "sources": ["SOURCE_1", "SOURCE_2"]}
+If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.
+
+Respond with valid JSON only, no markdown.`;
+      const uploadedCtx = clientUploadedImagesContext ?? '';
+      const qaUserMessage = `Question: ${query}${uploadedCtx}\n\n${clientContextForAnswer}`;
+      const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${openaiApiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4.1-mini', max_tokens: 2048, messages: [{ role: 'system', content: qaSystemPrompt }, { role: 'user', content: qaUserMessage }] })
+      });
+      if (qaResponse.ok) {
+        const qaData = await qaResponse.json();
+        const qaContent = qaData.choices?.[0]?.message?.content;
+        if (qaContent) {
+          try {
+            const jsonMatch = qaContent.match(/\{[\s\S]*\}/);
+            const parsed = JSON.parse(jsonMatch?.[0] ?? qaContent);
+            return new Response(JSON.stringify({
+              answer: parsed.answer ?? null,
+              confidence: parsed.confidence ?? 0,
+              sources: parsed.sources ?? [],
+              results: [],
+              processingTimeMs: Date.now() - startTime,
+            }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          } catch {}
+        }
+      }
+      return new Response(JSON.stringify({ answer: null, confidence: 0, sources: [], results: [], processingTimeMs: Date.now() - startTime }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // Step 1: Extract all entities — use on-device result if provided, otherwise call OpenAI
@@ -355,6 +429,7 @@ Deno.serve(async (req) => {
       return null;
     };
 
+    // Change 3: resolvePersonIds with partial name matching
     const resolvePersonIds = async (): Promise<{ ids: string[]; matchedNames: string[] }> => {
       if (entities.people.length === 0) return { ids: [], matchedNames: [] };
       const { data: personsData, error: personsError } = await supabase
@@ -367,7 +442,15 @@ Deno.serve(async (req) => {
       for (const detectedName of entities.people) {
         const normalizedDetected = detectedName.toLowerCase().trim();
         for (const person of personsData) {
-          if (person.person_name.toLowerCase().trim() === normalizedDetected) {
+          const normalizedStored = person.person_name.toLowerCase().trim();
+          const detectedParts = normalizedDetected.split(/\s+/);
+          const storedParts = normalizedStored.split(/\s+/);
+          const isMatch =
+            normalizedStored === normalizedDetected ||
+            normalizedStored.includes(normalizedDetected) ||
+            normalizedDetected.includes(normalizedStored) ||
+            (detectedParts[0] && storedParts[0] && detectedParts[0] === storedParts[0]);
+          if (isMatch && !ids.includes(person.id)) {
             ids.push(person.id);
             matchedNames.push(person.person_name);
           }
@@ -657,6 +740,22 @@ Deno.serve(async (req) => {
     let confidence = 0;
     let sourcesUsed: string[] = [];
 
+    // Change 7: Build uploadedImagesContext before the recallMatches block so it's available in no-matches path too
+    let uploadedImagesContext = '';
+    if (search_uploads && Array.isArray(search_uploads) && search_uploads.length > 0) {
+      uploadedImagesContext = `\n\nUPLOADED IMAGES CONTEXT (from images the user attached to this search):\n`;
+      search_uploads.forEach((upload: { text?: string; explanation?: string }, idx: number) => {
+        uploadedImagesContext += `Image ${idx + 1}:\n`;
+        if (upload.explanation) {
+          uploadedImagesContext += `  Description: ${upload.explanation}\n`;
+        }
+        if (upload.text && upload.text !== 'No text detected.') {
+          uploadedImagesContext += `  Text in image: ${upload.text}\n`;
+        }
+      });
+      uploadedImagesContext += `\nUse the above image context to help answer the question. For example, if the user uploaded a photo of a product and asks "have I seen this before?", use the image description and text to search for matching recalls.`;
+    }
+
     if (recallMatches.length > 0) {
       const contextWithSources = recallMatches.map((recall, idx) => {
         const sourceId = `SOURCE_${idx + 1}`;
@@ -737,6 +836,47 @@ Deno.serve(async (req) => {
 
       const context = contextWithSources.map(c => c.text).join('\n');
 
+      // Change 4: Build contextForAnswer before the QA / skip_answer block
+      const contextForAnswer = `Available Recalls (sorted by highest match percentage first):\n${context}`;
+
+      // Change 5: skip_answer early-exit — return context for on-device answer generation
+      if (skipAnswer) {
+        console.log('[Answer Generation] Skipping OpenAI QA (skip_answer=true), returning context for on-device answer');
+        // Limit to top 8 recalls and cap at 12,000 chars for on-device model
+        const topRecalls = recallMatches.slice(0, 8);
+        const topContext = topRecalls.map((_, idx) => contextWithSources[idx]?.text ?? '').join('\n');
+        const cappedContext = topContext.length > 12_000
+          ? topContext.slice(0, 12_000) + '\n\n[Context truncated to fit on-device model limits]'
+          : topContext;
+        const cappedContextForAnswer = `Available Recalls (sorted by highest match percentage first):\n${cappedContext}`;
+        const matchResults = recallMatches.map(recall => ({
+          id: recall.recall_id,
+          sourceNumber: null,
+          latitude: recall.recall_data.latitude ?? null,
+          longitude: recall.recall_data.longitude ?? null,
+          matchPercentage: Math.round(recall.text_similarity * 100),
+          usedForAnswer: false,
+          keywordMatches: recall.keyword_matches || 0,
+          totalKeywords: entities.keywords.length || 0,
+          isLocationMatch: recall.isLocationMatch,
+          isPeopleMatch: recall.isPeopleMatch,
+          isKeywordMatch: recall.isKeywordMatch,
+        }));
+        const processingTime = Date.now() - startTime;
+        return new Response(JSON.stringify({
+          answer: null,
+          confidence: 0,
+          results: matchResults,
+          context_for_answer: cappedContextForAnswer,
+          uploaded_images_context: uploadedImagesContext,
+          processingTimeMs: processingTime,
+          locationInfo: locationCoords ? { location: entities.location, resolvedPlace: locationCoords.displayName, proximity: locationCoords.proximity, intentType: entities.locationIntent, coordinates: { latitude: locationCoords.latitude, longitude: locationCoords.longitude } } : null,
+          personInfo: entities.people.length > 0 ? { detectedNames: entities.people, matchedNames: matchedPersonNames } : null,
+          extractedKeywords: entities.keywords,
+          timings: { entityExtractionMs: entityExtractionTime, parallelSetupMs: embeddingTime, dbQueryMs: dbQueryTime, filteringMs: filteringTime, answerMs: 0, totalMs: processingTime }
+        }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
       // Change C: Updated QA system prompt with UPLOADED SEARCH IMAGES section
       const qaSystemPrompt = `You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
 
@@ -772,21 +912,6 @@ If the recalls don't contain the requested information, respond with: {"answer":
 Respond with valid JSON only, no markdown.`;
 
       // Change B: Build qaUserMessage with optional uploaded images context
-      let uploadedImagesContext = '';
-      if (search_uploads && Array.isArray(search_uploads) && search_uploads.length > 0) {
-        uploadedImagesContext = `\n\nUPLOADED IMAGES CONTEXT (from images the user attached to this search):\n`;
-        search_uploads.forEach((upload: { text?: string; explanation?: string }, idx: number) => {
-          uploadedImagesContext += `Image ${idx + 1}:\n`;
-          if (upload.explanation) {
-            uploadedImagesContext += `  Description: ${upload.explanation}\n`;
-          }
-          if (upload.text && upload.text !== 'No text detected.') {
-            uploadedImagesContext += `  Text in image: ${upload.text}\n`;
-          }
-        });
-        uploadedImagesContext += `\nUse the above image context to help answer the question. For example, if the user uploaded a photo of a product and asks "have I seen this before?", use the image description and text to search for matching recalls.`;
-      }
-
       const qaUserMessage = `Question: ${query}${uploadedImagesContext}\n\nAvailable Recalls (sorted by highest match percentage first):\n${context}`;
 
       const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -860,10 +985,13 @@ Respond with valid JSON only, no markdown.`;
       console.log('=== Search Recalls V3 completed successfully ===');
       console.log('Total processing time:', processingTime, 'ms');
 
+      // Change 6: Add context_for_answer and uploaded_images_context to cloud QA success response
       return new Response(JSON.stringify({
         answer,
         confidence,
         results: matchResults,
+        context_for_answer: contextForAnswer,
+        uploaded_images_context: uploadedImagesContext,
         processingTimeMs: processingTime,
         locationInfo: locationCoords ? {
           location: entities.location,
@@ -895,11 +1023,14 @@ Respond with valid JSON only, no markdown.`;
     }
 
     // No matches found
+    // Change 7: Add context_for_answer and uploaded_images_context to no-matches response
     const processingTime = Date.now() - startTime;
     return new Response(JSON.stringify({
       answer: null,
       confidence: 0,
       results: [],
+      context_for_answer: null,
+      uploaded_images_context: uploadedImagesContext,
       processingTimeMs: processingTime,
       locationInfo: locationCoords ? {
         location: entities.location,
