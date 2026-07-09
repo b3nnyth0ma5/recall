@@ -242,26 +242,7 @@ function ZoomableImage({
   return (
     <GestureDetector gesture={composedGesture}>
       <View style={styles.imageWrapper}>
-        {imageUrl ? (
-          <>
-            {!isLoaded && (
-              <View style={styles.skeletonContainer}>
-                <SkeletonLoader
-                  width={SCREEN_WIDTH}
-                  height={SCREEN_HEIGHT}
-                  borderRadius={0}
-                  variant="wave"
-                />
-              </View>
-            )}
-            <Animated.Image
-              source={{ uri: imageUrl }}
-              style={[styles.image, animatedImageStyle]}
-              resizeMode="contain"
-              onLoad={() => onLoad(index)}
-            />
-          </>
-        ) : (
+        {!imageUrl && (
           <View style={styles.skeletonContainer}>
             <SkeletonLoader
               width={SCREEN_WIDTH}
@@ -271,85 +252,103 @@ function ZoomableImage({
             />
           </View>
         )}
+        {imageUrl && !isLoaded && (
+          <View style={styles.skeletonContainer}>
+            <SkeletonLoader
+              width={SCREEN_WIDTH}
+              height={SCREEN_HEIGHT}
+              borderRadius={0}
+              variant="wave"
+            />
+          </View>
+        )}
+        {imageUrl && (
+          <Animated.View style={[styles.image, animatedImageStyle]}>
+            <Animated.Image
+              source={{ uri: imageUrl }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="contain"
+              onLoad={() => onLoad(index)}
+            />
+            {/* Face overlays — inside the animated layer so they transform with zoom/pan */}
+            {showControls && imageRect && faces.length > 0 && faces.map((face) => {
+              const faceX = imageRect.x + face.bbox_x * imageRect.width;
+              const faceY = imageRect.y + face.bbox_y * imageRect.height;
+              const faceW = face.bbox_w * imageRect.width;
+              const faceH = face.bbox_h * imageRect.height;
 
-        {/* Face overlays — only when controls are visible and we have letterbox data */}
-        {showControls && imageRect && faces.length > 0 && faces.map((face) => {
-          const faceX = imageRect.x + face.bbox_x * imageRect.width;
-          const faceY = imageRect.y + face.bbox_y * imageRect.height;
-          const faceW = face.bbox_w * imageRect.width;
-          const faceH = face.bbox_h * imageRect.height;
+              // Determine visual state
+              const isConfirmed = face.confirmed_by_user === true;
+              const isSuggested = !isConfirmed && face.suggested_person_id !== null;
 
-          // Determine visual state
-          const isConfirmed = face.confirmed_by_user === true;
-          const isSuggested = !isConfirmed && face.suggested_person_id !== null;
-          const isUnknown = !isConfirmed && !isSuggested;
+              const borderColor = isConfirmed
+                ? colors.primary
+                : isSuggested
+                  ? '#F59E0B'
+                  : 'rgba(255,255,255,0.7)';
+              const borderWidth = isConfirmed ? 2 : isSuggested ? 2 : 1.5;
+              const borderStyle = isConfirmed ? 'solid' : 'dashed';
 
-          const borderColor = isConfirmed
-            ? colors.primary
-            : isSuggested
-              ? '#F59E0B'
-              : 'rgba(255,255,255,0.7)';
-          const borderWidth = isConfirmed ? 2 : isSuggested ? 2 : 1.5;
-          const borderStyle = isConfirmed ? 'solid' : 'dashed';
+              const labelText = isConfirmed
+                ? (face.person_name ?? '?')
+                : isSuggested
+                  ? `${face.suggested_person_name ?? '?'} · ${Math.round((face.match_confidence ?? 0) * 100)}%`
+                  : '?';
 
-          const labelText = isConfirmed
-            ? (face.person_name ?? '?')
-            : isSuggested
-              ? `${face.suggested_person_name ?? '?'} · ${Math.round((face.match_confidence ?? 0) * 100)}%`
-              : '?';
+              const labelBgColor = isConfirmed
+                ? 'rgba(0,0,0,0.6)'
+                : isSuggested
+                  ? 'rgba(245,158,11,0.85)'
+                  : 'rgba(0,0,0,0.6)';
 
-          const labelBgColor = isConfirmed
-            ? 'rgba(0,0,0,0.6)'
-            : isSuggested
-              ? 'rgba(245,158,11,0.85)'
-              : 'rgba(0,0,0,0.6)';
+              const labelTextColor = '#FFFFFF';
 
-          const labelTextColor = '#FFFFFF';
-
-          const boxContent = (
-            <Pressable
-              style={[
-                styles.faceBox,
-                {
-                  left: faceX,
-                  top: faceY,
-                  width: faceW,
-                  height: faceH,
-                  borderColor,
-                  borderWidth,
-                  borderStyle,
-                },
-              ]}
-              onPress={() => {
-                console.log('[FullScreenImage] Face box tapped:', face.face_uuid, 'state:', isConfirmed ? 'confirmed' : isSuggested ? 'suggested' : 'unknown');
-                onFaceTap(face);
-              }}
-            >
-              <View style={styles.faceLabelContainer}>
-                <Text
-                  style={[styles.faceLabelText, { backgroundColor: labelBgColor, color: labelTextColor }]}
-                  numberOfLines={1}
+              const boxContent = (
+                <Pressable
+                  style={[
+                    styles.faceBox,
+                    {
+                      left: faceX,
+                      top: faceY,
+                      width: faceW,
+                      height: faceH,
+                      borderColor,
+                      borderWidth,
+                      borderStyle,
+                    },
+                  ]}
+                  onPress={() => {
+                    console.log('[FullScreenImage] Face box tapped:', face.face_uuid, 'state:', isConfirmed ? 'confirmed' : isSuggested ? 'suggested' : 'unknown');
+                    onFaceTap(face);
+                  }}
                 >
-                  {labelText}
-                </Text>
-              </View>
-            </Pressable>
-          );
+                  <View style={styles.faceLabelContainer}>
+                    <Text
+                      style={[styles.faceLabelText, { backgroundColor: labelBgColor, color: labelTextColor }]}
+                      numberOfLines={1}
+                    >
+                      {labelText}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
 
-          if (isSuggested) {
-            return (
-              <Animated.View key={face.face_uuid} style={pulseAnimStyle}>
-                {boxContent}
-              </Animated.View>
-            );
-          }
+              if (isSuggested) {
+                return (
+                  <Animated.View key={face.face_uuid} style={pulseAnimStyle}>
+                    {boxContent}
+                  </Animated.View>
+                );
+              }
 
-          return (
-            <View key={face.face_uuid}>
-              {boxContent}
-            </View>
-          );
-        })}
+              return (
+                <View key={face.face_uuid}>
+                  {boxContent}
+                </View>
+              );
+            })}
+          </Animated.View>
+        )}
       </View>
     </GestureDetector>
   );

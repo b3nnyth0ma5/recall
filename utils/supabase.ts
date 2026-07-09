@@ -233,28 +233,32 @@ export async function uploadImageToDatabase(
                     // Run auto-match RPC
                     console.log('[uploadImageToDatabase] Running match_face_to_person RPC for face:', insertedFace.id);
                     const { data: matchResult, error: matchError } = await supabase.rpc('match_face_to_person', {
-                      query_embedding: vectorString,
+                      p_embedding: vectorString,
                       p_user_id: userId,
-                      similarity_threshold: 0.75,
+                      p_threshold: 0.75,
                     });
                     if (matchError) {
                       console.warn('[uploadImageToDatabase] match_face_to_person RPC error (non-fatal):', matchError);
-                    } else if (matchResult && matchResult.person_id) {
-                      console.log('[uploadImageToDatabase] Auto-match found:', matchResult.person_id, 'similarity:', matchResult.similarity);
-                      const { error: suggestionUpdateError } = await supabase
-                        .from('recall_images_people')
-                        .update({
-                          suggested_person_id: matchResult.person_id,
-                          match_confidence: matchResult.similarity,
-                        })
-                        .eq('id', insertedFace.id);
-                      if (suggestionUpdateError) {
-                        console.warn('[uploadImageToDatabase] Suggestion update error (non-fatal):', suggestionUpdateError);
-                      } else {
-                        console.log('[uploadImageToDatabase] Suggestion stored for face:', insertedFace.id);
-                      }
                     } else {
-                      console.log('[uploadImageToDatabase] No auto-match found for face:', insertedFace.id);
+                      // RETURNS TABLE comes back as an array; take the first row
+                      const matchRow = Array.isArray(matchResult) ? matchResult[0] : matchResult;
+                      if (matchRow && matchRow.person_id) {
+                        console.log('[uploadImageToDatabase] Auto-match found:', matchRow.person_id, 'similarity:', matchRow.similarity);
+                        const { error: suggestionUpdateError } = await supabase
+                          .from('recall_images_people')
+                          .update({
+                            suggested_person_id: matchRow.person_id,
+                            match_confidence: matchRow.similarity,
+                          })
+                          .eq('id', insertedFace.id);
+                        if (suggestionUpdateError) {
+                          console.warn('[uploadImageToDatabase] Suggestion update error (non-fatal):', suggestionUpdateError);
+                        } else {
+                          console.log('[uploadImageToDatabase] Suggestion stored for face:', insertedFace.id);
+                        }
+                      } else {
+                        console.log('[uploadImageToDatabase] No auto-match found for face:', insertedFace.id);
+                      }
                     }
                   } else {
                     console.log('[uploadImageToDatabase] No embedding returned for face:', insertedFace.id);

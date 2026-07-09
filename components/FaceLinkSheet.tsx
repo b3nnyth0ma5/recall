@@ -49,7 +49,7 @@ interface FaceLinkSheetProps {
   visible: boolean;
   faceRow: FaceRow | null;
   imageUrl: string;
-  recallId: string;
+  recallId?: string;
   naturalWidth: number;
   naturalHeight: number;
   onClose: () => void;
@@ -565,7 +565,6 @@ export function FaceLinkSheet({
                       faceRow.suggested_person_name ?? '',
                       faceRow.suggested_person_photo_url ?? null,
                     );
-                    saveFaceEmbeddingToPerson(faceRow.id, faceRow.suggested_person_id!);
                   }}
                   disabled={isLoading}
                 >

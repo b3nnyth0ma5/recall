@@ -210,11 +210,32 @@ public class EntityExtractionModule: Module {
       }
     }
 
+    // Fix 1 (detectFaces): async URLSession with 15-second timeout
     AsyncFunction("detectFaces") { (imageUri: String, promise: Promise) in
-      guard let url = URL(string: imageUri),
-            let imageData = try? Data(contentsOf: url),
-            let uiImage = UIImage(data: imageData),
+      guard let url = URL(string: imageUri) else {
+        print("[EntityExtraction] detectFaces: invalid URL: \(imageUri)")
+        promise.resolve([])
+        return
+      }
+
+      var detectConfig = URLSessionConfiguration.default
+      detectConfig.timeoutIntervalForRequest = 15
+      detectConfig.timeoutIntervalForResource = 15
+      let detectSession = URLSession(configuration: detectConfig)
+
+      let detectImageData: Data
+      do {
+        let (data, _) = try await detectSession.data(from: url)
+        detectImageData = data
+      } catch {
+        print("[EntityExtraction] detectFaces: network error: \(error.localizedDescription)")
+        promise.resolve([])
+        return
+      }
+
+      guard let uiImage = UIImage(data: detectImageData),
             let cgImage = uiImage.cgImage else {
+        print("[EntityExtraction] detectFaces: failed to decode image data")
         promise.resolve([])
         return
       }
@@ -250,16 +271,36 @@ public class EntityExtractionModule: Module {
     }
 
     // ── Face embedding extraction via landmark geometry ───────────────────────
-    // Returns a 128-float L2-normalised geometric descriptor derived from
+    // Returns a 128-float L2-normalised relative-geometry descriptor derived from
     // VNFaceLandmarks2D (76 points). Deterministic — no CoreML model required.
-    // The descriptor is pose-normalised (coordinates relative to face bbox, Y flipped).
+    // Fix 1: async URLSession with 15-second timeout
+    // Fix 2: pose-tolerant pairwise-distance descriptor
     AsyncFunction("extractFaceEmbedding") { (imageUri: String, bboxX: Double, bboxY: Double, bboxW: Double, bboxH: Double, promise: Promise) in
-      // Load image
-      guard let url = URL(string: imageUri),
-            let imageData = try? Data(contentsOf: url),
-            let uiImage = UIImage(data: imageData),
+      // Fix 1: async URLSession image loading with timeout
+      guard let url = URL(string: imageUri) else {
+        print("[EntityExtraction] extractFaceEmbedding: invalid URL: \(imageUri)")
+        promise.resolve([Float]())
+        return
+      }
+
+      var config = URLSessionConfiguration.default
+      config.timeoutIntervalForRequest = 15
+      config.timeoutIntervalForResource = 15
+      let session = URLSession(configuration: config)
+
+      let imageData: Data
+      do {
+        let (data, _) = try await session.data(from: url)
+        imageData = data
+      } catch {
+        print("[EntityExtraction] extractFaceEmbedding: network error: \(error.localizedDescription)")
+        promise.resolve([Float]())
+        return
+      }
+
+      guard let uiImage = UIImage(data: imageData),
             let cgImage = uiImage.cgImage else {
-        print("[EntityExtraction] extractFaceEmbedding: failed to load image from \(imageUri)")
+        print("[EntityExtraction] extractFaceEmbedding: failed to decode image data")
         promise.resolve([Float]())
         return
       }
@@ -325,32 +366,82 @@ public class EntityExtractionModule: Module {
           rawPoints.append((x: Float(p.x), y: Float(1.0 - p.y)))
         }
 
-        // Pad or truncate to exactly 64 points so we always produce 128 floats
-        let targetCount = 64
-        var paddedPoints = [(x: Float, y: Float)](repeating: (0, 0), count: targetCount)
-        let copyCount = min(pointCount, targetCount)
-        for i in 0..<copyCount {
-          paddedPoints[i] = rawPoints[i]
+        // ── Fix 2: Build a pose-tolerant relative-geometry descriptor ─────────
+        // Strategy: compute pairwise distances between key landmark group centroids
+        // and specific anchor points. These are invariant to translation and scale
+        // (since points are already normalised to the face bbox), and more tolerant
+        // of small pose changes than raw coordinates.
+        //
+        // VNFaceLandmarks2D allPoints layout (76 points, 0-indexed):
+        //   0–7   : left eyebrow (8 pts)
+        //   8–15  : right eyebrow (8 pts)
+        //   16–27 : nose (12 pts)
+        //   28–47 : left eye (20 pts)
+        //   48–67 : right eye (20 pts)
+        //   68–75 : outer lips (8 pts)
+        //
+        // We use a fixed set of 16 anchor points derived from group centroids
+        // and specific landmarks, then compute all pairwise distances (120 values)
+        // and pad to 128.
+
+        func centroid(_ indices: [Int]) -> (x: Float, y: Float) {
+          guard !indices.isEmpty else { return (0, 0) }
+          var sx: Float = 0; var sy: Float = 0
+          for i in indices {
+            let p = i < rawPoints.count ? rawPoints[i] : (x: Float(0), y: Float(0))
+            sx += p.x; sy += p.y
+          }
+          let n = Float(indices.count)
+          return (sx / n, sy / n)
         }
 
-        // Build 128-float vector: interleaved x,y for each of the 64 points
-        var descriptor = [Float](repeating: 0, count: 128)
-        for i in 0..<targetCount {
-          descriptor[i * 2]     = paddedPoints[i].x
-          descriptor[i * 2 + 1] = paddedPoints[i].y
+        func dist(_ a: (x: Float, y: Float), _ b: (x: Float, y: Float)) -> Float {
+          let dx = a.x - b.x; let dy = a.y - b.y
+          return sqrt(dx*dx + dy*dy)
         }
 
-        // L2-normalise so cosine similarity works correctly
+        // 16 anchor points
+        let anchors: [(x: Float, y: Float)] = [
+          centroid(Array(0..<8)),    // left eyebrow centre
+          centroid(Array(8..<16)),   // right eyebrow centre
+          centroid(Array(16..<28)),  // nose centre
+          centroid(Array(28..<48)),  // left eye centre
+          centroid(Array(48..<68)),  // right eye centre
+          centroid(Array(68..<min(76, rawPoints.count))), // mouth centre
+          rawPoints.count > 0  ? rawPoints[0]  : (0,0),  // left eyebrow outer
+          rawPoints.count > 7  ? rawPoints[7]  : (0,0),  // left eyebrow inner
+          rawPoints.count > 8  ? rawPoints[8]  : (0,0),  // right eyebrow inner
+          rawPoints.count > 15 ? rawPoints[15] : (0,0),  // right eyebrow outer
+          rawPoints.count > 16 ? rawPoints[16] : (0,0),  // nose bridge top
+          rawPoints.count > 27 ? rawPoints[27] : (0,0),  // nose tip
+          rawPoints.count > 28 ? rawPoints[28] : (0,0),  // left eye outer corner
+          rawPoints.count > 47 ? rawPoints[47] : (0,0),  // left eye inner corner
+          rawPoints.count > 48 ? rawPoints[48] : (0,0),  // right eye inner corner
+          rawPoints.count > 67 ? rawPoints[67] : (0,0),  // right eye outer corner
+        ]
+
+        // All pairwise distances: 16*15/2 = 120 values
+        var descriptor = [Float]()
+        descriptor.reserveCapacity(128)
+        for i in 0..<anchors.count {
+          for j in (i+1)..<anchors.count {
+            descriptor.append(dist(anchors[i], anchors[j]))
+          }
+        }
+        // Pad to 128 with zeros
+        while descriptor.count < 128 { descriptor.append(0) }
+        // Truncate to 128 if somehow over
+        if descriptor.count > 128 { descriptor = Array(descriptor.prefix(128)) }
+
+        // L2-normalise
         var sumSq: Float = 0
         for v in descriptor { sumSq += v * v }
         let norm = sqrt(sumSq)
         if norm > 1e-6 {
-          for i in 0..<descriptor.count {
-            descriptor[i] /= norm
-          }
+          for i in 0..<descriptor.count { descriptor[i] /= norm }
         }
 
-        print("[EntityExtraction] extractFaceEmbedding: returning \(descriptor.count)-float descriptor (pre-norm magnitude: \(norm))")
+        print("[EntityExtraction] extractFaceEmbedding: returning \(descriptor.count)-float relative-geometry descriptor (pre-norm magnitude: \(norm))")
         promise.resolve(descriptor)
       }
 
