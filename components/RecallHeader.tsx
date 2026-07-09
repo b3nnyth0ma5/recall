@@ -15,6 +15,7 @@ export default function RecallHeader({ style }: RecallHeaderProps) {
         style={styles.icon}
         contentFit="contain"
         cachePolicy="memory-disk"
+				transition={0}
       />
       <Text style={styles.title}>Recall</Text>
     </View>
