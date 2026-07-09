@@ -324,37 +324,33 @@ Deno.serve(async (req) => {
     if (generate_answer_only && clientContextForAnswer) {
       console.log('[Answer Generation] Streaming answer via OpenAI (generate_answer_only path), context length:', clientContextForAnswer.length);
 
-      const qaSystemPrompt = `You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
+      const qaSystemPrompt = `You are an intelligent search assistant that answers questions based on the user's personal recall notes. You understand the user's intent and make associations between pieces of information.
 
 CRITICAL RULES:
-- Prioritize your answer based on the recalls with the highest match percentages
+- Answer in plain prose — no JSON, no markdown code blocks
+- Prioritize recalls with the highest match percentages
 - Use bullet points when listing multiple items
-- Don't include URLs in your final answer
-- Provide a confidence score (0-100) based on how well the recalls answer the question
-- IMPORTANT: When referencing sources in your answer, use the format "SOURCE_X" inline with the text
-- Place source references immediately after the relevant information, like: "The restaurant is located in Collingwood SOURCE_1."
-- You can reference the same source multiple times if needed
-- Don't include explanatory text about sources - just use SOURCE_X inline
+- Don't include URLs in your answer
+- When referencing sources, use the format SOURCE_X inline immediately after the relevant information
+- Example: "The restaurant is located in Collingwood SOURCE_1. They serve Italian food SOURCE_1 SOURCE_2."
+- You can reference the same source multiple times
+- Don't add explanatory text about sources — just use SOURCE_X inline
+- Be concise and direct
 
 MATCH INFORMATION:
 - Pay attention to match type indicators: [LOCATION], [PEOPLE], [KEYWORD]
-- Pay attention to keyword match counts - more matched keywords indicate better relevance
+- Higher match percentages indicate more relevant recalls
 
 LINKED PAGES AND DOCUMENTS:
-- Each recall may include "Linked pages" (content scraped from URLs) or "Documents" (extracted text from files)
-- When information comes from these, attribute it clearly
+- Each recall may include "Linked pages" (content from URLs) or "Documents" (extracted text from files)
+- Attribute information from these sources clearly
 
 UPLOADED SEARCH IMAGES:
-- The user may have attached images to their search query (shown as "UPLOADED IMAGES CONTEXT" in the user message)
-- Use the image descriptions and extracted text to understand what the user is looking for
-- Cross-reference image content with recall data to provide relevant answers
-- If the user asks "have I seen/had/been to this before?", use the image context to identify what "this" refers to
+- The user may have attached images to their search (shown as "UPLOADED IMAGES CONTEXT")
+- Use image descriptions and extracted text to understand what the user is looking for
+- Cross-reference image content with recall data
 
-Provide an answer that's to the point in JSON format with inline source references ALWAYS starting count of source answers at 1 (and incrementing for each answer): {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
-Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John mentioned he'll bring the presentation SOURCE_2.", "confidence": 90, "sources": ["SOURCE_1", "SOURCE_2"]}
-If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.
-
-Respond with valid JSON only, no markdown.`;
+If the recalls don't contain enough information to answer the question, say so plainly in one sentence.`;
 
       const uploadedCtx = uploadedImagesContextParam ?? '';
       const qaUserMessage = `Question: ${query}${uploadedCtx}\n\n${clientContextForAnswer}`;
@@ -438,23 +434,11 @@ Respond with valid JSON only, no markdown.`;
             }
           }
 
-          // Emit final DONE event with parsed answer/confidence/sources
-          let answer = fullAnswer;
-          let confidence = 0;
-          let sources: string[] = [];
-          try {
-            const jsonMatch = fullAnswer.match(/\{[\s\S]*\}/);
-            const parsedFinal = JSON.parse(jsonMatch?.[0] ?? fullAnswer);
-            answer = parsedFinal.answer ?? fullAnswer;
-            confidence = parsedFinal.confidence ?? 0;
-            sources = parsedFinal.sources ?? [];
-          } catch {
-            // JSON parse failed — use raw text as answer
-            confidence = 0;
-            sources = [];
-          }
+          // Extract SOURCE_X references from plain prose answer
+          const sourceMatches = [...new Set(fullAnswer.match(/SOURCE_\d+/g) ?? [])];
+          const confidence = fullAnswer.length > 20 ? Math.min(95, 50 + sourceMatches.length * 15) : 0;
 
-          const donePayload = JSON.stringify({ answer, confidence, sources });
+          const donePayload = JSON.stringify({ answer: fullAnswer, confidence, sources: sourceMatches });
           controller.enqueue(encoder.encode(`data: [DONE] ${donePayload}\n\n`));
         }
       });
@@ -1008,38 +992,33 @@ Respond with valid JSON only, no markdown.`;
       // Build contextForAnswer to include in response
       const contextForAnswer = `Available Recalls (sorted by highest match percentage first):\n${context}`;
 
-      const qaSystemPrompt = `You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
+      const qaSystemPrompt = `You are an intelligent search assistant that answers questions based on the user's personal recall notes. You understand the user's intent and make associations between pieces of information.
 
 CRITICAL RULES:
-- Prioritize your answer based on the recalls with the highest match percentages
+- Answer in plain prose — no JSON, no markdown code blocks
+- Prioritize recalls with the highest match percentages
 - Use bullet points when listing multiple items
-- Don't include URLs in your final answer
-- Provide a confidence score (0-100) based on how well the recalls answer the question
-- IMPORTANT: When referencing sources in your answer, use the format "SOURCE_X" inline with the text
-- Place source references immediately after the relevant information, like: "The restaurant is located in Collingwood SOURCE_1."
-- You can reference the same source multiple times if needed
-- Don't include explanatory text about sources - just use SOURCE_X inline
+- Don't include URLs in your answer
+- When referencing sources, use the format SOURCE_X inline immediately after the relevant information
+- Example: "The restaurant is located in Collingwood SOURCE_1. They serve Italian food SOURCE_1 SOURCE_2."
+- You can reference the same source multiple times
+- Don't add explanatory text about sources — just use SOURCE_X inline
+- Be concise and direct
 
 MATCH INFORMATION:
 - Pay attention to match type indicators: [LOCATION], [PEOPLE], [KEYWORD]
-- Pay attention to keyword match counts - more matched keywords indicate better relevance
+- Higher match percentages indicate more relevant recalls
 
 LINKED PAGES AND DOCUMENTS:
-- Each recall may include "Linked pages" (content scraped from URLs) or "Documents" (extracted text from files) the user saved
-- When information comes from a linked page or attached document then attribute it clearly
-- Linked-page content is supplementary — always prefer the recall's own text when both are available
+- Each recall may include "Linked pages" (content from URLs) or "Documents" (extracted text from files)
+- Attribute information from these sources clearly
 
 UPLOADED SEARCH IMAGES:
-- The user may have attached images to their search query (shown as "UPLOADED IMAGES CONTEXT" in the user message)
-- Use the image descriptions and extracted text to understand what the user is looking for
-- Cross-reference image content with recall data to provide relevant answers
-- If the user asks "have I seen/had/been to this before?", use the image context to identify what "this" refers to
+- The user may have attached images to their search (shown as "UPLOADED IMAGES CONTEXT")
+- Use image descriptions and extracted text to understand what the user is looking for
+- Cross-reference image content with recall data
 
-Provide your answer in JSON format with inline source references ALWAYS starting count of source answers at 1 (and incrementing for each answer): {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
-Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John mentioned he'll bring the presentation SOURCE_2.", "confidence": 90, "sources": ["SOURCE_1", "SOURCE_2"]}
-If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.
-
-Respond with valid JSON only, no markdown.`;
+If the recalls don't contain enough information to answer the question, say so plainly in one sentence.`;
 
       const qaUserMessage = `Question: ${query}${uploadedImagesContext}\n\nAvailable Recalls (sorted by highest match percentage first):\n${context}`;
 
@@ -1064,17 +1043,11 @@ Respond with valid JSON only, no markdown.`;
         const qaContent = qaData.choices?.[0]?.message?.content;
 
         if (qaContent) {
-          try {
-            const jsonMatch = qaContent.match(/\{[\s\S]*\}/);
-            const parsed = JSON.parse(jsonMatch?.[0] ?? qaContent);
-            answer = parsed.answer || null;
-            confidence = parsed.confidence || 0;
-            sourcesUsed = parsed.sources || [];
-          } catch (parseError) {
-            console.error('Failed to parse QA response:', parseError);
-            answer = qaContent;
-            confidence = 50;
-          }
+          // Plain prose answer — extract SOURCE_X references to derive sources and confidence
+          answer = qaContent;
+          const sourceMatches = [...new Set(qaContent.match(/SOURCE_\d+/g) ?? [])];
+          sourcesUsed = sourceMatches;
+          confidence = qaContent.length > 20 ? Math.min(95, 50 + sourceMatches.length * 15) : 0;
         }
       }
 
