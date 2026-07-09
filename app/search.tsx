@@ -149,8 +149,8 @@ export default function SearchScreen() {
     uploadedImagesContext: string,
     preExtractedEntities: import('@/modules/recall-native').ExtractedEntities | null,
     searchResults: { id: string; sourceNumber: number }[],
-  ) => {
-    console.log('[Search] streamCloudAnswer: starting stream for query:', query.trim());
+  ): Promise<void> => {
+    console.log('[Search] streamCloudAnswer: starting XHR stream for query:', query.trim());
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       console.error('[Search] streamCloudAnswer: no session, aborting');
@@ -160,88 +160,73 @@ export default function SearchScreen() {
     setStreamingAnswer('');
     setIsStreamingComplete(false);
 
-    const response = await fetch(
-      'https://cesmsdnblkdjkskmiqib.supabase.co/functions/v1/search-recalls-v3',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4',
-        },
-        body: JSON.stringify({
-          query: query.trim(),
-          generate_answer_only: true,
-          context_for_answer: contextForAnswer,
-          uploaded_images_context: uploadedImagesContext,
-          ...(preExtractedEntities ? { pre_extracted_entities: preExtractedEntities } : {}),
-        }),
-      }
-    );
+    await new Promise<void>((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', 'https://cesmsdnblkdjkskmiqib.supabase.co/functions/v1/search-recalls-v3', true);
+      xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('apikey', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4');
 
-    if (!response.ok || !response.body) {
-      console.error('[Search] streamCloudAnswer: response not ok or no body', response.status);
-      return;
-    }
+      let processedLength = 0;
+      let tokenBatch = '';
+      let batchTimer: ReturnType<typeof setTimeout> | null = null;
+      let firstTokenFlushed = false;
+      let resolved = false;
 
-    console.log('[Search] streamCloudAnswer: stream opened, reading tokens');
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let tokenBatch = '';
-    let batchTimer: ReturnType<typeof setTimeout> | null = null;
-
-    let firstTokenFlushed = false;
-
-    const flushBatch = () => {
-      if (tokenBatch) {
-        const batch = tokenBatch;
-        tokenBatch = '';
-        setStreamingAnswer(prev => prev + batch);
-        // Collapse search steps on first token
-        if (!firstTokenFlushed) {
-          firstTokenFlushed = true;
-          setIsProgressExpanded(false);
+      const flushBatch = () => {
+        if (tokenBatch) {
+          const batch = tokenBatch;
+          tokenBatch = '';
+          setStreamingAnswer(prev => prev + batch);
+          // Collapse search steps on first token
+          if (!firstTokenFlushed) {
+            firstTokenFlushed = true;
+            setIsProgressExpanded(false);
+          }
         }
-      }
-      batchTimer = null;
-    };
+        batchTimer = null;
+      };
 
-    try {
-      let done = false;
-      while (!done) {
-        const result = await reader.read();
-        done = result.done;
-        const value = result.value;
-        if (done) break;
+      const cleanup = () => {
+        if (batchTimer) clearTimeout(batchTimer);
+        flushBatch();
+        if (!resolved) {
+          resolved = true;
+          resolve();
+        }
+      };
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
+      const processDoneLine = (data: string, caller: string) => {
+        if (batchTimer) clearTimeout(batchTimer);
+        flushBatch();
+        try {
+          const payload = JSON.parse(data.slice(7)); // strip '[DONE] '
+          console.log('[Search] streamCloudAnswer: DONE received (' + caller + '), confidence:', payload.confidence, 'sources:', payload.sources);
+          patchNotesForOnDeviceAnswer(
+            payload.sources ?? [],
+            searchResults,
+            payload.answer ?? '',
+            payload.confidence ?? 0,
+          );
+        } catch (e) {
+          console.error('[Search] streamCloudAnswer: failed to parse DONE payload (' + caller + ')', e);
+        }
+        setIsStreamingComplete(true);
+      };
 
+      xhr.onprogress = () => {
+        const newText = xhr.responseText.slice(processedLength);
+        processedLength = xhr.responseText.length;
+        if (!newText) return;
+
+        const lines = newText.split('\n');
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           const data = line.slice(6);
 
           if (data.startsWith('[DONE]')) {
-            // Flush any remaining batch immediately
-            if (batchTimer) clearTimeout(batchTimer);
-            flushBatch();
-
-            // Parse final payload
-            try {
-              const payload = JSON.parse(data.slice(7)); // '[DONE] {...}'
-              console.log('[Search] streamCloudAnswer: DONE received, confidence:', payload.confidence, 'sources:', payload.sources);
-              patchNotesForOnDeviceAnswer(
-                payload.sources ?? [],
-                searchResults,
-                payload.answer ?? '',
-                payload.confidence ?? 0,
-              );
-            } catch (e) {
-              console.error('[Search] streamCloudAnswer: failed to parse DONE payload', e);
-            }
-            setIsStreamingComplete(true);
+            processDoneLine(data, 'onprogress');
+            cleanup();
             return;
           }
 
@@ -251,12 +236,44 @@ export default function SearchScreen() {
             batchTimer = setTimeout(flushBatch, 50);
           }
         }
-      }
-    } finally {
-      if (batchTimer) clearTimeout(batchTimer);
-      flushBatch();
-      reader.releaseLock();
-    }
+      };
+
+      xhr.onerror = () => {
+        console.error('[Search] streamCloudAnswer: XHR error');
+        cleanup();
+      };
+
+      xhr.ontimeout = () => {
+        console.error('[Search] streamCloudAnswer: XHR timeout');
+        cleanup();
+      };
+
+      xhr.onload = () => {
+        // Process any remaining responseText not yet handled by onprogress
+        const newText = xhr.responseText.slice(processedLength);
+        if (newText) {
+          const lines = newText.split('\n');
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6);
+            if (data.startsWith('[DONE]')) {
+              processDoneLine(data, 'onload');
+            }
+          }
+        }
+        cleanup();
+      };
+
+      xhr.timeout = 60000; // 60s timeout
+
+      xhr.send(JSON.stringify({
+        query: query.trim(),
+        generate_answer_only: true,
+        context_for_answer: contextForAnswer,
+        uploaded_images_context: uploadedImagesContext,
+        ...(preExtractedEntities ? { pre_extracted_entities: preExtractedEntities } : {}),
+      }));
+    });
   }, [patchNotesForOnDeviceAnswer]);
 
   const CATEGORY_PAGE_SIZE = 10;
