@@ -191,13 +191,18 @@ export default function SearchScreen() {
     let tokenBatch = '';
     let batchTimer: ReturnType<typeof setTimeout> | null = null;
 
+    let firstTokenFlushed = false;
+
     const flushBatch = () => {
       if (tokenBatch) {
         const batch = tokenBatch;
         tokenBatch = '';
         setStreamingAnswer(prev => prev + batch);
         // Collapse search steps on first token
-        setIsProgressExpanded(false);
+        if (!firstTokenFlushed) {
+          firstTokenFlushed = true;
+          setIsProgressExpanded(false);
+        }
       }
       batchTimer = null;
     };
@@ -441,6 +446,7 @@ export default function SearchScreen() {
                 onDeviceResult.answer,
                 onDeviceResult.confidence,
               );
+              setIsStreamingComplete(true);
             } else {
               console.log('[Search] autoSearch: on-device answer returned null, falling back to streaming cloud');
               await streamCloudAnswer(
@@ -675,6 +681,7 @@ export default function SearchScreen() {
             onDeviceResult.answer,
             onDeviceResult.confidence,
           );
+          setIsStreamingComplete(true);
         } else {
           console.log('[Search] handleSearch: on-device answer returned null, falling back to streaming cloud');
           await streamCloudAnswer(
@@ -775,6 +782,7 @@ export default function SearchScreen() {
             onDeviceResult.answer,
             onDeviceResult.confidence,
           );
+          setIsStreamingComplete(true);
         } else {
           console.log('[Search] handleHistoryItemPress: on-device answer returned null, falling back to streaming cloud');
           await streamCloudAnswer(
