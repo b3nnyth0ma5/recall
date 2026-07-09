@@ -8,7 +8,7 @@ const corsHeaders = {
 
 // Threshold configuration
 const TEXT_SIMILARITY_THRESHOLD = 0.4;
-const IMAGE_SIMILARITY_THRESHOLD = 0.25;
+const IMAGE_SIMILARITY_THRESHOLD = 0.4;
 const URL_SIMILARITY_THRESHOLD = 0.4;
 const DOCUMENT_SIMILARITY_THRESHOLD = 0.4;
 
@@ -320,9 +320,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Step 3: generate_answer_only short-circuit — skip all vector search, just run QA on provided context
+    // Step 3: generate_answer_only short-circuit — skip all vector search, stream QA answer token-by-token
     if (generate_answer_only && clientContextForAnswer) {
-      console.log('[Answer Generation] Generating answer via OpenAI cloud (generate_answer_only path), context length:', clientContextForAnswer.length);
+      console.log('[Answer Generation] Streaming answer via OpenAI (generate_answer_only path), context length:', clientContextForAnswer.length);
 
       const qaSystemPrompt = `You are an intelligent search assistant that answers complex, composite questions based on the provided information. You understand the user's intent and make associations between pieces of information that the user would've expected to make. You also understand the context of the search query.
 
@@ -341,9 +341,8 @@ MATCH INFORMATION:
 - Pay attention to keyword match counts - more matched keywords indicate better relevance
 
 LINKED PAGES AND DOCUMENTS:
-- Each recall may include "Linked pages" (content scraped from URLs) or "Documents" (extracted text from files) the user saved
-- When information comes from a linked page or attached document then attribute it clearly
-- Linked-page content is supplementary — always prefer the recall's own text when both are available
+- Each recall may include "Linked pages" (content scraped from URLs) or "Documents" (extracted text from files)
+- When information comes from these, attribute it clearly
 
 UPLOADED SEARCH IMAGES:
 - The user may have attached images to their search query (shown as "UPLOADED IMAGES CONTEXT" in the user message)
@@ -351,7 +350,7 @@ UPLOADED SEARCH IMAGES:
 - Cross-reference image content with recall data to provide relevant answers
 - If the user asks "have I seen/had/been to this before?", use the image context to identify what "this" refers to
 
-Provide your answer in JSON format with inline source references ALWAYS starting count of source answers at 1 (and incrementing for each answer): {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
+Provide an answer that's to the point in JSON format with inline source references ALWAYS starting count of source answers at 1 (and incrementing for each answer): {"answer": "your comprehensive answer with SOURCE_X references inline", "confidence": 85, "sources": ["SOURCE_1", "SOURCE_2"]}.
 Example: {"answer": "The meeting is scheduled for next Tuesday SOURCE_1. John mentioned he'll bring the presentation SOURCE_2.", "confidence": 90, "sources": ["SOURCE_1", "SOURCE_2"]}
 If the recalls don't contain the requested information, respond with: {"answer": "I don't have enough information in the provided recalls to answer this question.", "confidence": 0, "sources": []}.
 
@@ -369,6 +368,7 @@ Respond with valid JSON only, no markdown.`;
         body: JSON.stringify({
           model: 'gpt-4.1-mini',
           max_tokens: 2048,
+          stream: true,
           messages: [
             { role: 'system', content: qaSystemPrompt },
             { role: 'user', content: qaUserMessage }
@@ -376,30 +376,100 @@ Respond with valid JSON only, no markdown.`;
         })
       });
 
-      if (qaResponse.ok) {
-        const qaData = await qaResponse.json();
-        const qaContent = qaData.choices?.[0]?.message?.content;
-        if (qaContent) {
-          try {
-            const jsonMatch = qaContent.match(/\{[\s\S]*\}/);
-            const parsed = JSON.parse(jsonMatch?.[0] ?? qaContent);
-            return new Response(JSON.stringify({
-              answer: parsed.answer ?? null,
-              confidence: parsed.confidence ?? 0,
-              sources: parsed.sources ?? [],
-              results: [],
-              processingTimeMs: Date.now() - startTime,
-            }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-          } catch {}
-        }
+      if (!qaResponse.ok) {
+        const errText = await qaResponse.text();
+        console.error('[Answer Generation] OpenAI streaming error:', errText);
+        return new Response(JSON.stringify({
+          answer: null,
+          confidence: 0,
+          sources: [],
+          results: [],
+          processingTimeMs: Date.now() - startTime
+        }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
-      return new Response(JSON.stringify({
-        answer: null,
-        confidence: 0,
-        sources: [],
-        results: [],
-        processingTimeMs: Date.now() - startTime
-      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+      // Build a TransformStream that:
+      // 1. Parses OpenAI SSE chunks and re-emits token strings as "data: <token>\n\n"
+      // 2. Accumulates the full answer, then on flush emits a final DONE event with parsed JSON
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+      let fullAnswer = '';
+      let leftover = '';
+
+      const transformStream = new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          const text = leftover + decoder.decode(chunk, { stream: true });
+          const lines = text.split('\n');
+          // Keep the last (potentially incomplete) line as leftover
+          leftover = lines.pop() ?? '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const payload = trimmed.slice(5).trim();
+            if (payload === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(payload);
+              const token: string | undefined = parsed?.choices?.[0]?.delta?.content;
+              if (token && token.length > 0) {
+                fullAnswer += token;
+                controller.enqueue(encoder.encode(`data: ${token}\n\n`));
+              }
+            } catch {
+              // Ignore malformed SSE lines
+            }
+          }
+        },
+        flush(controller) {
+          // Process any remaining leftover
+          if (leftover.trim().startsWith('data:')) {
+            const payload = leftover.trim().slice(5).trim();
+            if (payload !== '[DONE]') {
+              try {
+                const parsed = JSON.parse(payload);
+                const token: string | undefined = parsed?.choices?.[0]?.delta?.content;
+                if (token && token.length > 0) {
+                  fullAnswer += token;
+                  controller.enqueue(encoder.encode(`data: ${token}\n\n`));
+                }
+              } catch {
+                // Ignore
+              }
+            }
+          }
+
+          // Emit final DONE event with parsed answer/confidence/sources
+          let answer = fullAnswer;
+          let confidence = 0;
+          let sources: string[] = [];
+          try {
+            const jsonMatch = fullAnswer.match(/\{[\s\S]*\}/);
+            const parsedFinal = JSON.parse(jsonMatch?.[0] ?? fullAnswer);
+            answer = parsedFinal.answer ?? fullAnswer;
+            confidence = parsedFinal.confidence ?? 0;
+            sources = parsedFinal.sources ?? [];
+          } catch {
+            // JSON parse failed — use raw text as answer
+            confidence = 0;
+            sources = [];
+          }
+
+          const donePayload = JSON.stringify({ answer, confidence, sources });
+          controller.enqueue(encoder.encode(`data: [DONE] ${donePayload}\n\n`));
+        }
+      });
+
+      const transformedStream = qaResponse.body!.pipeThrough(transformStream);
+
+      return new Response(transformedStream, {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'X-Accel-Buffering': 'no',
+        }
+      });
     }
 
     // Step 4: Extract all entities — use on-device result if provided, otherwise call OpenAI
