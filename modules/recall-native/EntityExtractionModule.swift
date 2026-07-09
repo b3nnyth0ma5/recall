@@ -182,10 +182,27 @@ public class EntityExtractionModule: Module {
     }
 
     AsyncFunction("extractTextFromImage") { (imageUri: String, promise: Promise) in
-      // Use Vision framework VNRecognizeTextRequest for on-device OCR
-      guard let url = URL(string: imageUri),
-            let imageData = try? Data(contentsOf: url),
-            let cgImage = UIImage(data: imageData)?.cgImage else {
+      guard let url = URL(string: imageUri) else {
+        promise.resolve("")
+        return
+      }
+
+      var ocrConfig = URLSessionConfiguration.default
+      ocrConfig.timeoutIntervalForRequest = 15
+      ocrConfig.timeoutIntervalForResource = 15
+      let ocrSession = URLSession(configuration: ocrConfig)
+
+      let imageData: Data
+      do {
+        let (data, _) = try await ocrSession.data(from: url)
+        imageData = data
+      } catch {
+        print("[EntityExtraction] extractTextFromImage: network error: \(error.localizedDescription)")
+        promise.resolve("")
+        return
+      }
+
+      guard let cgImage = UIImage(data: imageData)?.cgImage else {
         promise.resolve("")
         return
       }

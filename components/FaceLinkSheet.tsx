@@ -349,27 +349,28 @@ export function FaceLinkSheet({
         return;
       }
 
-      // Check if recall_people row already exists
-      const { data: existingRow } = await supabase
-        .from('recall_people')
-        .select('recall_id')
-        .eq('recall_id', recallId)
-        .eq('person_id', personId)
-        .maybeSingle();
-
-      if (!existingRow && recallId) {
-        const { error: recallPeopleError } = await supabase
+      // Only tag the recall if we have a recallId
+      if (recallId) {
+        const { data: existingRow } = await supabase
           .from('recall_people')
-          .insert({ recall_id: recallId, person_id: personId, user_id: user.id });
+          .select('recall_id')
+          .eq('recall_id', recallId)
+          .eq('person_id', personId)
+          .maybeSingle();
 
-        if (recallPeopleError) {
-          console.error('[FaceLinkSheet] recall_people insert error:', recallPeopleError);
-          // Non-fatal — face is linked, just the recall tag failed
+        if (!existingRow) {
+          const { error: recallPeopleError } = await supabase
+            .from('recall_people')
+            .insert({ recall_id: recallId, person_id: personId, user_id: user.id });
+
+          if (recallPeopleError) {
+            console.error('[FaceLinkSheet] recall_people insert error:', recallPeopleError);
+          } else {
+            console.log('[FaceLinkSheet] recall_people row inserted successfully');
+          }
         } else {
-          console.log('[FaceLinkSheet] recall_people row inserted successfully');
+          console.log('[FaceLinkSheet] recall_people row already exists, skipping insert');
         }
-      } else {
-        console.log('[FaceLinkSheet] recall_people row already exists, skipping insert');
       }
 
       console.log('[FaceLinkSheet] Face linked successfully');
