@@ -174,13 +174,13 @@ export async function uploadImageToDatabase(
     console.log('OCR processing will be automatically triggered by database trigger');
     console.log('Database trigger: trigger-ocr-on-image-insert');
 
-    // Fire-and-forget face detection
+    // Fire-and-forget face detection + embedding extraction + auto-matching
     if (Platform.OS === 'ios') {
       const imageRowId = data.id;
       const userId = session.user.id;
       (async () => {
         try {
-          const { detectFacesOnDevice } = await import('@/modules/recall-native');
+          const { detectFacesOnDevice, extractFaceEmbeddingOnDevice } = await import('@/modules/recall-native');
           const faces = await detectFacesOnDevice(cdnUrl);
           if (faces && faces.length > 0) {
             console.log(`[uploadImageToDatabase] Detected ${faces.length} face(s), storing in recall_images_people`);
@@ -196,13 +196,73 @@ export async function uploadImageToDatabase(
               roll: f.roll,
               yaw: f.yaw,
             }));
-            const { error: faceInsertError } = await supabase
+            const { data: insertedFaces, error: faceInsertError } = await supabase
               .from('recall_images_people')
-              .insert(faceRows);
+              .insert(faceRows)
+              .select('id, face_uuid, bbox_x, bbox_y, bbox_w, bbox_h');
             if (faceInsertError) {
               console.warn('[uploadImageToDatabase] Face insert error (non-fatal):', faceInsertError);
             } else {
               console.log('[uploadImageToDatabase] Face rows inserted successfully');
+
+              // Extract embeddings and run auto-matching for each face
+              for (const insertedFace of (insertedFaces ?? [])) {
+                try {
+                  console.log('[uploadImageToDatabase] Extracting embedding for face:', insertedFace.id);
+                  const embedding = await extractFaceEmbeddingOnDevice(
+                    cdnUrl,
+                    insertedFace.bbox_x,
+                    insertedFace.bbox_y,
+                    insertedFace.bbox_w,
+                    insertedFace.bbox_h,
+                  );
+
+                  if (embedding && embedding.length > 0) {
+                    const vectorString = `[${embedding.join(',')}]`;
+                    console.log('[uploadImageToDatabase] Got embedding, updating face row:', insertedFace.id);
+
+                    // Store embedding on the face row
+                    const { error: embeddingUpdateError } = await supabase
+                      .from('recall_images_people')
+                      .update({ face_embedding: vectorString })
+                      .eq('id', insertedFace.id);
+                    if (embeddingUpdateError) {
+                      console.warn('[uploadImageToDatabase] Embedding update error (non-fatal):', embeddingUpdateError);
+                    }
+
+                    // Run auto-match RPC
+                    console.log('[uploadImageToDatabase] Running match_face_to_person RPC for face:', insertedFace.id);
+                    const { data: matchResult, error: matchError } = await supabase.rpc('match_face_to_person', {
+                      query_embedding: vectorString,
+                      p_user_id: userId,
+                      similarity_threshold: 0.75,
+                    });
+                    if (matchError) {
+                      console.warn('[uploadImageToDatabase] match_face_to_person RPC error (non-fatal):', matchError);
+                    } else if (matchResult && matchResult.person_id) {
+                      console.log('[uploadImageToDatabase] Auto-match found:', matchResult.person_id, 'similarity:', matchResult.similarity);
+                      const { error: suggestionUpdateError } = await supabase
+                        .from('recall_images_people')
+                        .update({
+                          suggested_person_id: matchResult.person_id,
+                          match_confidence: matchResult.similarity,
+                        })
+                        .eq('id', insertedFace.id);
+                      if (suggestionUpdateError) {
+                        console.warn('[uploadImageToDatabase] Suggestion update error (non-fatal):', suggestionUpdateError);
+                      } else {
+                        console.log('[uploadImageToDatabase] Suggestion stored for face:', insertedFace.id);
+                      }
+                    } else {
+                      console.log('[uploadImageToDatabase] No auto-match found for face:', insertedFace.id);
+                    }
+                  } else {
+                    console.log('[uploadImageToDatabase] No embedding returned for face:', insertedFace.id);
+                  }
+                } catch (embeddingErr) {
+                  console.warn('[uploadImageToDatabase] Embedding/match error for face (non-fatal):', insertedFace.id, embeddingErr);
+                }
+              }
             }
           } else {
             console.log('[uploadImageToDatabase] No faces detected');

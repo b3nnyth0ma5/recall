@@ -123,6 +123,34 @@ export async function detectFacesOnDevice(imageUri: string): Promise<FaceDetecti
   }
 }
 
+export async function extractFaceEmbeddingOnDevice(
+  imageUri: string,
+  bboxX: number,
+  bboxY: number,
+  bboxW: number,
+  bboxH: number,
+): Promise<number[] | null> {
+  console.log('[EntityExtraction] extractFaceEmbeddingOnDevice called:', imageUri, { bboxX, bboxY, bboxW, bboxH });
+  const mod = getModule();
+  if (!mod) {
+    console.log('[EntityExtraction] Native module not available, returning null');
+    return null;
+  }
+  try {
+    const result = await (mod as any).extractFaceEmbedding(imageUri, bboxX, bboxY, bboxW, bboxH);
+    const arr = result as number[];
+    if (!arr || arr.length === 0) {
+      console.log('[EntityExtraction] extractFaceEmbedding returned empty array');
+      return null;
+    }
+    console.log('[EntityExtraction] extractFaceEmbedding returned', arr.length, 'floats');
+    return arr;
+  } catch (e) {
+    console.error('[EntityExtraction] extractFaceEmbedding error:', e);
+    return null;
+  }
+}
+
 export async function checkFoundationModelsAvailability(): Promise<FoundationModelsStatus> {
   console.log('[FoundationModelAnswer] checkFoundationModelsAvailability called');
   const mod = getFoundationModelModule();

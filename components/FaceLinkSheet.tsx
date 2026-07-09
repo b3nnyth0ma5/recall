@@ -32,6 +32,11 @@ export interface FaceRow {
   person_name: string | null;
   photo_url: string | null;
   confirmed_by_user: boolean;
+  // Auto-match fields (populated by upload flow)
+  match_confidence: number | null;
+  suggested_person_id: string | null;
+  suggested_person_name: string | null;
+  suggested_person_photo_url: string | null;
 }
 
 interface PersonResult {
@@ -69,6 +74,7 @@ export function FaceLinkSheet({
   const [showCreateInput, setShowCreateInput] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
 
   const insets = useSafeAreaInsets();
 
@@ -81,6 +87,7 @@ export function FaceLinkSheet({
       setNewPersonName('');
       setShowCreateInput(false);
       setIsLinking(false);
+      setSuggestionDismissed(false);
     }
   }, [visible]);
 
@@ -279,6 +286,42 @@ export function FaceLinkSheet({
     }
   }, [cropAndUpload]);
 
+  // Fire-and-forget: fetch the face embedding from DB and upsert it onto the person
+  const saveFaceEmbeddingToPerson = useCallback(async (faceRowId: string, personId: string) => {
+    console.log('[FaceLinkSheet] saveFaceEmbeddingToPerson called for face:', faceRowId, 'person:', personId);
+    try {
+      const { data: faceData, error: fetchError } = await supabase
+        .from('recall_images_people')
+        .select('face_embedding')
+        .eq('id', faceRowId)
+        .maybeSingle();
+      if (fetchError) {
+        console.warn('[FaceLinkSheet] saveFaceEmbeddingToPerson: fetch error (non-fatal):', fetchError);
+        return;
+      }
+      const embeddingValue = (faceData as any)?.face_embedding;
+      if (!embeddingValue) {
+        console.log('[FaceLinkSheet] saveFaceEmbeddingToPerson: no embedding on face row, skipping');
+        return;
+      }
+      const embeddingString = typeof embeddingValue === 'string'
+        ? embeddingValue
+        : JSON.stringify(embeddingValue);
+      console.log('[FaceLinkSheet] saveFaceEmbeddingToPerson: calling upsert_person_face_embedding RPC');
+      const { error: rpcError } = await supabase.rpc('upsert_person_face_embedding', {
+        p_person_id: personId,
+        new_embedding: embeddingString,
+      });
+      if (rpcError) {
+        console.warn('[FaceLinkSheet] saveFaceEmbeddingToPerson: RPC error (non-fatal):', rpcError);
+      } else {
+        console.log('[FaceLinkSheet] saveFaceEmbeddingToPerson: embedding saved to person:', personId);
+      }
+    } catch (e) {
+      console.warn('[FaceLinkSheet] saveFaceEmbeddingToPerson: exception (non-fatal):', e);
+    }
+  }, []);
+
   const linkFace = useCallback(async (
     personId: string,
     personName: string,
@@ -331,6 +374,9 @@ export function FaceLinkSheet({
 
       console.log('[FaceLinkSheet] Face linked successfully');
 
+      // Fire-and-forget: save embedding to person for future matching
+      saveFaceEmbeddingToPerson(faceRow.id, personId);
+
       // Capture faceId before closing (faceRow may change)
       const faceId = faceRow.id;
       onClose();
@@ -348,7 +394,7 @@ export function FaceLinkSheet({
     } finally {
       setIsLinking(false);
     }
-  }, [faceRow, recallId, onLinked, onClose, promptPhotoUpdate]);
+  }, [faceRow, recallId, onLinked, onClose, promptPhotoUpdate, saveFaceEmbeddingToPerson]);
 
   const handleCreatePerson = async () => {
     const name = newPersonName.trim();
@@ -393,6 +439,17 @@ export function FaceLinkSheet({
   const isLoading = isLinking || isCreating;
 
   const sheetPaddingBottom = Math.max(keyboardHeight, insets.bottom + 40);
+
+  const showSuggestionCard =
+    faceRow !== null &&
+    faceRow.match_confidence !== null &&
+    !faceRow.confirmed_by_user &&
+    faceRow.suggested_person_id !== null &&
+    !suggestionDismissed;
+
+  const confidencePct = faceRow?.match_confidence != null
+    ? Math.round(faceRow.match_confidence * 100)
+    : 0;
 
   const listEmptyComponent = searchQuery.trim() && !isSearching ? (
     <View>
@@ -478,6 +535,55 @@ export function FaceLinkSheet({
                 <IconSymbol name="xmark" size={20} color={colors.textSecondary} />
               </Pressable>
             </View>
+
+            {/* Suggestion card */}
+            {showSuggestionCard && faceRow && (
+              <View style={styles.suggestionCard}>
+                <View style={styles.suggestionRow}>
+                  <PersonAvatar
+                    personName={faceRow.suggested_person_name ?? ''}
+                    photoUrl={faceRow.suggested_person_photo_url ?? null}
+                    size={52}
+                  />
+                  <View style={styles.suggestionInfo}>
+                    <Text style={styles.suggestionName} numberOfLines={1}>
+                      {faceRow.suggested_person_name ?? ''}
+                    </Text>
+                    <View style={styles.confidenceBadge}>
+                      <Text style={styles.confidenceBadgeText}>
+                        {confidencePct}% match
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                <Pressable
+                  style={styles.suggestionYesButton}
+                  onPress={() => {
+                    console.log('[FaceLinkSheet] Suggestion accepted for person:', faceRow.suggested_person_id, faceRow.suggested_person_name);
+                    linkFace(
+                      faceRow.suggested_person_id!,
+                      faceRow.suggested_person_name ?? '',
+                      faceRow.suggested_person_photo_url ?? null,
+                    );
+                    saveFaceEmbeddingToPerson(faceRow.id, faceRow.suggested_person_id!);
+                  }}
+                  disabled={isLoading}
+                >
+                  <Text style={styles.suggestionYesText}>Yes, that's them</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.suggestionNoButton}
+                  onPress={() => {
+                    console.log('[FaceLinkSheet] Suggestion rejected for person:', faceRow.suggested_person_id);
+                    setSuggestionDismissed(true);
+                  }}
+                  disabled={isLoading}
+                >
+                  <Text style={styles.suggestionNoText}>Not them</Text>
+                </Pressable>
+                <View style={styles.suggestionDivider} />
+              </View>
+            )}
 
             {/* Search input */}
             <View style={styles.searchContainer}>
@@ -622,6 +728,72 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 15,
+  },
+  suggestionCard: {
+    backgroundColor: colors.backgroundSecondary,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border ?? '#3A3A3A',
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 14,
+  },
+  suggestionInfo: {
+    flex: 1,
+    gap: 6,
+  },
+  suggestionName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  confidenceBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: `${colors.primary}26`,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  confidenceBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  suggestionYesButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  suggestionYesText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  suggestionNoButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.border ?? '#3A3A3A',
+  },
+  suggestionNoText: {
+    color: colors.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  suggestionDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border ?? '#3A3A3A',
+    marginTop: 14,
   },
   searchContainer: {
     flexDirection: 'row',

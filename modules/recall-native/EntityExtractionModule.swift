@@ -248,5 +248,119 @@ public class EntityExtractionModule: Module {
         promise.reject("ERR_FACE", error.localizedDescription)
       }
     }
+
+    // ── Face embedding extraction via landmark geometry ───────────────────────
+    // Returns a 128-float L2-normalised geometric descriptor derived from
+    // VNFaceLandmarks2D (76 points). Deterministic — no CoreML model required.
+    // The descriptor is pose-normalised (coordinates relative to face bbox, Y flipped).
+    AsyncFunction("extractFaceEmbedding") { (imageUri: String, bboxX: Double, bboxY: Double, bboxW: Double, bboxH: Double, promise: Promise) in
+      // Load image
+      guard let url = URL(string: imageUri),
+            let imageData = try? Data(contentsOf: url),
+            let uiImage = UIImage(data: imageData),
+            let cgImage = uiImage.cgImage else {
+        print("[EntityExtraction] extractFaceEmbedding: failed to load image from \(imageUri)")
+        promise.resolve([Float]())
+        return
+      }
+
+      let request = VNDetectFaceLandmarksRequest { request, error in
+        if let error = error {
+          print("[EntityExtraction] extractFaceEmbedding: VNDetectFaceLandmarksRequest error: \(error.localizedDescription)")
+          promise.resolve([Float]())
+          return
+        }
+
+        let observations = request.results as? [VNFaceObservation] ?? []
+        guard !observations.isEmpty else {
+          print("[EntityExtraction] extractFaceEmbedding: no face observations found")
+          promise.resolve([Float]())
+          return
+        }
+
+        // Find the observation whose centroid is closest to the provided bbox centroid.
+        // Vision bbox uses bottom-left origin; provided bbox uses top-left origin.
+        let providedCentreX = bboxX + bboxW / 2.0
+        let providedCentreY_topLeft = bboxY + bboxH / 2.0
+        // Convert to Vision bottom-left Y
+        let providedCentreY_vision = 1.0 - providedCentreY_topLeft
+
+        var bestObs: VNFaceObservation? = nil
+        var bestDist = Double.greatestFiniteMagnitude
+        for obs in observations {
+          let b = obs.boundingBox
+          let cx = Double(b.origin.x) + Double(b.size.width) / 2.0
+          let cy = Double(b.origin.y) + Double(b.size.height) / 2.0
+          let dist = (cx - providedCentreX) * (cx - providedCentreX) +
+                     (cy - providedCentreY_vision) * (cy - providedCentreY_vision)
+          if dist < bestDist {
+            bestDist = dist
+            bestObs = obs
+          }
+        }
+
+        guard let obs = bestObs,
+              let landmarks = obs.landmarks,
+              let allPoints = landmarks.allPoints else {
+          print("[EntityExtraction] extractFaceEmbedding: no landmarks on best observation")
+          promise.resolve([Float]())
+          return
+        }
+
+        let pointCount = allPoints.pointCount
+        guard pointCount > 0 else {
+          print("[EntityExtraction] extractFaceEmbedding: zero landmark points")
+          promise.resolve([Float]())
+          return
+        }
+
+        // allPoints gives normalised points relative to the face bounding box,
+        // in Vision space (bottom-left origin, 0–1 relative to bbox).
+        var rawPoints = [(x: Float, y: Float)]()
+        rawPoints.reserveCapacity(pointCount)
+        let normalizedPoints = allPoints.normalizedPoints
+        for i in 0..<pointCount {
+          let p = normalizedPoints[i]
+          // Flip Y to top-left origin for consistency
+          rawPoints.append((x: Float(p.x), y: Float(1.0 - p.y)))
+        }
+
+        // Pad or truncate to exactly 64 points so we always produce 128 floats
+        let targetCount = 64
+        var paddedPoints = [(x: Float, y: Float)](repeating: (0, 0), count: targetCount)
+        let copyCount = min(pointCount, targetCount)
+        for i in 0..<copyCount {
+          paddedPoints[i] = rawPoints[i]
+        }
+
+        // Build 128-float vector: interleaved x,y for each of the 64 points
+        var descriptor = [Float](repeating: 0, count: 128)
+        for i in 0..<targetCount {
+          descriptor[i * 2]     = paddedPoints[i].x
+          descriptor[i * 2 + 1] = paddedPoints[i].y
+        }
+
+        // L2-normalise so cosine similarity works correctly
+        var sumSq: Float = 0
+        for v in descriptor { sumSq += v * v }
+        let norm = sqrt(sumSq)
+        if norm > 1e-6 {
+          for i in 0..<descriptor.count {
+            descriptor[i] /= norm
+          }
+        }
+
+        print("[EntityExtraction] extractFaceEmbedding: returning \(descriptor.count)-float descriptor (pre-norm magnitude: \(norm))")
+        promise.resolve(descriptor)
+      }
+
+      let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+      do {
+        try handler.perform([request])
+      } catch {
+        print("[EntityExtraction] extractFaceEmbedding: handler.perform error: \(error.localizedDescription)")
+        promise.resolve([Float]())
+      }
+    }
   }
 }

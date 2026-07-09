@@ -21,6 +21,8 @@ import Animated, {
   withSpring,
   runOnJS,
   withTiming,
+  withRepeat,
+  withSequence,
   interpolate,
   Extrapolation,
 } from 'react-native-reanimated';
@@ -131,6 +133,20 @@ function ZoomableImage({
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
 
+  // Pulse animation for suggested (unconfirmed) face boxes
+  const pulseOpacity = useSharedValue(1);
+  useEffect(() => {
+    pulseOpacity.value = withRepeat(
+      withSequence(
+        withTiming(0.5, { duration: 900 }),
+        withTiming(1, { duration: 900 }),
+      ),
+      -1,
+      false,
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Reset zoom when resetTrigger changes (i.e. when currentImageIndex changes)
   useEffect(() => {
     scale.value = withTiming(1, { duration: 200 });
@@ -219,6 +235,10 @@ function ZoomableImage({
     ? computeImageRect(naturalDims.width, naturalDims.height, SCREEN_WIDTH, SCREEN_HEIGHT)
     : null;
 
+  const pulseAnimStyle = useAnimatedStyle(() => ({
+    opacity: pulseOpacity.value,
+  }));
+
   return (
     <GestureDetector gesture={composedGesture}>
       <View style={styles.imageWrapper}>
@@ -258,12 +278,36 @@ function ZoomableImage({
           const faceY = imageRect.y + face.bbox_y * imageRect.height;
           const faceW = face.bbox_w * imageRect.width;
           const faceH = face.bbox_h * imageRect.height;
-          const labelText = face.person_name ?? '?';
-          const isLinked = !!face.person_id;
 
-          return (
+          // Determine visual state
+          const isConfirmed = face.confirmed_by_user === true;
+          const isSuggested = !isConfirmed && face.suggested_person_id !== null;
+          const isUnknown = !isConfirmed && !isSuggested;
+
+          const borderColor = isConfirmed
+            ? colors.primary
+            : isSuggested
+              ? '#F59E0B'
+              : 'rgba(255,255,255,0.7)';
+          const borderWidth = isConfirmed ? 2 : isSuggested ? 2 : 1.5;
+          const borderStyle = isConfirmed ? 'solid' : 'dashed';
+
+          const labelText = isConfirmed
+            ? (face.person_name ?? '?')
+            : isSuggested
+              ? `${face.suggested_person_name ?? '?'} · ${Math.round((face.match_confidence ?? 0) * 100)}%`
+              : '?';
+
+          const labelBgColor = isConfirmed
+            ? 'rgba(0,0,0,0.6)'
+            : isSuggested
+              ? 'rgba(245,158,11,0.85)'
+              : 'rgba(0,0,0,0.6)';
+
+          const labelTextColor = '#FFFFFF';
+
+          const boxContent = (
             <Pressable
-              key={face.face_uuid}
               style={[
                 styles.faceBox,
                 {
@@ -271,20 +315,39 @@ function ZoomableImage({
                   top: faceY,
                   width: faceW,
                   height: faceH,
-                  borderColor: isLinked ? colors.primary : 'rgba(255,255,255,0.8)',
+                  borderColor,
+                  borderWidth,
+                  borderStyle,
                 },
               ]}
               onPress={() => {
-                console.log('[FullScreenImage] Face box tapped:', face.face_uuid, 'person:', face.person_name);
+                console.log('[FullScreenImage] Face box tapped:', face.face_uuid, 'state:', isConfirmed ? 'confirmed' : isSuggested ? 'suggested' : 'unknown');
                 onFaceTap(face);
               }}
             >
-              <View style={[styles.faceLabelContainer, isLinked && styles.faceLabelLinked]}>
-                <Text style={styles.faceLabelText} numberOfLines={1}>
+              <View style={styles.faceLabelContainer}>
+                <Text
+                  style={[styles.faceLabelText, { backgroundColor: labelBgColor, color: labelTextColor }]}
+                  numberOfLines={1}
+                >
                   {labelText}
                 </Text>
               </View>
             </Pressable>
+          );
+
+          if (isSuggested) {
+            return (
+              <Animated.View key={face.face_uuid} style={pulseAnimStyle}>
+                {boxContent}
+              </Animated.View>
+            );
+          }
+
+          return (
+            <View key={face.face_uuid}>
+              {boxContent}
+            </View>
           );
         })}
       </View>
@@ -458,7 +521,7 @@ export function FullScreenImage({
       try {
         const { data, error } = await supabase
           .from('recall_images_people')
-          .select('id, face_uuid, bbox_x, bbox_y, bbox_w, bbox_h, person_id, confirmed_by_user, persons(person_name, photo_url)')
+          .select('id, face_uuid, bbox_x, bbox_y, bbox_w, bbox_h, person_id, confirmed_by_user, match_confidence, suggested_person_id, persons(person_name, photo_url)')
           .eq('recall_image_id', imageId);
 
         if (error) {
@@ -466,7 +529,8 @@ export function FullScreenImage({
           return;
         }
 
-        const rows: FaceRow[] = (data ?? []).map((row: any) => ({
+        // Build initial rows (suggested_person_name/photo_url filled in next step)
+        const partialRows: FaceRow[] = (data ?? []).map((row: any) => ({
           id: row.id,
           face_uuid: row.face_uuid,
           bbox_x: row.bbox_x,
@@ -477,7 +541,42 @@ export function FullScreenImage({
           person_name: row.persons?.person_name ?? null,
           photo_url: row.persons?.photo_url ?? null,
           confirmed_by_user: row.confirmed_by_user ?? false,
+          match_confidence: row.match_confidence ?? null,
+          suggested_person_id: row.suggested_person_id ?? null,
+          suggested_person_name: null,
+          suggested_person_photo_url: null,
         }));
+
+        // Batch-fetch suggested person names for rows that have suggested_person_id but no person_id
+        const suggestedIds = partialRows
+          .filter(r => r.suggested_person_id !== null && r.person_id === null)
+          .map(r => r.suggested_person_id as string);
+
+        let suggestedPersonMap: Record<string, { person_name: string; photo_url: string | null }> = {};
+        if (suggestedIds.length > 0) {
+          const { data: suggestedPersons, error: spError } = await supabase
+            .from('persons')
+            .select('id, person_name, photo_url')
+            .in('id', suggestedIds);
+          if (spError) {
+            console.warn('[FullScreenImage] Suggested persons fetch error (non-fatal):', spError);
+          } else {
+            for (const sp of (suggestedPersons ?? [])) {
+              suggestedPersonMap[sp.id] = { person_name: sp.person_name, photo_url: sp.photo_url ?? null };
+            }
+          }
+        }
+
+        const rows: FaceRow[] = partialRows.map(r => {
+          if (r.suggested_person_id && suggestedPersonMap[r.suggested_person_id]) {
+            return {
+              ...r,
+              suggested_person_name: suggestedPersonMap[r.suggested_person_id].person_name,
+              suggested_person_photo_url: suggestedPersonMap[r.suggested_person_id].photo_url,
+            };
+          }
+          return r;
+        });
 
         console.log('[FullScreenImage] Fetched', rows.length, 'face(s) for imageId:', imageId);
         setFacesPerImage(prev => {
