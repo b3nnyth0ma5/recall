@@ -239,7 +239,8 @@ export default function SearchScreen() {
         flushBatch();
         doneReceived = true;
         try {
-          const payload = JSON.parse(data.slice(7)); // strip '[DONE] '
+          const raw = data.slice(7).replace(/\\n/g, '\n'); // strip '[DONE] ' then unescape newlines
+          const payload = JSON.parse(raw);
           console.log('[Search] streamCloudAnswer: DONE received (' + caller + '), confidence:', payload.confidence, 'sources:', payload.sources);
           if (mountedRef.current) {
             patchNotesForOnDeviceAnswer(
@@ -271,8 +272,8 @@ export default function SearchScreen() {
             return;
           }
 
-          // Accumulate token into batch
-          tokenBatch += data;
+          // Accumulate token into batch (unescape newlines escaped by the edge function)
+          tokenBatch += data.replace(/\\n/g, '\n');
           if (!batchTimer) {
             batchTimer = setTimeout(flushBatch, 120);
           }
@@ -505,33 +506,44 @@ export default function SearchScreen() {
       // donateSearch(decodedQuery); // recall-native disabled
       
       (async () => {
-        setStreamingAnswer('');
-        setIsStreamingComplete(false);
-        const preExtractedEntities = await tryOnDeviceExtraction(decodedQuery);
-        const canUseOnDeviceAnswer = await checkAndNotifyFoundationModels();
-        const searchResult = await searchNotes(decodedQuery, true, undefined, preExtractedEntities);
-        if (searchResult?.context_for_answer) {
-          if (canUseOnDeviceAnswer) {
-            const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
-            const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
-            console.log('[Search] autoSearch: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
-            const onDeviceResult = await generateAnswerOnDevice(
-              safeContext,
-              decodedQuery,
-              searchResult.uploaded_images_context ?? '',
-            );
-            if (onDeviceResult && onDeviceResult.answer) {
-              setOnDeviceAnswerMs(onDeviceResult.durationMs);
-              updateAiAnswerTiming(onDeviceResult.durationMs);
-              patchNotesForOnDeviceAnswer(
-                onDeviceResult.sources,
-                searchResult.results ?? [],
-                onDeviceResult.answer,
-                onDeviceResult.confidence,
+        try {
+          setStreamingAnswer('');
+          setIsStreamingComplete(false);
+          const preExtractedEntities = await tryOnDeviceExtraction(decodedQuery);
+          const canUseOnDeviceAnswer = await checkAndNotifyFoundationModels();
+          const searchResult = await searchNotes(decodedQuery, true, undefined, preExtractedEntities);
+          if (searchResult?.context_for_answer) {
+            if (canUseOnDeviceAnswer) {
+              const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
+              const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
+              console.log('[Search] autoSearch: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
+              const onDeviceResult = await generateAnswerOnDevice(
+                safeContext,
+                decodedQuery,
+                searchResult.uploaded_images_context ?? '',
               );
-              setIsStreamingComplete(true);
+              if (onDeviceResult && onDeviceResult.answer) {
+                setOnDeviceAnswerMs(onDeviceResult.durationMs);
+                updateAiAnswerTiming(onDeviceResult.durationMs);
+                patchNotesForOnDeviceAnswer(
+                  onDeviceResult.sources,
+                  searchResult.results ?? [],
+                  onDeviceResult.answer,
+                  onDeviceResult.confidence,
+                );
+                setIsStreamingComplete(true);
+              } else {
+                console.log('[Search] autoSearch: on-device answer returned null, falling back to streaming cloud');
+                await streamCloudAnswer(
+                  decodedQuery,
+                  searchResult.context_for_answer,
+                  searchResult.uploaded_images_context ?? '',
+                  preExtractedEntities,
+                  searchResult.results ?? [],
+                );
+              }
             } else {
-              console.log('[Search] autoSearch: on-device answer returned null, falling back to streaming cloud');
+              console.log('[Search] autoSearch: cloud-only path, streaming answer');
               await streamCloudAnswer(
                 decodedQuery,
                 searchResult.context_for_answer,
@@ -540,18 +552,12 @@ export default function SearchScreen() {
                 searchResult.results ?? [],
               );
             }
-          } else {
-            console.log('[Search] autoSearch: cloud-only path, streaming answer');
-            await streamCloudAnswer(
-              decodedQuery,
-              searchResult.context_for_answer,
-              searchResult.uploaded_images_context ?? '',
-              preExtractedEntities,
-              searchResult.results ?? [],
-            );
           }
+        } catch (e) {
+          console.error('[Search] autoSearch error:', e);
+        } finally {
+          if (mountedRef.current) setIsSearching(false);
         }
-        setIsSearching(false);
       })();
       
       setTimeout(() => {

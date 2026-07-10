@@ -113,6 +113,7 @@ interface ZoomableImageProps {
   naturalDims: { width: number; height: number } | null;
   showControls: boolean;
   onFaceTap: (face: FaceRow) => void;
+  imageId?: string;
 }
 
 function ZoomableImage({
@@ -125,6 +126,7 @@ function ZoomableImage({
   naturalDims,
   showControls,
   onFaceTap,
+  imageId,
 }: ZoomableImageProps) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -349,6 +351,16 @@ function ZoomableImage({
             })}
           </Animated.View>
         )}
+        {__DEV__ && showControls && imageUrl && (
+          <View style={{ position: 'absolute', bottom: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.7)', padding: 6, borderRadius: 6, maxWidth: 280, zIndex: 9999 }}>
+            <Text style={{ color: '#fff', fontSize: 10, fontFamily: 'monospace' }}>
+              {`id: ${imageId ?? 'none'}\n`}
+              {`imageRect: ${imageRect ? `${Math.round(imageRect.x)},${Math.round(imageRect.y)} ${Math.round(imageRect.width)}x${Math.round(imageRect.height)}` : 'null'}\n`}
+              {`naturalDims: ${naturalDims ? `${naturalDims.width}x${naturalDims.height}` : 'null'}\n`}
+              {`faces: ${faces.length}`}
+            </Text>
+          </View>
+        )}
       </View>
     </GestureDetector>
   );
@@ -509,11 +521,17 @@ export function FullScreenImage({
     if (!visible) return;
     const item = effectiveMedia[currentImageIndex];
     if (!item || item.kind !== 'image') return;
-    const imageId = item.id ?? imageIds?.[currentImageIndex];
-    if (!imageId) return;
+    const imageId = item.id
+      ?? imageIds?.[currentImageIndex]
+      ?? (effectiveMedia[currentImageIndex]?.kind === 'image' ? (effectiveMedia[currentImageIndex] as any).id : undefined);
+    if (!imageId) {
+      console.warn('[FullScreenImage] No imageId for index', currentImageIndex, '— face query skipped. item.id:', item.id, 'imageIds prop:', imageIds);
+      return;
+    }
 
-    // Already cached
-    if (facesPerImage.has(imageId)) return;
+    // Only skip fetch if we already have real data (non-empty array)
+    const cached = facesPerImage.get(imageId);
+    if (cached && cached.length > 0) return;
 
     console.log('[FullScreenImage] Fetching faces for imageId:', imageId);
     (async () => {
@@ -600,20 +618,49 @@ export function FullScreenImage({
     const resolvedUrl = loadedImages[currentImageIndex];
     if (!resolvedUrl) return;
 
-    RNImage.getSize(
-      resolvedUrl,
-      (width, height) => {
-        console.log('[FullScreenImage] Natural dims for index', currentImageIndex, ':', width, 'x', height);
-        setNaturalDimsPerIndex(prev => {
-          const next = new Map(prev);
-          next.set(currentImageIndex, { width, height });
-          return next;
-        });
-      },
-      (err) => {
-        console.warn('[FullScreenImage] getSize error (non-fatal):', err);
+    // Prefer stored original dimensions from DB (getSize on a CDN variant URL returns variant dims)
+    const dimItem = effectiveMedia[currentImageIndex];
+    const dimImageId = (dimItem?.kind === 'image' ? dimItem.id : undefined)
+      ?? imageIds?.[currentImageIndex];
+
+    (async () => {
+      if (dimImageId) {
+        try {
+          const { data: imgRow } = await supabase
+            .from('recall_images')
+            .select('width, height')
+            .eq('id', dimImageId)
+            .maybeSingle();
+          if (imgRow?.width && imgRow?.height) {
+            console.log('[FullScreenImage] Using DB dims for index', currentImageIndex, ':', imgRow.width, 'x', imgRow.height);
+            setNaturalDimsPerIndex(prev => {
+              const next = new Map(prev);
+              next.set(currentImageIndex, { width: imgRow.width, height: imgRow.height });
+              return next;
+            });
+            return;
+          }
+        } catch (e) {
+          console.warn('[FullScreenImage] DB dims fetch error (non-fatal):', e);
+        }
       }
-    );
+
+      // Fall back to getSize
+      RNImage.getSize(
+        resolvedUrl,
+        (width, height) => {
+          console.log('[FullScreenImage] Natural dims (getSize) for index', currentImageIndex, ':', width, 'x', height);
+          setNaturalDimsPerIndex(prev => {
+            const next = new Map(prev);
+            next.set(currentImageIndex, { width, height });
+            return next;
+          });
+        },
+        (err) => {
+          console.warn('[FullScreenImage] getSize error (non-fatal):', err);
+        }
+      );
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, currentImageIndex, loadedImages]);
 
@@ -1055,6 +1102,7 @@ export function FullScreenImage({
                       naturalDims={index === currentImageIndex ? currentNaturalDims : null}
                       showControls={showControls}
                       onFaceTap={handleFaceTap}
+                      imageId={item.kind === 'image' ? (item.id ?? imageIds?.[index]) : undefined}
                     />
                   );
                 })}
