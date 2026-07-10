@@ -8,7 +8,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/images/newly.png",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#FFFFFF"
     },
@@ -37,7 +37,7 @@
       "package": "com.b3nny1nc.recall"
     },
     "web": {
-      "favicon": "./assets/images/newly.png",
+      "favicon": "./assets/icon.png",
       "bundler": "metro"
     },
     "plugins": [
