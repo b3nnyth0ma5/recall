@@ -234,7 +234,6 @@ export async function uploadImageToDatabase(
                     console.log('[uploadImageToDatabase] Running match_face_to_person RPC for face:', insertedFace.id);
                     const { data: matchResult, error: matchError } = await supabase.rpc('match_face_to_person', {
                       p_embedding: vectorString,
-                      p_user_id: userId,
                       p_threshold: 0.75,
                     });
                     if (matchError) {
