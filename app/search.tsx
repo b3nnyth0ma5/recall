@@ -114,7 +114,7 @@ export default function SearchScreen() {
   const [showHistory, setShowHistory] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [isAnswerExpanded, setIsAnswerExpanded] = useState(false);
+  const [isAnswerExpanded, setIsAnswerExpanded] = useState(true);
   // Initialize to true so the very first render shows skeletons, not the zero state
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
@@ -197,6 +197,7 @@ export default function SearchScreen() {
 
     await new Promise<void>((resolve) => {
       const xhr = new XMLHttpRequest();
+      xhrRef.current = xhr;
       xhr.open('POST', 'https://cesmsdnblkdjkskmiqib.supabase.co/functions/v1/search-recalls-v3', true);
       xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
       xhr.setRequestHeader('Content-Type', 'application/json');
@@ -207,16 +208,17 @@ export default function SearchScreen() {
       let batchTimer: ReturnType<typeof setTimeout> | null = null;
       let firstTokenFlushed = false;
       let resolved = false;
+      let doneReceived = false;
 
       const flushBatch = () => {
         if (tokenBatch) {
           const batch = tokenBatch;
           tokenBatch = '';
-          setStreamingAnswer(prev => prev + batch);
+          if (mountedRef.current) setStreamingAnswer(prev => prev + batch);
           // Collapse search steps on first token
           if (!firstTokenFlushed) {
             firstTokenFlushed = true;
-            setIsProgressExpanded(false);
+            if (mountedRef.current) setIsProgressExpanded(false);
           }
         }
         batchTimer = null;
@@ -225,6 +227,7 @@ export default function SearchScreen() {
       const cleanup = () => {
         if (batchTimer) clearTimeout(batchTimer);
         flushBatch();
+        xhrRef.current = null;
         if (!resolved) {
           resolved = true;
           resolve();
@@ -234,19 +237,22 @@ export default function SearchScreen() {
       const processDoneLine = (data: string, caller: string) => {
         if (batchTimer) clearTimeout(batchTimer);
         flushBatch();
+        doneReceived = true;
         try {
           const payload = JSON.parse(data.slice(7)); // strip '[DONE] '
           console.log('[Search] streamCloudAnswer: DONE received (' + caller + '), confidence:', payload.confidence, 'sources:', payload.sources);
-          patchNotesForOnDeviceAnswer(
-            payload.sources ?? [],
-            searchResults,
-            payload.answer ?? '',
-            payload.confidence ?? 0,
-          );
+          if (mountedRef.current) {
+            patchNotesForOnDeviceAnswer(
+              payload.sources ?? [],
+              searchResults,
+              payload.answer ?? '',
+              payload.confidence ?? 0,
+            );
+          }
         } catch (e) {
           console.error('[Search] streamCloudAnswer: failed to parse DONE payload (' + caller + ')', e);
         }
-        setIsStreamingComplete(true);
+        if (mountedRef.current) setIsStreamingComplete(true);
       };
 
       xhr.onprogress = () => {
@@ -296,6 +302,12 @@ export default function SearchScreen() {
             }
           }
         }
+        // If no [DONE] SSE line was found, the response is plain JSON (no-matches path).
+        // Mark streaming complete so the answer card exits the dots state.
+        if (!doneReceived) {
+          console.log('[Search] streamCloudAnswer: no SSE [DONE] received — treating as no-answer response');
+          if (mountedRef.current) setIsStreamingComplete(true);
+        }
         cleanup();
       };
 
@@ -309,6 +321,7 @@ export default function SearchScreen() {
         ...(preExtractedEntities ? { pre_extracted_entities: preExtractedEntities } : {}),
       }));
     });
+    xhrRef.current = null;
   }, [patchNotesForOnDeviceAnswer]);
 
   const CATEGORY_PAGE_SIZE = 10;
@@ -323,6 +336,19 @@ export default function SearchScreen() {
   const hasAutoSearchedRef = useRef(false);
   // Tracks previous query to avoid loops in the empty-query effect
   const prevQueryRef = useRef('');
+  const mountedRef = useRef(true);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (xhrRef.current) {
+        xhrRef.current.abort();
+        xhrRef.current = null;
+      }
+    };
+  }, []);
 
   const shouldShowSearchTime = user?.email === 'benny_thomas21@yahoo.co.in';
 
@@ -466,7 +492,7 @@ export default function SearchScreen() {
       setSearchQuery(decodedQuery);
       setShowHistory(false);
       setHasSearched(true);
-      setIsAnswerExpanded(false);
+      setIsAnswerExpanded(true);
       setIsSearching(true);
       setIsProgressExpanded(true);
       
@@ -652,7 +678,7 @@ export default function SearchScreen() {
 
     setShowHistory(false);
     setHasSearched(true);
-    setIsAnswerExpanded(false);
+    setIsAnswerExpanded(true);
     setIsSearching(true);
     setIsProgressExpanded(true);
     setStreamingAnswer('');
@@ -779,7 +805,7 @@ export default function SearchScreen() {
     setSearchQuery(item.search_text);
     setShowHistory(false);
     setHasSearched(true);
-    setIsAnswerExpanded(false);
+    setIsAnswerExpanded(true);
     setIsSearching(true);
     setIsProgressExpanded(true);
     setStreamingAnswer('');
@@ -937,7 +963,7 @@ export default function SearchScreen() {
     setSearchQuery('');
     setShowHistory(true);
     setHasSearched(false);
-    setIsAnswerExpanded(false);
+    setIsAnswerExpanded(true);
     setIsSearching(false);
     setIsProgressExpanded(true);
     setAttachedImages([]);
@@ -962,7 +988,7 @@ export default function SearchScreen() {
     setSearchQuery('');
     setShowHistory(true);
     setHasSearched(false);
-    setIsAnswerExpanded(false);
+    setIsAnswerExpanded(true);
     setIsSearching(false);
     setIsProgressExpanded(true);
     setSelectedPill(null);
@@ -1514,7 +1540,7 @@ export default function SearchScreen() {
                 )}
 
                 {/* Show answer card as soon as search starts */}
-                {(isSearching || !!streamingAnswer || !!searchAnswer) ? (
+                {(isSearching || !!streamingAnswer || !!searchAnswer) && !(isStreamingComplete && !streamingAnswer && !searchAnswer) ? (
                   <Animated.View entering={FadeIn.duration(300)} style={styles.answerContainer}>
                     <View style={styles.answerHeader}>
                       <View style={styles.answerHeaderLeft}>
