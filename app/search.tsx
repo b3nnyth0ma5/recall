@@ -804,7 +804,7 @@ export default function SearchScreen() {
       }
     }
 
-    setIsSearching(false);
+    if (mountedRef.current) setIsSearching(false);
     setTimeout(() => {
       loadSearchHistory();
     }, 500);

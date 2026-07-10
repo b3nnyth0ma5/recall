@@ -3,6 +3,16 @@ import NaturalLanguage
 import Foundation
 import Vision
 
+public struct FaceDetectionResult: Record {
+  @Field public var faceUuid: String = ""
+  @Field public var bboxX: Double = 0
+  @Field public var bboxY: Double = 0
+  @Field public var bboxW: Double = 0
+  @Field public var bboxH: Double = 0
+  @Field public var roll: Double = 0
+  @Field public var yaw: Double = 0
+}
+
 public class EntityExtractionModule: Module {
   public func definition() -> ModuleDefinition {
     Name("EntityExtractionModule")
@@ -222,7 +232,7 @@ public class EntityExtractionModule: Module {
       return resultText
     }
 
-    AsyncFunction("detectFaces") { (imageUri: String) async throws -> [[String: Any]] in
+    AsyncFunction("detectFaces") { (imageUri: String) async throws -> [FaceDetectionResult] in
       guard let url = URL(string: imageUri) else {
         print("[EntityExtraction] detectFaces: invalid URL: \(imageUri)")
         return []
@@ -248,7 +258,7 @@ public class EntityExtractionModule: Module {
         return []
       }
 
-      var faces: [[String: Any]] = []
+      var faces: [FaceDetectionResult] = []
 
       let request = VNDetectFaceRectanglesRequest { req, err in
         if let err = err {
@@ -256,17 +266,17 @@ public class EntityExtractionModule: Module {
           return
         }
         let observations = req.results as? [VNFaceObservation] ?? []
-        faces = observations.map { obs -> [String: Any] in
+        faces = observations.map { obs -> FaceDetectionResult in
           let bbox = obs.boundingBox
-          return [
-            "faceUuid": obs.uuid.uuidString,
-            "bboxX": Double(bbox.origin.x),
-            "bboxY": Double(1.0 - bbox.origin.y - bbox.size.height),
-            "bboxW": Double(bbox.size.width),
-            "bboxH": Double(bbox.size.height),
-            "roll": obs.roll?.doubleValue ?? 0.0,
-            "yaw": obs.yaw?.doubleValue ?? 0.0,
-          ]
+          var result = FaceDetectionResult()
+          result.faceUuid = obs.uuid.uuidString
+          result.bboxX = Double(bbox.origin.x)
+          result.bboxY = Double(1.0 - bbox.origin.y - bbox.size.height)
+          result.bboxW = Double(bbox.size.width)
+          result.bboxH = Double(bbox.size.height)
+          result.roll = obs.roll?.doubleValue ?? 0.0
+          result.yaw = obs.yaw?.doubleValue ?? 0.0
+          return result
         }
       }
 
@@ -282,7 +292,7 @@ public class EntityExtractionModule: Module {
       return faces
     }
 
-    AsyncFunction("extractFaceEmbedding") { (imageUri: String, bboxX: Double, bboxY: Double, bboxW: Double, bboxH: Double) async throws -> [Float] in
+    AsyncFunction("extractFaceEmbedding") { (imageUri: String, bboxX: Double, bboxY: Double, bboxW: Double, bboxH: Double) async throws -> [Double] in
       guard let url = URL(string: imageUri) else {
         print("[EntityExtraction] extractFaceEmbedding: invalid URL: \(imageUri)")
         return []
@@ -308,7 +318,7 @@ public class EntityExtractionModule: Module {
         return []
       }
 
-      var descriptor = [Float]()
+      var descriptor = [Double]()
 
       let request = VNDetectFaceLandmarksRequest { req, err in
         if let err = err {
@@ -371,9 +381,9 @@ public class EntityExtractionModule: Module {
           return (sx / n, sy / n)
         }
 
-        func dist(_ a: (x: Float, y: Float), _ b: (x: Float, y: Float)) -> Float {
+        func dist(_ a: (x: Float, y: Float), _ b: (x: Float, y: Float)) -> Double {
           let dx = a.x - b.x; let dy = a.y - b.y
-          return sqrt(dx*dx + dy*dy)
+          return Double(sqrt(dx*dx + dy*dy))
         }
 
         let anchors: [(x: Float, y: Float)] = [
@@ -395,7 +405,7 @@ public class EntityExtractionModule: Module {
           rawPoints.count > 67 ? rawPoints[67] : (0,0),
         ]
 
-        var result = [Float]()
+        var result = [Double]()
         result.reserveCapacity(128)
         for i in 0..<anchors.count {
           for j in (i+1)..<anchors.count {
@@ -405,7 +415,7 @@ public class EntityExtractionModule: Module {
         while result.count < 128 { result.append(0) }
         if result.count > 128 { result = Array(result.prefix(128)) }
 
-        var sumSq: Float = 0
+        var sumSq: Double = 0
         for v in result { sumSq += v * v }
         let norm = sqrt(sumSq)
         if norm > 1e-6 {

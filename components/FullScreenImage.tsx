@@ -597,7 +597,7 @@ export function FullScreenImage({
     if (!item || item.kind !== 'image') return;
     if (naturalDimsPerIndex.has(currentImageIndex)) return;
 
-    const resolvedUrl = loadedImages[currentImageIndex] ?? (item.kind === 'image' ? item.url : '');
+    const resolvedUrl = loadedImages[currentImageIndex];
     if (!resolvedUrl) return;
 
     RNImage.getSize(
@@ -1046,7 +1046,7 @@ export function FullScreenImage({
                   return (
                     <ZoomableImage
                       key={`fullscreen-${index}`}
-                      imageUrl={item.url}
+                      imageUrl={loadedImages[index] ?? item.url}
                       index={index}
                       isLoaded={!!imageLoadStates[index]}
                       onLoad={handleImageLoad}
