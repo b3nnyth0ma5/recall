@@ -4,6 +4,16 @@ import Foundation
 import Vision
 
 public struct FaceDetectionResult: Record {
+  public init() {}
+  public init(faceUuid: String, bboxX: Double, bboxY: Double, bboxW: Double, bboxH: Double, roll: Double, yaw: Double) {
+    self.faceUuid = faceUuid
+    self.bboxX = bboxX
+    self.bboxY = bboxY
+    self.bboxW = bboxW
+    self.bboxH = bboxH
+    self.roll = roll
+    self.yaw = yaw
+  }
   @Field public var faceUuid: String = ""
   @Field public var bboxX: Double = 0
   @Field public var bboxY: Double = 0
@@ -268,15 +278,15 @@ public class EntityExtractionModule: Module {
         let observations = req.results as? [VNFaceObservation] ?? []
         faces = observations.map { obs -> FaceDetectionResult in
           let bbox = obs.boundingBox
-          var result = FaceDetectionResult()
-          result.faceUuid = obs.uuid.uuidString
-          result.bboxX = Double(bbox.origin.x)
-          result.bboxY = Double(1.0 - bbox.origin.y - bbox.size.height)
-          result.bboxW = Double(bbox.size.width)
-          result.bboxH = Double(bbox.size.height)
-          result.roll = obs.roll?.doubleValue ?? 0.0
-          result.yaw = obs.yaw?.doubleValue ?? 0.0
-          return result
+          return FaceDetectionResult(
+            faceUuid: obs.uuid.uuidString,
+            bboxX: Double(bbox.origin.x),
+            bboxY: Double(1.0 - bbox.origin.y - bbox.size.height),
+            bboxW: Double(bbox.size.width),
+            bboxH: Double(bbox.size.height),
+            roll: obs.roll?.doubleValue ?? 0.0,
+            yaw: obs.yaw?.doubleValue ?? 0.0
+          )
         }
       }
 
