@@ -1597,29 +1597,32 @@ export default function SearchScreen() {
                       </View>
                     </View>
                     <View style={styles.answerContent}>
-                      {isStreamingComplete ? (
-                        <MarkdownAnswer
-                          content={isAnswerExpanded ? (searchAnswer ?? '') : getAnswerPreview(searchAnswer ?? '')}
-                          recallReferences={recallReferences}
-                          onRecallPress={handleRecallLinkPress}
-                        />
-                      ) : streamingAnswer ? (
-                        <Text style={styles.answerText}>{streamingAnswer}</Text>
-                      ) : (
-                        <View>
-                          <TypingDots />
-                          {showThinkingText && (
-                            <Animated.Text
-                              entering={FadeIn.duration(400)}
-                              style={styles.thinkingText}
-                            >
-                              Recall needs a bit longer to find an answer for this...
-                            </Animated.Text>
-                          )}
-                        </View>
-                      )}
+                      {(() => {
+                        const displayAnswer = searchAnswer || streamingAnswer;
+                        return isStreamingComplete ? (
+                          <MarkdownAnswer
+                            content={isAnswerExpanded ? (displayAnswer ?? '') : getAnswerPreview(displayAnswer ?? '')}
+                            recallReferences={recallReferences}
+                            onRecallPress={handleRecallLinkPress}
+                          />
+                        ) : streamingAnswer ? (
+                          <Text style={styles.answerText}>{streamingAnswer}</Text>
+                        ) : (
+                          <View>
+                            <TypingDots />
+                            {showThinkingText && (
+                              <Animated.Text
+                                entering={FadeIn.duration(400)}
+                                style={styles.thinkingText}
+                              >
+                                Recall needs a bit longer to find an answer for this...
+                              </Animated.Text>
+                            )}
+                          </View>
+                        );
+                      })()}
                     </View>
-                    {isStreamingComplete && shouldShowAnswerToggle(searchAnswer ?? '') && (
+                    {isStreamingComplete && shouldShowAnswerToggle((searchAnswer || streamingAnswer) ?? '') && (
                       <Pressable
                         onPress={() => {
                           console.log('[SearchScreen] Answer toggle pressed, isAnswerExpanded:', !isAnswerExpanded);
