@@ -14,7 +14,25 @@ export type FoundationModelsStatus =
   | 'model_not_ready'
   | 'unavailable';
 
-let _module: { extractEntities: (query: string) => Promise<ExtractedEntities> } | null = null;
+export interface FaceDetection {
+  faceUuid: string;
+  bboxX: number;
+  bboxY: number;
+  bboxW: number;
+  bboxH: number;
+  roll: number;
+  yaw: number;
+}
+
+interface EntityExtractionModuleType {
+  extractEntities: (query: string) => Promise<ExtractedEntities>;
+  extractPeopleFromText: (text: string) => Promise<string[]>;
+  extractTextFromImage: (imageUri: string) => Promise<string>;
+  detectFaces: (imageUri: string) => Promise<FaceDetection[]>;
+  extractFaceEmbedding: (imageUri: string, bboxX: number, bboxY: number, bboxW: number, bboxH: number) => Promise<number[]>;
+}
+
+let _module: EntityExtractionModuleType | null = null;
 
 let _fmModule: {
   checkAvailability: () => Promise<string>;
@@ -70,9 +88,9 @@ export async function extractPeopleFromTextOnDevice(text: string): Promise<strin
     return null;
   }
   try {
-    const result = await (mod as any).extractPeopleFromText(text);
+    const result = await mod.extractPeopleFromText(text);
     console.log('[EntityExtraction] extractPeopleFromText result:', result);
-    return result as string[];
+    return result;
   } catch (e) {
     console.error('[EntityExtraction] extractPeopleFromText error:', e);
     return null;
@@ -87,23 +105,13 @@ export async function extractTextFromImageOnDevice(imageUri: string): Promise<st
     return null;
   }
   try {
-    const result = await (mod as any).extractTextFromImage(imageUri);
-    console.log('[EntityExtraction] extractTextFromImage result length:', (result as string)?.length ?? 0);
-    return result as string;
+    const result = await mod.extractTextFromImage(imageUri);
+    console.log('[EntityExtraction] extractTextFromImage result length:', result?.length ?? 0);
+    return result;
   } catch (e) {
     console.error('[EntityExtraction] extractTextFromImage error:', e);
     return null;
   }
-}
-
-export interface FaceDetection {
-  faceUuid: string;
-  bboxX: number;
-  bboxY: number;
-  bboxW: number;
-  bboxH: number;
-  roll: number;
-  yaw: number;
 }
 
 export async function detectFacesOnDevice(imageUri: string): Promise<FaceDetection[] | null> {
@@ -114,9 +122,9 @@ export async function detectFacesOnDevice(imageUri: string): Promise<FaceDetecti
     return null;
   }
   try {
-    const result = await (mod as any).detectFaces(imageUri);
-    console.log('[EntityExtraction] detectFaces result count:', (result as FaceDetection[])?.length ?? 0);
-    return result as FaceDetection[];
+    const result = await mod.detectFaces(imageUri);
+    console.log('[EntityExtraction] detectFaces result count:', result?.length ?? 0);
+    return result;
   } catch (e) {
     console.error('[EntityExtraction] detectFaces error:', e);
     return null;
@@ -137,8 +145,8 @@ export async function extractFaceEmbeddingOnDevice(
     return null;
   }
   try {
-    const result = await (mod as any).extractFaceEmbedding(imageUri, bboxX, bboxY, bboxW, bboxH);
-    const arr = result as number[];
+    const result = await mod.extractFaceEmbedding(imageUri, bboxX, bboxY, bboxW, bboxH);
+    const arr = result;
     if (!arr || arr.length === 0) {
       console.log('[EntityExtraction] extractFaceEmbedding returned empty array');
       return null;

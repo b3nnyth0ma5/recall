@@ -31,7 +31,7 @@ import { NoteCard } from '@/components/NoteCard';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { SearchHistory } from '@/types/Note';
-import Animated, { FadeIn, FadeOut, SlideInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, SlideInDown, useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 import { useAuth } from '@/contexts/AuthContext';
@@ -49,6 +49,40 @@ import { SkeletonLoader } from '@/components/SkeletonLoader';
 
 // Pill widths vary so the skeleton row doesn't look like a uniform stripe
 const PILL_SKELETON_WIDTHS = [80, 60, 110, 120, 70, 70, 100, 100, 80, 95];
+
+function TypingDots() {
+  const dot1 = useSharedValue(0.3);
+  const dot2 = useSharedValue(0.3);
+  const dot3 = useSharedValue(0.3);
+
+  useEffect(() => {
+    const animate = (sv: any, delay: number) => {
+      sv.value = withDelay(delay, withRepeat(
+        withSequence(
+          withTiming(1, { duration: 400 }),
+          withTiming(0.3, { duration: 400 }),
+        ),
+        -1,
+        false,
+      ));
+    };
+    animate(dot1, 0);
+    animate(dot2, 160);
+    animate(dot3, 320);
+  }, []);
+
+  const s1 = useAnimatedStyle(() => ({ opacity: dot1.value }));
+  const s2 = useAnimatedStyle(() => ({ opacity: dot2.value }));
+  const s3 = useAnimatedStyle(() => ({ opacity: dot3.value }));
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8 }}>
+      <Animated.View style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.textSecondary }, s1]} />
+      <Animated.View style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.textSecondary }, s2]} />
+      <Animated.View style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.textSecondary }, s3]} />
+    </View>
+  );
+}
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -96,6 +130,7 @@ export default function SearchScreen() {
   const [onDeviceAnswerMs, setOnDeviceAnswerMs] = useState<number | null>(null);
   const [streamingAnswer, setStreamingAnswer] = useState('');
   const [isStreamingComplete, setIsStreamingComplete] = useState(false);
+  const [showThinkingText, setShowThinkingText] = useState(false);
 
   // Reads the toggle directly from AsyncStorage at call time to avoid the
   // race condition where fastSearchMode state hasn't resolved yet.
@@ -233,7 +268,7 @@ export default function SearchScreen() {
           // Accumulate token into batch
           tokenBatch += data;
           if (!batchTimer) {
-            batchTimer = setTimeout(flushBatch, 50);
+            batchTimer = setTimeout(flushBatch, 120);
           }
         }
       };
@@ -518,6 +553,15 @@ export default function SearchScreen() {
     }
   }, [searchStage, isSearching, hasSearched]);
 
+  useEffect(() => {
+    if (isSearching && !streamingAnswer) {
+      const timer = setTimeout(() => setShowThinkingText(true), 5000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowThinkingText(false);
+    }
+  }, [isSearching, streamingAnswer]);
+
   const pickFromLibrary = useCallback(async () => {
     setShowAttachFABs(false);
     try {
@@ -613,6 +657,7 @@ export default function SearchScreen() {
     setIsProgressExpanded(true);
     setStreamingAnswer('');
     setIsStreamingComplete(false);
+    setShowThinkingText(false);
 
     // Only use images that have finished optimising
     const readyImages = attachedImages.filter(img => !img.isOptimising);
@@ -739,6 +784,7 @@ export default function SearchScreen() {
     setIsProgressExpanded(true);
     setStreamingAnswer('');
     setIsStreamingComplete(false);
+    setShowThinkingText(false);
 
     let searchUploads: { text: string; explanation: string }[] | undefined;
 
@@ -902,6 +948,7 @@ export default function SearchScreen() {
     setOnDeviceAnswerMs(null);
     setStreamingAnswer('');
     setIsStreamingComplete(false);
+    setShowThinkingText(false);
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -923,6 +970,7 @@ export default function SearchScreen() {
     setOnDeviceAnswerMs(null);
     setStreamingAnswer('');
     setIsStreamingComplete(false);
+    setShowThinkingText(false);
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -1448,23 +1496,25 @@ export default function SearchScreen() {
                     <Text style={styles.ocrProgressText}>{ocrProgress}</Text>
                   </Animated.View>
                 )}
-                <SearchProgressIndicator
-                  stage={searchStage}
-                  locationName={searchLocationName}
-                  personNames={searchPersonNames}
-                  extractedKeywords={searchExtractedKeywords}
-                  isExpanded={isProgressExpanded}
-                  onToggle={() => setIsProgressExpanded(!isProgressExpanded)}
-                  locationInfo={locationInfo}
-                  searchTimings={searchTimings}
-                  shouldShowTimings={shouldShowSearchTime}
-                  onDeviceAnswerMs={onDeviceAnswerMs}
-                  fastModeActive={false}
-                  onDeviceUsed={onDeviceAnswerMs != null}
-                />
+                {false && (
+                  <SearchProgressIndicator
+                    stage={searchStage}
+                    locationName={searchLocationName}
+                    personNames={searchPersonNames}
+                    extractedKeywords={searchExtractedKeywords}
+                    isExpanded={isProgressExpanded}
+                    onToggle={() => setIsProgressExpanded(!isProgressExpanded)}
+                    locationInfo={locationInfo}
+                    searchTimings={searchTimings}
+                    shouldShowTimings={shouldShowSearchTime}
+                    onDeviceAnswerMs={onDeviceAnswerMs}
+                    fastModeActive={false}
+                    onDeviceUsed={onDeviceAnswerMs != null}
+                  />
+                )}
 
-                {/* Show answer card as soon as streaming starts, even while still searching */}
-                {(streamingAnswer || searchAnswer) ? (
+                {/* Show answer card as soon as search starts */}
+                {(isSearching || !!streamingAnswer || !!searchAnswer) ? (
                   <Animated.View entering={FadeIn.duration(300)} style={styles.answerContainer}>
                     <View style={styles.answerHeader}>
                       <View style={styles.answerHeaderLeft}>
@@ -1496,8 +1546,20 @@ export default function SearchScreen() {
                           recallReferences={recallReferences}
                           onRecallPress={handleRecallLinkPress}
                         />
-                      ) : (
+                      ) : streamingAnswer ? (
                         <Text style={styles.answerText}>{streamingAnswer}</Text>
+                      ) : (
+                        <View>
+                          <TypingDots />
+                          {showThinkingText && (
+                            <Animated.Text
+                              entering={FadeIn.duration(400)}
+                              style={styles.thinkingText}
+                            >
+                              Recall needs a bit longer to find an answer for this...
+                            </Animated.Text>
+                          )}
+                        </View>
                       )}
                     </View>
                     {isStreamingComplete && shouldShowAnswerToggle(searchAnswer ?? '') && (
@@ -1515,8 +1577,6 @@ export default function SearchScreen() {
                       </Pressable>
                     )}
                   </Animated.View>
-                ) : isSearching ? (
-                  <View style={styles.searchingPlaceholder} />
                 ) : (
                   <React.Fragment>
                     {filteredNotes.length === 0 && !searchAnswer && searchStage === 'complete' && (
@@ -2067,5 +2127,11 @@ const styles = StyleSheet.create({
   categoryLoadingText: {
     fontSize: 14,
     color: colors.textSecondary,
+  },
+  thinkingText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
 });
