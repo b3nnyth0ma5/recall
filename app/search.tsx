@@ -1574,12 +1574,12 @@ export default function SearchScreen() {
                 {/* Show answer card as soon as search starts */}
                 {(isSearching || !!streamingAnswer || !!searchAnswer) && !(isStreamingComplete && !streamingAnswer && !searchAnswer) ? (
                   <Animated.View entering={FadeIn.duration(300)} style={styles.answerContainer}>
-                    <View style={styles.answerHeader}>
+                    <View style={[styles.answerHeader, { overflow: 'visible' }]}>
                       <View style={styles.answerHeaderLeft}>
                         <IconSymbol name="lightbulb.fill" size={20} color={colors.primary} />
                         <Text style={styles.answerTitle}>Answer</Text>
                       </View>
-                      <View style={styles.answerHeaderRight}>
+                      <View style={[styles.answerHeaderRight, { overflow: 'visible' }]}>
                         {isStreamingComplete && searchConfidence !== undefined && (
                           <View style={styles.confidenceBadge}>
                             <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
@@ -1589,8 +1589,7 @@ export default function SearchScreen() {
                         {isStreamingComplete && (
                           <Pressable
                             onPress={handleShareAnswer}
-                            style={styles.shareAnswerButton}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={[styles.shareAnswerButton, { overflow: 'visible' }]}
                           >
                             <ShareIcon size={18} color={colors.primary} strokeWidth={2.2} />
                           </Pressable>
@@ -1980,7 +1979,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   shareAnswerButton: {
-    padding: 10,
+    padding: 12,
     borderRadius: 20,
     backgroundColor: 'rgba(255, 107, 122, 0.15)',
     justifyContent: 'center',

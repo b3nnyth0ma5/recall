@@ -130,6 +130,8 @@ function ZoomableImage({
   imageId,
   screenHeight,
 }: ZoomableImageProps) {
+  const [renderedImageLayout, setRenderedImageLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -234,10 +236,12 @@ function ZoomableImage({
     ],
   }));
 
-  // Compute letterbox rect for face overlays
+  // Compute letterbox rect for face overlays — fall back to rendered layout if naturalDims not yet available
   const imageRect = naturalDims
     ? computeImageRect(naturalDims.width, naturalDims.height, SCREEN_WIDTH, screenHeight)
-    : null;
+    : renderedImageLayout
+      ? { x: renderedImageLayout.x, y: renderedImageLayout.y, width: renderedImageLayout.width, height: renderedImageLayout.height }
+      : null;
 
   const pulseAnimStyle = useAnimatedStyle(() => ({
     opacity: pulseOpacity.value,
@@ -267,7 +271,10 @@ function ZoomableImage({
           </View>
         )}
         {imageUrl && (
-          <Animated.View style={[styles.image, animatedImageStyle]}>
+          <Animated.View
+            style={[styles.image, animatedImageStyle]}
+            onLayout={(e) => setRenderedImageLayout(e.nativeEvent.layout)}
+          >
             <Animated.Image
               source={{ uri: imageUrl }}
               style={StyleSheet.absoluteFill}
@@ -527,9 +534,7 @@ export function FullScreenImage({
     if (!visible) return;
     const item = effectiveMedia[currentImageIndex];
     if (!item || item.kind !== 'image') return;
-    const imageId = item.id
-      ?? imageIds?.[currentImageIndex]
-      ?? (effectiveMedia[currentImageIndex]?.kind === 'image' ? (effectiveMedia[currentImageIndex] as any).id : undefined);
+    const imageId = item.id ?? imageIds?.[currentImageIndex];
     if (!imageId) {
       console.warn('[FullScreenImage] No imageId for index', currentImageIndex, '— face query skipped. item.id:', item.id, 'imageIds prop:', imageIds);
       return;
@@ -651,7 +656,8 @@ export function FullScreenImage({
         }
       }
 
-      // Fall back to getSize
+      // Fall back to getSize — try CDN URL first, then item.url, then use a safe fallback
+      const itemUrl = (item?.kind === 'image' ? item.url : undefined) ?? '';
       RNImage.getSize(
         resolvedUrl,
         (width, height) => {
@@ -662,8 +668,36 @@ export function FullScreenImage({
             return next;
           });
         },
-        (err) => {
-          console.warn('[FullScreenImage] getSize error (non-fatal):', err);
+        (_err) => {
+          console.warn('[FullScreenImage] getSize failed on CDN URL, trying item.url');
+          if (itemUrl && itemUrl !== resolvedUrl) {
+            RNImage.getSize(
+              itemUrl,
+              (width, height) => {
+                console.log('[FullScreenImage] Natural dims (getSize fallback) for index', currentImageIndex, ':', width, 'x', height);
+                setNaturalDimsPerIndex(prev => {
+                  const next = new Map(prev);
+                  next.set(currentImageIndex, { width, height });
+                  return next;
+                });
+              },
+              () => {
+                console.warn('[FullScreenImage] getSize failed on both URLs, using portrait fallback dims');
+                setNaturalDimsPerIndex(prev => {
+                  const next = new Map(prev);
+                  next.set(currentImageIndex, { width: SCREEN_WIDTH, height: Math.round(SCREEN_WIDTH * 1.33) });
+                  return next;
+                });
+              }
+            );
+          } else {
+            console.warn('[FullScreenImage] getSize failed, using portrait fallback dims');
+            setNaturalDimsPerIndex(prev => {
+              const next = new Map(prev);
+              next.set(currentImageIndex, { width: SCREEN_WIDTH, height: Math.round(SCREEN_WIDTH * 1.33) });
+              return next;
+            });
+          }
         }
       );
     })();
@@ -971,9 +1005,7 @@ export function FullScreenImage({
   const currentFaces: FaceRow[] = (() => {
     const item = effectiveMedia[currentImageIndex];
     if (!item || item.kind !== 'image') return [];
-    const imageId = item.id
-      ?? imageIds?.[currentImageIndex]
-      ?? (item.kind === 'image' ? (item as any).id : undefined);
+    const imageId = item.id ?? imageIds?.[currentImageIndex];
     if (!imageId) return [];
     return facesPerImage.get(imageId) ?? [];
   })();

@@ -29,7 +29,9 @@ interface EntityExtractionModuleType {
   extractPeopleFromText: (text: string) => Promise<string[]>;
   extractTextFromImage: (imageUri: string) => Promise<string>;
   detectFaces: (imageUri: string) => Promise<FaceDetection[]>;
+  detectFacesFromData: (base64ImageData: string) => Promise<FaceDetection[]>;
   extractFaceEmbedding: (imageUri: string, bboxX: number, bboxY: number, bboxW: number, bboxH: number) => Promise<number[]>;
+  extractFaceEmbeddingFromData: (base64ImageData: string, bboxX: number, bboxY: number, bboxW: number, bboxH: number) => Promise<number[]>;
 }
 
 let _module: EntityExtractionModuleType | null = null;
@@ -156,6 +158,50 @@ export async function extractFaceEmbeddingOnDevice(
   } catch (e) {
     console.error('[EntityExtraction] extractFaceEmbedding error:', e);
     return null;
+  }
+}
+
+export async function detectFacesFromData(base64ImageData: string): Promise<FaceDetection[]> {
+  console.log('[EntityExtraction] detectFacesFromData called, base64 length:', base64ImageData.length);
+  const mod = getModule();
+  if (!mod) {
+    console.log('[EntityExtraction] Native module not available, returning []');
+    return [];
+  }
+  try {
+    const result = await mod.detectFacesFromData(base64ImageData);
+    console.log('[EntityExtraction] detectFacesFromData result count:', result?.length ?? 0);
+    return result ?? [];
+  } catch (e) {
+    console.error('[EntityExtraction] detectFacesFromData error:', e);
+    return [];
+  }
+}
+
+export async function extractFaceEmbeddingFromData(
+  base64ImageData: string,
+  bboxX: number,
+  bboxY: number,
+  bboxW: number,
+  bboxH: number,
+): Promise<number[]> {
+  console.log('[EntityExtraction] extractFaceEmbeddingFromData called', { bboxX, bboxY, bboxW, bboxH });
+  const mod = getModule();
+  if (!mod) {
+    console.log('[EntityExtraction] Native module not available, returning []');
+    return [];
+  }
+  try {
+    const result = await mod.extractFaceEmbeddingFromData(base64ImageData, bboxX, bboxY, bboxW, bboxH);
+    if (!result || result.length === 0) {
+      console.log('[EntityExtraction] extractFaceEmbeddingFromData returned empty array');
+      return [];
+    }
+    console.log('[EntityExtraction] extractFaceEmbeddingFromData returned', result.length, 'floats');
+    return result;
+  } catch (e) {
+    console.error('[EntityExtraction] extractFaceEmbeddingFromData error:', e);
+    return [];
   }
 }
 

@@ -312,6 +312,170 @@ public class EntityExtractionModule: Module {
       return faces
     }
 
+    AsyncFunction("detectFacesFromData") { (base64ImageData: String) async throws -> [FaceDetectionResult] in
+      guard let imageData = Data(base64Encoded: base64ImageData, options: .ignoreUnknownCharacters),
+            let uiImage = UIImage(data: imageData),
+            let cgImage = uiImage.cgImage else {
+        print("[EntityExtraction] detectFacesFromData: failed to decode base64 image data")
+        return []
+      }
+
+      var faces: [FaceDetectionResult] = []
+      let request = VNDetectFaceRectanglesRequest { req, err in
+        if let err = err {
+          print("[EntityExtraction] detectFacesFromData: Vision error: \(err.localizedDescription)")
+          return
+        }
+        let observations = req.results as? [VNFaceObservation] ?? []
+        faces = observations.map { obs -> FaceDetectionResult in
+          let bbox = obs.boundingBox
+          return FaceDetectionResult(
+            faceUuid: obs.uuid.uuidString,
+            bboxX: Double(bbox.origin.x),
+            bboxY: Double(1.0 - bbox.origin.y - bbox.size.height),
+            bboxW: Double(bbox.size.width),
+            bboxH: Double(bbox.size.height),
+            roll: obs.roll?.doubleValue ?? 0.0,
+            yaw: obs.yaw?.doubleValue ?? 0.0
+          )
+        }
+      }
+      let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+      do {
+        try handler.perform([request])
+      } catch {
+        print("[EntityExtraction] detectFacesFromData: handler.perform error: \(error.localizedDescription)")
+        return []
+      }
+      print("[EntityExtraction] detectFacesFromData: detected \(faces.count) face(s)")
+      return faces
+    }
+
+    AsyncFunction("extractFaceEmbeddingFromData") { (base64ImageData: String, bboxX: Double, bboxY: Double, bboxW: Double, bboxH: Double) async throws -> [Double] in
+      guard let imageData = Data(base64Encoded: base64ImageData, options: .ignoreUnknownCharacters),
+            let uiImage = UIImage(data: imageData),
+            let cgImage = uiImage.cgImage else {
+        print("[EntityExtraction] extractFaceEmbeddingFromData: failed to decode base64 image data")
+        return []
+      }
+
+      var descriptor = [Double]()
+
+      let request = VNDetectFaceLandmarksRequest { req, err in
+        if let err = err {
+          print("[EntityExtraction] extractFaceEmbeddingFromData: Vision error: \(err.localizedDescription)")
+          return
+        }
+
+        let observations = req.results as? [VNFaceObservation] ?? []
+        guard !observations.isEmpty else {
+          print("[EntityExtraction] extractFaceEmbeddingFromData: no face observations found")
+          return
+        }
+
+        let providedCentreX = bboxX + bboxW / 2.0
+        let providedCentreY_topLeft = bboxY + bboxH / 2.0
+        let providedCentreY_vision = 1.0 - providedCentreY_topLeft
+
+        var bestObs: VNFaceObservation? = nil
+        var bestDist = Double.greatestFiniteMagnitude
+        for obs in observations {
+          let b = obs.boundingBox
+          let cx = Double(b.origin.x) + Double(b.size.width) / 2.0
+          let cy = Double(b.origin.y) + Double(b.size.height) / 2.0
+          let d = (cx - providedCentreX) * (cx - providedCentreX) +
+                  (cy - providedCentreY_vision) * (cy - providedCentreY_vision)
+          if d < bestDist { bestDist = d; bestObs = obs }
+        }
+
+        guard let obs = bestObs,
+              let landmarks = obs.landmarks,
+              let allPoints = landmarks.allPoints else {
+          print("[EntityExtraction] extractFaceEmbeddingFromData: no landmarks on best observation")
+          return
+        }
+
+        let pointCount = allPoints.pointCount
+        guard pointCount > 0 else {
+          print("[EntityExtraction] extractFaceEmbeddingFromData: zero landmark points")
+          return
+        }
+
+        var rawPoints = [(x: Float, y: Float)]()
+        rawPoints.reserveCapacity(pointCount)
+        let normalizedPoints = allPoints.normalizedPoints
+        for i in 0..<pointCount {
+          let p = normalizedPoints[i]
+          rawPoints.append((x: Float(p.x), y: Float(1.0 - p.y)))
+        }
+
+        func centroid(_ indices: [Int]) -> (x: Float, y: Float) {
+          guard !indices.isEmpty else { return (0, 0) }
+          var sx: Float = 0; var sy: Float = 0
+          for i in indices {
+            let p = i < rawPoints.count ? rawPoints[i] : (x: Float(0), y: Float(0))
+            sx += p.x; sy += p.y
+          }
+          let n = Float(indices.count)
+          return (sx / n, sy / n)
+        }
+
+        func dist(_ a: (x: Float, y: Float), _ b: (x: Float, y: Float)) -> Double {
+          let dx = a.x - b.x; let dy = a.y - b.y
+          return Double(sqrt(dx*dx + dy*dy))
+        }
+
+        let anchors: [(x: Float, y: Float)] = [
+          centroid(Array(0..<8)),
+          centroid(Array(8..<16)),
+          centroid(Array(16..<28)),
+          centroid(Array(28..<48)),
+          centroid(Array(48..<68)),
+          centroid(Array(68..<min(76, rawPoints.count))),
+          rawPoints.count > 0  ? rawPoints[0]  : (0,0),
+          rawPoints.count > 7  ? rawPoints[7]  : (0,0),
+          rawPoints.count > 8  ? rawPoints[8]  : (0,0),
+          rawPoints.count > 15 ? rawPoints[15] : (0,0),
+          rawPoints.count > 16 ? rawPoints[16] : (0,0),
+          rawPoints.count > 27 ? rawPoints[27] : (0,0),
+          rawPoints.count > 28 ? rawPoints[28] : (0,0),
+          rawPoints.count > 47 ? rawPoints[47] : (0,0),
+          rawPoints.count > 48 ? rawPoints[48] : (0,0),
+          rawPoints.count > 67 ? rawPoints[67] : (0,0),
+        ]
+
+        var result = [Double]()
+        result.reserveCapacity(128)
+        for i in 0..<anchors.count {
+          for j in (i+1)..<anchors.count {
+            result.append(dist(anchors[i], anchors[j]))
+          }
+        }
+        while result.count < 128 { result.append(0) }
+        if result.count > 128 { result = Array(result.prefix(128)) }
+
+        var sumSq: Double = 0
+        for v in result { sumSq += v * v }
+        let norm = sqrt(sumSq)
+        if norm > 1e-6 {
+          for i in 0..<result.count { result[i] /= norm }
+        }
+
+        print("[EntityExtraction] extractFaceEmbeddingFromData: returning \(result.count)-float descriptor (pre-norm magnitude: \(norm))")
+        descriptor = result
+      }
+
+      let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+      do {
+        try handler.perform([request])
+      } catch {
+        print("[EntityExtraction] extractFaceEmbeddingFromData: handler.perform error: \(error.localizedDescription)")
+        return []
+      }
+
+      return descriptor
+    }
+
     AsyncFunction("extractFaceEmbedding") { (imageUri: String, bboxX: Double, bboxY: Double, bboxW: Double, bboxH: Double) async throws -> [Double] in
       guard let url = URL(string: imageUri) else {
         print("[EntityExtraction] extractFaceEmbedding: invalid URL: \(imageUri)")

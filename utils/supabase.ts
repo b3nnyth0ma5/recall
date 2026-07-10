@@ -189,13 +189,18 @@ export async function uploadImageToDatabase(
     console.log('Database trigger: trigger-ocr-on-image-insert');
 
     // Fire-and-forget face detection + embedding extraction + auto-matching
+    // Uses base64 data already in memory to avoid temp-file deletion race conditions
     if (Platform.OS === 'ios') {
       const imageRowId = data.id;
       const userId = session.user.id;
+      // Capture base64 in closure — already read above
+      const capturedBase64 = base64;
       (async () => {
         try {
-          const { detectFacesOnDevice, extractFaceEmbeddingOnDevice } = await import('@/modules/recall-native');
-          const faces = await detectFacesOnDevice(uri);
+          const { detectFacesFromData, extractFaceEmbeddingFromData } = await import('@/modules/recall-native');
+          const Toast = (await import('react-native-toast-message')).default;
+          console.log('[uploadImageToDatabase] Starting face detection from base64 data');
+          const faces = await detectFacesFromData(capturedBase64);
           if (faces && faces.length > 0) {
             console.log(`[uploadImageToDatabase] Detected ${faces.length} face(s), storing in recall_images_people`);
             const faceRows = faces.map(f => ({
@@ -216,15 +221,28 @@ export async function uploadImageToDatabase(
               .select('id, face_uuid, bbox_x, bbox_y, bbox_w, bbox_h');
             if (faceInsertError) {
               console.warn('[uploadImageToDatabase] Face insert error (non-fatal):', faceInsertError);
+              Toast.show({
+                type: 'info',
+                text1: 'Face detection unavailable',
+                position: 'bottom',
+                visibilityTime: 3000,
+              });
             } else {
               console.log('[uploadImageToDatabase] Face rows inserted successfully');
+              const faceCount = faces.length;
+              Toast.show({
+                type: 'success',
+                text1: `${faceCount} ${faceCount === 1 ? 'face' : 'faces'} detected`,
+                position: 'bottom',
+                visibilityTime: 3000,
+              });
 
               // Extract embeddings and run auto-matching for each face
               for (const insertedFace of (insertedFaces ?? [])) {
                 try {
                   console.log('[uploadImageToDatabase] Extracting embedding for face:', insertedFace.id);
-                  const embedding = await extractFaceEmbeddingOnDevice(
-                    uri,
+                  const embedding = await extractFaceEmbeddingFromData(
+                    capturedBase64,
                     insertedFace.bbox_x,
                     insertedFace.bbox_y,
                     insertedFace.bbox_w,
@@ -283,9 +301,22 @@ export async function uploadImageToDatabase(
             }
           } else {
             console.log('[uploadImageToDatabase] No faces detected');
+            Toast.show({
+              type: 'info',
+              text1: 'No faces detected in this image',
+              position: 'bottom',
+              visibilityTime: 3000,
+            });
           }
         } catch (e) {
           console.warn('[uploadImageToDatabase] Face detection failed (non-fatal):', e);
+          const Toast = (await import('react-native-toast-message')).default;
+          Toast.show({
+            type: 'info',
+            text1: 'Face detection unavailable',
+            position: 'bottom',
+            visibilityTime: 3000,
+          });
         }
       })();
     }
