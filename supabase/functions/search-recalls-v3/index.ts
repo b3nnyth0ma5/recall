@@ -409,7 +409,7 @@ If the recalls don't contain enough information to answer the question, say so p
               const token: string | undefined = parsed?.choices?.[0]?.delta?.content;
               if (token && token.length > 0) {
                 fullAnswer += token;
-                // Issue 1 fix: escape literal newlines so the SSE frame is never split
+                // Escape literal newlines so the SSE frame is never split
                 controller.enqueue(encoder.encode(`data: ${token.replace(/\n/g, '\\n')}\n\n`));
               }
             } catch {
@@ -427,7 +427,7 @@ If the recalls don't contain enough information to answer the question, say so p
                 const token: string | undefined = parsed?.choices?.[0]?.delta?.content;
                 if (token && token.length > 0) {
                   fullAnswer += token;
-                  // Issue 1 fix: escape literal newlines in leftover token too
+                  // Escape literal newlines in leftover token too
                   controller.enqueue(encoder.encode(`data: ${token.replace(/\n/g, '\\n')}\n\n`));
                 }
               } catch {
@@ -440,7 +440,7 @@ If the recalls don't contain enough information to answer the question, say so p
           const sourceMatches = [...new Set(fullAnswer.match(/SOURCE_\d+/g) ?? [])];
           const confidence = fullAnswer.length > 20 ? Math.min(95, 50 + sourceMatches.length * 15) : 0;
 
-          // Issue 2 fix: replace literal newlines in the JSON payload so the SSE frame is never split
+          // Replace literal newlines in the JSON payload so the SSE frame is never split
           const donePayload = JSON.stringify({ answer: fullAnswer, confidence, sources: sourceMatches });
           const safeDonePayload = donePayload.replace(/\n/g, '\\n');
           controller.enqueue(encoder.encode(`data: [DONE] ${safeDonePayload}\n\n`));
