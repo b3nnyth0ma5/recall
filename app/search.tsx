@@ -758,32 +758,43 @@ export default function SearchScreen() {
 
     setOnDeviceAnswerMs(null);
 
-    const searchResult = await searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined, preExtractedEntities);
+    try {
+      const searchResult = await searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined, preExtractedEntities);
 
-    if (searchResult?.context_for_answer) {
-      if (canUseOnDeviceAnswer) {
-        console.log('[Search] handleSearch: attempting on-device answer generation');
-        const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
-        const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
-        console.log('[Search] handleSearch: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
-        const onDeviceResult = await generateAnswerOnDevice(
-          safeContext,
-          searchQuery,
-          searchResult.uploaded_images_context ?? '',
-        );
-        if (onDeviceResult && onDeviceResult.answer) {
-          console.log('[Search] handleSearch: on-device answer generated, durationMs:', onDeviceResult.durationMs);
-          setOnDeviceAnswerMs(onDeviceResult.durationMs);
-          updateAiAnswerTiming(onDeviceResult.durationMs);
-          patchNotesForOnDeviceAnswer(
-            onDeviceResult.sources,
-            searchResult.results ?? [],
-            onDeviceResult.answer,
-            onDeviceResult.confidence,
+      if (searchResult?.context_for_answer) {
+        if (canUseOnDeviceAnswer) {
+          console.log('[Search] handleSearch: attempting on-device answer generation');
+          const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
+          const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
+          console.log('[Search] handleSearch: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
+          const onDeviceResult = await generateAnswerOnDevice(
+            safeContext,
+            searchQuery,
+            searchResult.uploaded_images_context ?? '',
           );
-          setIsStreamingComplete(true);
+          if (onDeviceResult && onDeviceResult.answer) {
+            console.log('[Search] handleSearch: on-device answer generated, durationMs:', onDeviceResult.durationMs);
+            setOnDeviceAnswerMs(onDeviceResult.durationMs);
+            updateAiAnswerTiming(onDeviceResult.durationMs);
+            patchNotesForOnDeviceAnswer(
+              onDeviceResult.sources,
+              searchResult.results ?? [],
+              onDeviceResult.answer,
+              onDeviceResult.confidence,
+            );
+            setIsStreamingComplete(true);
+          } else {
+            console.log('[Search] handleSearch: on-device answer returned null, falling back to streaming cloud');
+            await streamCloudAnswer(
+              searchQuery,
+              searchResult.context_for_answer,
+              searchResult.uploaded_images_context ?? '',
+              preExtractedEntities,
+              searchResult.results ?? [],
+            );
+          }
         } else {
-          console.log('[Search] handleSearch: on-device answer returned null, falling back to streaming cloud');
+          console.log('[Search] handleSearch: cloud-only path, streaming answer');
           await streamCloudAnswer(
             searchQuery,
             searchResult.context_for_answer,
@@ -792,22 +803,16 @@ export default function SearchScreen() {
             searchResult.results ?? [],
           );
         }
-      } else {
-        console.log('[Search] handleSearch: cloud-only path, streaming answer');
-        await streamCloudAnswer(
-          searchQuery,
-          searchResult.context_for_answer,
-          searchResult.uploaded_images_context ?? '',
-          preExtractedEntities,
-          searchResult.results ?? [],
-        );
       }
-    }
 
-    if (mountedRef.current) setIsSearching(false);
-    setTimeout(() => {
-      loadSearchHistory();
-    }, 500);
+      setTimeout(() => {
+        loadSearchHistory();
+      }, 500);
+    } catch (e) {
+      console.error('[SearchScreen] handleSearch error:', e);
+    } finally {
+      if (mountedRef.current) setIsSearching(false);
+    }
   }, [searchQuery, searchNotes, loadSearchHistory, attachedImages, uriToBase64, user?.id, tryOnDeviceExtraction, checkAndNotifyFoundationModels, patchNotesForOnDeviceAnswer, updateAiAnswerTiming, streamCloudAnswer]);
 
   const handleHistoryItemPress = useCallback(async (item: SearchHistory) => {
@@ -860,32 +865,43 @@ export default function SearchScreen() {
 
     setOnDeviceAnswerMs(null);
 
-    const searchResult = await searchNotes(item.search_text, true, searchUploads, preExtractedEntities);
+    try {
+      const searchResult = await searchNotes(item.search_text, true, searchUploads, preExtractedEntities);
 
-    if (searchResult?.context_for_answer) {
-      if (canUseOnDeviceAnswer) {
-        console.log('[Search] handleHistoryItemPress: attempting on-device answer generation');
-        const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
-        const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
-        console.log('[Search] handleHistoryItemPress: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
-        const onDeviceResult = await generateAnswerOnDevice(
-          safeContext,
-          item.search_text,
-          searchResult.uploaded_images_context ?? '',
-        );
-        if (onDeviceResult && onDeviceResult.answer) {
-          console.log('[Search] handleHistoryItemPress: on-device answer generated, durationMs:', onDeviceResult.durationMs);
-          setOnDeviceAnswerMs(onDeviceResult.durationMs);
-          updateAiAnswerTiming(onDeviceResult.durationMs);
-          patchNotesForOnDeviceAnswer(
-            onDeviceResult.sources,
-            searchResult.results ?? [],
-            onDeviceResult.answer,
-            onDeviceResult.confidence,
+      if (searchResult?.context_for_answer) {
+        if (canUseOnDeviceAnswer) {
+          console.log('[Search] handleHistoryItemPress: attempting on-device answer generation');
+          const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
+          const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
+          console.log('[Search] handleHistoryItemPress: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
+          const onDeviceResult = await generateAnswerOnDevice(
+            safeContext,
+            item.search_text,
+            searchResult.uploaded_images_context ?? '',
           );
-          setIsStreamingComplete(true);
+          if (onDeviceResult && onDeviceResult.answer) {
+            console.log('[Search] handleHistoryItemPress: on-device answer generated, durationMs:', onDeviceResult.durationMs);
+            setOnDeviceAnswerMs(onDeviceResult.durationMs);
+            updateAiAnswerTiming(onDeviceResult.durationMs);
+            patchNotesForOnDeviceAnswer(
+              onDeviceResult.sources,
+              searchResult.results ?? [],
+              onDeviceResult.answer,
+              onDeviceResult.confidence,
+            );
+            setIsStreamingComplete(true);
+          } else {
+            console.log('[Search] handleHistoryItemPress: on-device answer returned null, falling back to streaming cloud');
+            await streamCloudAnswer(
+              item.search_text,
+              searchResult.context_for_answer,
+              searchResult.uploaded_images_context ?? '',
+              preExtractedEntities,
+              searchResult.results ?? [],
+            );
+          }
         } else {
-          console.log('[Search] handleHistoryItemPress: on-device answer returned null, falling back to streaming cloud');
+          console.log('[Search] handleHistoryItemPress: cloud-only path, streaming answer');
           await streamCloudAnswer(
             item.search_text,
             searchResult.context_for_answer,
@@ -894,19 +910,12 @@ export default function SearchScreen() {
             searchResult.results ?? [],
           );
         }
-      } else {
-        console.log('[Search] handleHistoryItemPress: cloud-only path, streaming answer');
-        await streamCloudAnswer(
-          item.search_text,
-          searchResult.context_for_answer,
-          searchResult.uploaded_images_context ?? '',
-          preExtractedEntities,
-          searchResult.results ?? [],
-        );
       }
+    } catch (e) {
+      console.error('[SearchScreen] handleHistoryItemPress error:', e);
+    } finally {
+      if (mountedRef.current) setIsSearching(false);
     }
-
-    setIsSearching(false);
   }, [searchNotes, tryOnDeviceExtraction, checkAndNotifyFoundationModels, patchNotesForOnDeviceAnswer, updateAiAnswerTiming, streamCloudAnswer]);
 
   const handleNotePress = useCallback((noteId: string, imageIndex?: number) => {
@@ -948,7 +957,12 @@ export default function SearchScreen() {
     const noteIndex = filteredNotes.findIndex(n => n.id === recallId);
     if (noteIndex !== -1 && listRef.current) {
       console.log('[SearchScreen] Scrolling to note index:', noteIndex);
-      listRef.current.scrollToIndex({ index: noteIndex, animated: true, viewOffset: 80 });
+      try {
+        listRef.current.scrollToIndex({ index: noteIndex, animated: true, viewOffset: 80 });
+      } catch (e) {
+        console.warn('[SearchScreen] scrollToIndex threw, falling back to scrollToOffset:', e);
+        listRef.current?.scrollToOffset({ offset: noteIndex * 200, animated: true });
+      }
     } else {
       console.log('[SearchScreen] Recall element not found in list');
     }
@@ -1676,7 +1690,11 @@ export default function SearchScreen() {
         removeClippedSubviews
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        onScrollToIndexFailed={() => {}}
+        onScrollToIndexFailed={(info) => {
+          console.warn('[SearchScreen] scrollToIndex failed, falling back to scrollToOffset. index:', info.index);
+          const estimatedOffset = info.index * 200; // rough estimate per item
+          listRef.current?.scrollToOffset({ offset: estimatedOffset, animated: true });
+        }}
       />
 
 
