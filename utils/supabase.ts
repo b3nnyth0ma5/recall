@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import { Platform, Image } from 'react-native';
 import { coalesce } from './requestCoalescer';
 
 // Initialize constants at module scope
@@ -136,7 +136,19 @@ export async function uploadImageToDatabase(
 
     console.log('CDN upload successful, URL:', cdnUrl);
     console.log('Storing metadata in database...');
-    
+
+    // Measure original image dimensions from local URI
+    let imageWidth: number | null = null;
+    let imageHeight: number | null = null;
+    await new Promise<void>((resolve) => {
+      Image.getSize(
+        uri,
+        (w, h) => { imageWidth = w; imageHeight = h; resolve(); },
+        () => { resolve(); } // non-fatal if it fails
+      );
+    });
+    console.log('Image dimensions measured:', imageWidth, 'x', imageHeight);
+
     // Store the CDN URL in the database
     const { data, error } = await supabase
       .from('recall_images')
@@ -145,6 +157,8 @@ export async function uploadImageToDatabase(
         content_type: contentType,
         user_id: session.user.id,
         cdn_url: cdnUrl,
+        width: imageWidth,
+        height: imageHeight,
       }])
       .select('id')
       .single();
@@ -181,7 +195,7 @@ export async function uploadImageToDatabase(
       (async () => {
         try {
           const { detectFacesOnDevice, extractFaceEmbeddingOnDevice } = await import('@/modules/recall-native');
-          const faces = await detectFacesOnDevice(cdnUrl);
+          const faces = await detectFacesOnDevice(uri);
           if (faces && faces.length > 0) {
             console.log(`[uploadImageToDatabase] Detected ${faces.length} face(s), storing in recall_images_people`);
             const faceRows = faces.map(f => ({
@@ -210,7 +224,7 @@ export async function uploadImageToDatabase(
                 try {
                   console.log('[uploadImageToDatabase] Extracting embedding for face:', insertedFace.id);
                   const embedding = await extractFaceEmbeddingOnDevice(
-                    cdnUrl,
+                    uri,
                     insertedFace.bbox_x,
                     insertedFace.bbox_y,
                     insertedFace.bbox_w,
@@ -234,7 +248,7 @@ export async function uploadImageToDatabase(
                     console.log('[uploadImageToDatabase] Running match_face_to_person RPC for face:', insertedFace.id);
                     const { data: matchResult, error: matchError } = await supabase.rpc('match_face_to_person', {
                       p_embedding: vectorString,
-                      p_threshold: 0.75,
+                      p_threshold: 0.60,
                     });
                     if (matchError) {
                       console.warn('[uploadImageToDatabase] match_face_to_person RPC error (non-fatal):', matchError);

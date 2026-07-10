@@ -114,6 +114,7 @@ interface ZoomableImageProps {
   showControls: boolean;
   onFaceTap: (face: FaceRow) => void;
   imageId?: string;
+  screenHeight: number;
 }
 
 function ZoomableImage({
@@ -127,6 +128,7 @@ function ZoomableImage({
   showControls,
   onFaceTap,
   imageId,
+  screenHeight,
 }: ZoomableImageProps) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -234,7 +236,7 @@ function ZoomableImage({
 
   // Compute letterbox rect for face overlays
   const imageRect = naturalDims
-    ? computeImageRect(naturalDims.width, naturalDims.height, SCREEN_WIDTH, SCREEN_HEIGHT)
+    ? computeImageRect(naturalDims.width, naturalDims.height, SCREEN_WIDTH, screenHeight)
     : null;
 
   const pulseAnimStyle = useAnimatedStyle(() => ({
@@ -442,6 +444,7 @@ export function FullScreenImage({
   const [facesPerImage, setFacesPerImage] = useState<Map<string, FaceRow[]>>(new Map());
   const [naturalDimsPerIndex, setNaturalDimsPerIndex] = useState<Map<number, { width: number; height: number }>>(new Map());
   const [selectedFace, setSelectedFace] = useState<FaceRow | null>(null);
+  const [containerHeight, setContainerHeight] = useState(SCREEN_HEIGHT);
 
   // Animated values for swipe-to-dismiss gesture
   const translateY = useSharedValue(0);
@@ -455,6 +458,9 @@ export function FullScreenImage({
   // Load all images when modal opens
   useEffect(() => {
     if (visible) {
+      // Reset face and dims caches for the new note
+      setFacesPerImage(new Map());
+      setNaturalDimsPerIndex(new Map());
       setCurrentImageIndex(initialIndex);
       setIsClosing(false);
       // Reset animation values immediately
@@ -965,7 +971,9 @@ export function FullScreenImage({
   const currentFaces: FaceRow[] = (() => {
     const item = effectiveMedia[currentImageIndex];
     if (!item || item.kind !== 'image') return [];
-    const imageId = item.id ?? imageIds?.[currentImageIndex];
+    const imageId = item.id
+      ?? imageIds?.[currentImageIndex]
+      ?? (item.kind === 'image' ? (item as any).id : undefined);
     if (!imageId) return [];
     return facesPerImage.get(imageId) ?? [];
   })();
@@ -1024,7 +1032,10 @@ export function FullScreenImage({
       onRequestClose={handleClose}
       statusBarTranslucent
     >
-      <View style={styles.modalContainer}>
+      <View
+        style={styles.modalContainer}
+        onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}
+      >
         {/* Animated background */}
         <Animated.View style={[styles.background, animatedBackgroundStyle]} />
         
@@ -1103,6 +1114,7 @@ export function FullScreenImage({
                       showControls={showControls}
                       onFaceTap={handleFaceTap}
                       imageId={item.kind === 'image' ? (item.id ?? imageIds?.[index]) : undefined}
+                      screenHeight={containerHeight}
                     />
                   );
                 })}

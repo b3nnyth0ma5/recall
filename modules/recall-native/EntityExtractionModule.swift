@@ -253,18 +253,28 @@ public class EntityExtractionModule: Module {
       config.timeoutIntervalForResource = 15
       let session = URLSession(configuration: config)
 
-      let imageData: Data
-      do {
-        let (data, _) = try await session.data(from: url)
-        imageData = data
-      } catch {
-        print("[EntityExtraction] detectFaces: network error: \(error.localizedDescription)")
-        return []
+      var imageData: Data? = nil
+      let retryDelays: [UInt64] = [2_000_000_000, 3_000_000_000, 3_000_000_000] // nanoseconds
+      for (attempt, delay) in retryDelays.enumerated() {
+        try await Task.sleep(nanoseconds: delay)
+        do {
+          let (data, response) = try await session.data(from: url)
+          let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? 200
+          if httpStatus == 200, UIImage(data: data) != nil {
+            imageData = data
+            print("[EntityExtraction] detectFaces: image loaded on attempt \(attempt + 1)")
+            break
+          } else {
+            print("[EntityExtraction] detectFaces: attempt \(attempt + 1) failed — status \(httpStatus) or bad image data, retrying...")
+          }
+        } catch {
+          print("[EntityExtraction] detectFaces: attempt \(attempt + 1) network error: \(error.localizedDescription), retrying...")
+        }
       }
-
-      guard let uiImage = UIImage(data: imageData),
+      guard let finalImageData = imageData,
+            let uiImage = UIImage(data: finalImageData),
             let cgImage = uiImage.cgImage else {
-        print("[EntityExtraction] detectFaces: failed to decode image data")
+        print("[EntityExtraction] detectFaces: all attempts failed, returning []")
         return []
       }
 
