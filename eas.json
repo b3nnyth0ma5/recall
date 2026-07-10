@@ -6,7 +6,9 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "cache": { "disabled": true },
+      "cache": {
+        "disabled": true
+      },
       "pnpm": "10.11.0",
       "distribution": "internal",
       "env": {
@@ -24,7 +26,9 @@
     },
     "preview": {
       "distribution": "internal",
-      "cache": { "disabled": true },
+      "cache": {
+        "disabled": true
+      },
       "pnpm": "10.11.0",
       "env": {
         "EAS_BUILD_NO_EXPO_GO_WARNING": "true"
@@ -40,7 +44,9 @@
     },
     "production": {
       "autoIncrement": true,
-      "cache": { "disabled": true },
+      "cache": {
+        "disabled": true
+      },
       "pnpm": "10.11.0",
       "env": {
         "EAS_BUILD_NO_EXPO_GO_WARNING": "true",
