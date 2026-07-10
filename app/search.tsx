@@ -338,6 +338,7 @@ export default function SearchScreen() {
   const prevQueryRef = useRef('');
   const mountedRef = useRef(true);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const thinkingTextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -346,6 +347,10 @@ export default function SearchScreen() {
       if (xhrRef.current) {
         xhrRef.current.abort();
         xhrRef.current = null;
+      }
+      if (thinkingTextTimerRef.current) {
+        clearTimeout(thinkingTextTimerRef.current);
+        thinkingTextTimerRef.current = null;
       }
     };
   }, []);
@@ -581,8 +586,15 @@ export default function SearchScreen() {
 
   useEffect(() => {
     if (isSearching && !streamingAnswer) {
-      const timer = setTimeout(() => setShowThinkingText(true), 5000);
-      return () => clearTimeout(timer);
+      thinkingTextTimerRef.current = setTimeout(() => {
+        if (mountedRef.current) setShowThinkingText(true);
+      }, 5000);
+      return () => {
+        if (thinkingTextTimerRef.current) {
+          clearTimeout(thinkingTextTimerRef.current);
+          thinkingTextTimerRef.current = null;
+        }
+      };
     } else {
       setShowThinkingText(false);
     }
