@@ -181,91 +181,83 @@ public class EntityExtractionModule: Module {
       promise.resolve(people)
     }
 
-    AsyncFunction("extractTextFromImage") { (imageUri: String, promise: Promise) in
+    AsyncFunction("extractTextFromImage") { (imageUri: String) async throws -> String in
       guard let url = URL(string: imageUri) else {
-        promise.resolve("")
-        return
+        return ""
       }
 
-      var ocrConfig = URLSessionConfiguration.default
-      ocrConfig.timeoutIntervalForRequest = 15
-      ocrConfig.timeoutIntervalForResource = 15
-      let ocrSession = URLSession(configuration: ocrConfig)
+      let config = URLSessionConfiguration.default
+      config.timeoutIntervalForRequest = 15
+      config.timeoutIntervalForResource = 15
+      let session = URLSession(configuration: config)
 
       let imageData: Data
       do {
-        let (data, _) = try await ocrSession.data(from: url)
+        let (data, _) = try await session.data(from: url)
         imageData = data
       } catch {
         print("[EntityExtraction] extractTextFromImage: network error: \(error.localizedDescription)")
-        promise.resolve("")
-        return
+        return ""
       }
 
       guard let cgImage = UIImage(data: imageData)?.cgImage else {
-        promise.resolve("")
-        return
+        return ""
       }
 
-      let request = VNRecognizeTextRequest { request, error in
-        if let error = error {
-          promise.reject("ERR_OCR", error.localizedDescription)
-          return
-        }
-        let observations = request.results as? [VNRecognizedTextObservation] ?? []
-        let text = observations.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
-        promise.resolve(text)
+      var resultText = ""
+      var resultError: Error? = nil
+
+      let request = VNRecognizeTextRequest { req, err in
+        if let err = err { resultError = err; return }
+        let observations = req.results as? [VNRecognizedTextObservation] ?? []
+        resultText = observations.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
       }
       request.recognitionLevel = .accurate
       request.usesLanguageCorrection = true
 
       let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-      do {
-        try handler.perform([request])
-      } catch {
-        promise.reject("ERR_OCR", error.localizedDescription)
-      }
+      try handler.perform([request])
+
+      if let err = resultError { throw err }
+      return resultText
     }
 
-    // Fix 1 (detectFaces): async URLSession with 15-second timeout
-    AsyncFunction("detectFaces") { (imageUri: String, promise: Promise) in
+    AsyncFunction("detectFaces") { (imageUri: String) async throws -> [[String: Any]] in
       guard let url = URL(string: imageUri) else {
         print("[EntityExtraction] detectFaces: invalid URL: \(imageUri)")
-        promise.resolve([])
-        return
+        return []
       }
 
-      var detectConfig = URLSessionConfiguration.default
-      detectConfig.timeoutIntervalForRequest = 15
-      detectConfig.timeoutIntervalForResource = 15
-      let detectSession = URLSession(configuration: detectConfig)
+      let config = URLSessionConfiguration.default
+      config.timeoutIntervalForRequest = 15
+      config.timeoutIntervalForResource = 15
+      let session = URLSession(configuration: config)
 
-      let detectImageData: Data
+      let imageData: Data
       do {
-        let (data, _) = try await detectSession.data(from: url)
-        detectImageData = data
+        let (data, _) = try await session.data(from: url)
+        imageData = data
       } catch {
         print("[EntityExtraction] detectFaces: network error: \(error.localizedDescription)")
-        promise.resolve([])
-        return
+        return []
       }
 
-      guard let uiImage = UIImage(data: detectImageData),
+      guard let uiImage = UIImage(data: imageData),
             let cgImage = uiImage.cgImage else {
         print("[EntityExtraction] detectFaces: failed to decode image data")
-        promise.resolve([])
-        return
+        return []
       }
 
-      let request = VNDetectFaceRectanglesRequest { request, error in
-        if let error = error {
-          promise.reject("ERR_FACE", error.localizedDescription)
+      var faces: [[String: Any]] = []
+
+      let request = VNDetectFaceRectanglesRequest { req, err in
+        if let err = err {
+          print("[EntityExtraction] detectFaces: Vision error: \(err.localizedDescription)")
           return
         }
-        let observations = request.results as? [VNFaceObservation] ?? []
-        let faces = observations.map { obs -> [String: Any] in
+        let observations = req.results as? [VNFaceObservation] ?? []
+        faces = observations.map { obs -> [String: Any] in
           let bbox = obs.boundingBox
-          // Vision uses bottom-left origin — flip Y for top-left UI coordinates
           return [
             "faceUuid": obs.uuid.uuidString,
             "bboxX": Double(bbox.origin.x),
@@ -276,31 +268,27 @@ public class EntityExtractionModule: Module {
             "yaw": obs.yaw?.doubleValue ?? 0.0,
           ]
         }
-        promise.resolve(faces)
       }
 
       let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
       do {
         try handler.perform([request])
       } catch {
-        promise.reject("ERR_FACE", error.localizedDescription)
+        print("[EntityExtraction] detectFaces: handler.perform error: \(error.localizedDescription)")
+        return []
       }
+
+      print("[EntityExtraction] detectFaces: detected \(faces.count) face(s)")
+      return faces
     }
 
-    // ── Face embedding extraction via landmark geometry ───────────────────────
-    // Returns a 128-float L2-normalised relative-geometry descriptor derived from
-    // VNFaceLandmarks2D (76 points). Deterministic — no CoreML model required.
-    // Fix 1: async URLSession with 15-second timeout
-    // Fix 2: pose-tolerant pairwise-distance descriptor
-    AsyncFunction("extractFaceEmbedding") { (imageUri: String, bboxX: Double, bboxY: Double, bboxW: Double, bboxH: Double, promise: Promise) in
-      // Fix 1: async URLSession image loading with timeout
+    AsyncFunction("extractFaceEmbedding") { (imageUri: String, bboxX: Double, bboxY: Double, bboxW: Double, bboxH: Double) async throws -> [Float] in
       guard let url = URL(string: imageUri) else {
         print("[EntityExtraction] extractFaceEmbedding: invalid URL: \(imageUri)")
-        promise.resolve([Float]())
-        return
+        return []
       }
 
-      var config = URLSessionConfiguration.default
+      let config = URLSessionConfiguration.default
       config.timeoutIntervalForRequest = 15
       config.timeoutIntervalForResource = 15
       let session = URLSession(configuration: config)
@@ -311,28 +299,26 @@ public class EntityExtractionModule: Module {
         imageData = data
       } catch {
         print("[EntityExtraction] extractFaceEmbedding: network error: \(error.localizedDescription)")
-        promise.resolve([Float]())
-        return
+        return []
       }
 
       guard let uiImage = UIImage(data: imageData),
             let cgImage = uiImage.cgImage else {
         print("[EntityExtraction] extractFaceEmbedding: failed to decode image data")
-        promise.resolve([Float]())
-        return
+        return []
       }
 
-      let request = VNDetectFaceLandmarksRequest { request, error in
-        if let error = error {
-          print("[EntityExtraction] extractFaceEmbedding: VNDetectFaceLandmarksRequest error: \(error.localizedDescription)")
-          promise.resolve([Float]())
+      var descriptor = [Float]()
+
+      let request = VNDetectFaceLandmarksRequest { req, err in
+        if let err = err {
+          print("[EntityExtraction] extractFaceEmbedding: Vision error: \(err.localizedDescription)")
           return
         }
 
-        let observations = request.results as? [VNFaceObservation] ?? []
+        let observations = req.results as? [VNFaceObservation] ?? []
         guard !observations.isEmpty else {
           print("[EntityExtraction] extractFaceEmbedding: no face observations found")
-          promise.resolve([Float]())
           return
         }
 
@@ -340,7 +326,6 @@ public class EntityExtractionModule: Module {
         // Vision bbox uses bottom-left origin; provided bbox uses top-left origin.
         let providedCentreX = bboxX + bboxW / 2.0
         let providedCentreY_topLeft = bboxY + bboxH / 2.0
-        // Convert to Vision bottom-left Y
         let providedCentreY_vision = 1.0 - providedCentreY_topLeft
 
         var bestObs: VNFaceObservation? = nil
@@ -349,57 +334,31 @@ public class EntityExtractionModule: Module {
           let b = obs.boundingBox
           let cx = Double(b.origin.x) + Double(b.size.width) / 2.0
           let cy = Double(b.origin.y) + Double(b.size.height) / 2.0
-          let dist = (cx - providedCentreX) * (cx - providedCentreX) +
-                     (cy - providedCentreY_vision) * (cy - providedCentreY_vision)
-          if dist < bestDist {
-            bestDist = dist
-            bestObs = obs
-          }
+          let d = (cx - providedCentreX) * (cx - providedCentreX) +
+                  (cy - providedCentreY_vision) * (cy - providedCentreY_vision)
+          if d < bestDist { bestDist = d; bestObs = obs }
         }
 
         guard let obs = bestObs,
               let landmarks = obs.landmarks,
               let allPoints = landmarks.allPoints else {
           print("[EntityExtraction] extractFaceEmbedding: no landmarks on best observation")
-          promise.resolve([Float]())
           return
         }
 
         let pointCount = allPoints.pointCount
         guard pointCount > 0 else {
           print("[EntityExtraction] extractFaceEmbedding: zero landmark points")
-          promise.resolve([Float]())
           return
         }
 
-        // allPoints gives normalised points relative to the face bounding box,
-        // in Vision space (bottom-left origin, 0–1 relative to bbox).
         var rawPoints = [(x: Float, y: Float)]()
         rawPoints.reserveCapacity(pointCount)
         let normalizedPoints = allPoints.normalizedPoints
         for i in 0..<pointCount {
           let p = normalizedPoints[i]
-          // Flip Y to top-left origin for consistency
           rawPoints.append((x: Float(p.x), y: Float(1.0 - p.y)))
         }
-
-        // ── Fix 2: Build a pose-tolerant relative-geometry descriptor ─────────
-        // Strategy: compute pairwise distances between key landmark group centroids
-        // and specific anchor points. These are invariant to translation and scale
-        // (since points are already normalised to the face bbox), and more tolerant
-        // of small pose changes than raw coordinates.
-        //
-        // VNFaceLandmarks2D allPoints layout (76 points, 0-indexed):
-        //   0–7   : left eyebrow (8 pts)
-        //   8–15  : right eyebrow (8 pts)
-        //   16–27 : nose (12 pts)
-        //   28–47 : left eye (20 pts)
-        //   48–67 : right eye (20 pts)
-        //   68–75 : outer lips (8 pts)
-        //
-        // We use a fixed set of 16 anchor points derived from group centroids
-        // and specific landmarks, then compute all pairwise distances (120 values)
-        // and pad to 128.
 
         func centroid(_ indices: [Int]) -> (x: Float, y: Float) {
           guard !indices.isEmpty else { return (0, 0) }
@@ -417,49 +376,44 @@ public class EntityExtractionModule: Module {
           return sqrt(dx*dx + dy*dy)
         }
 
-        // 16 anchor points
         let anchors: [(x: Float, y: Float)] = [
-          centroid(Array(0..<8)),    // left eyebrow centre
-          centroid(Array(8..<16)),   // right eyebrow centre
-          centroid(Array(16..<28)),  // nose centre
-          centroid(Array(28..<48)),  // left eye centre
-          centroid(Array(48..<68)),  // right eye centre
-          centroid(Array(68..<min(76, rawPoints.count))), // mouth centre
-          rawPoints.count > 0  ? rawPoints[0]  : (0,0),  // left eyebrow outer
-          rawPoints.count > 7  ? rawPoints[7]  : (0,0),  // left eyebrow inner
-          rawPoints.count > 8  ? rawPoints[8]  : (0,0),  // right eyebrow inner
-          rawPoints.count > 15 ? rawPoints[15] : (0,0),  // right eyebrow outer
-          rawPoints.count > 16 ? rawPoints[16] : (0,0),  // nose bridge top
-          rawPoints.count > 27 ? rawPoints[27] : (0,0),  // nose tip
-          rawPoints.count > 28 ? rawPoints[28] : (0,0),  // left eye outer corner
-          rawPoints.count > 47 ? rawPoints[47] : (0,0),  // left eye inner corner
-          rawPoints.count > 48 ? rawPoints[48] : (0,0),  // right eye inner corner
-          rawPoints.count > 67 ? rawPoints[67] : (0,0),  // right eye outer corner
+          centroid(Array(0..<8)),
+          centroid(Array(8..<16)),
+          centroid(Array(16..<28)),
+          centroid(Array(28..<48)),
+          centroid(Array(48..<68)),
+          centroid(Array(68..<min(76, rawPoints.count))),
+          rawPoints.count > 0  ? rawPoints[0]  : (0,0),
+          rawPoints.count > 7  ? rawPoints[7]  : (0,0),
+          rawPoints.count > 8  ? rawPoints[8]  : (0,0),
+          rawPoints.count > 15 ? rawPoints[15] : (0,0),
+          rawPoints.count > 16 ? rawPoints[16] : (0,0),
+          rawPoints.count > 27 ? rawPoints[27] : (0,0),
+          rawPoints.count > 28 ? rawPoints[28] : (0,0),
+          rawPoints.count > 47 ? rawPoints[47] : (0,0),
+          rawPoints.count > 48 ? rawPoints[48] : (0,0),
+          rawPoints.count > 67 ? rawPoints[67] : (0,0),
         ]
 
-        // All pairwise distances: 16*15/2 = 120 values
-        var descriptor = [Float]()
-        descriptor.reserveCapacity(128)
+        var result = [Float]()
+        result.reserveCapacity(128)
         for i in 0..<anchors.count {
           for j in (i+1)..<anchors.count {
-            descriptor.append(dist(anchors[i], anchors[j]))
+            result.append(dist(anchors[i], anchors[j]))
           }
         }
-        // Pad to 128 with zeros
-        while descriptor.count < 128 { descriptor.append(0) }
-        // Truncate to 128 if somehow over
-        if descriptor.count > 128 { descriptor = Array(descriptor.prefix(128)) }
+        while result.count < 128 { result.append(0) }
+        if result.count > 128 { result = Array(result.prefix(128)) }
 
-        // L2-normalise
         var sumSq: Float = 0
-        for v in descriptor { sumSq += v * v }
+        for v in result { sumSq += v * v }
         let norm = sqrt(sumSq)
         if norm > 1e-6 {
-          for i in 0..<descriptor.count { descriptor[i] /= norm }
+          for i in 0..<result.count { result[i] /= norm }
         }
 
-        print("[EntityExtraction] extractFaceEmbedding: returning \(descriptor.count)-float relative-geometry descriptor (pre-norm magnitude: \(norm))")
-        promise.resolve(descriptor)
+        print("[EntityExtraction] extractFaceEmbedding: returning \(result.count)-float descriptor (pre-norm magnitude: \(norm))")
+        descriptor = result
       }
 
       let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
@@ -467,8 +421,10 @@ public class EntityExtractionModule: Module {
         try handler.perform([request])
       } catch {
         print("[EntityExtraction] extractFaceEmbedding: handler.perform error: \(error.localizedDescription)")
-        promise.resolve([Float]())
+        return []
       }
+
+      return descriptor
     }
   }
 }
