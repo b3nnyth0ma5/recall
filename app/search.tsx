@@ -282,11 +282,13 @@ export default function SearchScreen() {
 
       xhr.onerror = () => {
         console.error('[Search] streamCloudAnswer: XHR error');
+        if (mountedRef.current) setIsStreamingComplete(true);
         cleanup();
       };
 
       xhr.ontimeout = () => {
         console.error('[Search] streamCloudAnswer: XHR timeout');
+        if (mountedRef.current) setIsStreamingComplete(true);
         cleanup();
       };
 
@@ -872,6 +874,8 @@ export default function SearchScreen() {
     setOnDeviceAnswerMs(null);
 
     try {
+      setStreamingAnswer('');
+      setIsStreamingComplete(false);
       const searchResult = await searchNotes(item.search_text, true, searchUploads, preExtractedEntities);
 
       if (searchResult?.context_for_answer) {

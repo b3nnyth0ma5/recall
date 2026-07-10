@@ -1314,6 +1314,11 @@ export function useNotes() {
       if (citedNumbers.has(r.sourceNumber)) citedIds.add(r.id);
     });
 
+    // If model cited no sources but did produce an answer, mark all results as used
+    if (citedIds.size === 0 && answer && answer.trim().length > 0) {
+      allResults.forEach(r => citedIds.add(r.id));
+    }
+
     console.log('[useNotes] patchNotesForOnDeviceAnswer: citedNumbers:', [...citedNumbers], 'citedIds:', [...citedIds]);
 
     setNotes(prev => prev.map(note => ({
