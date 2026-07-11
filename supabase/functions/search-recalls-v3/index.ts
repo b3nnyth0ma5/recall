@@ -438,7 +438,11 @@ If the recalls don't contain enough information to answer the question, say so p
 
           // Extract SOURCE_X references from plain prose answer
           const sourceMatches = [...new Set(fullAnswer.match(/SOURCE_\d+/g) ?? [])];
-          const confidence = fullAnswer.length > 20 ? Math.min(95, 50 + sourceMatches.length * 15) : 0;
+          const confidence = fullAnswer.length > 20
+            ? Math.min(95, Math.max(50, 50 + sourceMatches.length * 15))
+            : 0;
+
+          console.log('[search-recalls-v3] flush: fullAnswer length:', fullAnswer.length, 'sources:', sourceMatches.length, 'confidence:', confidence);
 
           // Replace literal newlines in the JSON payload so the SSE frame is never split
           const donePayload = JSON.stringify({ answer: fullAnswer, confidence, sources: sourceMatches });
@@ -1051,7 +1055,9 @@ If the recalls don't contain enough information to answer the question, say so p
           answer = qaContent;
           const sourceMatches = [...new Set(qaContent.match(/SOURCE_\d+/g) ?? [])];
           sourcesUsed = sourceMatches;
-          confidence = qaContent.length > 20 ? Math.min(95, 50 + sourceMatches.length * 15) : 0;
+          confidence = qaContent.length > 20
+            ? Math.min(95, Math.max(50, 50 + sourceMatches.length * 15))
+            : 0;
         }
       }
 
@@ -1180,4 +1186,4 @@ If the recalls don't contain enough information to answer the question, say so p
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
-});
+})
