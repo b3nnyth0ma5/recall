@@ -17,6 +17,7 @@ import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 import { ZeroState } from '@/components/ZeroState';
 import { extractUrls, processRecallUrlsAndAwaitScrape } from '@/utils/urlProcessor';
 import RecallHeader from '@/components/RecallHeader';
+import { IconSymbol } from '@/components/IconSymbol';
 import { Note } from '@/types/Note';
 import { PillsRow } from '@/components/PillsRow';
 import type { PillItem } from '@/components/PillsRow';
@@ -45,6 +46,7 @@ export default function HomeScreen() {
   const [creatingRecallId, setCreatingRecallId] = useState<string | null>(null);
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
   const [combinedAddSearchEnabled, setCombinedAddSearchEnabled] = useState(true);
+  const [showCategories, setShowCategories] = useState(false);
   const [loadingPreferences, setLoadingPreferences] = useState(true);
   const [hasCheckedForRecalls, setHasCheckedForRecalls] = useState(false);
   const [hasRecalls, setHasRecalls] = useState(false);
@@ -118,7 +120,7 @@ export default function HomeScreen() {
       try {
         const { data, error } = await supabase
           .from('user_preferences')
-          .select('combined_add_search_enabled')
+          .select('combined_add_search_enabled, show_categories')
           .eq('user_id', user.id)
           .single();
 
@@ -126,6 +128,7 @@ export default function HomeScreen() {
           console.error('Error loading user preferences:', error);
         } else if (data) {
           setCombinedAddSearchEnabled(data.combined_add_search_enabled !== false);
+          setShowCategories(data.show_categories ?? false);
         }
       } catch (error) {
         console.error('Exception loading user preferences:', error);
@@ -614,33 +617,50 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {/* Category pills row */}
-      {isLoadingCategories ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pillsSkeletonContent}
-          style={styles.pillsRowWrapper}
-        >
-          {PILL_SKELETON_WIDTHS.map((w, i) => (
-            <SkeletonLoader
-              key={`pill-skeleton-${i}`}
-              variant="wave"
-              width={w}
-              height={36}
-              borderRadius={20}
+      {/* Category pills row OR search bar */}
+      {showCategories ? (
+        isLoadingCategories ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.pillsSkeletonContent}
+            style={styles.pillsRowWrapper}
+          >
+            {PILL_SKELETON_WIDTHS.map((w, i) => (
+              <SkeletonLoader
+                key={`pill-skeleton-${i}`}
+                variant="wave"
+                width={w}
+                height={36}
+                borderRadius={20}
+              />
+            ))}
+          </ScrollView>
+        ) : userCategories.length > 0 ? (
+          <View style={styles.pillsRowWrapper}>
+            <PillsRow
+              items={userCategories}
+              selected={selectedPill}
+              onSelect={handlePillSelect}
             />
-          ))}
-        </ScrollView>
-      ) : userCategories.length > 0 ? (
-        <View style={styles.pillsRowWrapper}>
-          <PillsRow
-            items={userCategories}
-            selected={selectedPill}
-            onSelect={handlePillSelect}
-          />
-        </View>
-      ) : null}
+          </View>
+        ) : null
+      ) : (
+        <Pressable
+          onPress={() => {
+            console.log('[HomeScreen iOS] Search bar tapped, navigating to search');
+            router.push('/search');
+          }}
+          style={styles.homeSearchBarWrapper}
+          accessibilityRole="search"
+          accessibilityLabel="Search your recalls"
+        >
+          <View style={styles.homeSearchBar} pointerEvents="none">
+            <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
+            <Text style={styles.homeSearchBarText}>Search your recalls...</Text>
+          </View>
+        </Pressable>
+      )}
 
       {/* Category recalls — shown when a pill is selected */}
       {selectedPill && (
@@ -915,6 +935,27 @@ const styles = StyleSheet.create({
   },
   pillsRowWrapper: {
     marginBottom: 8,
+  },
+  homeSearchBarWrapper: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  homeSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minHeight: 53,
+  },
+  homeSearchBarText: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.textTertiary,
   },
   pillsSkeletonContent: {
     paddingHorizontal: 16,

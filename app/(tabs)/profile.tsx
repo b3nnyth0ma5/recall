@@ -225,6 +225,8 @@ export default function ProfileScreen() {
 
   const [onDeviceNer, setOnDeviceNer] = useState(false);
   const [onDeviceAnswer, setOnDeviceAnswer] = useState(false);
+  const [showCategories, setShowCategories] = useState(false);
+  const [loadingShowCategories, setLoadingShowCategories] = useState(true);
 
   useEffect(() => {
     AsyncStorage.getItem('search_ner_ondevice').then(val => {
@@ -234,6 +236,19 @@ export default function ProfileScreen() {
       if (val === 'true') setOnDeviceAnswer(true);
     });
   }, []);
+
+  useEffect(() => {
+    if (!user) { setLoadingShowCategories(false); return; }
+    supabase
+      .from('user_preferences')
+      .select('show_categories')
+      .eq('user_id', user.id)
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) setShowCategories(data.show_categories ?? false);
+        setLoadingShowCategories(false);
+      });
+  }, [user]);
 
   const handleOnDeviceNerToggle = (value: boolean) => {
     console.log('[Profile] On-device NER toggle changed:', value);
@@ -245,6 +260,19 @@ export default function ProfileScreen() {
     console.log('[Profile] On-device answer generation toggle changed:', value);
     setOnDeviceAnswer(value);
     AsyncStorage.setItem('search_answer_ondevice', value ? 'true' : 'false');
+  };
+
+  const handleShowCategoriesToggle = async (value: boolean) => {
+    console.log('[Profile] Show categories toggle changed:', value);
+    setShowCategories(value);
+    try {
+      await supabase
+        .from('user_preferences')
+        .upsert({ user_id: user!.id, show_categories: value }, { onConflict: 'user_id' });
+    } catch (e) {
+      console.error('[Profile] Failed to save show_categories:', e);
+      setShowCategories(!value);
+    }
   };
 
   const deleteButtonEnabled = deleteConfirmInput.trim() === 'DELETE';
@@ -418,6 +446,32 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
           )}
+        </View>
+
+        {/* Display Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <IconSymbol name="rectangle.grid.2x2" size={24} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Display</Text>
+          </View>
+
+          <View style={styles.searchToggleRow}>
+            <View style={styles.searchToggleLeft}>
+              <IconSymbol name="square.grid.2x2" size={20} color={colors.primary} />
+              <View style={styles.searchToggleLabelBlock}>
+                <Text style={styles.searchToggleLabel}>Show Categories</Text>
+                <Text style={styles.searchToggleDescription}>
+                  Show category pills on the home screen. When off, a search bar is shown instead.
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={showCategories}
+              onValueChange={handleShowCategoriesToggle}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
         </View>
 
         {/* Search Section — iOS only */}

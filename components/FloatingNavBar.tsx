@@ -22,6 +22,7 @@ type Props = {
   onCreateRecallPress: () => void;
   onSearchPress: () => void;
   onProfilePress: () => void;
+  hideSearch?: boolean;
 };
 
 const ICON_COLOR = '#FFFFFF';
@@ -92,6 +93,7 @@ export function FloatingNavBar({
   onCreateRecallPress,
   onSearchPress,
   onProfilePress,
+  hideSearch = false,
 }: Props) {
   const insets = useSafeAreaInsets();
 
@@ -130,13 +132,15 @@ export function FloatingNavBar({
         accessibilityLabel="Create Recall"
       />
 
-      <TabButton
-        testID="navbar-search"
-        iconName="search"
-        isActive={activeRoute === 'search'}
-        onPress={onSearchPress}
-        accessibilityLabel="Search"
-      />
+      {!hideSearch && (
+        <TabButton
+          testID="navbar-search"
+          iconName="search"
+          isActive={activeRoute === 'search'}
+          onPress={onSearchPress}
+          accessibilityLabel="Search"
+        />
+      )}
 
       <TabButton
         testID="navbar-profile"
