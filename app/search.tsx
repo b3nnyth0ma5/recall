@@ -1578,12 +1578,12 @@ export default function SearchScreen() {
                 {/* Show answer card as soon as search starts */}
                 {(isSearching || !!streamingAnswer || !!searchAnswer) && !(isStreamingComplete && !streamingAnswer && !searchAnswer) ? (
                   <Animated.View entering={FadeIn.duration(300)} style={styles.answerContainer}>
-                    <View style={[styles.answerHeader, { overflow: 'visible' }]}>
+                    <View style={styles.answerHeader}>
                       <View style={styles.answerHeaderLeft}>
                         <IconSymbol name="lightbulb.fill" size={20} color={colors.primary} />
                         <Text style={styles.answerTitle}>Answer</Text>
                       </View>
-                      <View style={[styles.answerHeaderRight, { overflow: 'visible' }]}>
+                      <View style={styles.answerHeaderRight}>
                         {isStreamingComplete && searchConfidence !== undefined && (
                           <View style={styles.confidenceBadge}>
                             <IconSymbol name="checkmark.seal.fill" size={14} color={colors.primary} />
@@ -1593,7 +1593,7 @@ export default function SearchScreen() {
                         {isStreamingComplete && (
                           <Pressable
                             onPress={handleShareAnswer}
-                            style={[styles.shareAnswerButton, { overflow: 'visible' }]}
+                            style={styles.shareAnswerButton}
                           >
                             <ShareIcon size={18} color={colors.primary} strokeWidth={2.2} />
                           </Pressable>
@@ -1602,7 +1602,9 @@ export default function SearchScreen() {
                     </View>
                     <View style={styles.answerContent}>
                       {(() => {
-                        const displayAnswer = searchAnswer || streamingAnswer;
+                        const displayAnswer = (searchAnswer && searchAnswer.length >= (streamingAnswer?.length ?? 0))
+                          ? searchAnswer
+                          : (streamingAnswer || searchAnswer || '');
                         return isStreamingComplete ? (
                           <MarkdownAnswer
                             content={isAnswerExpanded ? (displayAnswer ?? '') : getAnswerPreview(displayAnswer ?? '')}
@@ -1610,7 +1612,11 @@ export default function SearchScreen() {
                             onRecallPress={handleRecallLinkPress}
                           />
                         ) : streamingAnswer ? (
-                          <Text style={styles.answerText}>{streamingAnswer}</Text>
+                          <MarkdownAnswer
+                            content={streamingAnswer}
+                            recallReferences={recallReferences}
+                            onRecallPress={handleRecallLinkPress}
+                          />
                         ) : (
                           <View>
                             <TypingDots />
@@ -1929,6 +1935,8 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     boxShadow: '0px 4px 12px rgba(255, 107, 122, 0.15)',
     elevation: 3,
+    zIndex: 10,
+    overflow: 'visible',
   },
   answerHeader: {
     flexDirection: 'row',
@@ -1991,6 +1999,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 107, 122, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
+    minWidth: 44,
+    minHeight: 44,
+    overflow: 'visible',
   },
   resultsAndToggleRow: {
     flexDirection: 'row',

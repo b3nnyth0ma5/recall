@@ -236,12 +236,11 @@ function ZoomableImage({
     ],
   }));
 
-  // Compute letterbox rect for face overlays — fall back to rendered layout if naturalDims not yet available
+  // Compute letterbox rect for face overlays — only valid once naturalDims are known
+  // (renderedImageLayout is the full SCREEN_WIDTH×SCREEN_HEIGHT container, not the letterboxed image rect)
   const imageRect = naturalDims
     ? computeImageRect(naturalDims.width, naturalDims.height, SCREEN_WIDTH, screenHeight)
-    : renderedImageLayout
-      ? { x: renderedImageLayout.x, y: renderedImageLayout.y, width: renderedImageLayout.width, height: renderedImageLayout.height }
-      : null;
+    : null;
 
   const pulseAnimStyle = useAnimatedStyle(() => ({
     opacity: pulseOpacity.value,
@@ -549,12 +548,25 @@ export function FullScreenImage({
       try {
         const { data, error } = await supabase
           .from('recall_images_people')
-          .select('id, face_uuid, bbox_x, bbox_y, bbox_w, bbox_h, person_id, confirmed_by_user, match_confidence, suggested_person_id, persons(person_name, photo_url)')
+          .select('id, face_uuid, bbox_x, bbox_y, bbox_w, bbox_h, person_id, confirmed_by_user, match_confidence, suggested_person_id')
           .eq('recall_image_id', imageId);
 
         if (error) {
           console.warn('[FullScreenImage] Face fetch error (non-fatal):', error);
           return;
+        }
+
+        // Fetch confirmed person names/photos separately to avoid FK join failures
+        const personIds = (data ?? []).filter((r: any) => r.person_id).map((r: any) => r.person_id as string);
+        let personMap: Record<string, { person_name: string; photo_url: string | null }> = {};
+        if (personIds.length > 0) {
+          const { data: persons } = await supabase
+            .from('persons')
+            .select('id, person_name, photo_url')
+            .in('id', personIds);
+          for (const p of (persons ?? [])) {
+            personMap[p.id] = { person_name: p.person_name, photo_url: p.photo_url ?? null };
+          }
         }
 
         // Build initial rows (suggested_person_name/photo_url filled in next step)
@@ -566,8 +578,8 @@ export function FullScreenImage({
           bbox_w: row.bbox_w,
           bbox_h: row.bbox_h,
           person_id: row.person_id ?? null,
-          person_name: row.persons?.person_name ?? null,
-          photo_url: row.persons?.photo_url ?? null,
+          person_name: personMap[row.person_id]?.person_name ?? null,
+          photo_url: personMap[row.person_id]?.photo_url ?? null,
           confirmed_by_user: row.confirmed_by_user ?? false,
           match_confidence: row.match_confidence ?? null,
           suggested_person_id: row.suggested_person_id ?? null,

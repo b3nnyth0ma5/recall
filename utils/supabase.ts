@@ -122,6 +122,15 @@ export async function uploadImageToDatabase(
     });
     console.log('Base64 conversion successful, length:', base64.length);
 
+    // Copy to stable cache path before upload (temp file may be deleted after upload)
+    const stableUri = `${FileSystem.cacheDirectory}face-detect-${Date.now()}.jpg`;
+    try {
+      await FileSystem.copyAsync({ from: uri, to: stableUri });
+      console.log('[uploadImageToDatabase] Copied to stable URI for face detection:', stableUri);
+    } catch (copyErr) {
+      console.warn('[uploadImageToDatabase] Could not copy to stable URI, face detection will be skipped:', copyErr);
+    }
+
     // Upload to Cloudflare CDN
     const { uploadImageToCloudflare } = await import('./cloudflareCDN');
     const fileName = `image-${Date.now()}-${Math.random().toString(36).substring(7)}.${contentType.split('/')[1]}`;
@@ -189,18 +198,17 @@ export async function uploadImageToDatabase(
     console.log('Database trigger: trigger-ocr-on-image-insert');
 
     // Fire-and-forget face detection + embedding extraction + auto-matching
-    // Uses base64 data already in memory to avoid temp-file deletion race conditions
+    // Uses stable cache file URI to avoid JSI bridge truncation of large base64 strings
     if (Platform.OS === 'ios') {
       const imageRowId = data.id;
       const userId = session.user.id;
-      // Capture base64 in closure — already read above
-      const capturedBase64 = base64;
+      // stableUri captured in closure — copied before CDN upload above
       (async () => {
         try {
-          const { detectFacesFromData, extractFaceEmbeddingFromData } = await import('@/modules/recall-native');
+          const { detectFacesOnDevice, extractFaceEmbeddingOnDevice } = await import('@/modules/recall-native');
           const Toast = (await import('react-native-toast-message')).default;
-          console.log('[uploadImageToDatabase] Starting face detection from base64 data');
-          const faces = await detectFacesFromData(capturedBase64);
+          console.log('[uploadImageToDatabase] Starting face detection from stable URI:', stableUri);
+          const faces = await detectFacesOnDevice(stableUri);
           if (faces && faces.length > 0) {
             console.log(`[uploadImageToDatabase] Detected ${faces.length} face(s), storing in recall_images_people`);
             const faceRows = faces.map(f => ({
@@ -241,8 +249,8 @@ export async function uploadImageToDatabase(
               for (const insertedFace of (insertedFaces ?? [])) {
                 try {
                   console.log('[uploadImageToDatabase] Extracting embedding for face:', insertedFace.id);
-                  const embedding = await extractFaceEmbeddingFromData(
-                    capturedBase64,
+                  const embedding = await extractFaceEmbeddingOnDevice(
+                    stableUri,
                     insertedFace.bbox_x,
                     insertedFace.bbox_y,
                     insertedFace.bbox_w,
@@ -317,6 +325,9 @@ export async function uploadImageToDatabase(
             position: 'bottom',
             visibilityTime: 3000,
           });
+        } finally {
+          // Clean up stable cache file
+          try { await FileSystem.deleteAsync(stableUri, { idempotent: true }); } catch {}
         }
       })();
     }
