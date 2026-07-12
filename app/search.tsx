@@ -193,6 +193,7 @@ export default function SearchScreen() {
     }
 
     setStreamingAnswer('');
+    streamingAnswerRef.current = '';
     setIsStreamingComplete(false);
 
     await new Promise<void>((resolve) => {
@@ -214,6 +215,7 @@ export default function SearchScreen() {
         if (tokenBatch) {
           const batch = tokenBatch;
           tokenBatch = '';
+          streamingAnswerRef.current = streamingAnswerRef.current + batch;
           if (mountedRef.current) setStreamingAnswer(prev => prev + batch);
           // Collapse search steps on first token
           if (!firstTokenFlushed) {
@@ -282,13 +284,29 @@ export default function SearchScreen() {
 
       xhr.onerror = () => {
         console.error('[Search] streamCloudAnswer: XHR error');
-        if (mountedRef.current) setIsStreamingComplete(true);
+        if (mountedRef.current) {
+          patchNotesForOnDeviceAnswer(
+            [],
+            searchResults,
+            streamingAnswerRef.current,
+            streamingAnswerRef.current.trim().length > 0 ? 50 : 0,
+          );
+          setIsStreamingComplete(true);
+        }
         cleanup();
       };
 
       xhr.ontimeout = () => {
         console.error('[Search] streamCloudAnswer: XHR timeout');
-        if (mountedRef.current) setIsStreamingComplete(true);
+        if (mountedRef.current) {
+          patchNotesForOnDeviceAnswer(
+            [],
+            searchResults,
+            streamingAnswerRef.current,
+            streamingAnswerRef.current.trim().length > 0 ? 50 : 0,
+          );
+          setIsStreamingComplete(true);
+        }
         cleanup();
       };
 
@@ -308,8 +326,16 @@ export default function SearchScreen() {
         // If no [DONE] SSE line was found, the response is plain JSON (no-matches path).
         // Mark streaming complete so the answer card exits the dots state.
         if (!doneReceived) {
-          console.log('[Search] streamCloudAnswer: no SSE [DONE] received — treating as no-answer response');
-          if (mountedRef.current) setIsStreamingComplete(true);
+          console.log('[Search] streamCloudAnswer: no SSE [DONE] received — using streamed text to patch notes');
+          if (mountedRef.current) {
+            patchNotesForOnDeviceAnswer(
+              [],
+              searchResults,
+              streamingAnswerRef.current,
+              streamingAnswerRef.current.trim().length > 0 ? 50 : 0,
+            );
+            setIsStreamingComplete(true);
+          }
         }
         cleanup();
       };
@@ -341,6 +367,7 @@ export default function SearchScreen() {
   const prevQueryRef = useRef('');
   const mountedRef = useRef(true);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const streamingAnswerRef = useRef('');
   const thinkingTextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -702,6 +729,7 @@ export default function SearchScreen() {
     setIsSearching(true);
     setIsProgressExpanded(true);
     setStreamingAnswer('');
+    streamingAnswerRef.current = '';
     setIsStreamingComplete(false);
     setShowThinkingText(false);
 
@@ -834,6 +862,7 @@ export default function SearchScreen() {
     setIsSearching(true);
     setIsProgressExpanded(true);
     setStreamingAnswer('');
+    streamingAnswerRef.current = '';
     setIsStreamingComplete(false);
     setShowThinkingText(false);
 
@@ -875,6 +904,7 @@ export default function SearchScreen() {
 
     try {
       setStreamingAnswer('');
+      streamingAnswerRef.current = '';
       setIsStreamingComplete(false);
       const searchResult = await searchNotes(item.search_text, true, searchUploads, preExtractedEntities);
 

@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 
-import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, RefreshControl, Modal, Platform, Alert, Keyboard, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, RefreshControl, Modal, Platform, Alert, Keyboard, ScrollView, Dimensions } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
@@ -25,7 +25,10 @@ import { SkeletonLoader } from '@/components/SkeletonLoader';
 import Animated, {
   useSharedValue,
   withTiming,
+  withRepeat,
+  Easing,
 } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // Module-level scroll-position cache — survives component remounts within a session.
 let homeScrollOffset = 0;
@@ -70,6 +73,16 @@ export default function HomeScreen() {
   // Track whether content has been laid out so we can restore scroll position
   const contentSizeKnownRef = useRef(false);
   const pendingScrollRestoreRef = useRef(false);
+
+  // Shimmer border animation for the search bar
+  const shimmerRotation = useSharedValue(0);
+  useEffect(() => {
+    shimmerRotation.value = withRepeat(
+      withTiming(1, { duration: 2800, easing: Easing.linear }),
+      -1,
+      false,
+    );
+  }, [shimmerRotation]);
 
   useEffect(() => {
     const unregister = registerScrollToTop('home', () => {
@@ -615,8 +628,8 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {/* Category pills row OR search bar */}
-      {showCategories ? (
+      {/* Category pills row — only shown when showCategories is true; search bar is sticky outside the list */}
+      {showCategories && (
         isLoadingCategories ? (
           <ScrollView
             horizontal
@@ -643,21 +656,6 @@ export default function HomeScreen() {
             />
           </View>
         ) : null
-      ) : (
-        <Pressable
-          onPress={() => {
-            console.log('[HomeScreen] Search bar tapped, navigating to search');
-            router.push('/search');
-          }}
-          style={styles.homeSearchBarWrapper}
-          accessibilityRole="search"
-          accessibilityLabel="Search your recalls"
-        >
-          <View style={styles.homeSearchBar} pointerEvents="none">
-            <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
-            <Text style={styles.homeSearchBarText}>Search your recalls...</Text>
-          </View>
-        </Pressable>
       )}
 
       {/* Category recalls — shown when a pill is selected */}
@@ -749,9 +747,11 @@ export default function HomeScreen() {
     </View>
   ) : null;
 
+  const stickyBarTop = insets.top + 50;
   const contentContainerStyle = [
     styles.scrollContent,
     combinedAddSearchEnabled && styles.scrollContentWithCombined,
+    !showCategories && { paddingTop: stickyBarTop + 52 },
   ];
 
   return (
@@ -761,6 +761,37 @@ export default function HomeScreen() {
           headerShown: false,
         }}
       />
+
+      {/* Sticky shimmer search bar — shown when categories are hidden */}
+      {!showCategories && (
+        <View style={[styles.stickySearchBarContainer, { top: stickyBarTop }]}>
+          <Pressable
+            onPress={() => {
+              console.log('[HomeScreen] Sticky search bar tapped, navigating to search');
+              router.push('/search');
+            }}
+            style={styles.stickySearchBarWrapper}
+            accessibilityRole="search"
+            accessibilityLabel="Search your recalls"
+          >
+            <Animated.View
+              style={[StyleSheet.absoluteFillObject, { borderRadius: 14, overflow: 'hidden' }]}
+              pointerEvents="none"
+            >
+              <LinearGradient
+                colors={['#7C3AED', '#06B6D4', '#7C3AED', '#A855F7', '#7C3AED']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[StyleSheet.absoluteFillObject, { opacity: 0.7 }]}
+              />
+            </Animated.View>
+            <View style={[styles.homeSearchBar, { margin: 1.5, borderRadius: 12 }]} pointerEvents="none">
+              <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
+              <Text style={styles.homeSearchBarText}>Search your recalls...</Text>
+            </View>
+          </Pressable>
+        </View>
+      )}
 
       <Animated.FlatList
         ref={listRef}
@@ -937,6 +968,8 @@ const styles = StyleSheet.create({
   homeSearchBarWrapper: {
     marginHorizontal: 16,
     marginBottom: 8,
+    borderRadius: 14,
+    overflow: 'hidden',
   },
   homeSearchBar: {
     flexDirection: 'row',
@@ -946,9 +979,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 14,
     gap: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
     minHeight: 53,
+  },
+  stickySearchBarContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    paddingHorizontal: 16,
+  },
+  stickySearchBarWrapper: {
+    height: 44,
+    borderRadius: 14,
+    overflow: 'hidden',
   },
   homeSearchBarText: {
     flex: 1,
