@@ -50,6 +50,109 @@ import { SkeletonLoader } from '@/components/SkeletonLoader';
 // Pill widths vary so the skeleton row doesn't look like a uniform stripe
 const PILL_SKELETON_WIDTHS = [80, 60, 110, 120, 70, 70, 100, 100, 80, 95];
 
+const THINKING_PHRASES = [
+  "Digging through your memories...",
+  "Almost there, hang tight...",
+  "Your recalls are being consulted...",
+  "Sifting through everything you've saved...",
+  "Connecting the dots...",
+  "Rummaging around in there...",
+  "Give it a sec...",
+  "Thinking really hard right now...",
+  "Searching the depths of your recall vault...",
+  "One moment, brain is loading...",
+  "Flipping through your mental Rolodex...",
+  "Asking your past self for help...",
+  "Untangling some thoughts...",
+  "This one's got layers...",
+  "Consulting the archives...",
+  "Your memories are being cross-referenced...",
+  "Piecing it together...",
+  "Hang on, almost cracked it...",
+  "Doing some serious recall archaeology...",
+  "Dusting off the old memory banks...",
+  "Searching every nook and cranny...",
+  "Your recalls are putting their heads together...",
+  "Wading through the good stuff...",
+  "Patience — this is worth it...",
+  "Chasing down a lead...",
+  "Sorting through the pile...",
+  "Recall is on the case...",
+  "Pulling threads...",
+  "Warming up the search engine...",
+  "Scanning your saved moments...",
+  "Hunting for the good bits...",
+  "Combing through your history...",
+  "Recall is thinking...",
+  "Putting the pieces together...",
+  "Checking every corner of your vault...",
+  "Your past self saved something useful, probably...",
+  "Narrowing it down...",
+  "Zooming in...",
+  "Cross-checking your recalls...",
+  "Doing the detective work...",
+  "Recall is on it, promise...",
+  "Searching with intent...",
+  "Turning over every stone...",
+  "Matching patterns...",
+  "Recall is giving this its full attention...",
+  "Scouring the timeline...",
+  "Tracing the memory trail...",
+  "Recall is deep in thought...",
+  "Connecting memories across time...",
+  "Assembling the answer...",
+  "Your recalls are talking to each other...",
+  "Recall is doing its thing...",
+  "Hang tight, this is a good one...",
+  "Recall is reading between the lines...",
+  "Searching smarter, not harder...",
+  "Recall is on a mission...",
+  "Pulling from the vault...",
+  "Recall is piecing it all together...",
+  "Recall is in detective mode...",
+  "Recall is connecting the dots...",
+  "Recall is on the trail...",
+  "Recall is working overtime...",
+  "Recall is doing a deep dive...",
+  "Recall is leaving no stone unturned...",
+  "Recall is on the hunt...",
+  "Recall is following the breadcrumbs...",
+  "Recall is reading your mind (almost)...",
+  "Recall is consulting the memory oracle...",
+  "Recall is running the numbers...",
+  "Recall is checking its notes...",
+  "Recall is flipping through the pages...",
+  "Recall is scanning the horizon...",
+  "Recall is zooming in on the details...",
+  "Recall is putting on its thinking cap...",
+  "Recall is doing the heavy lifting...",
+  "Recall is on the case, detective style...",
+  "Recall is searching high and low...",
+  "Recall is following the thread...",
+  "Recall is making connections...",
+  "Recall is on a roll...",
+  "Recall is getting warmer...",
+  "Recall is almost there...",
+  "Recall is closing in...",
+  "Recall is on the verge of a breakthrough...",
+  "Recall is putting it all together...",
+  "Recall is in the zone...",
+  "Recall is firing on all cylinders...",
+  "Recall is doing its best work...",
+  "Recall is on the right track...",
+  "Recall is getting to the bottom of it...",
+  "Recall is working its magic...",
+  "Recall is on the scent...",
+  "Recall is following the clues...",
+  "Recall is piecing the puzzle together...",
+  "Recall is on the lookout...",
+  "Recall is scanning the archives...",
+  "Recall is doing a thorough search...",
+  "Recall is leaving no recall unturned...",
+  "Recall is on the verge of an answer...",
+  "Recall is almost ready...",
+];
+
 function TypingDots() {
   const dot1 = useSharedValue(0.3);
   const dot2 = useSharedValue(0.3);
@@ -377,6 +480,7 @@ export default function SearchScreen() {
   const xhrRef = useRef<XMLHttpRequest | null>(null);
   const streamingAnswerRef = useRef('');
   const thinkingTextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const thinkingPhraseRef = useRef<string>('');
 
   useEffect(() => {
     mountedRef.current = true;
@@ -631,8 +735,11 @@ export default function SearchScreen() {
   useEffect(() => {
     if (isSearching && !streamingAnswer) {
       thinkingTextTimerRef.current = setTimeout(() => {
-        if (mountedRef.current) setShowThinkingText(true);
-      }, 5000);
+        if (mountedRef.current) {
+          thinkingPhraseRef.current = THINKING_PHRASES[Math.floor(Math.random() * THINKING_PHRASES.length)];
+          setShowThinkingText(true);
+        }
+      }, 3000);
       return () => {
         if (thinkingTextTimerRef.current) {
           clearTimeout(thinkingTextTimerRef.current);
@@ -1635,6 +1742,7 @@ export default function SearchScreen() {
                           <Pressable
                             onPress={handleShareAnswer}
                             style={styles.shareAnswerButton}
+                            hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
                           >
                             <ShareIcon size={18} color={colors.primary} strokeWidth={2.2} />
                           </Pressable>
@@ -1666,7 +1774,7 @@ export default function SearchScreen() {
                                 entering={FadeIn.duration(400)}
                                 style={styles.thinkingText}
                               >
-                                Recall needs a bit longer to find an answer for this...
+                                {thinkingPhraseRef.current || THINKING_PHRASES[0]}
                               </Animated.Text>
                             )}
                           </View>
@@ -2035,14 +2143,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   shareAnswerButton: {
-    padding: 12,
+    padding: 8,
     borderRadius: 20,
     backgroundColor: 'rgba(255, 107, 122, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
-    minWidth: 44,
-    minHeight: 44,
-    overflow: 'visible',
   },
   resultsAndToggleRow: {
     flexDirection: 'row',

@@ -1154,16 +1154,19 @@ export function useNotes() {
       if (__DEV__) console.log('=== UNIFIED ENTITY SEARCH COMPLETE ===');
       if (__DEV__) console.log(`Total search time: ${totalSearchTime}ms`);
 
-      // Always return context_for_answer when present so on-device answer generation can use it
-      if (entityResult.context_for_answer) {
-        console.log('[useNotes] searchNotes: returning context_for_answer, length:', entityResult.context_for_answer.length);
-        return {
-          context_for_answer: entityResult.context_for_answer as string,
-          uploaded_images_context: entityResult.uploaded_images_context as string | undefined,
-          results: (entityResult.results as { id: string; sourceNumber: number }[] | undefined) ?? [],
-        };
-      }
-      return undefined;
+      // Always return when the edge function responded with results (even empty context)
+      const mappedResults: { id: string; sourceNumber: number }[] =
+        ((entityResult.results as any[]) ?? []).map((r: any, idx: number) => ({
+          id: r.id as string,
+          sourceNumber: idx + 1,
+        }));
+
+      console.log('[useNotes] searchNotes: returning results, count:', mappedResults.length, 'context_for_answer length:', (entityResult.context_for_answer ?? '').length);
+      return {
+        context_for_answer: (entityResult.context_for_answer as string) ?? '',
+        uploaded_images_context: entityResult.uploaded_images_context as string | undefined,
+        results: mappedResults,
+      };
     } catch (error) {
       console.error('=== SEARCH EXCEPTION ===');
       console.error('Error searching recalls:', error);
@@ -1312,10 +1315,9 @@ export function useNotes() {
       if (citedNumbers.has(r.sourceNumber)) citedIds.add(r.id);
     });
 
-    // If model cited no sources but did produce an answer, mark all results as used.
-    // `answer` here is already the effective answer (streamingAnswerRef fallback applied by caller).
-    const effectiveAnswer = answer && answer.trim().length > 0 ? answer : '';
-    if (citedIds.size === 0 && effectiveAnswer.length > 0 && allResults.length > 0) {
+    // If model cited no sources (or answer was empty), mark all results as used.
+    if (citedIds.size === 0 && allResults.length > 0) {
+      // No specific sources cited — mark all results as used
       allResults.forEach(r => citedIds.add(r.id));
     }
 
