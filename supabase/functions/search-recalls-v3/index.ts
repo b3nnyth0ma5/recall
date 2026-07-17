@@ -386,18 +386,28 @@ If the recalls don't contain enough information to answer the question, say so p
 
       // Build a TransformStream that:
       // 1. Parses OpenAI SSE chunks and re-emits token strings as "data: <token>\n\n"
-      // 2. Accumulates the full answer, then on flush emits a final DONE event with parsed JSON
+      // 2. Accumulates the full answer via BOTH string concat AND a token array (dual accumulation
+      //    guards against any closure/GC issue with the string variable in Deno's TransformStream)
+      // 3. On flush, emits a final DONE event with the complete answer and parsed metadata
       const encoder = new TextEncoder();
       const decoder = new TextDecoder();
-      let fullAnswer = '';
-      let leftover = '';
+
+      // Dual accumulation: string concat + array of tokens
+      // Both are declared as properties on a shared state object to guarantee the same
+      // reference is visible in both transform() and flush() — avoids any let-binding
+      // closure issue in Deno's TransformStream implementation.
+      const state = {
+        fullAnswer: '' as string,
+        tokenBuffer: [] as string[],
+        leftover: '' as string,
+      };
 
       const transformStream = new TransformStream<Uint8Array, Uint8Array>({
         transform(chunk, controller) {
-          const text = leftover + decoder.decode(chunk, { stream: true });
+          const text = state.leftover + decoder.decode(chunk, { stream: true });
           const lines = text.split('\n');
           // Keep the last (potentially incomplete) line as leftover
-          leftover = lines.pop() ?? '';
+          state.leftover = lines.pop() ?? '';
 
           for (const line of lines) {
             const trimmed = line.trim();
@@ -408,7 +418,9 @@ If the recalls don't contain enough information to answer the question, say so p
               const parsed = JSON.parse(payload);
               const token: string | undefined = parsed?.choices?.[0]?.delta?.content;
               if (token && token.length > 0) {
-                fullAnswer += token;
+                // Dual accumulation
+                state.fullAnswer += token;
+                state.tokenBuffer.push(token);
                 // Escape literal newlines so the SSE frame is never split
                 controller.enqueue(encoder.encode(`data: ${token.replace(/\n/g, '\\n')}\n\n`));
               }
@@ -419,15 +431,16 @@ If the recalls don't contain enough information to answer the question, say so p
         },
         flush(controller) {
           // Process any remaining leftover
-          if (leftover.trim().startsWith('data:')) {
-            const payload = leftover.trim().slice(5).trim();
+          if (state.leftover.trim().startsWith('data:')) {
+            const payload = state.leftover.trim().slice(5).trim();
             if (payload !== '[DONE]') {
               try {
                 const parsed = JSON.parse(payload);
                 const token: string | undefined = parsed?.choices?.[0]?.delta?.content;
                 if (token && token.length > 0) {
-                  fullAnswer += token;
-                  // Escape literal newlines in leftover token too
+                  // Dual accumulation for leftover token too
+                  state.fullAnswer += token;
+                  state.tokenBuffer.push(token);
                   controller.enqueue(encoder.encode(`data: ${token.replace(/\n/g, '\\n')}\n\n`));
                 }
               } catch {
@@ -436,16 +449,35 @@ If the recalls don't contain enough information to answer the question, say so p
             }
           }
 
-          // Extract SOURCE_X references from plain prose answer
-          const sourceMatches = [...new Set(fullAnswer.match(/SOURCE_\d+/g) ?? [])];
-          const confidence = fullAnswer.length > 20
-            ? Math.min(95, Math.max(50, 50 + sourceMatches.length * 15))
+          // Use whichever accumulation is longer as the authoritative answer
+          const bufferAnswer = state.tokenBuffer.join('');
+          const finalAnswer = bufferAnswer.length >= state.fullAnswer.length
+            ? bufferAnswer
+            : state.fullAnswer;
+
+          // Extract SOURCE_X references — match both bare SOURCE_X and bracketed [SOURCE_X] formats
+          const sourceMatches = [
+            ...new Set([
+              ...(finalAnswer.match(/SOURCE_\d+/g) ?? []),
+              ...(finalAnswer.match(/\[SOURCE_\d+\]/g) ?? []).map((s: string) => s.slice(1, -1))
+            ])
+          ];
+
+          // Guarantee minimum confidence when a real answer was produced
+          const confidence = finalAnswer.length > 20
+            ? Math.max(50, Math.min(95, 50 + sourceMatches.length * 15))
             : 0;
 
-          console.log('[search-recalls-v3] flush: fullAnswer length:', fullAnswer.length, 'sources:', sourceMatches.length, 'confidence:', confidence);
+          console.log(
+            '[search-recalls-v3] flush: finalAnswer.length =', finalAnswer.length,
+            '| tokenBuffer tokens =', state.tokenBuffer.length,
+            '| fullAnswer.length =', state.fullAnswer.length,
+            '| sources =', sourceMatches.length,
+            '| confidence =', confidence
+          );
 
           // Replace literal newlines in the JSON payload so the SSE frame is never split
-          const donePayload = JSON.stringify({ answer: fullAnswer, confidence, sources: sourceMatches });
+          const donePayload = JSON.stringify({ answer: finalAnswer, confidence, sources: sourceMatches });
           const safeDonePayload = donePayload.replace(/\n/g, '\\n');
           controller.enqueue(encoder.encode(`data: [DONE] ${safeDonePayload}\n\n`));
         }
@@ -1000,7 +1032,7 @@ If the recalls don't contain enough information to answer the question, say so p
       // Build contextForAnswer to include in response
       const contextForAnswer = `Available Recalls (sorted by highest match percentage first):\n${context}`;
 
-      const qaSystemPrompt = `You are an intelligent search assistant that answers questions based on the user's personal recall notes. You understand the user's intent and make associations between pieces of information.
+      const qaSystemPrompt = `You are an intelligent search assistant that answers questions succinctly based on the user's personal notes.
 
 CRITICAL RULES:
 - Answer in plain prose — no JSON, no markdown code blocks
@@ -1011,7 +1043,6 @@ CRITICAL RULES:
 - Example: "The restaurant is located in Collingwood SOURCE_1. They serve Italian food SOURCE_1 SOURCE_2."
 - You can reference the same source multiple times
 - Don't add explanatory text about sources — just use SOURCE_X inline
-- Be concise and direct
 
 MATCH INFORMATION:
 - Pay attention to match type indicators: [LOCATION], [PEOPLE], [KEYWORD]
