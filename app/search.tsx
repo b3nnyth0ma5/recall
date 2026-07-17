@@ -549,11 +549,12 @@ export default function SearchScreen() {
           const preExtractedEntities = await tryOnDeviceExtraction(decodedQuery);
           const canUseOnDeviceAnswer = await checkAndNotifyFoundationModels();
           const searchResult = await searchNotes(decodedQuery, true, undefined, preExtractedEntities);
-          if (searchResult?.context_for_answer) {
+          if (searchResult !== undefined) {
+            const contextForAnswer = searchResult.context_for_answer ?? '';
             if (canUseOnDeviceAnswer) {
               const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
-              const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
-              console.log('[Search] autoSearch: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
+              const safeContext = contextForAnswer.slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
+              console.log('[Search] autoSearch: context capped to', safeContext.length, 'chars (original:', contextForAnswer.length, ')');
               const onDeviceResult = await generateAnswerOnDevice(
                 safeContext,
                 decodedQuery,
@@ -573,7 +574,7 @@ export default function SearchScreen() {
                 console.log('[Search] autoSearch: on-device answer returned null, falling back to streaming cloud');
                 await streamCloudAnswer(
                   decodedQuery,
-                  searchResult.context_for_answer,
+                  contextForAnswer,
                   searchResult.uploaded_images_context ?? '',
                   preExtractedEntities,
                   searchResult.results ?? [],
@@ -583,7 +584,7 @@ export default function SearchScreen() {
               console.log('[Search] autoSearch: cloud-only path, streaming answer');
               await streamCloudAnswer(
                 decodedQuery,
-                searchResult.context_for_answer,
+                contextForAnswer,
                 searchResult.uploaded_images_context ?? '',
                 preExtractedEntities,
                 searchResult.results ?? [],
@@ -805,12 +806,13 @@ export default function SearchScreen() {
     try {
       const searchResult = await searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined, preExtractedEntities);
 
-      if (searchResult?.context_for_answer) {
+      if (searchResult !== undefined) {
+        const contextForAnswer = searchResult.context_for_answer ?? '';
         if (canUseOnDeviceAnswer) {
           console.log('[Search] handleSearch: attempting on-device answer generation');
           const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
-          const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
-          console.log('[Search] handleSearch: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
+          const safeContext = contextForAnswer.slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
+          console.log('[Search] handleSearch: context capped to', safeContext.length, 'chars (original:', contextForAnswer.length, ')');
           const onDeviceResult = await generateAnswerOnDevice(
             safeContext,
             searchQuery,
@@ -831,7 +833,7 @@ export default function SearchScreen() {
             console.log('[Search] handleSearch: on-device answer returned null, falling back to streaming cloud');
             await streamCloudAnswer(
               searchQuery,
-              searchResult.context_for_answer,
+              contextForAnswer,
               searchResult.uploaded_images_context ?? '',
               preExtractedEntities,
               searchResult.results ?? [],
@@ -841,7 +843,7 @@ export default function SearchScreen() {
           console.log('[Search] handleSearch: cloud-only path, streaming answer');
           await streamCloudAnswer(
             searchQuery,
-            searchResult.context_for_answer,
+            contextForAnswer,
             searchResult.uploaded_images_context ?? '',
             preExtractedEntities,
             searchResult.results ?? [],
@@ -916,12 +918,13 @@ export default function SearchScreen() {
       setIsStreamingComplete(false);
       const searchResult = await searchNotes(item.search_text, true, searchUploads, preExtractedEntities);
 
-      if (searchResult?.context_for_answer) {
+      if (searchResult !== undefined) {
+        const contextForAnswer = searchResult.context_for_answer ?? '';
         if (canUseOnDeviceAnswer) {
           console.log('[Search] handleHistoryItemPress: attempting on-device answer generation');
           const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
-          const safeContext = (searchResult.context_for_answer ?? '').slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
-          console.log('[Search] handleHistoryItemPress: context capped to', safeContext.length, 'chars (original:', (searchResult.context_for_answer ?? '').length, ')');
+          const safeContext = contextForAnswer.slice(0, MAX_ONDEVICE_CONTEXT_CHARS);
+          console.log('[Search] handleHistoryItemPress: context capped to', safeContext.length, 'chars (original:', contextForAnswer.length, ')');
           const onDeviceResult = await generateAnswerOnDevice(
             safeContext,
             item.search_text,
@@ -942,7 +945,7 @@ export default function SearchScreen() {
             console.log('[Search] handleHistoryItemPress: on-device answer returned null, falling back to streaming cloud');
             await streamCloudAnswer(
               item.search_text,
-              searchResult.context_for_answer,
+              contextForAnswer,
               searchResult.uploaded_images_context ?? '',
               preExtractedEntities,
               searchResult.results ?? [],
@@ -952,7 +955,7 @@ export default function SearchScreen() {
           console.log('[Search] handleHistoryItemPress: cloud-only path, streaming answer');
           await streamCloudAnswer(
             item.search_text,
-            searchResult.context_for_answer,
+            contextForAnswer,
             searchResult.uploaded_images_context ?? '',
             preExtractedEntities,
             searchResult.results ?? [],

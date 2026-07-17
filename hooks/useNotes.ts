@@ -1007,14 +1007,12 @@ export function useNotes() {
           try {
             if (__DEV__) console.log('[searchNotes] Starting collage generation for query:', query.trim());
 
-            // Only use recalls that were actually used to construct the answer (not just
-            // top-scoring matches). If no recalls were used in the answer, the IIFE
-            // early-returns and the row keeps its clock icon.
-            const answerRecalls = orderedRecalls.filter((n: any) => n?.used_for_answer === true);
-            const topRecalls = answerRecalls.slice(0, 4);
+            // Use top results directly — used_for_answer is patched later by patchNotesForOnDeviceAnswer
+            // so we can't filter on it here. Use the top 4 ordered recalls instead.
+            const topRecalls = orderedRecalls.slice(0, 4);
 
             if (topRecalls.length === 0) {
-              if (__DEV__) console.log('[searchNotes] No used_for_answer recalls; skipping collage generation');
+              if (__DEV__) console.log('[searchNotes] No ordered recalls; skipping collage generation');
               return;
             }
 
