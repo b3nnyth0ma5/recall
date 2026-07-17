@@ -16,6 +16,7 @@ import {
   AppStateStatus,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
@@ -551,6 +552,10 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
         return;
       }
 
+      // Check if paste permission has already been granted (to avoid repeated iOS dialog)
+      const pastePermissionGranted = await AsyncStorage.getItem('paste_permission_granted');
+      console.log('[CombinedSearchAdd] Paste permission previously granted:', !!pastePermissionGranted);
+
       // Fetch all available content in parallel
       const [imageResult, urlResult, textResult] = await Promise.all([
         hasImage ? Clipboard.getImageAsync({ format: 'jpeg' }) : Promise.resolve(null),
@@ -601,6 +606,10 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
 
       if (!didSomething) {
         Alert.alert('Nothing to paste', 'Your clipboard is empty.');
+      } else if (!pastePermissionGranted) {
+        // Save that the user has granted paste permission so future presses skip the iOS dialog
+        console.log('[CombinedSearchAdd] Saving paste permission granted to AsyncStorage');
+        AsyncStorage.setItem('paste_permission_granted', '1').catch(() => {});
       }
     } catch (err) {
       console.error('[CombinedSearchAdd] Paste error:', err);

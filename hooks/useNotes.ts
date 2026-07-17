@@ -1314,8 +1314,10 @@ export function useNotes() {
       if (citedNumbers.has(r.sourceNumber)) citedIds.add(r.id);
     });
 
-    // If model cited no sources but did produce an answer, mark all results as used
-    if (citedIds.size === 0 && answer && answer.trim().length > 0) {
+    // If model cited no sources but did produce an answer, mark all results as used.
+    // `answer` here is already the effective answer (streamingAnswerRef fallback applied by caller).
+    const effectiveAnswer = answer && answer.trim().length > 0 ? answer : '';
+    if (citedIds.size === 0 && effectiveAnswer.length > 0 && allResults.length > 0) {
       allResults.forEach(r => citedIds.add(r.id));
     }
 

@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 
-import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, RefreshControl, Modal, Platform, Alert, Keyboard, ScrollView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, RefreshControl, Modal, Platform, Alert, Keyboard, ScrollView } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
@@ -17,7 +17,6 @@ import { NoteCardSkeleton } from '@/components/NoteCardSkeleton';
 import { ZeroState } from '@/components/ZeroState';
 import { extractUrls, processRecallUrlsAndAwaitScrape } from '@/utils/urlProcessor';
 import RecallHeader from '@/components/RecallHeader';
-import { IconSymbol } from '@/components/IconSymbol';
 import { Note } from '@/types/Note';
 import { PillsRow } from '@/components/PillsRow';
 import type { PillItem } from '@/components/PillsRow';
@@ -25,11 +24,8 @@ import { SkeletonLoader } from '@/components/SkeletonLoader';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withRepeat,
   withTiming,
-  Easing,
 } from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
 
 // Module-level scroll-position cache — survives component remounts within a session.
 let homeScrollOffset = 0;
@@ -50,7 +46,6 @@ export default function HomeScreen() {
   const [creatingRecallId, setCreatingRecallId] = useState<string | null>(null);
   const [categoryRefreshTrigger, setCategoryRefreshTrigger] = useState(0);
   const [combinedAddSearchEnabled, setCombinedAddSearchEnabled] = useState(true);
-  const [showCategories, setShowCategories] = useState(false);
   const [loadingPreferences, setLoadingPreferences] = useState(true);
   const [hasCheckedForRecalls, setHasCheckedForRecalls] = useState(false);
   const [hasRecalls, setHasRecalls] = useState(false);
@@ -74,16 +69,6 @@ export default function HomeScreen() {
   // Track whether content has been laid out so we can restore scroll position
   const contentSizeKnownRef = useRef(false);
   const pendingScrollRestoreRef = useRef(false);
-
-  // Shimmer border animation for the search bar
-  const shimmerRotation = useSharedValue(0);
-  useEffect(() => {
-    shimmerRotation.value = withRepeat(
-      withTiming(1, { duration: 2800, easing: Easing.linear }),
-      -1,
-      false,
-    );
-  }, [shimmerRotation]);
 
   useEffect(() => {
     const unregister = registerScrollToTop('home', () => {
@@ -134,7 +119,7 @@ export default function HomeScreen() {
       try {
         const { data, error } = await supabase
           .from('user_preferences')
-          .select('combined_add_search_enabled, show_categories')
+          .select('combined_add_search_enabled')
           .eq('user_id', user.id)
           .single();
 
@@ -142,7 +127,6 @@ export default function HomeScreen() {
           console.error('Error loading user preferences:', error);
         } else if (data) {
           setCombinedAddSearchEnabled(data.combined_add_search_enabled !== false);
-          setShowCategories(data.show_categories ?? false);
         }
       } catch (error) {
         console.error('Exception loading user preferences:', error);
@@ -631,35 +615,33 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {/* Category pills row — only shown when showCategories is true; search bar is sticky outside the list */}
-      {showCategories && (
-        isLoadingCategories ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.pillsSkeletonContent}
-            style={styles.pillsRowWrapper}
-          >
-            {PILL_SKELETON_WIDTHS.map((w, i) => (
-              <SkeletonLoader
-                key={`pill-skeleton-${i}`}
-                variant="wave"
-                width={w}
-                height={36}
-                borderRadius={20}
-              />
-            ))}
-          </ScrollView>
-        ) : userCategories.length > 0 ? (
-          <View style={styles.pillsRowWrapper}>
-            <PillsRow
-              items={userCategories}
-              selected={selectedPill}
-              onSelect={handlePillSelect}
+      {/* Category pills row — always shown */}
+      {isLoadingCategories ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pillsSkeletonContent}
+          style={styles.pillsRowWrapper}
+        >
+          {PILL_SKELETON_WIDTHS.map((w, i) => (
+            <SkeletonLoader
+              key={`pill-skeleton-${i}`}
+              variant="wave"
+              width={w}
+              height={36}
+              borderRadius={20}
             />
-          </View>
-        ) : null
-      )}
+          ))}
+        </ScrollView>
+      ) : userCategories.length > 0 ? (
+        <View style={styles.pillsRowWrapper}>
+          <PillsRow
+            items={userCategories}
+            selected={selectedPill}
+            onSelect={handlePillSelect}
+          />
+        </View>
+      ) : null}
 
       {/* Category recalls — shown when a pill is selected */}
       {selectedPill && (
@@ -750,11 +732,9 @@ export default function HomeScreen() {
     </View>
   ) : null;
 
-  const stickyBarTop = insets.top + 50;
   const contentContainerStyle = [
     styles.scrollContent,
     combinedAddSearchEnabled && styles.scrollContentWithCombined,
-    !showCategories && { paddingTop: stickyBarTop + 52 },
   ];
 
   return (
@@ -764,37 +744,6 @@ export default function HomeScreen() {
           headerShown: false,
         }}
       />
-
-      {/* Sticky shimmer search bar — shown when categories are hidden */}
-      {!showCategories && (
-        <View style={[styles.stickySearchBarContainer, { top: stickyBarTop }]}>
-          <Pressable
-            onPress={() => {
-              console.log('[HomeScreen iOS] Sticky search bar tapped, navigating to search');
-              router.push('/search');
-            }}
-            style={styles.stickySearchBarWrapper}
-            accessibilityRole="search"
-            accessibilityLabel="Search your recalls"
-          >
-            <Animated.View
-              style={[StyleSheet.absoluteFillObject, { borderRadius: 14, overflow: 'hidden' }]}
-              pointerEvents="none"
-            >
-              <LinearGradient
-                colors={['#7C3AED', '#06B6D4', '#7C3AED', '#A855F7', '#7C3AED']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[StyleSheet.absoluteFillObject, { opacity: 0.7 }]}
-              />
-            </Animated.View>
-            <View style={[styles.homeSearchBar, { margin: 1.5, borderRadius: 12 }]} pointerEvents="none">
-              <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
-              <Text style={styles.homeSearchBarText}>Search your recalls...</Text>
-            </View>
-          </Pressable>
-        </View>
-      )}
 
       <Animated.FlatList
         ref={listRef}
@@ -967,39 +916,6 @@ const styles = StyleSheet.create({
   },
   pillsRowWrapper: {
     marginBottom: 8,
-  },
-  homeSearchBarWrapper: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  homeSearchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    gap: 12,
-    minHeight: 53,
-  },
-  stickySearchBarContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 10,
-    paddingHorizontal: 16,
-  },
-  stickySearchBarWrapper: {
-    height: 44,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  homeSearchBarText: {
-    flex: 1,
-    fontSize: 16,
-    color: colors.textTertiary,
   },
   pillsSkeletonContent: {
     paddingHorizontal: 16,

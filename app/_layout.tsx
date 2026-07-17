@@ -326,20 +326,6 @@ function RootLayoutNav() {
     }
   }, [user, loading, emailVerified, checkingOnboarding, needsOnboarding, segments, router]);
 
-  const [showCategories, setShowCategories] = useState(false);
-
-  useEffect(() => {
-    if (!user) return;
-    supabase
-      .from('user_preferences')
-      .select('show_categories')
-      .eq('user_id', user.id)
-      .single()
-      .then(({ data }) => {
-        if (data) setShowCategories(data.show_categories ?? false);
-      });
-  }, [user]);
-
   const { isCreatePanelOpen, openCreatePanel } = useCreateRecallUI();
   const { triggerScrollToTop, triggerSearchFocus } = useScrollToTop();
   const pathname = usePathname();
@@ -488,7 +474,6 @@ function RootLayoutNav() {
           onCreateRecallPress={handleNavCreateRecall}
           onSearchPress={handleNavSearch}
           onProfilePress={handleNavProfile}
-          hideSearch={!showCategories}
         />
       </View>
     </View>

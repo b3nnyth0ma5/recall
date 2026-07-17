@@ -243,13 +243,21 @@ export default function SearchScreen() {
         try {
           const raw = data.slice(7).replace(/\\n/g, '\n'); // strip '[DONE] ' then unescape newlines
           const payload = JSON.parse(raw);
-          console.log('[Search] streamCloudAnswer: DONE received (' + caller + '), confidence:', payload.confidence, 'sources:', payload.sources);
+          console.log('[Search] streamCloudAnswer: DONE received (' + caller + '), confidence:', payload.confidence, 'sources:', payload.sources, 'payload.answer length:', (payload.answer ?? '').length, 'streamingAnswerRef length:', streamingAnswerRef.current.length);
+          // Use streamingAnswerRef as authoritative answer when payload.answer is empty
+          const effectiveAnswer = (payload.answer && (payload.answer as string).trim().length > 0)
+            ? (payload.answer as string)
+            : streamingAnswerRef.current;
+          const effectiveConfidence = ((payload.confidence as number) > 0)
+            ? (payload.confidence as number)
+            : (effectiveAnswer.trim().length > 0 ? 50 : 0);
+          console.log('[Search] streamCloudAnswer: effectiveAnswer length:', effectiveAnswer.length, 'effectiveConfidence:', effectiveConfidence);
           if (mountedRef.current) {
             patchNotesForOnDeviceAnswer(
               payload.sources ?? [],
               searchResults,
-              payload.answer ?? '',
-              payload.confidence ?? 0,
+              effectiveAnswer,
+              effectiveConfidence,
             );
           }
         } catch (e) {

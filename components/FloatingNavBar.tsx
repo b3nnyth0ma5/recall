@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Pressable, StyleSheet, Platform, Dimensions } from 'react-native';
+import { View, Pressable, StyleSheet, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -22,16 +22,11 @@ type Props = {
   onCreateRecallPress: () => void;
   onSearchPress: () => void;
   onProfilePress: () => void;
-  hideSearch?: boolean;
 };
 
 const ICON_COLOR = '#FFFFFF';
 const BAR_HEIGHT = 60;
 const ACTIVE_BG_SIZE = 40;
-
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const FULL_WIDTH = SCREEN_WIDTH * 0.72;
-const NARROW_WIDTH = SCREEN_WIDTH * 0.54;
 
 // ─── Individual tab button ────────────────────────────────────────────────────
 type TabButtonProps = {
@@ -97,7 +92,6 @@ export function FloatingNavBar({
   onCreateRecallPress,
   onSearchPress,
   onProfilePress,
-  hideSearch = false,
 }: Props) {
   const insets = useSafeAreaInsets();
 
@@ -113,16 +107,6 @@ export function FloatingNavBar({
 
   const containerAnimStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
-  }));
-
-  // Animated width: narrows when search tab is hidden
-  const barWidth = useSharedValue(hideSearch ? NARROW_WIDTH : FULL_WIDTH);
-  useEffect(() => {
-    barWidth.value = withTiming(hideSearch ? NARROW_WIDTH : FULL_WIDTH, { duration: 300 });
-  }, [hideSearch, barWidth]);
-
-  const widthStyle = useAnimatedStyle(() => ({
-    width: barWidth.value,
   }));
 
   const bottomOffset = Math.max(insets.bottom - 20, 4);
@@ -146,15 +130,13 @@ export function FloatingNavBar({
         accessibilityLabel="Create Recall"
       />
 
-      {!hideSearch && (
-        <TabButton
-          testID="navbar-search"
-          iconName="search"
-          isActive={activeRoute === 'search'}
-          onPress={onSearchPress}
-          accessibilityLabel="Search"
-        />
-      )}
+      <TabButton
+        testID="navbar-search"
+        iconName="search"
+        isActive={activeRoute === 'search'}
+        onPress={onSearchPress}
+        accessibilityLabel="Search"
+      />
 
       <TabButton
         testID="navbar-profile"
@@ -173,7 +155,6 @@ export function FloatingNavBar({
         styles.container,
         { bottom: bottomOffset },
         containerAnimStyle,
-        widthStyle,
       ]}
     >
       {Platform.OS === 'ios' ? (
@@ -202,6 +183,7 @@ const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     alignSelf: 'center',
+    width: '72%',
     maxWidth: 380,
     height: BAR_HEIGHT,
     borderRadius: 28,
