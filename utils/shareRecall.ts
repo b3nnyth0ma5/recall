@@ -19,6 +19,75 @@ if (Platform.OS !== 'web') {
 }
 
 /**
+ * Write a minimal solid-color BMP (64×64) to cacheDirectory and return its file:// URI.
+ * Used as a fallback share-sheet thumbnail for document-only recalls.
+ */
+async function getDocTypeThumbnailUri(contentType: string): Promise<string | null> {
+  try {
+    // Brand colors per document type
+    const colorMap: Record<string, [number, number, number]> = {
+      'application/pdf':                                                    [220,  53,  69],
+      'application/msword':                                                 [ 40, 100, 200],
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [40, 100, 200],
+      'application/vnd.ms-excel':                                           [ 33, 115,  70],
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': [ 33, 115,  70],
+      'text/csv':                                                           [ 33, 115,  70],
+      'application/vnd.ms-powerpoint':                                      [209,  52,  56],
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation': [209, 52, 56],
+      'text/plain':                                                         [108, 117, 125],
+      'application/vnd.apple.pages':                                        [255, 159,  10],
+      'application/vnd.apple.numbers':                                      [ 52, 199,  89],
+    };
+    const [r, g, b] = colorMap[contentType] ?? [90, 90, 90];
+
+    const width = 64, height = 64;
+    const rowSize = Math.floor((width * 3 + 3) / 4) * 4;
+    const pixelDataSize = rowSize * height;
+    const fileSize = 54 + pixelDataSize;
+
+    const buf = new Uint8Array(fileSize);
+    // BMP file header
+    buf[0] = 0x42; buf[1] = 0x4D; // 'BM'
+    buf[2] = fileSize & 0xFF; buf[3] = (fileSize >> 8) & 0xFF;
+    buf[4] = (fileSize >> 16) & 0xFF; buf[5] = (fileSize >> 24) & 0xFF;
+    buf[6] = 0; buf[7] = 0; buf[8] = 0; buf[9] = 0;
+    buf[10] = 54; buf[11] = 0; buf[12] = 0; buf[13] = 0;
+    // DIB header (BITMAPINFOHEADER, 40 bytes)
+    buf[14] = 40; buf[15] = 0; buf[16] = 0; buf[17] = 0;
+    buf[18] = width & 0xFF; buf[19] = (width >> 8) & 0xFF; buf[20] = 0; buf[21] = 0;
+    buf[22] = (-height) & 0xFF; buf[23] = 0xFF; buf[24] = 0xFF; buf[25] = 0xFF;
+    buf[26] = 1; buf[27] = 0;
+    buf[28] = 24; buf[29] = 0;
+    for (let i = 30; i < 54; i++) buf[i] = 0;
+    // Pixel data (BGR order)
+    for (let row = 0; row < height; row++) {
+      for (let col = 0; col < width; col++) {
+        const offset = 54 + row * rowSize + col * 3;
+        buf[offset] = b;
+        buf[offset + 1] = g;
+        buf[offset + 2] = r;
+      }
+    }
+
+    let binary = '';
+    for (let i = 0; i < buf.length; i++) {
+      binary += String.fromCharCode(buf[i]);
+    }
+    const base64 = btoa(binary);
+
+    const fileName = `doc_thumb_${contentType.replace(/[^a-z0-9]/gi, '_')}.bmp`;
+    const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+    await FileSystem.writeAsStringAsync(fileUri, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return fileUri;
+  } catch (e) {
+    console.warn('[shareRecall] getDocTypeThumbnailUri failed:', e);
+    return null;
+  }
+}
+
+/**
  * Determine a safe file extension from a URL by parsing the pathname only
  * (ignoring query string) and matching common image formats. Defaults to 'jpg'.
  */
@@ -106,6 +175,49 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
     }
 
     console.log('[shareRecall] Total images to share:', imagesToShare.length);
+
+    // ── Fallback preview image when no recall photos exist ───────────────────
+    let fallbackPreviewUri: string | null = null;
+    if (imagesToShare.length === 0) {
+      // Priority 1: URL OG image
+      const ogImageUrl = recall.urls?.[0]?.og_image_url;
+      if (ogImageUrl) {
+        try {
+          console.log('[shareRecall] No photos — downloading OG image for share preview:', ogImageUrl);
+          const ext = getImageExtensionFromUrl(ogImageUrl);
+          const ogDest = `${FileSystem.cacheDirectory}share_og_${recall.id}_${Date.now()}.${ext}`;
+          const ogResult = await FileSystem.downloadAsync(ogImageUrl, ogDest);
+          if (ogResult.status === 200) {
+            fallbackPreviewUri = ogResult.uri.startsWith('file://') ? ogResult.uri : `file://${ogResult.uri}`;
+            console.log('[shareRecall] OG image downloaded for preview:', fallbackPreviewUri);
+          }
+        } catch (e) {
+          console.warn('[shareRecall] Failed to download OG image:', e);
+        }
+      }
+
+      // Priority 2: Document thumbnail or type-specific color swatch
+      if (!fallbackPreviewUri && recall.documents && recall.documents.length > 0) {
+        const firstDoc = recall.documents[0];
+        if (firstDoc.thumbnail_url) {
+          try {
+            console.log('[shareRecall] Downloading document thumbnail for share preview:', firstDoc.thumbnail_url);
+            const thumbDest = `${FileSystem.cacheDirectory}share_thumb_${recall.id}_${Date.now()}.jpg`;
+            const thumbResult = await FileSystem.downloadAsync(firstDoc.thumbnail_url, thumbDest);
+            if (thumbResult.status === 200) {
+              fallbackPreviewUri = thumbResult.uri.startsWith('file://') ? thumbResult.uri : `file://${thumbResult.uri}`;
+              console.log('[shareRecall] Document thumbnail downloaded:', fallbackPreviewUri);
+            }
+          } catch (e) {
+            console.warn('[shareRecall] Failed to download document thumbnail:', e);
+          }
+        }
+        if (!fallbackPreviewUri) {
+          fallbackPreviewUri = await getDocTypeThumbnailUri(firstDoc.content_type);
+          console.log('[shareRecall] Using doc-type color swatch for preview:', fallbackPreviewUri);
+        }
+      }
+    }
 
     // Build comprehensive share message with recall text, location, and image info
     let shareMessage = '';
@@ -217,14 +329,15 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
         console.log('Valid URIs:', validUris);
         
         // If we successfully downloaded at least one image, share them using react-native-share
-        if (validUris.length > 0) {
+        const urisForShare = validUris.length > 0 ? validUris : (fallbackPreviewUri ? [fallbackPreviewUri] : []);
+        if (urisForShare.length > 0) {
           console.log('Preparing to share with react-native-share');
 
           const shareOptions: any = {
             title: 'Recall',
             message: shareMessage,
-            urls: validUris,           // file:// prefixed, all of them
-            type: 'image/jpeg',        // critical — makes iOS Messages attach files alongside text
+            urls: urisForShare,
+            type: validUris.length > 0 ? 'image/jpeg' : 'image/*',
             failOnCancel: false,
           };
           
@@ -241,7 +354,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
             console.log('Share.open completed with result:', result);
             
             // Clean up temporary files after sharing
-            await cleanupTempFiles(validUris);
+            await cleanupTempFiles(urisForShare);
             
             // Show success toast
             Toast.show({
@@ -259,13 +372,13 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
             // User dismissed the share dialog
             if (shareError.message && shareError.message.includes('User did not share')) {
               console.log('Share dismissed by user');
-              await cleanupTempFiles(validUris);
+              await cleanupTempFiles(urisForShare);
               return;
             }
             
             // Other errors
             console.error('Error during share:', shareError);
-            await cleanupTempFiles(validUris);
+            await cleanupTempFiles(urisForShare);
             throw shareError;
           }
         } else {
@@ -315,6 +428,11 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
       }
       
       throw shareError;
+    }
+
+    // Clean up fallback preview if it was created but not already cleaned up
+    if (fallbackPreviewUri) {
+      await cleanupTempFiles([fallbackPreviewUri]).catch(() => {});
     }
   } catch (error) {
     console.error('❌ Error sharing recall:', error);

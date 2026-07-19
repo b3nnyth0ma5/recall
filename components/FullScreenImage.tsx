@@ -1220,20 +1220,18 @@ export function FullScreenImage({
                   handleShareImage();
                 }}
                 disabled={isSharing}
-                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
               >
-                <View style={styles.shareButtonContent}>
-                  {isSharing ? (
-                    <SkeletonLoader
-                      width={24}
-                      height={24}
-                      borderRadius={12}
-                      variant="pulse"
-                    />
-                  ) : (
-                    <Share size={24} color="#FFFFFF" strokeWidth={2.2} />
-                  )}
-                </View>
+                {isSharing ? (
+                  <SkeletonLoader
+                    width={24}
+                    height={24}
+                    borderRadius={12}
+                    variant="pulse"
+                  />
+                ) : (
+                  <Share size={24} color="#FFFFFF" strokeWidth={2.2} />
+                )}
               </Pressable>
 
               {/* Analysis FAB — bottom right, shown for both images and documents */}
