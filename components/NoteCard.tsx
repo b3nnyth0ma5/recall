@@ -147,12 +147,8 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
 
   const handleContextShare = useCallback(async () => {
     console.log('[NoteCard] User tapped Share Recall from context menu on recall:', note.id);
-    if (!note.location) {
-      await handleSharePress();
-      return;
-    }
-    await handleSharePress({ includeLocation: false });
-  }, [note.id, note.location, handleSharePress]);
+    await handleSharePress({ includeLocation: true });
+  }, [note.id, handleSharePress]);
 
   const handleSwipeShare = useCallback(async () => {
     console.log('User swiped Share on recall:', note.id);
@@ -933,54 +929,35 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
         }}>
           <Pressable style={styles.contextMenuContainer} onPress={e => e.stopPropagation()}>
             <View style={styles.contextMenuPanel}>
-              {/* Photo quick-action strip */}
-              <View style={styles.contextMenuIconStrip}>
-                <Pressable style={styles.contextMenuIconButton} onPress={async () => {
+              {/* Top row: Chat | Share */}
+              <View style={styles.contextMenuTopRow}>
+                <Pressable style={styles.contextMenuTopButton} onPress={async () => {
+                  console.log('[NoteCard] User tapped Chat with Recall in context menu for recall:', note.id);
                   if (Platform.OS !== 'web') {
                     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                   }
-                  pendingActionRef.current = () => handleCamera();
+                  pendingActionRef.current = () => setShowChatModal(true);
                   setShowContextMenu(false);
                 }}>
-                  <IconSymbol name="camera.fill" size={22} color={colors.text} />
-                  <Text style={styles.contextMenuIconLabel} numberOfLines={1}>Camera</Text>
+                  <IconSymbol name="bubble.left.and.bubble.right.fill" size={20} color={colors.text} />
+                  <Text style={styles.contextMenuTopButtonLabel}>Chat with Recall</Text>
                 </Pressable>
-                <Pressable style={styles.contextMenuIconButton} onPress={async () => {
+                <View style={styles.contextMenuTopDivider} />
+                <Pressable style={styles.contextMenuTopButton} onPress={async () => {
+                  console.log('[NoteCard] User tapped Share Recall in context menu for recall:', note.id);
                   if (Platform.OS !== 'web') {
                     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                   }
-                  pendingActionRef.current = () => handlePhotos();
+                  pendingActionRef.current = () => handleContextShare();
                   setShowContextMenu(false);
                 }}>
-                  <IconSymbol name="photo.on.rectangle" size={22} color={colors.text} />
-                  <Text style={styles.contextMenuIconLabel} numberOfLines={1}>Photos</Text>
-                </Pressable>
-                <Pressable style={styles.contextMenuIconButton} onPress={async () => {
-                  if (Platform.OS !== 'web') {
-                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                  }
-                  pendingActionRef.current = () => handleDocuments();
-                  setShowContextMenu(false);
-                }}>
-                  <IconSymbol name="doc.on.doc.fill" size={22} color={colors.text} />
-                  <Text style={styles.contextMenuIconLabel} numberOfLines={1}>Documents</Text>
+                  <IconSymbol name="square.and.arrow.up" size={20} color={colors.text} />
+                  <Text style={styles.contextMenuTopButtonLabel}>Share Recall</Text>
                 </Pressable>
               </View>
               <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={async () => {
-                console.log('[NoteCard] User tapped Share Recall in context menu for recall:', note.id);
-                if (Platform.OS !== 'web') {
-                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                }
-                pendingActionRef.current = () => handleContextShare();
-                setShowContextMenu(false);
-              }}>
-                <IconSymbol name="square.and.arrow.up" size={22} color={colors.text} />
-                <Text style={styles.contextMenuLabel}>Share Recall</Text>
-              </Pressable>
-              <View style={styles.contextMenuSeparator} />
-              <Pressable style={styles.contextMenuRow} onPress={async () => {
-                console.log('[NoteCard] User tapped Add/Edit People in context menu for recall:', note.id);
+                console.log('[NoteCard] User tapped Manage Tagged People in context menu for recall:', note.id);
                 if (Platform.OS !== 'web') {
                   await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                 }
@@ -988,19 +965,43 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                 setShowContextMenu(false);
               }}>
                 <IconSymbol name="person.crop.circle.badge.plus" size={22} color={colors.text} />
-                <Text style={styles.contextMenuLabel}>Add / Edit People</Text>
+                <Text style={styles.contextMenuLabel}>Manage Tagged People</Text>
               </Pressable>
               <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={async () => {
-                console.log('[NoteCard] User tapped Chat with Recall in context menu for recall:', note.id);
+                console.log('[NoteCard] User tapped Take a Photo in context menu for recall:', note.id);
                 if (Platform.OS !== 'web') {
                   await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                 }
-                pendingActionRef.current = () => setShowChatModal(true);
+                pendingActionRef.current = () => handleCamera();
                 setShowContextMenu(false);
               }}>
-                <IconSymbol name="bubble.left.and.bubble.right.fill" size={22} color={colors.text} />
-                <Text style={styles.contextMenuLabel}>Chat with Recall</Text>
+                <IconSymbol name="camera.fill" size={22} color={colors.text} />
+                <Text style={styles.contextMenuLabel}>Take a Photo</Text>
+              </Pressable>
+              <View style={styles.contextMenuSeparator} />
+              <Pressable style={styles.contextMenuRow} onPress={async () => {
+                console.log('[NoteCard] User tapped Open Photo Library in context menu for recall:', note.id);
+                if (Platform.OS !== 'web') {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                }
+                pendingActionRef.current = () => handlePhotos();
+                setShowContextMenu(false);
+              }}>
+                <IconSymbol name="photo.on.rectangle" size={22} color={colors.text} />
+                <Text style={styles.contextMenuLabel}>Open Photo Library</Text>
+              </Pressable>
+              <View style={styles.contextMenuSeparator} />
+              <Pressable style={styles.contextMenuRow} onPress={async () => {
+                console.log('[NoteCard] User tapped Add a File in context menu for recall:', note.id);
+                if (Platform.OS !== 'web') {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                }
+                pendingActionRef.current = () => handleDocuments();
+                setShowContextMenu(false);
+              }}>
+                <IconSymbol name="doc.on.doc.fill" size={22} color={colors.text} />
+                <Text style={styles.contextMenuLabel}>Add a File</Text>
               </Pressable>
               <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={async () => {
@@ -1278,7 +1279,7 @@ const styles = StyleSheet.create({
   },
   contextMenuContainer: {
     paddingBottom: 100,
-    width: SCREEN_WIDTH * 0.6,
+    width: SCREEN_WIDTH * 0.75,
   },
   contextMenuPanel: {
     backgroundColor: '#1C1C1E',
@@ -1323,5 +1324,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.text,
     fontWeight: '400',
+  },
+  contextMenuTopRow: {
+    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+  },
+  contextMenuTopButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 8,
+  },
+  contextMenuTopButtonLabel: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  contextMenuTopDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignSelf: 'stretch',
   },
 });

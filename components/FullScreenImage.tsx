@@ -418,6 +418,21 @@ function TapToPreviewPill({ onPress, isOpening }: TapToPreviewPillProps) {
   );
 }
 
+function getUTIForExtension(ext: string): string {
+  const map: Record<string, string> = {
+    pdf: 'com.adobe.pdf',
+    doc: 'com.microsoft.word.doc',
+    docx: 'org.openxmlformats.officedocument.wordprocessingml.document',
+    xls: 'com.microsoft.excel.xls',
+    xlsx: 'org.openxmlformats.officedocument.spreadsheetml.sheet',
+    csv: 'public.comma-separated-values-text',
+    ppt: 'com.microsoft.powerpoint.ppt',
+    pptx: 'org.openxmlformats.officedocument.presentationml.presentation',
+    txt: 'public.plain-text',
+  };
+  return map[ext.toLowerCase()] ?? 'public.data';
+}
+
 // ─── Main component ─────────────────────────────────────────────────────────
 
 export function FullScreenImage({
@@ -771,7 +786,23 @@ export function FullScreenImage({
         Toast.show({ type: 'error', text1: 'Could not open document', position: 'bottom' });
         return;
       }
-      await WebBrowser.openBrowserAsync(signedUrl);
+
+      // Download to cache then open via Sharing.shareAsync so iOS shows native Quick Look
+      const ext = doc.file_name.split('.').pop() ?? 'pdf';
+      const safeFileName = doc.file_name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const destUri = `${FileSystem.cacheDirectory}preview_${Date.now()}_${safeFileName}`;
+      console.log('[FullScreenImage] Downloading document to cache:', destUri);
+      const downloadResult = await FileSystem.downloadAsync(signedUrl, destUri);
+      if (downloadResult.status !== 200) {
+        Toast.show({ type: 'error', text1: 'Failed to download document', position: 'bottom' });
+        return;
+      }
+      console.log('[FullScreenImage] Opening document via Sharing.shareAsync for native preview');
+      await Sharing.shareAsync(downloadResult.uri, {
+        dialogTitle: doc.file_name,
+        UTI: getUTIForExtension(ext),
+        mimeType: doc.content_type ?? 'application/octet-stream',
+      });
     } catch (err) {
       console.error('[FullScreenImage] Error opening document:', err);
       Toast.show({ type: 'error', text1: 'Failed to open document', position: 'bottom' });
