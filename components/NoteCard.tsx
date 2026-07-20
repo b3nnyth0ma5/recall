@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, memo, useCallback } from 'react';
+ import React, { useState, useRef, useEffect, memo, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Linking, ScrollView, NativeScrollEvent, NativeSyntheticEvent, Platform, ActivityIndicator, Modal, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -940,7 +940,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                   setShowContextMenu(false);
                 }}>
                   <IconSymbol name="bubble.left.and.bubble.right.fill" size={20} color={colors.text} />
-                  <Text style={styles.contextMenuTopButtonLabel}>Chat with Recall</Text>
+                  <Text style={styles.contextMenuTopButtonLabel}>Ask</Text>
                 </Pressable>
                 <View style={styles.contextMenuTopDivider} />
                 <Pressable style={styles.contextMenuTopButton} onPress={async () => {
@@ -952,7 +952,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                   setShowContextMenu(false);
                 }}>
                   <IconSymbol name="square.and.arrow.up" size={20} color={colors.text} />
-                  <Text style={styles.contextMenuTopButtonLabel}>Share Recall</Text>
+                  <Text style={styles.contextMenuTopButtonLabel}>Share</Text>
                 </Pressable>
               </View>
               <View style={styles.contextMenuSeparator} />
@@ -965,7 +965,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                 setShowContextMenu(false);
               }}>
                 <IconSymbol name="person.crop.circle.badge.plus" size={22} color={colors.text} />
-                <Text style={styles.contextMenuLabel}>Manage Tagged People</Text>
+                <Text style={styles.contextMenuLabel}>Manage People</Text>
               </Pressable>
               <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={async () => {
@@ -989,7 +989,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                 setShowContextMenu(false);
               }}>
                 <IconSymbol name="photo.on.rectangle" size={22} color={colors.text} />
-                <Text style={styles.contextMenuLabel}>Open Photo Library</Text>
+                <Text style={styles.contextMenuLabel}>Add from Library</Text>
               </Pressable>
               <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={async () => {
@@ -1001,7 +1001,7 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                 setShowContextMenu(false);
               }}>
                 <IconSymbol name="doc.on.doc.fill" size={22} color={colors.text} />
-                <Text style={styles.contextMenuLabel}>Add a File</Text>
+                <Text style={styles.contextMenuLabel}>Add from Files</Text>
               </Pressable>
               <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={async () => {
@@ -1279,7 +1279,7 @@ const styles = StyleSheet.create({
   },
   contextMenuContainer: {
     paddingBottom: 100,
-    width: SCREEN_WIDTH * 0.75,
+    width: SCREEN_WIDTH * 0.6,
   },
   contextMenuPanel: {
     backgroundColor: '#1C1C1E',
