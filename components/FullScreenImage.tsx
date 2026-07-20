@@ -43,6 +43,8 @@ import { formatFileSize, getFileExtension, getDocumentColor } from '@/utils/docu
 import { Share } from 'lucide-react-native';
 import { FaceLinkSheet, FaceRow } from './FaceLinkSheet';
 import { useNotesContext } from '@/contexts/NotesContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { detectFacesOnDevice, extractFaceEmbeddingOnDevice } from '@/modules/recall-native';
 
 type MediaItem =
   | { kind: 'image'; url: string; id?: string }
@@ -460,6 +462,7 @@ export function FullScreenImage({
   const scrollViewRef = useRef<React.ElementRef<typeof ScrollView>>(null);
 
   const { refreshPeopleForNote } = useNotesContext();
+  const { user } = useAuth();
 
   // Face detection state
   const [facesPerImage, setFacesPerImage] = useState<Map<string, FaceRow[]>>(new Map());
@@ -787,21 +790,10 @@ export function FullScreenImage({
         return;
       }
 
-      // Download to cache then open via Sharing.shareAsync so iOS shows native Quick Look
-      const ext = doc.file_name.split('.').pop() ?? 'pdf';
-      const safeFileName = doc.file_name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const destUri = `${FileSystem.cacheDirectory}preview_${Date.now()}_${safeFileName}`;
-      console.log('[FullScreenImage] Downloading document to cache:', destUri);
-      const downloadResult = await FileSystem.downloadAsync(signedUrl, destUri);
-      if (downloadResult.status !== 200) {
-        Toast.show({ type: 'error', text1: 'Failed to download document', position: 'bottom' });
-        return;
-      }
-      console.log('[FullScreenImage] Opening document via Sharing.shareAsync for native preview');
-      await Sharing.shareAsync(downloadResult.uri, {
-        dialogTitle: doc.file_name,
-        UTI: getUTIForExtension(ext),
-        mimeType: doc.content_type ?? 'application/octet-stream',
+      // Open in-app browser — renders PDFs, Word docs via Google Docs viewer, etc.
+      console.log('[FullScreenImage] Opening document in in-app browser:', signedUrl);
+      await WebBrowser.openBrowserAsync(signedUrl, {
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
       });
     } catch (err) {
       console.error('[FullScreenImage] Error opening document:', err);
@@ -1099,6 +1091,118 @@ export function FullScreenImage({
     }
   }, [effectiveMedia, currentImageIndex, imageIds, recallId, refreshPeopleForNote]);
 
+  const runFaceDetectionForImage = useCallback(async (
+    imageId: string,
+    imageUri: string,
+    noteRecallId: string,
+  ) => {
+    console.log('[FullScreenImage] runFaceDetectionForImage: starting for imageId:', imageId);
+    try {
+      // Delete existing face rows for this image
+      const { error: deleteError } = await supabase
+        .from('recall_images_people')
+        .delete()
+        .eq('recall_image_id', imageId);
+      if (deleteError) {
+        console.warn('[FullScreenImage] runFaceDetectionForImage: delete error (non-fatal):', deleteError);
+      }
+
+      // Detect faces on device
+      const faces = await detectFacesOnDevice(imageUri);
+      console.log('[FullScreenImage] runFaceDetectionForImage: detected', faces?.length ?? 0, 'face(s)');
+
+      if (faces && faces.length > 0) {
+        const userId = user?.id ?? '';
+        const faceRows = faces.map(f => ({
+          recall_image_id: imageId,
+          recall_id: noteRecallId,
+          user_id: userId,
+          face_uuid: f.faceUuid,
+          bbox_x: f.bboxX,
+          bbox_y: f.bboxY,
+          bbox_w: f.bboxW,
+          bbox_h: f.bboxH,
+          roll: f.roll,
+          yaw: f.yaw,
+        }));
+
+        const { data: insertedFaces, error: insertError } = await supabase
+          .from('recall_images_people')
+          .insert(faceRows)
+          .select('id, face_uuid, bbox_x, bbox_y, bbox_w, bbox_h');
+
+        if (insertError) {
+          console.warn('[FullScreenImage] runFaceDetectionForImage: insert error (non-fatal):', insertError);
+        } else {
+          console.log('[FullScreenImage] runFaceDetectionForImage: inserted', insertedFaces?.length ?? 0, 'face row(s)');
+
+          // Extract embeddings for each inserted face
+          for (const insertedFace of (insertedFaces ?? [])) {
+            try {
+              const embedding = await extractFaceEmbeddingOnDevice(
+                imageUri,
+                insertedFace.bbox_x,
+                insertedFace.bbox_y,
+                insertedFace.bbox_w,
+                insertedFace.bbox_h,
+              );
+              if (embedding && embedding.length > 0) {
+                const vectorString = `[${embedding.join(',')}]`;
+                const { error: embeddingError } = await supabase
+                  .from('recall_images_people')
+                  .update({ face_embedding: vectorString })
+                  .eq('id', insertedFace.id);
+                if (embeddingError) {
+                  console.warn('[FullScreenImage] runFaceDetectionForImage: embedding update error (non-fatal):', embeddingError);
+                }
+              }
+            } catch (embErr) {
+              console.warn('[FullScreenImage] runFaceDetectionForImage: embedding extraction error (non-fatal):', embErr);
+            }
+          }
+        }
+      }
+
+      // Refresh facesPerImage state for this image by re-fetching from DB
+      const { data: freshData, error: fetchError } = await supabase
+        .from('recall_images_people')
+        .select('id, face_uuid, bbox_x, bbox_y, bbox_w, bbox_h, person_id, confirmed_by_user, match_confidence, suggested_person_id')
+        .eq('recall_image_id', imageId);
+
+      if (fetchError) {
+        console.warn('[FullScreenImage] runFaceDetectionForImage: re-fetch error (non-fatal):', fetchError);
+        return;
+      }
+
+      const rows: FaceRow[] = (freshData ?? []).map((row: any) => ({
+        id: row.id,
+        face_uuid: row.face_uuid,
+        bbox_x: row.bbox_x,
+        bbox_y: row.bbox_y,
+        bbox_w: row.bbox_w,
+        bbox_h: row.bbox_h,
+        person_id: row.person_id ?? null,
+        person_name: null,
+        photo_url: null,
+        confirmed_by_user: row.confirmed_by_user ?? false,
+        match_confidence: row.match_confidence ?? null,
+        suggested_person_id: row.suggested_person_id ?? null,
+        suggested_person_name: null,
+        suggested_person_photo_url: null,
+      }));
+
+      console.log('[FullScreenImage] runFaceDetectionForImage: refreshed facesPerImage with', rows.length, 'row(s)');
+      setFacesPerImage(prev => {
+        const next = new Map(prev);
+        next.set(imageId, rows);
+        return next;
+      });
+    } catch (e) {
+      console.error('[FullScreenImage] runFaceDetectionForImage error:', e);
+      Toast.show({ type: 'error', text1: 'Face detection failed', position: 'bottom' });
+    }
+  }, [user?.id]);
+
   return (
     <Modal
       visible={visible}
@@ -1220,18 +1324,20 @@ export function FullScreenImage({
                   handleShareImage();
                 }}
                 disabled={isSharing}
-                hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
               >
-                {isSharing ? (
-                  <SkeletonLoader
-                    width={24}
-                    height={24}
-                    borderRadius={12}
-                    variant="pulse"
-                  />
-                ) : (
-                  <Share size={24} color="#FFFFFF" strokeWidth={2.2} />
-                )}
+                <View style={styles.shareButtonContent}>
+                  {isSharing ? (
+                    <SkeletonLoader
+                      width={24}
+                      height={24}
+                      borderRadius={12}
+                      variant="pulse"
+                    />
+                  ) : (
+                    <Share size={24} color="#FFFFFF" strokeWidth={2.2} />
+                  )}
+                </View>
               </Pressable>
 
               {/* Analysis FAB — bottom right, shown for both images and documents */}
@@ -1321,6 +1427,13 @@ export function FullScreenImage({
                   imageId={currentImageId!}
                   autoLoad={true}
                   compact={false}
+                  onAfterReprocess={(() => {
+                    const imgId = currentImageId;
+                    const imgUri = currentImageUrl;
+                    const rId = recallId;
+                    if (!imgId || !imgUri || !rId) return undefined;
+                    return () => runFaceDetectionForImage(imgId, imgUri, rId);
+                  })()}
                 />
               )
             ) : (

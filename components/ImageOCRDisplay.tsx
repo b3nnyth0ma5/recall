@@ -21,6 +21,7 @@ interface ImageOCRDisplayProps {
   mode?: 'image' | 'document';
   autoLoad?: boolean;
   compact?: boolean; // Show compact version with expandable sections
+  onAfterReprocess?: () => void | Promise<void>;
 }
 
 /**
@@ -41,6 +42,7 @@ export default function ImageOCRDisplay({
   mode = 'image',
   autoLoad = true,
   compact = false,
+  onAfterReprocess,
 }: ImageOCRDisplayProps) {
   const [ocrText, setOcrText] = useState<string | undefined>();
   const [explanation, setExplanation] = useState<string | undefined>();
@@ -218,6 +220,10 @@ export default function ImageOCRDisplay({
       if (result.success) {
         console.log('[ImageOCRDisplay] OCR retry triggered successfully');
         setTimeout(() => loadResults(), 2000);
+        if (onAfterReprocess) {
+          console.log('[ImageOCRDisplay] Calling onAfterReprocess after successful retry');
+          onAfterReprocess();
+        }
       } else {
         setError(result.error || 'Failed to retry OCR processing');
         setIsProcessing(false);

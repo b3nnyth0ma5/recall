@@ -13,13 +13,15 @@ import {
   Keyboard,
   Platform,
   ActivityIndicator,
-  Share,
   Image,
   Alert,
   ActionSheetIOS,
   Animated as RNAnimated,
   ScrollView,
 } from 'react-native';
+import RNShare from 'react-native-share';
+import * as FileSystem from 'expo-file-system/legacy';
+import { Asset } from 'expo-asset';
 import * as ImagePicker from 'expo-image-picker';
 import RecallHeader from '@/components/RecallHeader';
 import { SearchTopBar } from '@/components/SearchTopBar';
@@ -365,6 +367,12 @@ export default function SearchScreen() {
           }
         } catch (e) {
           console.error('[Search] streamCloudAnswer: failed to parse DONE payload (' + caller + ')', e);
+          // Fallback: use streamed text to patch notes even if DONE payload was malformed
+          if (mountedRef.current) {
+            patchNotesForOnDeviceAnswer([], searchResults, streamingAnswerRef.current, 50);
+            setIsStreamingComplete(true);
+          }
+          return;
         }
         if (mountedRef.current) setIsStreamingComplete(true);
       };
@@ -1228,72 +1236,52 @@ export default function SearchScreen() {
   }, []);
 
   const handleShareAnswer = useCallback(async () => {
-    if (!searchAnswer) {
-      console.log('[SearchScreen] No answer to share');
+    const displayAnswer = (searchAnswer && searchAnswer.length >= (streamingAnswer?.length ?? 0))
+      ? searchAnswer
+      : (streamingAnswer || searchAnswer || '');
+    if (!displayAnswer) {
+      console.log('[SearchScreen] handleShareAnswer: no answer to share');
       return;
     }
-
+    console.log('[SearchScreen] handleShareAnswer: sharing answer, length:', displayAnswer.length);
     try {
-      console.log('[SearchScreen] Sharing answer text');
-      
-      // Trigger haptic feedback
       if (Platform.OS !== 'web') {
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
 
-      // Clean the answer text by removing SOURCE_ references for sharing
-      const cleanedAnswer = searchAnswer.replace(/\s*SOURCE_\d+/g, '');
+      // Clean SOURCE_ references for sharing
+      const cleanedAnswer = displayAnswer.replace(/\s*SOURCE_\d+/g, '');
+      const answer = `Answer from Recall:\n\n${cleanedAnswer}\n\n---\nSearched phrase: "${searchQuery}"`;
 
-      // Prepare share message
-      const shareMessage = `Answer from Recall:\n\n${cleanedAnswer}\n\n---\nSearched phrase: "${searchQuery}"`;
-
-      // Use native Share API
-      const result = await Share.share(
-        {
-          message: shareMessage,
-          title: 'Answer from Recall',
-        },
-        {
-          dialogTitle: 'Share Answer',
-          subject: 'Answer from Recall',
+      // Copy bundled app icon to cache for share sheet preview
+      let logoUri: string | undefined;
+      try {
+        const asset = Asset.fromModule(require('../assets/images/icon.png'));
+        await asset.downloadAsync();
+        if (asset.localUri) {
+          const dest = FileSystem.cacheDirectory + 'recall_share_logo.png';
+          await FileSystem.copyAsync({ from: asset.localUri, to: dest });
+          logoUri = dest;
+          console.log('[SearchScreen] handleShareAnswer: logo copied to cache:', dest);
         }
-      );
-
-      if (result.action === Share.sharedAction) {
-        console.log('[SearchScreen] Answer shared successfully');
-        
-        // Success haptic feedback
-        if (Platform.OS !== 'web') {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
-
-        Toast.show({
-          type: 'success',
-          text1: 'Answer Shared',
-          text2: 'The answer has been shared successfully',
-          position: 'bottom',
-          visibilityTime: 2000,
-        });
-      } else if (result.action === Share.dismissedAction) {
-        console.log('[SearchScreen] Share dismissed');
-      }
-    } catch (error) {
-      console.error('[SearchScreen] Error sharing answer:', error);
-      
-      // Error haptic feedback
-      if (Platform.OS !== 'web') {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } catch (e) {
+        console.warn('[SearchScreen] handleShareAnswer: logo copy failed (sharing without image):', e);
       }
 
-      Toast.show({
-        type: 'error',
-        text1: 'Share Failed',
-        text2: 'Failed to share the answer. Please try again.',
-        position: 'bottom',
-        visibilityTime: 3000,
+      console.log('[SearchScreen] handleShareAnswer: opening share sheet, hasLogo:', !!logoUri);
+      await RNShare.open({
+        title: 'Recall Answer',
+        message: answer,
+        ...(logoUri ? { url: logoUri, type: 'image/png' } : {}),
+        failOnCancel: false,
       });
+      console.log('[SearchScreen] handleShareAnswer: share sheet closed');
+    } catch (e: any) {
+      if (e?.message !== 'User did not share') {
+        console.error('[SearchScreen] handleShareAnswer error:', e);
+      }
     }
-  }, [searchAnswer, searchQuery]);
+  }, [searchAnswer, streamingAnswer, searchQuery]);
 
   const renderHistoryRightActions = useCallback(
     (
