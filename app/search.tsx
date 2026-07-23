@@ -19,9 +19,8 @@ import {
   Animated as RNAnimated,
   ScrollView,
 } from 'react-native';
-import RNShare from 'react-native-share';
+import { Share } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Asset } from 'expo-asset';
 import * as ImagePicker from 'expo-image-picker';
 import RecallHeader from '@/components/RecallHeader';
 import { SearchTopBar } from '@/components/SearchTopBar';
@@ -1253,27 +1252,10 @@ export default function SearchScreen() {
       const cleanedAnswer = displayAnswer.replace(/\s*SOURCE_\d+/g, '');
       const answer = `Answer from Recall:\n\n${cleanedAnswer}\n\n---\nSearched phrase: "${searchQuery}"`;
 
-      // Copy bundled app icon to cache for share sheet preview
-      let logoUri: string | undefined;
-      try {
-        const asset = Asset.fromModule(require('../assets/images/icon.png'));
-        await asset.downloadAsync();
-        if (asset.localUri) {
-          const dest = FileSystem.cacheDirectory + 'recall_share_logo.png';
-          await FileSystem.copyAsync({ from: asset.localUri, to: dest });
-          logoUri = dest;
-          console.log('[SearchScreen] handleShareAnswer: logo copied to cache:', dest);
-        }
-      } catch (e) {
-        console.warn('[SearchScreen] handleShareAnswer: logo copy failed (sharing without image):', e);
-      }
-
-      console.log('[SearchScreen] handleShareAnswer: opening share sheet, hasLogo:', !!logoUri);
-      await RNShare.open({
-        title: 'Recall Answer',
+      console.log('[SearchScreen] handleShareAnswer: opening share sheet');
+      await Share.share({
         message: answer,
-        ...(logoUri ? { url: logoUri, type: 'image/png' } : {}),
-        failOnCancel: false,
+        title: 'Recall Answer',
       });
       console.log('[SearchScreen] handleShareAnswer: share sheet closed');
     } catch (e: any) {

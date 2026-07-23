@@ -1,22 +1,11 @@
 
 import { Platform, Share as RNShare } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import * as Linking from 'expo-linking';
 import Toast from 'react-native-toast-message';
 import { Note } from '@/types/Note';
 import { supabase } from '@/utils/supabase';
-
-// Conditionally import react-native-share only for native platforms
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-let Share: any = null;
-if (Platform.OS !== 'web') {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    Share = require('react-native-share').default;
-  } catch (error) {
-    console.warn('react-native-share not available, falling back to React Native Share API');
-  }
-}
 
 /**
  * Write a minimal solid-color BMP (64×64) to cacheDirectory and return its file:// URI.
@@ -262,171 +251,77 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
 
     console.log('Share message prepared:', shareMessage.substring(0, 100) + '...');
 
-    // If there are images, download them and share with the message
-    if (imagesToShare.length > 0 && Platform.OS !== 'web' && Share) {
-      console.log(`Starting download process for ${imagesToShare.length} image(s)`);
-      
-      try {
-        // Download all images to temporary locations
-        const downloadPromises = imagesToShare.map(async (imageUrl, index) => {
-          const fileExtension = getImageExtensionFromUrl(imageUrl);
-          const timestamp = Date.now();
-          const randomSuffix = Math.random().toString(36).substring(7);
-          const fileName = `share_recall_${recall.id}_${index}_${timestamp}_${randomSuffix}.${fileExtension}`;
-          const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
-          
-          console.log(`[Image ${index + 1}/${imagesToShare.length}] Starting download`);
-          console.log(`[Image ${index + 1}] Source URL:`, imageUrl);
-          console.log(`[Image ${index + 1}] Target path:`, fileUri);
-          
-          try {
-            // Download the image
-            const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
-            
-            console.log(`[Image ${index + 1}] Download result status:`, downloadResult.status);
-            console.log(`[Image ${index + 1}] Download result URI:`, downloadResult.uri);
-            
-            if (downloadResult.status === 200) {
-              // Verify the file exists
-              const fileInfo = await FileSystem.getInfoAsync(downloadResult.uri);
-              console.log(`[Image ${index + 1}] File info:`, fileInfo);
-              
-              if (fileInfo.exists) {
-                console.log(`[Image ${index + 1}] File size:`, fileInfo.size, 'bytes');
-                
-                // Ensure proper file:// prefix for iOS
-                let finalUri = downloadResult.uri;
-                if (Platform.OS === 'ios' && !finalUri.startsWith('file://')) {
-                  finalUri = `file://${finalUri}`;
-                  console.log(`[Image ${index + 1}] Added file:// prefix:`, finalUri);
-                }
-                
-                console.log(`[Image ${index + 1}] ✅ Successfully downloaded and verified`);
-                return finalUri;
-              } else {
-                console.error(`[Image ${index + 1}] ❌ File does not exist after download`);
-                return null;
-              }
-            } else {
-              console.error(`[Image ${index + 1}] ❌ Download failed with status:`, downloadResult.status);
-              return null;
-            }
-          } catch (downloadError) {
-            console.error(`[Image ${index + 1}] ❌ Exception during download:`, downloadError);
-            return null;
-          }
-        });
-        
-        // Wait for ALL downloads to complete
-        console.log('Waiting for all downloads to complete...');
-        const downloadResults = await Promise.all(downloadPromises);
-        console.log('All download promises resolved');
-        
-        // Filter out failed downloads
-        const validUris = downloadResults.filter((uri): uri is string => uri !== null);
-        
-        console.log(`Download summary: ${validUris.length} successful out of ${imagesToShare.length} total`);
-        console.log('Valid URIs:', validUris);
-        
-        // If we successfully downloaded at least one image, share them using react-native-share
-        const urisForShare = validUris.length > 0 ? validUris : (fallbackPreviewUri ? [fallbackPreviewUri] : []);
-        if (urisForShare.length > 0) {
-          console.log('Preparing to share with react-native-share');
+    // If there are images, download the primary one and share it with expo-sharing
+    if (imagesToShare.length > 0 && Platform.OS !== 'web' && await Sharing.isAvailableAsync()) {
+      console.log(`Starting download process for primary image (1 of ${imagesToShare.length})`);
 
-          const shareOptions: any = {
-            title: 'Recall',
-            message: shareMessage,
-            urls: urisForShare,
-            type: validUris.length > 0 ? 'image/jpeg' : 'image/*',
-            failOnCancel: false,
-          };
-          
-          console.log('Share options:', {
-            title: shareOptions.title,
-            messageLength: shareOptions.message?.length,
-            urlCount: shareOptions.urls.length,
-            type: shareOptions.type,
-          });
-          
-          try {
-            console.log('Calling Share.open...');
-            const result = await Share.open(shareOptions);
-            console.log('Share.open completed with result:', result);
-            
-            // Clean up temporary files after sharing
-            await cleanupTempFiles(urisForShare);
-            
-            // Show success toast
-            Toast.show({
-              type: 'success',
-              text1: 'Recall Shared',
-              text2: `Successfully shared with ${validUris.length} image${validUris.length > 1 ? 's' : ''}`,
-              position: 'bottom',
-              visibilityTime: 2000,
-            });
-            
-            return;
-          } catch (shareError: any) {
-            console.error('Share.open threw error:', shareError);
-            
-            // User dismissed the share dialog
-            if (shareError.message && shareError.message.includes('User did not share')) {
-              console.log('Share dismissed by user');
-              await cleanupTempFiles(urisForShare);
-              return;
+      try {
+        const primaryUrl = imagesToShare[0];
+        const fileExtension = getImageExtensionFromUrl(primaryUrl);
+        const timestamp = Date.now();
+        const randomSuffix = Math.random().toString(36).substring(7);
+        const fileName = `share_recall_${recall.id}_0_${timestamp}_${randomSuffix}.${fileExtension}`;
+        const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+
+        console.log('[Image 1] Source URL:', primaryUrl);
+        console.log('[Image 1] Target path:', fileUri);
+
+        const downloadResult = await FileSystem.downloadAsync(primaryUrl, fileUri);
+        console.log('[Image 1] Download result status:', downloadResult.status);
+
+        if (downloadResult.status === 200) {
+          const fileInfo = await FileSystem.getInfoAsync(downloadResult.uri);
+          console.log('[Image 1] File info:', fileInfo);
+
+          if (fileInfo.exists) {
+            let finalUri = downloadResult.uri;
+            if (Platform.OS === 'ios' && !finalUri.startsWith('file://')) {
+              finalUri = `file://${finalUri}`;
             }
-            
-            // Other errors
-            console.error('Error during share:', shareError);
-            await cleanupTempFiles(urisForShare);
-            throw shareError;
+
+            console.log('[Image 1] ✅ Successfully downloaded, calling Sharing.shareAsync');
+            await Sharing.shareAsync(finalUri, { mimeType: 'image/jpeg', dialogTitle: 'Share Recall' });
+            console.log('[Image 1] Sharing.shareAsync completed');
+
+            await cleanupTempFiles([finalUri]);
+            return;
+          } else {
+            console.error('[Image 1] ❌ File does not exist after download');
           }
         } else {
-          console.warn('❌ No images were successfully downloaded, falling back to text-only share');
+          console.error('[Image 1] ❌ Download failed with status:', downloadResult.status);
         }
       } catch (imageError) {
         console.error('❌ Error in image download/share process:', imageError);
         // Fall through to text-only share
       }
+    } else if (fallbackPreviewUri && Platform.OS !== 'web' && await Sharing.isAvailableAsync()) {
+      // Share fallback preview (OG image / doc thumbnail)
+      try {
+        console.log('[shareRecall] Sharing fallback preview URI:', fallbackPreviewUri);
+        await Sharing.shareAsync(fallbackPreviewUri, { mimeType: 'image/jpeg', dialogTitle: 'Share Recall' });
+        await cleanupTempFiles([fallbackPreviewUri]);
+        return;
+      } catch (imageError) {
+        console.error('❌ Error sharing fallback preview:', imageError);
+      }
     }
 
-    // Fallback: Share text only
-    // Use react-native-share on native platforms, React Native Share API on web
+    // Fallback: Share text only using React Native's built-in Share API
     console.log(`Sharing text only (Platform: ${Platform.OS})`);
-    
+
     try {
-      if (Platform.OS !== 'web' && Share) {
-        // Use react-native-share on native platforms
-        const result = await Share.open({
-          title: 'Share Recall',
-          message: shareMessage.trim(),
-        });
-        
-        console.log('Text-only share result (react-native-share):', result);
-      } else {
-        // Use React Native's built-in Share API on web
-        const result = await RNShare.share({
-          message: shareMessage.trim(),
-          title: 'Share Recall',
-        });
-        
-        console.log('Text-only share result (RN Share):', result);
-      }
-      
-      Toast.show({
-        type: 'success',
-        text1: 'Recall Shared',
-        text2: 'Successfully shared recall',
-        position: 'bottom',
-        visibilityTime: 2000,
+      const result = await RNShare.share({
+        message: shareMessage.trim(),
+        title: 'Share Recall',
       });
+      console.log('Text-only share result:', result);
     } catch (shareError: any) {
       // User dismissed the share dialog
       if (shareError.message && (shareError.message.includes('User did not share') || shareError.message.includes('dismissed'))) {
         console.log('Share dismissed by user');
         return;
       }
-      
       throw shareError;
     }
 
