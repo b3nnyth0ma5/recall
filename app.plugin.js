@@ -1,4 +1,4 @@
-const { createRunOncePlugin, withPodfile, withXcodeProject } = require('@expo/config-plugins');
+const { createRunOncePlugin, withPodfile, withXcodeProject, withDangerousMod } = require('@expo/config-plugins');
 
 /**
  * Expo Config Plugin for Recall App
@@ -8,6 +8,7 @@ const { createRunOncePlugin, withPodfile, withXcodeProject } = require('@expo/co
  *    so it cannot leak into production builds and cause module-resolution mismatches.
  * 3. Injects AppGroupModule.swift into ios/RecallNative/ during prebuild.
  * 4. Injects SiriShortcutsModule.swift into ios/RecallNative/ during prebuild.
+ * 5. Copies App Intent Swift files into ios/Recall/AppIntents/ and registers them in Xcode.
  */
 
 const withFollyNoCoroutines = (config) => {
@@ -119,10 +120,89 @@ const withScopeIconToAppTarget = (config) => {
   });
 };
 
+/**
+ * Copies the three App Intent Swift files into ios/Recall/AppIntents/ and
+ * registers them in the Xcode project's main app target so they are compiled
+ * as part of the main app (not the RecallNative pod).
+ */
+const withAppIntents = (config) => {
+  const INTENT_FILES = [
+    'SearchRecallIntent.swift',
+    'RecallShortcuts.swift',
+    'RecallShortcutsHelper.swift',
+  ];
+
+  // Stage 1: copy Swift files into the iOS project directory
+  config = withDangerousMod(config, [
+    'ios',
+    async (cfg) => {
+      const fs = require('fs');
+      const path = require('path');
+      const srcDir = path.join(cfg.modRequest.projectRoot, 'modules', 'recall-native');
+      const dstDir = path.join(cfg.modRequest.platformProjectRoot, 'Recall', 'AppIntents');
+      if (!fs.existsSync(dstDir)) {
+        fs.mkdirSync(dstDir, { recursive: true });
+      }
+      for (const f of INTENT_FILES) {
+        const src = path.join(srcDir, f);
+        const dst = path.join(dstDir, f);
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, dst);
+          console.log(`[withAppIntents] Copied ${f} → ${dstDir}`);
+        } else {
+          console.warn(`[withAppIntents] Source file not found: ${src}`);
+        }
+      }
+      return cfg;
+    },
+  ]);
+
+  // Stage 2: register the files in the Xcode project's main app target
+  config = withXcodeProject(config, (cfg) => {
+    const project = cfg.modResults;
+    const mainTarget = project.getFirstTarget();
+    if (!mainTarget) {
+      console.warn('[withAppIntents] Could not find main Xcode target');
+      return cfg;
+    }
+    const mainTargetUuid = mainTarget.uuid;
+
+    // Find or create the AppIntents group under the main Recall group
+    let groupKey = project.findPBXGroupKey({ name: 'AppIntents' });
+    if (!groupKey) {
+      const mainGroupKey = project.findPBXGroupKey({ name: 'Recall' });
+      const result = project.addPbxGroup([], 'AppIntents', 'AppIntents');
+      groupKey = result.uuid;
+      if (mainGroupKey) {
+        project.addToPbxGroup({ fileRef: groupKey, basename: 'AppIntents' }, mainGroupKey);
+      }
+    }
+
+    for (const f of INTENT_FILES) {
+      const filePath = `Recall/AppIntents/${f}`;
+      // Check if already added (idempotency)
+      const existingFile = project.pbxFileReferenceSection
+        ? Object.values(project.pbxFileReferenceSection()).find(
+            (ref) => ref && ref.path && (ref.path === `"${f}"` || ref.path === f)
+          )
+        : null;
+      if (!existingFile) {
+        project.addSourceFile(filePath, { target: mainTargetUuid }, groupKey);
+        console.log(`[withAppIntents] Registered ${f} in Xcode project`);
+      }
+    }
+
+    return cfg;
+  });
+
+  return config;
+};
+
 const withRecallConfig = (config) => {
   config = withFollyNoCoroutines(config);
   config = withStripDebugConfigFlag(config);
   config = withScopeIconToAppTarget(config);
+  config = withAppIntents(config);
   return config;
 };
 

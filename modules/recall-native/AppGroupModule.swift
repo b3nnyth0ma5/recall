@@ -5,6 +5,17 @@ public class AppGroupModule: Module {
   public func definition() -> ModuleDefinition {
     Name("AppGroupModule")
 
+    OnCreate {
+      if #available(iOS 16.0, *) {
+        if let helperClass = NSClassFromString("RecallShortcutsHelper") as? NSObject.Type {
+          let sel = NSSelectorFromString("updateShortcutParameters")
+          if helperClass.responds(to: sel) {
+            _ = helperClass.perform(sel)
+          }
+        }
+      }
+    }
+
     AsyncFunction("getContainerPath") { (groupId: String, promise: Promise) in
       let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId)
       let result = containerURL?.path
