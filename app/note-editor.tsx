@@ -32,7 +32,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
 import { useNotesContext } from '@/contexts/NotesContext';
-import { Note, Person } from '@/types/Note';
+import { Note, Person, RecallUrl } from '@/types/Note';
 import { Document } from '@/types/Document';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FullScreenImage } from '@/components/FullScreenImage';
@@ -99,6 +99,10 @@ export default function NoteEditorScreen() {
 
   const [lazyLoadedImages, setLazyLoadedImages] = useState<ImageData[]>([]);
   const [isLazyLoading, setIsLazyLoading] = useState(false);
+  const [urlData, setUrlData] = useState<RecallUrl | null>(null);
+  const [editedUrlTitle, setEditedUrlTitle] = useState('');
+  const [editedUrlDescription, setEditedUrlDescription] = useState('');
+  const [savingUrl, setSavingUrl] = useState(false);
   const isSharedRecall = params.isSharedRecall === 'true';
   const fromShare = params.fromShare === 'true';
   const openCamera = params.openCamera === 'true';
@@ -314,6 +318,43 @@ export default function NoteEditorScreen() {
 
     loadSharedContent();
   }, [fromShare, params.sharedText, params.sharedImages]);
+
+  const handleSaveUrlMetadata = useCallback(async () => {
+    if (!urlData?.id) return;
+    const titleChanged = editedUrlTitle !== (urlData.og_title ?? '');
+    const descChanged = editedUrlDescription !== (urlData.og_description ?? '');
+    if (!titleChanged && !descChanged) return;
+
+    console.log('[NoteEditor] Saving URL metadata for:', urlData.id);
+    setSavingUrl(true);
+    try {
+      const { error } = await supabase
+        .from('recall_urls')
+        .update({
+          og_title: editedUrlTitle.trim() || null,
+          og_description: editedUrlDescription.trim() || null,
+        })
+        .eq('id', urlData.id);
+
+      if (error) throw error;
+
+      console.log('[NoteEditor] URL metadata saved successfully');
+      setUrlData(prev => prev ? {
+        ...prev,
+        og_title: editedUrlTitle.trim() || null,
+        og_description: editedUrlDescription.trim() || null,
+      } : null);
+
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (err) {
+      console.error('[NoteEditor] Error saving URL metadata:', err);
+      Alert.alert('Error', 'Failed to save URL changes');
+    } finally {
+      setSavingUrl(false);
+    }
+  }, [urlData, editedUrlTitle, editedUrlDescription]);
 
   const takePhoto = useCallback(async () => {
     try {
@@ -597,6 +638,14 @@ export default function NoteEditorScreen() {
             });
           }
 
+          // Load URL metadata from cache
+          if (cachedNote.urls && cachedNote.urls.length > 0) {
+            console.log('[NoteEditor] Loaded URL data from cache:', cachedNote.urls[0].url);
+            setUrlData(cachedNote.urls[0]);
+            setEditedUrlTitle(cachedNote.urls[0].og_title ?? '');
+            setEditedUrlDescription(cachedNote.urls[0].og_description ?? '');
+          }
+
           if (cachedNote.people && cachedNote.people.length > 0) {
             console.log('[NoteEditor] Loaded people from cache:', cachedNote.people);
             setPeople(cachedNote.people);
@@ -713,6 +762,22 @@ export default function NoteEditorScreen() {
                 }
                 
                 setImages(loadedImages);
+              }
+
+              // Refresh URL metadata in background
+              const { data: bgUrlsData } = await supabase
+                .from('recall_urls')
+                .select('id, url, og_title, og_description, og_image_url, og_site_name, scraped_at')
+                .eq('recall_id', noteId)
+                .order('created_at', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+
+              if (bgUrlsData) {
+                console.log('[NoteEditor] Refreshed URL data from DB (background):', bgUrlsData.url);
+                setUrlData(bgUrlsData as RecallUrl);
+                setEditedUrlTitle(bgUrlsData.og_title ?? '');
+                setEditedUrlDescription(bgUrlsData.og_description ?? '');
               }
             } else {
               console.log('[NoteEditor] Data unchanged, using cache');
@@ -843,6 +908,22 @@ export default function NoteEditorScreen() {
         console.log(`[NoteEditor] Loaded ${loadedDocs.length} documents from DB`);
         setDocuments(loadedDocs);
         setInitialDocuments(loadedDocs);
+
+        // Load URL metadata from DB
+        const { data: urlsData } = await supabase
+          .from('recall_urls')
+          .select('id, url, og_title, og_description, og_image_url, og_site_name, scraped_at')
+          .eq('recall_id', noteId)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (urlsData) {
+          console.log('[NoteEditor] Loaded URL data from DB:', urlsData.url);
+          setUrlData(urlsData as RecallUrl);
+          setEditedUrlTitle(urlsData.og_title ?? '');
+          setEditedUrlDescription(urlsData.og_description ?? '');
+        }
       } catch (error) {
         console.error('[NoteEditor] Error loading note:', error);
         Alert.alert('Error', 'Failed to load note');
@@ -1556,6 +1637,69 @@ export default function NoteEditorScreen() {
 
         <View style={styles.spacer} />
 
+        {isEditing && urlData && (
+          <View style={styles.urlSection}>
+            <Text style={styles.sectionHeader}>LINK</Text>
+            <View style={styles.urlCard}>
+              {urlData.og_image_url ? (
+                <Image
+                  source={{ uri: urlData.og_image_url }}
+                  style={styles.urlOgImage}
+                  contentFit="cover"
+                />
+              ) : null}
+
+              <Pressable
+                style={styles.urlChip}
+                onPress={() => {
+                  console.log('[NoteEditor] Opening URL:', urlData.url);
+                  Linking.openURL(urlData.url).catch(() => {});
+                }}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+              >
+                <IconSymbol name="link" size={12} color={colors.primary} />
+                <Text style={styles.urlChipText} numberOfLines={1}>{urlData.url}</Text>
+                <IconSymbol name="square.and.arrow.up" size={11} color={colors.primary} />
+              </Pressable>
+
+              <TextInput
+                style={styles.urlTitleInput}
+                value={editedUrlTitle}
+                onChangeText={setEditedUrlTitle}
+                placeholder="Add a title…"
+                placeholderTextColor={colors.textTertiary}
+                onBlur={() => {
+                  console.log('[NoteEditor] URL title field blurred, saving metadata');
+                  handleSaveUrlMetadata();
+                }}
+                returnKeyType="next"
+                blurOnSubmit={false}
+              />
+
+              <TextInput
+                style={styles.urlDescInput}
+                value={editedUrlDescription}
+                onChangeText={setEditedUrlDescription}
+                placeholder="Add a description…"
+                placeholderTextColor={colors.textTertiary}
+                multiline
+                onBlur={() => {
+                  console.log('[NoteEditor] URL description field blurred, saving metadata');
+                  handleSaveUrlMetadata();
+                }}
+                scrollEnabled={false}
+              />
+
+              {savingUrl && (
+                <View style={styles.urlSavingRow}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.urlSavingText}>Saving…</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         {people.length > 0 && (
           <>
             <Text style={styles.sectionHeader}>PEOPLE</Text>
@@ -2160,5 +2304,65 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  urlSection: {
+    marginBottom: 8,
+  },
+  urlCard: {
+    marginHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: colors.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  urlOgImage: {
+    width: '100%',
+    height: 160,
+    backgroundColor: colors.cardDark,
+  },
+  urlChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  urlChipText: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '500',
+  },
+  urlTitleInput: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 4,
+    lineHeight: 22,
+  },
+  urlDescInput: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    paddingHorizontal: 14,
+    paddingTop: 4,
+    paddingBottom: 12,
+    lineHeight: 19,
+    textAlignVertical: 'top',
+  },
+  urlSavingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+  },
+  urlSavingText: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
 });
