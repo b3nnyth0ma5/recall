@@ -537,7 +537,45 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     try {
-      // Read all clipboard availability checks in parallel
+      // Check if the user has already approved clipboard access once.
+      // On iOS, ALL Clipboard APIs (including has*Async) trigger the system
+      // "Allow Paste" dialog until the user approves. Once approved, iOS
+      // remembers it natively — but we also persist the flag ourselves so we
+      // can skip our own one-time confirmation prompt on subsequent taps.
+      const pastePermissionGranted = await AsyncStorage.getItem('paste_permission_granted');
+      console.log('[CombinedSearchAdd] Paste permission previously granted:', !!pastePermissionGranted);
+
+      if (!pastePermissionGranted && Platform.OS === 'ios') {
+        // Show a one-time in-app prompt BEFORE touching any Clipboard API.
+        // This primes the user so the subsequent iOS system dialog isn't surprising.
+        console.log('[CombinedSearchAdd] Showing one-time paste permission prompt');
+        await new Promise<void>((resolve, reject) => {
+          Alert.alert(
+            'Allow Paste Access',
+            'Recall needs access to your clipboard to paste content. iOS will ask you to confirm — tap "Allow Paste" when prompted.',
+            [
+              {
+                text: 'Cancel',
+                style: 'cancel',
+                onPress: () => {
+                  console.log('[CombinedSearchAdd] User cancelled paste permission prompt');
+                  reject(new Error('cancelled'));
+                },
+              },
+              {
+                text: 'Continue',
+                onPress: () => {
+                  console.log('[CombinedSearchAdd] User accepted paste permission prompt');
+                  resolve();
+                },
+              },
+            ],
+          );
+        });
+      }
+
+      // Read all clipboard availability checks in parallel.
+      // On iOS these trigger the system "Allow Paste" dialog on first use.
       const [hasImage, hasUrl, hasText] = await Promise.all([
         Clipboard.hasImageAsync(),
         Platform.OS === 'ios' ? Clipboard.hasUrlAsync() : Promise.resolve(false),
@@ -551,10 +589,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
         Alert.alert('Nothing to paste', 'Your clipboard is empty.');
         return;
       }
-
-      // Check if paste permission has already been granted (to avoid repeated iOS dialog)
-      const pastePermissionGranted = await AsyncStorage.getItem('paste_permission_granted');
-      console.log('[CombinedSearchAdd] Paste permission previously granted:', !!pastePermissionGranted);
 
       // Fetch all available content in parallel
       const [imageResult, urlResult, textResult] = await Promise.all([
@@ -589,7 +623,6 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
 
       // Process URL — append to text field
       // Prefer URL over plain text if both present (URL is more specific)
-      // But if text contains the URL already, skip the URL to avoid duplication
       let textToAppend = '';
       if (urlResult) {
         textToAppend = urlResult;
@@ -606,12 +639,19 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
 
       if (!didSomething) {
         Alert.alert('Nothing to paste', 'Your clipboard is empty.');
-      } else if (!pastePermissionGranted) {
-        // Save that the user has granted paste permission so future presses skip the iOS dialog
+      }
+
+      // Persist approval after a successful clipboard read so future taps
+      // skip the in-app prompt entirely (iOS also remembers natively).
+      if (!pastePermissionGranted) {
         console.log('[CombinedSearchAdd] Saving paste permission granted to AsyncStorage');
         AsyncStorage.setItem('paste_permission_granted', '1').catch(() => {});
       }
-    } catch (err) {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'cancelled') {
+        // User dismissed our in-app prompt — do nothing
+        return;
+      }
       console.error('[CombinedSearchAdd] Paste error:', err);
       Alert.alert('Paste failed', 'Could not read clipboard content.');
     }
