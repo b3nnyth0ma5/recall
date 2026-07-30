@@ -7,10 +7,16 @@ public class AppGroupModule: Module {
 
     OnCreate {
       if #available(iOS 16.0, *) {
-        if let helperClass = NSClassFromString("RecallShortcutsHelper") as? NSObject.Type {
-          let sel = NSSelectorFromString("updateShortcutParameters")
-          if helperClass.responds(to: sel) {
+        // After prebuild the intent files compile into the main "Recall" target,
+        // so the ObjC runtime name is "Recall.RecallShortcutsHelper".
+        // Try both the qualified and unqualified names for robustness.
+        let classNames = ["Recall.RecallShortcutsHelper", "RecallShortcutsHelper"]
+        let sel = NSSelectorFromString("updateShortcutParameters")
+        for name in classNames {
+          if let helperClass = NSClassFromString(name) as? NSObject.Type,
+             helperClass.responds(to: sel) {
             _ = helperClass.perform(sel)
+            break
           }
         }
       }

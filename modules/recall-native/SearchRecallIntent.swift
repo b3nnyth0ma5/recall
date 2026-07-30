@@ -6,6 +6,7 @@ struct SearchRecallIntent: ShowInAppSearchResultsIntent {
     static var title: LocalizedStringResource = "Search Recall"
     static var description = IntentDescription("Search your Recall memories by voice or text.")
     static let searchScopes: [StringSearchScope] = [.general]
+    static var openAppWhenRun: Bool = true
 
     @Parameter(
         title: "Search query",

@@ -8,10 +8,12 @@ export function redirectSystemPath({ path, initial }: { path: string; initial: b
   }
 
   // Siri App Intent search: recall://search?q=chicken+curry
-  // Expo Router strips the scheme, leaving /search?q=...
-  if (path.startsWith('/search') && path.includes('q=')) {
+  // Expo Router strips the scheme; path may be "/search?q=..." or "search?q=..."
+  // depending on iOS version and whether the app was cold-launched or foregrounded.
+  const normalised = path.startsWith('/') ? path.slice(1) : path;
+  if (normalised.startsWith('search') && normalised.includes('q=')) {
     console.log('[NativeIntent] Redirecting Siri search intent to /search:', path);
-    return path;
+    return '/' + normalised;
   }
 
   return path;

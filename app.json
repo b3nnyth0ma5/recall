@@ -19,14 +19,16 @@
       "entitlements": {
         "com.apple.security.application-groups": [
           "group.com.b3nny1nc.recall"
-        ]
+        ],
+        "com.apple.developer.siri": true
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "Recall needs access to your photo library to save and organize your memories.",
         "NSCameraUsageDescription": "Recall needs access to your camera to capture photos and add them to your memories.",
         "NSLocationWhenInUseUsageDescription": "Recall uses your location to tag memories with where they happened and to help you find recalls by place.",
-        "NSPhotoLibraryAddUsageDescription": "Recall needs permission to save images to your photo library."
+        "NSPhotoLibraryAddUsageDescription": "Recall needs permission to save images to your photo library.",
+        "NSUserActivityTypes": ["INSearchForMessagesIntent"]
       }
     },
     "android": {
