@@ -37,6 +37,7 @@ const MAPPING = {
   "phone": "phone",
   "message.fill": "chat",
   "message": "chat-bubble",
+  "bubble.left.and.bubble.right.fill": "forum",
   "bell.fill": "notifications",
   "bell": "notifications",
   "heart.fill": "favorite",
@@ -191,6 +192,9 @@ const MAPPING = {
 
   // Clipboard
   "doc.on.clipboard": "content-paste",
+
+  // Attachments
+  "paperclip": "attach-file",
 } as const;
 
 export type IconSymbolName = keyof typeof MAPPING;
