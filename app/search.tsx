@@ -42,6 +42,7 @@ import Toast from 'react-native-toast-message';
 import { Share as ShareIcon } from 'lucide-react-native';
 import { Swipeable, RectButton } from 'react-native-gesture-handler';
 import { supabase, deleteSearchHistory, cleanupCloudflareCollage, saveSearchHistoryUploads, getSearchHistoryUploads, getRecollectionCategories, getCategoryRecollections } from '@/utils/supabase';
+import { writeSearchHistoryCache, readSearchHistoryCache, invalidateSearchHistoryCache } from '@/hooks/useNotes';
 import { uploadImageToCloudflare } from '@/utils/cloudflareCDN';
 import { PillsRow } from '@/components/PillsRow';
 import type { PillItem } from '@/components/PillsRow';
@@ -515,13 +516,22 @@ export default function SearchScreen() {
   }, [notes, hasSearched]);
 
   const loadSearchHistory = useCallback(async () => {
-    setIsLoadingHistory(true);
+    // Phase 1: show cached data immediately (zero-latency cold launch)
+    if (user?.id && !hasLoadedHistoryOnce) {
+      const cached = await readSearchHistoryCache(user.id);
+      if (cached) {
+        setSearchHistory(cached.items);
+        setIsLoadingHistory(false);
+        setHasLoadedHistoryOnce(true);
+      }
+    }
+
+    // Phase 2: always fetch fresh data (getSearchHistory handles background vs foreground)
     const history = await getSearchHistory();
     setSearchHistory(history);
     setIsLoadingHistory(false);
-    // Mark that we've loaded at least once — gates zero states
     setHasLoadedHistoryOnce(true);
-  }, [getSearchHistory]);
+  }, [getSearchHistory, user?.id, hasLoadedHistoryOnce]);
 
   const loadCategories = useCallback(async () => {
     try {
@@ -585,21 +595,31 @@ export default function SearchScreen() {
     const handlePayload = (payload: any) => {
       if (__DEV__) console.log('[SearchScreen] Realtime search_history change:', payload.eventType);
       if (payload.eventType === 'UPDATE' && payload.new) {
-        const updated = payload.new as SearchHistory;
-        setSearchHistory((prev) =>
-          prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
-        );
+        setSearchHistory((prev) => {
+          const updated = prev.map((h) => h.id === payload.new.id ? { ...h, ...payload.new } : h);
+          if (user?.id) writeSearchHistoryCache(user.id, updated).catch(() => {});
+          return updated;
+        });
       } else if (payload.eventType === 'DELETE' && payload.old) {
         const deletedId = (payload.old as { id?: string }).id;
         if (deletedId) {
-          setSearchHistory((prev) => prev.filter((item) => item.id !== deletedId));
+          setSearchHistory((prev) => {
+            const updated = prev.filter((h) => h.id !== deletedId);
+            if (user?.id) writeSearchHistoryCache(user.id, updated).catch(() => {});
+            return updated;
+          });
         }
       } else if (payload.eventType === 'INSERT' && payload.new) {
-        const inserted = payload.new as SearchHistory;
         setSearchHistory((prev) => {
-          // Avoid duplicates if already present (e.g. when our own upsert echoes back)
-          if (prev.some((item) => item.id === inserted.id)) return prev;
-          return [inserted, ...prev];
+          const exists = prev.some((h) => h.id === payload.new.id);
+          if (exists) {
+            const updated = prev.map((h) => h.id === payload.new.id ? payload.new as SearchHistory : h);
+            if (user?.id) writeSearchHistoryCache(user.id, updated).catch(() => {});
+            return updated;
+          }
+          const updated = [payload.new as SearchHistory, ...prev].slice(0, 50);
+          if (user?.id) writeSearchHistoryCache(user.id, updated).catch(() => {});
+          return updated;
         });
       }
     };
@@ -1295,8 +1315,12 @@ export default function SearchScreen() {
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
-      // Optimistically remove from UI
-      setSearchHistory((prev) => prev.filter((h) => h.id !== item.id));
+      // Optimistically remove from UI and cache
+      setSearchHistory((prev) => {
+        const updated = prev.filter((h) => h.id !== item.id);
+        if (user?.id) writeSearchHistoryCache(user.id, updated).catch(() => {});
+        return updated;
+      });
       // Persist delete
       await deleteSearchHistory(user.id, item.id);
       // Fire-and-forget Cloudflare cleanup of any saved collage

@@ -1,12 +1,53 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Note } from '@/types/Note';
+import { SearchHistory } from '@/types/Note';
 import { Document } from '@/types/Document';
 import { supabase, getImageDataUrl, saveSearchHistory, updateSearchHistoryCollage } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { noteCache, imageCache, peopleCache, CostCalculator } from '@/utils/memoryCache';
 import { getRecallUrlsForRecalls, triggerScrapeIfMissing, RecallUrlMetadata } from '@/utils/urlProcessor';
 import { coalesce } from '@/utils/requestCoalescer';
+
+const SEARCH_HISTORY_CACHE_KEY = '@recall/search_history_cache';
+const SEARCH_HISTORY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+type SearchHistoryCache = {
+  items: SearchHistory[];
+  cachedAt: number;
+  userId: string;
+};
+
+export async function writeSearchHistoryCache(userId: string, items: SearchHistory[]): Promise<void> {
+  try {
+    const payload: SearchHistoryCache = { items, cachedAt: Date.now(), userId };
+    await AsyncStorage.setItem(SEARCH_HISTORY_CACHE_KEY, JSON.stringify(payload));
+  } catch (e) {
+    // non-fatal
+  }
+}
+
+export async function readSearchHistoryCache(userId: string): Promise<{ items: SearchHistory[]; isStale: boolean } | null> {
+  try {
+    const raw = await AsyncStorage.getItem(SEARCH_HISTORY_CACHE_KEY);
+    if (!raw) return null;
+    const parsed: SearchHistoryCache = JSON.parse(raw);
+    if (parsed.userId !== userId) return null; // different user — ignore
+    const isStale = Date.now() - parsed.cachedAt > SEARCH_HISTORY_CACHE_TTL_MS;
+    return { items: parsed.items, isStale };
+  } catch (e) {
+    return null;
+  }
+}
+
+export async function invalidateSearchHistoryCache(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(SEARCH_HISTORY_CACHE_KEY);
+  } catch (e) {
+    // non-fatal
+  }
+}
 
 export type { RecallUrlMetadata };
 
@@ -1242,14 +1283,53 @@ export function useNotes() {
     return rows[0];
   }, [urlMetadataByRecallId]);
 
-  const getSearchHistory = useCallback(async () => {
-    if (!user) {
-      return [];
+  const getSearchHistory = useCallback(async (): Promise<SearchHistory[]> => {
+    if (!user) return [];
+
+    // Phase 1: return cached items immediately if available
+    const cached = await readSearchHistoryCache(user.id);
+    if (cached && !cached.isStale) {
+      // Cache is fresh — kick off a silent background refresh and return cached immediately
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('search_history')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('updated_at', { ascending: false })
+            .limit(50);
+          if (!error && data) {
+            await writeSearchHistoryCache(user.id, data);
+          }
+        } catch (e) {
+          // background refresh failed — cached data still valid
+        }
+      })();
+      return cached.items;
     }
 
+    // Phase 2: cache is stale or missing — fetch from DB, write to cache, return
+    // If stale cache exists, return it immediately AND refresh in background
+    if (cached && cached.isStale) {
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('search_history')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('updated_at', { ascending: false })
+            .limit(50);
+          if (!error && data) {
+            await writeSearchHistoryCache(user.id, data);
+          }
+        } catch (e) {}
+      })();
+      return cached.items; // return stale data immediately while refresh runs
+    }
+
+    // No cache at all — must fetch synchronously
     try {
       if (__DEV__) console.log('[useNotes] Fetching search history for user:', user.id);
-      
       const { data, error } = await supabase
         .from('search_history')
         .select('*')
@@ -1262,8 +1342,10 @@ export function useNotes() {
         return [];
       }
 
-      if (__DEV__) console.log(`[useNotes] Loaded ${data?.length || 0} search history items`);
-      return data || [];
+      const items = data || [];
+      if (__DEV__) console.log(`[useNotes] Loaded ${items.length} search history items`);
+      await writeSearchHistoryCache(user.id, items);
+      return items;
     } catch (error) {
       console.error('Error loading search history:', error);
       return [];
