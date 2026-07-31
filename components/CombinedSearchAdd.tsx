@@ -72,6 +72,11 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [clipboardHasContent, setClipboardHasContent] = useState(false);
   const textInputRef = useRef<TextInput>(null);
+  const plusButtonRef = useRef<View>(null);
+  const outerContainerRef = useRef<View>(null);
+  const outerContainerHeightRef = useRef<number>(300);
+  const plusButtonTopYRef = useRef<number>(0);
+  const [fabPosition, setFabPosition] = useState<{ bottom: number; left: number }>({ bottom: 150, left: 16 });
   const translateY = useSharedValue(0);
   const lastLocationFetchRef = useRef<number>(0);
   const locationRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -98,6 +103,13 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
   useEffect(() => {
     checkClipboard();
   }, [checkClipboard]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      textInputRef.current?.focus();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const sub = Clipboard.addClipboardListener(() => {
@@ -667,11 +679,17 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
 
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
-      <Animated.View style={[styles.outerContainer, animatedStyle]}>
+      <Animated.View
+        ref={outerContainerRef as any}
+        style={[styles.outerContainer, animatedStyle]}
+        onLayout={(e) => {
+          outerContainerHeightRef.current = e.nativeEvent.layout.height;
+        }}
+      >
         {showDrawer && (
           <Animated.View
             entering={FadeIn.duration(200)}
-            style={styles.floatingActionsContainer}
+            style={[styles.floatingActionsContainer, { bottom: fabPosition.bottom, left: fabPosition.left }]}
           >
             <Pressable
               style={styles.floatingActionButton}
@@ -780,6 +798,8 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
                 value={text}
                 onChangeText={handleTextChange}
                 multiline
+                numberOfLines={8}
+                autoFocus
                 returnKeyType="default"
                 blurOnSubmit={false}
                 enablesReturnKeyAutomatically={false}
@@ -788,9 +808,22 @@ export function CombinedSearchAdd({ onCreateRecall, userId, onDismiss }: Combine
               <View style={styles.inputRow}>
                 {/* Plus Button - First */}
                 <Pressable
+                  ref={plusButtonRef}
                   style={styles.plusButton}
                   onPress={handlePlusPress}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  onLayout={() => {
+                    if (!plusButtonRef.current || !outerContainerRef.current) return;
+                    plusButtonRef.current.measureLayout(
+                      outerContainerRef.current as any,
+                      (_x, y, _w, _h) => {
+                        const bottom = outerContainerHeightRef.current - y + 12;
+                        const left = _x;
+                        setFabPosition({ bottom, left });
+                      },
+                      () => {}
+                    );
+                  }}
                 >
                   <IconSymbol 
                     name="plus.circle.fill" 
@@ -921,8 +954,6 @@ const styles = StyleSheet.create({
   },
   floatingActionsContainer: {
     position: 'absolute',
-    bottom: 150,
-    left: 16,
     flexDirection: 'column',
     gap: 12,
     zIndex: 1002,
@@ -959,7 +990,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 8,
     justifyContent: 'space-between',
-    minHeight: 150,
+    minHeight: 300,
   },
   imagesScroll: {
     maxHeight: 150,
@@ -1005,8 +1036,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     flex: 1,
-    minHeight: 60,
-    maxHeight: 172.5,
+    minHeight: 160,
+    maxHeight: 345,
     paddingVertical: 8,
     paddingHorizontal: 4,
     zIndex: 1,
