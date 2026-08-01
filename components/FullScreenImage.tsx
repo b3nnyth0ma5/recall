@@ -284,6 +284,9 @@ function ZoomableImage({
             />
             {/* Face overlays — inside the animated layer so they transform with zoom/pan */}
             {showControls && imageRect && faces.length > 0 && faces.map((face) => {
+              // Skip faces the user has marked as unknown
+              if (face.skipped_by_user) return null;
+
               const faceX = imageRect.x + face.bbox_x * imageRect.width;
               const faceY = imageRect.y + face.bbox_y * imageRect.height;
               const faceW = face.bbox_w * imageRect.width;
@@ -566,7 +569,7 @@ export function FullScreenImage({
       try {
         const { data, error } = await supabase
           .from('recall_images_people')
-          .select('id, face_uuid, bbox_x, bbox_y, bbox_w, bbox_h, person_id, confirmed_by_user, match_confidence, suggested_person_id')
+          .select('id, face_uuid, bbox_x, bbox_y, bbox_w, bbox_h, person_id, confirmed_by_user, match_confidence, suggested_person_id, suggested_person_id_2, suggested_person_id_3, match_confidence_2, match_confidence_3, skipped_by_user')
           .eq('recall_image_id', imageId);
 
         if (error) {
@@ -603,12 +606,25 @@ export function FullScreenImage({
           suggested_person_id: row.suggested_person_id ?? null,
           suggested_person_name: null,
           suggested_person_photo_url: null,
+          suggested_person_id_2: row.suggested_person_id_2 ?? null,
+          suggested_person_name_2: null,
+          suggested_person_photo_url_2: null,
+          match_confidence_2: row.match_confidence_2 ?? null,
+          suggested_person_id_3: row.suggested_person_id_3 ?? null,
+          suggested_person_name_3: null,
+          suggested_person_photo_url_3: null,
+          match_confidence_3: row.match_confidence_3 ?? null,
+          skipped_by_user: row.skipped_by_user ?? false,
         }));
 
-        // Batch-fetch suggested person names for rows that have suggested_person_id but no person_id
-        const suggestedIds = partialRows
-          .filter(r => r.suggested_person_id !== null && r.person_id === null)
-          .map(r => r.suggested_person_id as string);
+        // Batch-fetch suggested person names for all candidate slots
+        const suggestedIdsSet = new Set<string>();
+        for (const r of partialRows) {
+          if (r.suggested_person_id && !r.person_id) suggestedIdsSet.add(r.suggested_person_id);
+          if (r.suggested_person_id_2) suggestedIdsSet.add(r.suggested_person_id_2);
+          if (r.suggested_person_id_3) suggestedIdsSet.add(r.suggested_person_id_3);
+        }
+        const suggestedIds = Array.from(suggestedIdsSet);
 
         let suggestedPersonMap: Record<string, { person_name: string; photo_url: string | null }> = {};
         if (suggestedIds.length > 0) {
@@ -626,14 +642,20 @@ export function FullScreenImage({
         }
 
         const rows: FaceRow[] = partialRows.map(r => {
+          const updated: FaceRow = { ...r };
           if (r.suggested_person_id && suggestedPersonMap[r.suggested_person_id]) {
-            return {
-              ...r,
-              suggested_person_name: suggestedPersonMap[r.suggested_person_id].person_name,
-              suggested_person_photo_url: suggestedPersonMap[r.suggested_person_id].photo_url,
-            };
+            updated.suggested_person_name = suggestedPersonMap[r.suggested_person_id].person_name;
+            updated.suggested_person_photo_url = suggestedPersonMap[r.suggested_person_id].photo_url;
           }
-          return r;
+          if (r.suggested_person_id_2 && suggestedPersonMap[r.suggested_person_id_2]) {
+            updated.suggested_person_name_2 = suggestedPersonMap[r.suggested_person_id_2].person_name;
+            updated.suggested_person_photo_url_2 = suggestedPersonMap[r.suggested_person_id_2].photo_url;
+          }
+          if (r.suggested_person_id_3 && suggestedPersonMap[r.suggested_person_id_3]) {
+            updated.suggested_person_name_3 = suggestedPersonMap[r.suggested_person_id_3].person_name;
+            updated.suggested_person_photo_url_3 = suggestedPersonMap[r.suggested_person_id_3].photo_url;
+          }
+          return updated;
         });
 
         console.log('[FullScreenImage] Fetched', rows.length, 'face(s) for imageId:', imageId);
@@ -1136,7 +1158,7 @@ export function FullScreenImage({
         } else {
           console.log('[FullScreenImage] runFaceDetectionForImage: inserted', insertedFaces?.length ?? 0, 'face row(s)');
 
-          // Extract embeddings for each inserted face
+          // Extract embeddings and run auto-match for each inserted face
           for (const insertedFace of (insertedFaces ?? [])) {
             try {
               const embedding = await extractFaceEmbeddingOnDevice(
@@ -1155,6 +1177,38 @@ export function FullScreenImage({
                 if (embeddingError) {
                   console.warn('[FullScreenImage] runFaceDetectionForImage: embedding update error (non-fatal):', embeddingError);
                 }
+
+                // Run auto-match RPC
+                console.log('[FullScreenImage] runFaceDetectionForImage: running match_face_to_person for face:', insertedFace.id);
+                const { data: matchResult, error: matchError } = await supabase.rpc('match_face_to_person', {
+                  p_embedding: vectorString,
+                  p_threshold: 0.75,
+                  p_face_row_id: insertedFace.id,
+                });
+                if (matchError) {
+                  console.warn('[FullScreenImage] runFaceDetectionForImage: match_face_to_person error (non-fatal):', matchError);
+                } else {
+                  const matchRows = Array.isArray(matchResult) ? matchResult : (matchResult ? [matchResult] : []);
+                  const top1 = matchRows.find((r: any) => r.rank === 1);
+                  const top2 = matchRows.find((r: any) => r.rank === 2);
+                  const top3 = matchRows.find((r: any) => r.rank === 3);
+                  if (top1 && top1.person_id) {
+                    console.log('[FullScreenImage] runFaceDetectionForImage: auto-match top1:', top1.person_id, 'similarity:', top1.similarity);
+                    const updatePayload: any = {
+                      suggested_person_id: top1.person_id,
+                      match_confidence: top1.similarity,
+                    };
+                    if (top2?.person_id) {
+                      updatePayload.suggested_person_id_2 = top2.person_id;
+                      updatePayload.match_confidence_2 = top2.similarity;
+                    }
+                    if (top3?.person_id) {
+                      updatePayload.suggested_person_id_3 = top3.person_id;
+                      updatePayload.match_confidence_3 = top3.similarity;
+                    }
+                    await supabase.from('recall_images_people').update(updatePayload).eq('id', insertedFace.id);
+                  }
+                }
               }
             } catch (embErr) {
               console.warn('[FullScreenImage] runFaceDetectionForImage: embedding extraction error (non-fatal):', embErr);
@@ -1166,7 +1220,7 @@ export function FullScreenImage({
       // Refresh facesPerImage state for this image by re-fetching from DB
       const { data: freshData, error: fetchError } = await supabase
         .from('recall_images_people')
-        .select('id, face_uuid, bbox_x, bbox_y, bbox_w, bbox_h, person_id, confirmed_by_user, match_confidence, suggested_person_id')
+        .select('id, face_uuid, bbox_x, bbox_y, bbox_w, bbox_h, person_id, confirmed_by_user, match_confidence, suggested_person_id, suggested_person_id_2, suggested_person_id_3, match_confidence_2, match_confidence_3, skipped_by_user')
         .eq('recall_image_id', imageId);
 
       if (fetchError) {
@@ -1189,6 +1243,15 @@ export function FullScreenImage({
         suggested_person_id: row.suggested_person_id ?? null,
         suggested_person_name: null,
         suggested_person_photo_url: null,
+        suggested_person_id_2: row.suggested_person_id_2 ?? null,
+        suggested_person_name_2: null,
+        suggested_person_photo_url_2: null,
+        match_confidence_2: row.match_confidence_2 ?? null,
+        suggested_person_id_3: row.suggested_person_id_3 ?? null,
+        suggested_person_name_3: null,
+        suggested_person_photo_url_3: null,
+        match_confidence_3: row.match_confidence_3 ?? null,
+        skipped_by_user: row.skipped_by_user ?? false,
       }));
 
       console.log('[FullScreenImage] runFaceDetectionForImage: refreshed facesPerImage with', rows.length, 'row(s)');

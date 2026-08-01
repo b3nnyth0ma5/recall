@@ -10,6 +10,8 @@ import {
   Alert,
   ActivityIndicator,
   Keyboard,
+  Switch,
+  ScrollView,
 } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -20,6 +22,9 @@ import { PersonAvatar } from '@/components/PersonAvatar';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
+
+const CROP_DISPLAY_SIZE = 100;
+const CROP_ZOOM = 2.5;
 
 export interface FaceRow {
   id: string;
@@ -37,12 +42,29 @@ export interface FaceRow {
   suggested_person_id: string | null;
   suggested_person_name: string | null;
   suggested_person_photo_url: string | null;
+  // Top-3 candidates
+  suggested_person_id_2: string | null;
+  suggested_person_name_2: string | null;
+  suggested_person_photo_url_2: string | null;
+  match_confidence_2: number | null;
+  suggested_person_id_3: string | null;
+  suggested_person_name_3: string | null;
+  suggested_person_photo_url_3: string | null;
+  match_confidence_3: number | null;
+  skipped_by_user: boolean;
 }
 
 interface PersonResult {
   id: string;
   person_name: string;
   photo_url: string | null;
+}
+
+interface CandidateItem {
+  personId: string;
+  personName: string;
+  photoUrl: string | null;
+  confidence: number;
 }
 
 interface FaceLinkSheetProps {
@@ -54,6 +76,33 @@ interface FaceLinkSheetProps {
   naturalHeight: number;
   onClose: () => void;
   onLinked: (faceId: string, personId: string, personName: string, photoUrl: string | null) => void;
+}
+
+function CandidateCard({
+  candidate,
+  onPress,
+}: {
+  candidate: CandidateItem;
+  onPress: () => void;
+}) {
+  const confidencePct = Math.round(candidate.confidence * 100);
+  const isStrong = confidencePct >= 85;
+  const pillLabel = isStrong ? 'Strong match' : 'Possible match';
+  const pillStyle = isStrong ? styles.confidencePillGreen : styles.confidencePillAmber;
+  const pillTextColor = isStrong ? '#22C55E' : '#F59E0B';
+
+  return (
+    <Pressable style={styles.candidateCard} onPress={() => {
+      console.log('[FaceLinkSheet] Candidate card tapped:', candidate.personId, candidate.personName);
+      onPress();
+    }}>
+      <PersonAvatar personName={candidate.personName} photoUrl={candidate.photoUrl} size={48} />
+      <Text style={styles.candidateName} numberOfLines={1}>{candidate.personName}</Text>
+      <View style={pillStyle}>
+        <Text style={[styles.confidencePillText, { color: pillTextColor }]}>{pillLabel}</Text>
+      </View>
+    </Pressable>
+  );
 }
 
 export function FaceLinkSheet({
@@ -75,6 +124,10 @@ export function FaceLinkSheet({
   const [isLinking, setIsLinking] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [suggestionDismissed, setSuggestionDismissed] = useState(false);
+  const [recentPeople, setRecentPeople] = useState<PersonResult[]>([]);
+  const [loadingRecent, setLoadingRecent] = useState(false);
+  const [useAsPhoto, setUseAsPhoto] = useState(true);
+  const [pendingPerson, setPendingPerson] = useState<PersonResult | null>(null);
 
   const insets = useSafeAreaInsets();
 
@@ -88,7 +141,11 @@ export function FaceLinkSheet({
       setShowCreateInput(false);
       setIsLinking(false);
       setSuggestionDismissed(false);
+      setPendingPerson(null);
+      setUseAsPhoto(true);
+      loadRecentPeople();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   // Keyboard listeners for paddingBottom adjustment
@@ -116,6 +173,40 @@ export function FaceLinkSheet({
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  const loadRecentPeople = async () => {
+    setLoadingRecent(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('recall_images_people')
+        .select('person_id, persons!inner(id, person_name, photo_url)')
+        .eq('user_id', user.id)
+        .eq('confirmed_by_user', true)
+        .not('person_id', 'is', null)
+        .order('updated_at', { ascending: false })
+        .limit(20);
+
+      if (data) {
+        const seen = new Set<string>();
+        const recent: PersonResult[] = [];
+        for (const row of data) {
+          const p = (row as any).persons;
+          if (p && !seen.has(p.id)) {
+            seen.add(p.id);
+            recent.push({ id: p.id, person_name: p.person_name, photo_url: p.photo_url });
+            if (recent.length >= 6) break;
+          }
+        }
+        setRecentPeople(recent);
+      }
+    } catch (e) {
+      console.warn('[FaceLinkSheet] loadRecentPeople error:', e);
+    } finally {
+      setLoadingRecent(false);
+    }
+  };
 
   const searchPersons = async (query: string) => {
     console.log('[FaceLinkSheet] Searching persons for query:', query);
@@ -164,13 +255,11 @@ export function FaceLinkSheet({
     const rawW = faceRow.bbox_w * (1 + 2 * PADDING);
     const rawH = faceRow.bbox_h * (1 + 2 * PADDING);
 
-    // Clamp to [0, 1]
     const clampedX = Math.max(0, rawX);
     const clampedY = Math.max(0, rawY);
     const clampedW = Math.min(rawW, 1 - clampedX);
     const clampedH = Math.min(rawH, 1 - clampedY);
 
-    // Convert to pixel space
     const pixelX = Math.round(clampedX * naturalWidth);
     const pixelY = Math.round(clampedY * naturalHeight);
     const pixelW = Math.round(clampedW * naturalWidth);
@@ -232,60 +321,6 @@ export function FaceLinkSheet({
     }
   }, [faceRow, imageUrl, naturalWidth, naturalHeight]);
 
-  const promptPhotoUpdate = useCallback((
-    personId: string,
-    personName: string,
-    existingPhotoUrl: string | null,
-    faceId: string,
-    onResolved: (finalPhotoUrl: string | null) => void,
-  ) => {
-    if (!existingPhotoUrl) {
-      Alert.alert(
-        'Set profile photo?',
-        `Use this face as ${personName}'s photo?`,
-        [
-          {
-            text: 'Not now',
-            style: 'cancel',
-            onPress: () => {
-              console.log('[FaceLinkSheet] User chose not to set profile photo for:', personName);
-              onResolved(existingPhotoUrl);
-            },
-          },
-          {
-            text: 'Set photo',
-            onPress: () => {
-              console.log('[FaceLinkSheet] User chose to set profile photo for:', personName);
-              cropAndUpload(personId, personName, existingPhotoUrl, faceId, onResolved);
-            },
-          },
-        ]
-      );
-    } else {
-      Alert.alert(
-        'Update profile photo?',
-        `Replace ${personName}'s current photo with this face?`,
-        [
-          {
-            text: 'Keep existing',
-            style: 'cancel',
-            onPress: () => {
-              console.log('[FaceLinkSheet] User chose to keep existing photo for:', personName);
-              onResolved(existingPhotoUrl);
-            },
-          },
-          {
-            text: 'Replace',
-            onPress: () => {
-              console.log('[FaceLinkSheet] User chose to replace profile photo for:', personName);
-              cropAndUpload(personId, personName, existingPhotoUrl, faceId, onResolved);
-            },
-          },
-        ]
-      );
-    }
-  }, [cropAndUpload]);
-
   // Fire-and-forget: fetch the face embedding from DB and upsert it onto the person
   const saveFaceEmbeddingToPerson = useCallback(async (faceRowId: string, personId: string) => {
     console.log('[FaceLinkSheet] saveFaceEmbeddingToPerson called for face:', faceRowId, 'person:', personId);
@@ -321,6 +356,40 @@ export function FaceLinkSheet({
       console.warn('[FaceLinkSheet] saveFaceEmbeddingToPerson: exception (non-fatal):', e);
     }
   }, []);
+
+  const handleRejectSuggestion = async (rejectedPersonId: string) => {
+    console.log('[FaceLinkSheet] Suggestion rejected for person:', rejectedPersonId);
+    setSuggestionDismissed(true);
+    if (!faceRow) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from('rejected_face_matches').upsert({
+        face_row_id: faceRow.id,
+        rejected_person_id: rejectedPersonId,
+        user_id: user.id,
+      }, { onConflict: 'face_row_id,rejected_person_id', ignoreDuplicates: true });
+    } catch (e) {
+      console.warn('[FaceLinkSheet] handleRejectSuggestion error (non-fatal):', e);
+    }
+  };
+
+  const handleSkip = async () => {
+    console.log('[FaceLinkSheet] Skip button pressed — marking face as unknown');
+    if (!faceRow) return;
+    setIsLinking(true);
+    try {
+      await supabase
+        .from('recall_images_people')
+        .update({ skipped_by_user: true })
+        .eq('id', faceRow.id);
+      onClose();
+    } catch (e) {
+      console.warn('[FaceLinkSheet] handleSkip error:', e);
+    } finally {
+      setIsLinking(false);
+    }
+  };
 
   const linkFace = useCallback(async (
     personId: string,
@@ -378,24 +447,28 @@ export function FaceLinkSheet({
       // Fire-and-forget: save embedding to person for future matching
       saveFaceEmbeddingToPerson(faceRow.id, personId);
 
-      // Capture faceId before closing (faceRow may change)
       const faceId = faceRow.id;
-      onClose();
 
-      // Prompt for photo after closing sheet; fire onLinked with the final URL
-      setTimeout(() => {
-        promptPhotoUpdate(personId, personName, existingPhotoUrl, faceId, (finalPhotoUrl) => {
+      // Handle photo update inline using useAsPhoto toggle
+      if (useAsPhoto) {
+        console.log('[FaceLinkSheet] useAsPhoto=true, running cropAndUpload');
+        cropAndUpload(personId, personName, existingPhotoUrl, faceId, (finalPhotoUrl) => {
           console.log('[FaceLinkSheet] onLinked called with final photo URL:', finalPhotoUrl);
           onLinked(faceId, personId, personName, finalPhotoUrl);
         });
-      }, 400);
+      } else {
+        console.log('[FaceLinkSheet] useAsPhoto=false, skipping crop');
+        onLinked(faceId, personId, personName, existingPhotoUrl);
+      }
+
+      onClose();
     } catch (e) {
       console.error('[FaceLinkSheet] linkFace exception:', e);
       Alert.alert('Error', 'Failed to link face. Please try again.');
     } finally {
       setIsLinking(false);
     }
-  }, [faceRow, recallId, onLinked, onClose, promptPhotoUpdate, saveFaceEmbeddingToPerson]);
+  }, [faceRow, recallId, onLinked, onClose, saveFaceEmbeddingToPerson, cropAndUpload, useAsPhoto]);
 
   const handleCreatePerson = async () => {
     const name = newPersonName.trim();
@@ -419,7 +492,7 @@ export function FaceLinkSheet({
       }
 
       console.log('[FaceLinkSheet] Created person:', newPerson.id, newPerson.person_name);
-      await linkFace(newPerson.id, newPerson.person_name, newPerson.photo_url);
+      setPendingPerson({ id: newPerson.id, person_name: newPerson.person_name, photo_url: newPerson.photo_url });
     } catch (e) {
       console.error('[FaceLinkSheet] handleCreatePerson exception:', e);
     } finally {
@@ -429,7 +502,7 @@ export function FaceLinkSheet({
 
   const handlePersonSelect = (person: PersonResult) => {
     console.log('[FaceLinkSheet] User selected person:', person.id, person.person_name);
-    linkFace(person.id, person.person_name, person.photo_url);
+    setPendingPerson(person);
   };
 
   const handleCreateRowPress = () => {
@@ -441,16 +514,37 @@ export function FaceLinkSheet({
 
   const sheetPaddingBottom = Math.max(keyboardHeight, insets.bottom + 40);
 
-  const showSuggestionCard =
-    faceRow !== null &&
-    faceRow.match_confidence !== null &&
-    !faceRow.confirmed_by_user &&
-    faceRow.suggested_person_id !== null &&
-    !suggestionDismissed;
+  // Build candidates array from faceRow
+  const candidates: CandidateItem[] = [];
+  if (faceRow?.suggested_person_id && !suggestionDismissed) {
+    candidates.push({
+      personId: faceRow.suggested_person_id,
+      personName: faceRow.suggested_person_name ?? '',
+      photoUrl: faceRow.suggested_person_photo_url ?? null,
+      confidence: faceRow.match_confidence ?? 0,
+    });
+  }
+  if (faceRow?.suggested_person_id_2 && !suggestionDismissed) {
+    candidates.push({
+      personId: faceRow.suggested_person_id_2,
+      personName: faceRow.suggested_person_name_2 ?? '',
+      photoUrl: faceRow.suggested_person_photo_url_2 ?? null,
+      confidence: faceRow.match_confidence_2 ?? 0,
+    });
+  }
+  if (faceRow?.suggested_person_id_3 && !suggestionDismissed) {
+    candidates.push({
+      personId: faceRow.suggested_person_id_3,
+      personName: faceRow.suggested_person_name_3 ?? '',
+      photoUrl: faceRow.suggested_person_photo_url_3 ?? null,
+      confidence: faceRow.match_confidence_3 ?? 0,
+    });
+  }
 
-  const confidencePct = faceRow?.match_confidence != null
-    ? Math.round(faceRow.match_confidence * 100)
-    : 0;
+  const faceCenterX = faceRow ? faceRow.bbox_x + faceRow.bbox_w / 2 : 0;
+  const faceCenterY = faceRow ? faceRow.bbox_y + faceRow.bbox_h / 2 : 0;
+  const cropTranslateX = -faceCenterX * CROP_DISPLAY_SIZE * CROP_ZOOM + CROP_DISPLAY_SIZE / 2;
+  const cropTranslateY = -faceCenterY * CROP_DISPLAY_SIZE * CROP_ZOOM + CROP_DISPLAY_SIZE / 2;
 
   const listEmptyComponent = searchQuery.trim() && !isSearching ? (
     <View>
@@ -477,7 +571,7 @@ export function FaceLinkSheet({
             onSubmitEditing={handleCreatePerson}
           />
           <Pressable
-            style={[styles.confirmButton, (!newPersonName.trim() || isCreating) && styles.confirmButtonDisabled]}
+            style={[styles.createConfirmButton, (!newPersonName.trim() || isCreating) && styles.confirmButtonDisabled]}
             onPress={() => {
               console.log('[FaceLinkSheet] Confirm create person pressed');
               handleCreatePerson();
@@ -537,51 +631,54 @@ export function FaceLinkSheet({
               </Pressable>
             </View>
 
-            {/* Suggestion card */}
-            {showSuggestionCard && faceRow && (
-              <View style={styles.suggestionCard}>
-                <View style={styles.suggestionRow}>
-                  <PersonAvatar
-                    personName={faceRow.suggested_person_name ?? ''}
-                    photoUrl={faceRow.suggested_person_photo_url ?? null}
-                    size={52}
-                  />
-                  <View style={styles.suggestionInfo}>
-                    <Text style={styles.suggestionName} numberOfLines={1}>
-                      {faceRow.suggested_person_name ?? ''}
-                    </Text>
-                    <View style={styles.confidenceBadge}>
-                      <Text style={styles.confidenceBadgeText}>
-                        {confidencePct}% match
-                      </Text>
-                    </View>
-                  </View>
-                </View>
+            {/* Face crop preview */}
+            {faceRow && imageUrl ? (
+              <View style={styles.faceCropContainer}>
+                <Image
+                  source={{ uri: imageUrl }}
+                  style={[
+                    styles.faceCropImage,
+                    {
+                      transform: [
+                        { translateX: cropTranslateX },
+                        { translateY: cropTranslateY },
+                        { scale: CROP_ZOOM },
+                      ],
+                    },
+                  ]}
+                  contentFit="cover"
+                />
+              </View>
+            ) : null}
+
+            {/* Multi-candidate suggestion cards */}
+            {candidates.length > 0 && (
+              <View style={styles.candidatesRow}>
+                <Text style={styles.sectionLabel}>Suggested</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: 4 }}
+                >
+                  {candidates.map((c) => (
+                    <CandidateCard
+                      key={c.personId}
+                      candidate={c}
+                      onPress={() => setPendingPerson({ id: c.personId, person_name: c.personName, photo_url: c.photoUrl })}
+                    />
+                  ))}
+                </ScrollView>
                 <Pressable
-                  style={styles.suggestionYesButton}
+                  style={styles.notThemButton}
                   onPress={() => {
-                    console.log('[FaceLinkSheet] Suggestion accepted for person:', faceRow.suggested_person_id, faceRow.suggested_person_name);
-                    linkFace(
-                      faceRow.suggested_person_id!,
-                      faceRow.suggested_person_name ?? '',
-                      faceRow.suggested_person_photo_url ?? null,
-                    );
+                    if (candidates[0]) {
+                      handleRejectSuggestion(candidates[0].personId);
+                    }
                   }}
                   disabled={isLoading}
                 >
-                  <Text style={styles.suggestionYesText}>Yes, that's them</Text>
+                  <Text style={styles.notThemText}>Not them</Text>
                 </Pressable>
-                <Pressable
-                  style={styles.suggestionNoButton}
-                  onPress={() => {
-                    console.log('[FaceLinkSheet] Suggestion rejected for person:', faceRow.suggested_person_id);
-                    setSuggestionDismissed(true);
-                  }}
-                  disabled={isLoading}
-                >
-                  <Text style={styles.suggestionNoText}>Not them</Text>
-                </Pressable>
-                <View style={styles.suggestionDivider} />
               </View>
             )}
 
@@ -602,6 +699,31 @@ export function FaceLinkSheet({
               />
               {isSearching && <ActivityIndicator size="small" color={colors.primary} />}
             </View>
+
+            {/* Recently linked people (shown when search is empty) */}
+            {!searchQuery.trim() && recentPeople.length > 0 && (
+              <View style={styles.recentSection}>
+                <Text style={styles.sectionLabel}>Recent</Text>
+                <FlatList
+                  horizontal
+                  data={recentPeople}
+                  keyExtractor={(item) => item.id}
+                  showsHorizontalScrollIndicator={false}
+                  renderItem={({ item }) => (
+                    <Pressable
+                      style={styles.recentPersonChip}
+                      onPress={() => {
+                        console.log('[FaceLinkSheet] Recent person tapped:', item.id, item.person_name);
+                        setPendingPerson(item);
+                      }}
+                    >
+                      <PersonAvatar personName={item.person_name} photoUrl={item.photo_url} size={36} />
+                      <Text style={styles.recentPersonName} numberOfLines={1}>{item.person_name}</Text>
+                    </Pressable>
+                  )}
+                />
+              </View>
+            )}
 
             {/* Results list */}
             <FlatList
@@ -629,6 +751,54 @@ export function FaceLinkSheet({
               )}
               ListEmptyComponent={listEmptyComponent}
             />
+
+            {/* Pending person confirmation panel */}
+            {pendingPerson && (
+              <View style={styles.confirmPanel}>
+                <View style={styles.confirmPanelRow}>
+                  <PersonAvatar personName={pendingPerson.person_name} photoUrl={pendingPerson.photo_url} size={40} />
+                  <Text style={styles.confirmPanelName}>{pendingPerson.person_name}</Text>
+                  <Pressable onPress={() => {
+                    console.log('[FaceLinkSheet] Pending person cancelled');
+                    setPendingPerson(null);
+                  }} style={styles.confirmPanelCancel}>
+                    <IconSymbol name="xmark" size={16} color={colors.textSecondary} />
+                  </Pressable>
+                </View>
+                <View style={styles.confirmPanelPhotoRow}>
+                  <Text style={styles.confirmPanelPhotoLabel}>Use as profile photo</Text>
+                  <Switch
+                    value={useAsPhoto}
+                    onValueChange={(val) => {
+                      console.log('[FaceLinkSheet] useAsPhoto toggled:', val);
+                      setUseAsPhoto(val);
+                    }}
+                    trackColor={{ true: colors.primary }}
+                    thumbColor="#FFFFFF"
+                  />
+                </View>
+                <Pressable
+                  style={[styles.confirmButton, isLoading && styles.confirmButtonDisabled]}
+                  onPress={() => {
+                    if (!pendingPerson) return;
+                    console.log('[FaceLinkSheet] Confirm button pressed for person:', pendingPerson.id, pendingPerson.person_name);
+                    linkFace(pendingPerson.id, pendingPerson.person_name, pendingPerson.photo_url);
+                  }}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.confirmButtonText}>Confirm</Text>
+                  )}
+                </Pressable>
+              </View>
+            )}
+
+            {/* Skip button */}
+            <Pressable style={styles.skipButton} onPress={handleSkip} disabled={isLoading}>
+              <Text style={styles.skipButtonText}>Skip — unknown person</Text>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -673,6 +843,95 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
   },
+  faceCropContainer: {
+    width: CROP_DISPLAY_SIZE,
+    height: CROP_DISPLAY_SIZE,
+    borderRadius: 50,
+    overflow: 'hidden',
+    alignSelf: 'center',
+    marginBottom: 16,
+    borderWidth: 3,
+    borderColor: colors.primary,
+  },
+  faceCropImage: {
+    width: '100%',
+    height: '100%',
+  },
+  candidatesRow: {
+    marginBottom: 8,
+  },
+  candidateCard: {
+    width: 110,
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: colors.backgroundSecondary,
+    borderRadius: 14,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: colors.border ?? '#3A3A3A',
+  },
+  candidateName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  confidencePillGreen: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 20,
+    backgroundColor: '#22C55E20',
+    borderWidth: 1,
+    borderColor: '#22C55E',
+  },
+  confidencePillAmber: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 20,
+    backgroundColor: '#F59E0B20',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  confidencePillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  notThemButton: {
+    alignSelf: 'center',
+    paddingVertical: 8,
+    marginBottom: 4,
+  },
+  notThemText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  recentSection: {
+    marginBottom: 8,
+  },
+  recentPersonChip: {
+    alignItems: 'center',
+    marginRight: 14,
+    width: 60,
+  },
+  recentPersonName: {
+    fontSize: 12,
+    color: colors.text,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 4,
+  },
   createRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -713,9 +972,16 @@ const styles = StyleSheet.create({
     color: colors.text,
     backgroundColor: colors.background,
   },
-  confirmButton: {
+  createConfirmButton: {
     height: 44,
     paddingHorizontal: 18,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmButton: {
+    height: 48,
     borderRadius: 12,
     backgroundColor: colors.primary,
     justifyContent: 'center',
@@ -729,71 +995,38 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 15,
   },
-  suggestionCard: {
+  confirmPanel: {
     backgroundColor: colors.backgroundSecondary,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
+    marginTop: 8,
     borderWidth: 1,
     borderColor: colors.border ?? '#3A3A3A',
   },
-  suggestionRow: {
+  confirmPanelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    marginBottom: 14,
+    gap: 12,
+    marginBottom: 12,
   },
-  suggestionInfo: {
+  confirmPanelName: {
     flex: 1,
-    gap: 6,
-  },
-  suggestionName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.text,
   },
-  confidenceBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: `${colors.primary}26`,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
+  confirmPanelCancel: {
+    padding: 4,
   },
-  confidenceBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  suggestionYesButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 13,
+  confirmPanelPhotoRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    justifyContent: 'space-between',
+    marginBottom: 14,
   },
-  suggestionYesText: {
-    color: '#FFFFFF',
+  confirmPanelPhotoLabel: {
     fontSize: 15,
-    fontWeight: '700',
-  },
-  suggestionNoButton: {
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: colors.border ?? '#3A3A3A',
-  },
-  suggestionNoText: {
-    color: colors.textSecondary,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  suggestionDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border ?? '#3A3A3A',
-    marginTop: 14,
+    color: colors.text,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -835,5 +1068,15 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 14,
     paddingVertical: 20,
+  },
+  skipButton: {
+    alignSelf: 'center',
+    paddingVertical: 14,
+    marginTop: 4,
+  },
+  skipButtonText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
 });

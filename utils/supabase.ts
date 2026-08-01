@@ -274,21 +274,35 @@ export async function uploadImageToDatabase(
                     console.log('[uploadImageToDatabase] Running match_face_to_person RPC for face:', insertedFace.id);
                     const { data: matchResult, error: matchError } = await supabase.rpc('match_face_to_person', {
                       p_embedding: vectorString,
-                      p_threshold: 0.60,
+                      p_threshold: 0.75,
+                      p_face_row_id: insertedFace.id,
                     });
                     if (matchError) {
                       console.warn('[uploadImageToDatabase] match_face_to_person RPC error (non-fatal):', matchError);
                     } else {
-                      // RETURNS TABLE comes back as an array; take the first row
-                      const matchRow = Array.isArray(matchResult) ? matchResult[0] : matchResult;
-                      if (matchRow && matchRow.person_id) {
-                        console.log('[uploadImageToDatabase] Auto-match found:', matchRow.person_id, 'similarity:', matchRow.similarity);
+                      // RETURNS TABLE comes back as an array of up to 3 ranked rows
+                      const matchRows = Array.isArray(matchResult) ? matchResult : (matchResult ? [matchResult] : []);
+                      const top1 = matchRows.find((r: any) => r.rank === 1);
+                      const top2 = matchRows.find((r: any) => r.rank === 2);
+                      const top3 = matchRows.find((r: any) => r.rank === 3);
+
+                      if (top1 && top1.person_id) {
+                        console.log('[uploadImageToDatabase] Auto-match top1:', top1.person_id, 'similarity:', top1.similarity);
+                        const updatePayload: any = {
+                          suggested_person_id: top1.person_id,
+                          match_confidence: top1.similarity,
+                        };
+                        if (top2?.person_id) {
+                          updatePayload.suggested_person_id_2 = top2.person_id;
+                          updatePayload.match_confidence_2 = top2.similarity;
+                        }
+                        if (top3?.person_id) {
+                          updatePayload.suggested_person_id_3 = top3.person_id;
+                          updatePayload.match_confidence_3 = top3.similarity;
+                        }
                         const { error: suggestionUpdateError } = await supabase
                           .from('recall_images_people')
-                          .update({
-                            suggested_person_id: matchRow.person_id,
-                            match_confidence: matchRow.similarity,
-                          })
+                          .update(updatePayload)
                           .eq('id', insertedFace.id);
                         if (suggestionUpdateError) {
                           console.warn('[uploadImageToDatabase] Suggestion update error (non-fatal):', suggestionUpdateError);
