@@ -14,6 +14,8 @@ struct RecallShortcuts: AppShortcutsProvider {
                 "Look up \(\.$criteria) in \(.applicationName)",
                 "Ask \(.applicationName) about \(\.$criteria)",
                 "Search for \(\.$criteria) in \(.applicationName)",
+                "Search my \(.applicationName) for \(\.$criteria)",
+                "Search my recalls for \(\.$criteria)",
             ],
             shortTitle: "Search Recall",
             systemImageName: "magnifyingglass"

@@ -13,7 +13,7 @@ export function redirectSystemPath({ path, initial }: { path: string; initial: b
   const normalised = path.startsWith('/') ? path.slice(1) : path;
   if (normalised.startsWith('search') && normalised.includes('q=')) {
     console.log('[NativeIntent] Redirecting Siri search intent to /search:', path);
-    return '/' + normalised;
+    return '/' + normalised + '&autoSearch=true';
   }
 
   return path;
