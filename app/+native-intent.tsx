@@ -7,13 +7,19 @@ export function redirectSystemPath({ path, initial }: { path: string; initial: b
     return '/create-recall-from-share';
   }
 
-  // Siri App Intent search: recall://search?q=chicken+curry
-  // Expo Router strips the scheme; path may be "/search?q=..." or "search?q=..."
-  // depending on iOS version and whether the app was cold-launched or foregrounded.
+  // Normalise: strip leading slash so both "/foo" and "foo" match the same way
   const normalised = path.startsWith('/') ? path.slice(1) : path;
+
+  // Siri App Intent — Search: recall://search?q=chicken+curry
   if (normalised.startsWith('search') && normalised.includes('q=')) {
     console.log('[NativeIntent] Redirecting Siri search intent to /search:', path);
     return '/' + normalised + '&autoSearch=true';
+  }
+
+  // Siri App Intent — Create: recall://create-recall
+  if (normalised.startsWith('create-recall')) {
+    console.log('[NativeIntent] Redirecting Siri create intent to home with openCreate=true');
+    return '/?openCreate=true';
   }
 
   return path;

@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 
 import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, RefreshControl, Modal, Platform, Alert, Keyboard, ScrollView } from 'react-native';
-import { Stack, useRouter, useFocusEffect } from 'expo-router';
+import { Stack, useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { NoteCard } from '@/components/NoteCard';
@@ -61,7 +61,8 @@ export default function HomeScreen() {
   const CATEGORY_PAGE_SIZE = 10;
   const insets = useSafeAreaInsets();
   const pendingImageUploadsRef = useRef<Map<string, number>>(new Map());
-  const { isCreatePanelOpen, closeCreatePanel } = useCreateRecallUI();
+  const { isCreatePanelOpen, openCreatePanel, closeCreatePanel } = useCreateRecallUI();
+  const params = useLocalSearchParams<{ openCreate?: string }>();
   const { registerScrollToTop } = useScrollToTop();
 
   // Scroll-driven animation shared value
@@ -76,6 +77,20 @@ export default function HomeScreen() {
     });
     return unregister;
   }, [registerScrollToTop]);
+
+  // Siri "Create Recall" intent — open the create panel when deep-linked with ?openCreate=true
+  const hasHandledOpenCreateRef = useRef(false);
+  useEffect(() => {
+    if (params.openCreate === 'true' && !hasHandledOpenCreateRef.current) {
+      hasHandledOpenCreateRef.current = true;
+      console.log('[HomeScreen iOS] Siri create intent — opening create panel');
+      // Small delay to ensure the screen is fully mounted before opening the panel
+      const timer = setTimeout(() => {
+        openCreatePanel();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [params.openCreate, openCreatePanel]);
 
   useEffect(() => {
     const checkForRecalls = async () => {

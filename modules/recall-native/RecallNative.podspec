@@ -14,7 +14,7 @@ Pod::Spec.new do |s|
   s.swift_version  = '5.9'
   s.source         = { :path => '.' }
   s.source_files   = '*.swift'
-  s.exclude_files = ['SearchRecallIntent.swift', 'RecallShortcuts.swift', 'RecallShortcutsHelper.swift']
+  s.exclude_files = ['SearchRecallIntent.swift', 'RecallShortcuts.swift', 'RecallShortcutsHelper.swift', 'CreateRecallIntent.swift']
   s.frameworks     = 'NaturalLanguage', 'Vision'
   s.weak_frameworks = 'FoundationModels'
   s.dependency 'ExpoModulesCore'
