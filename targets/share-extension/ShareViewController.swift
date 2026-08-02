@@ -41,6 +41,8 @@ class ShareViewController: UIViewController {
     private var errorBannerView: UIView!
     private var errorStageLbl: UILabel!
     private var errorDetailLbl: UILabel!
+    private var retryButton: UIButton!
+    private var isAuthFailure: Bool = false
     private var sharedContentLabel: UILabel!
     private var attachmentScrollView: UIScrollView!
     private var attachmentStackView: UIStackView!
@@ -76,9 +78,9 @@ class ShareViewController: UIViewController {
         headerContainer.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(headerContainer)
 
-        // App icon (32×32, cornerRadius 7) — loaded from AppIcon asset
+        // App icon (32×32, cornerRadius 7) — loaded from RecallAppIcon named image set (UIImage(named:"AppIcon") returns nil on iOS 18+)
         let appIconView: UIView
-        if let appIconImage = UIImage(named: "AppIcon") {
+        if let appIconImage = UIImage(named: "RecallAppIcon") {
             let iconImageView = UIImageView(image: appIconImage)
             iconImageView.translatesAutoresizingMaskIntoConstraints = false
             iconImageView.contentMode = .scaleAspectFill
@@ -249,6 +251,16 @@ class ShareViewController: UIViewController {
 
         contentContainer.addSubview(errorBannerView)
 
+        // Retry button — shown only for auth failures
+        retryButton = UIButton(type: .system)
+        retryButton.translatesAutoresizingMaskIntoConstraints = false
+        retryButton.setTitle("Retry", for: .normal)
+        retryButton.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
+        retryButton.setTitleColor(colorPrimary, for: .normal)
+        retryButton.isHidden = true
+        retryButton.addTarget(self, action: #selector(handleRetryAuth), for: .touchUpInside)
+        errorBannerView.addSubview(retryButton)
+
         // ── Attachment strip ──────────────────────────────────────────────────
         attachmentStripContainer = UIView()
         attachmentStripContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -348,7 +360,10 @@ class ShareViewController: UIViewController {
             errorDetailLbl.topAnchor.constraint(equalTo: errorStageLbl.bottomAnchor, constant: 4),
             errorDetailLbl.leadingAnchor.constraint(equalTo: accentBorder.trailingAnchor, constant: 10),
             errorDetailLbl.trailingAnchor.constraint(equalTo: errorBannerView.trailingAnchor, constant: -10),
-            errorDetailLbl.bottomAnchor.constraint(equalTo: errorBannerView.bottomAnchor, constant: -10),
+            errorDetailLbl.bottomAnchor.constraint(equalTo: retryButton.topAnchor, constant: -6),
+
+            retryButton.leadingAnchor.constraint(equalTo: accentBorder.trailingAnchor, constant: 10),
+            retryButton.bottomAnchor.constraint(equalTo: errorBannerView.bottomAnchor, constant: -10),
 
             // Attachment strip
             attachmentStripContainer.topAnchor.constraint(equalTo: errorBannerView.bottomAnchor, constant: 8),
@@ -1068,6 +1083,7 @@ class ShareViewController: UIViewController {
             persistLastFailure(stageFail)
             print("[ShareViewController] No auth token — \(stageFail). Showing user message: \(userMessage)")
             writeRecoveryPayloadToAppGroup()
+            self.isAuthFailure = true
             showInFormError(stage: "Auth Failed", message: userMessage)
         }
     }
@@ -1076,6 +1092,19 @@ class ShareViewController: UIViewController {
         print("[ShareViewController] Cancel tapped — dismissing extension")
         view.endEditing(true)
         extensionContext?.cancelRequest(withError: NSError(domain: "UserCancelled", code: 0))
+    }
+
+    @objc private func handleRetryAuth() {
+        print("[ShareViewController] Retry tapped — re-running auth + save flow")
+        DispatchQueue.main.async {
+            self.errorBannerView.isHidden = true
+            self.isAuthFailure = false
+            self.retryButton.isHidden = true
+            self.updateStatus("Retrying…")
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.handleSave()
+        }
     }
 
     // MARK: - Supabase Insert
@@ -1210,6 +1239,8 @@ class ShareViewController: UIViewController {
         DispatchQueue.main.async {
             self.errorStageLbl.text = stage
             self.errorDetailLbl.text = message
+            // Show retry button only for auth failures (user may have opened Recall in the meantime)
+            self.retryButton.isHidden = !self.isAuthFailure
             self.errorBannerView.alpha = 0
             self.errorBannerView.transform = CGAffineTransform(translationX: 0, y: 8)
             self.errorBannerView.isHidden = false

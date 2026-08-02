@@ -198,11 +198,36 @@ const withAppIntents = (config) => {
   return config;
 };
 
+const withShareExtensionIcon = (config) => {
+  return withDangerousMod(config, [
+    'ios',
+    async (cfg) => {
+      const fs = require('fs');
+      const path = require('path');
+      const root = cfg.modRequest.projectRoot;
+      const src = path.join(root, 'assets', 'icon.png');
+      const dstDir = path.join(root, 'targets', 'share-extension', 'Assets.xcassets', 'RecallAppIcon.imageset');
+      const dst = path.join(dstDir, 'icon.png');
+      if (!fs.existsSync(dstDir)) {
+        fs.mkdirSync(dstDir, { recursive: true });
+      }
+      if (fs.existsSync(src)) {
+        fs.copyFileSync(src, dst);
+        console.log('[withShareExtensionIcon] Copied assets/icon.png → RecallAppIcon.imageset/icon.png');
+      } else {
+        console.warn('[withShareExtensionIcon] Source icon not found at:', src);
+      }
+      return cfg;
+    },
+  ]);
+};
+
 const withRecallConfig = (config) => {
   config = withFollyNoCoroutines(config);
   config = withStripDebugConfigFlag(config);
   config = withScopeIconToAppTarget(config);
   config = withAppIntents(config);
+  config = withShareExtensionIcon(config);
   return config;
 };
 
