@@ -1,4 +1,4 @@
-import { useEffect, useState, memo, useRef } from 'react';
+import { useEffect, useState, memo, useRef, useCallback } from 'react';
 import { Stack, useRouter, useSegments, usePathname } from 'expo-router';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
@@ -10,7 +10,7 @@ import { PeopleGraph } from '@/components/PeopleGraph';
 import { FloatingNavBar } from '@/components/FloatingNavBar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PortalProvider } from '@gorhom/portal';
-import { StyleSheet, View, Platform, Linking } from 'react-native';
+import { StyleSheet, View, Platform, Linking, AppState } from 'react-native';
 import { supabase } from '@/utils/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image as ExpoImage } from 'expo-image';
@@ -153,12 +153,60 @@ function RootLayoutNav() {
     return () => subscription.remove();
   }, [loading, user, router]);
 
+  // Check for pending share data in App Group (used by AppState + Darwin listeners)
+  const checkForPendingShare = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { hasPendingShareData } = await import('@/utils/nativeShareReceiver');
+      const hasPending = await hasPendingShareData();
+      if (hasPending) {
+        console.log('[URLHandler] Pending share data detected on foreground — navigating');
+        router.replace('/create-recall-from-share');
+      }
+    } catch (e) {
+      console.warn('[URLHandler] checkForPendingShare error:', e);
+    }
+  }, [user, router]);
+
+  // AppState foreground listener — check for pending share when app becomes active
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') checkForPendingShare();
+    });
+    return () => sub.remove();
+  }, [checkForPendingShare]);
+
+  // Darwin bridge — listen for onShareCompleted event from AppGroupModule
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    let sub: any;
+    (async () => {
+      try {
+        const { requireNativeModule } = await import('expo-modules-core');
+        const mod = requireNativeModule('AppGroupModule');
+        if (mod?.addListener) {
+          sub = mod.addListener('onShareCompleted', () => {
+            console.log('[URLHandler] Darwin onShareCompleted event received');
+            checkForPendingShare();
+          });
+        }
+      } catch (e) {
+        // AppGroupModule not available in this build
+      }
+    })();
+    return () => { try { sub?.remove(); } catch {} };
+  }, [checkForPendingShare]);
+
   // When user becomes available, flush any pending share intent
   useEffect(() => {
     if (user && pendingShareIntentRef.current) {
       console.log('[URLHandler] User now authenticated, flushing pending share intent');
-      pendingShareIntentRef.current = false;
-      router.replace('/create-recall-from-share');
+      pendingShareIntentRef.current = false; // reset FIRST to prevent re-entry
+      try {
+        router.replace('/create-recall-from-share');
+      } catch (e) {
+        console.warn('[URLHandler] Failed to navigate to create-recall-from-share:', e);
+      }
     }
   }, [user, router]);
 

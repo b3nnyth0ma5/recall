@@ -5,7 +5,7 @@
  * received from other apps via share intents.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -82,6 +82,7 @@ export default function CreateRecallFromShareScreen() {
   const [isLoadingShareData, setIsLoadingShareData] = useState(true);
   const [isScrapingUrl, setIsScrapingUrl] = useState(false);
   const [alreadySavedRecallId, setAlreadySavedRecallId] = useState<string | null>(null);
+  const autoProcessedRef = useRef(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [scrapedMetadata, setScrapedMetadata] = useState<{
@@ -478,6 +479,79 @@ export default function CreateRecallFromShareScreen() {
     }
   };
 
+  // ── auto-process when already_saved=true ────────────────────────────────
+  useEffect(() => {
+    if (isLoadingShareData) return;
+    if (!alreadySavedRecallId) return;
+    if (autoProcessedRef.current) return;
+    autoProcessedRef.current = true;
+
+    const autoProcess = async () => {
+      console.log('[CreateRecallFromShare] already_saved=true — auto-processing recall:', alreadySavedRecallId);
+      setSavingStage('Processing…');
+      setIsSaving(true);
+      try {
+        // Build final text from whatever was pre-populated
+        const parts: string[] = [];
+        if (text.trim()) parts.push(text.trim());
+        const metaParts = [scrapedMetadata?.title, scrapedMetadata?.description].filter(Boolean) as string[];
+        if (metaParts.length > 0) parts.push(metaParts.join('\n'));
+        if (urls.length > 0) parts.push(urls.join('\n'));
+        const finalText = parts.join('\n\n');
+
+        // Fire embedding pipeline
+        triggerRecallEmbedding(alreadySavedRecallId, finalText, location?.name, location?.primaryType)
+          .catch(e => console.error('[CreateRecallFromShare] triggerRecallEmbedding failed:', e));
+
+        // Upload images if any
+        if (images.length > 0) {
+          setSavingStage('Uploading images…');
+          for (let i = 0; i < images.length; i++) {
+            try {
+              await uploadImageToDatabase(images[i], alreadySavedRecallId, 'image/jpeg');
+            } catch (e) {
+              console.error('[CreateRecallFromShare] Image upload failed:', e);
+            }
+          }
+        }
+
+        // Trigger URL scraping
+        if (urls.length > 0 && user) {
+          for (const url of urls) {
+            try {
+              const { data: urlRow, error: urlError } = await supabase
+                .from('recall_urls')
+                .insert({ recall_id: alreadySavedRecallId, user_id: user.id, url })
+                .select('id')
+                .single();
+              if (!urlError && urlRow) {
+                supabase.functions.invoke('scrape-url-metadata', {
+                  body: { recall_url_id: urlRow.id, url },
+                }).catch(e => console.error('[CreateRecallFromShare] scrape-url-metadata failed:', e));
+              }
+            } catch (e) {
+              console.error('[CreateRecallFromShare] URL row insert failed:', e);
+            }
+          }
+        }
+
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+
+        console.log('[CreateRecallFromShare] Auto-process complete, navigating home');
+        router.replace('/(tabs)/(home)');
+      } catch (error) {
+        console.error('[CreateRecallFromShare] Auto-process failed:', error);
+        setInlineError('Processing failed — please try again');
+        setIsSaving(false);
+        setSavingStage('');
+      }
+    };
+
+    autoProcess();
+  }, [isLoadingShareData, alreadySavedRecallId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── derived state ─────────────────────────────────────────────────────────
 
   const hasUrlAndImages = urls.length > 0 && images.length > 0;
@@ -501,6 +575,18 @@ export default function CreateRecallFromShareScreen() {
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading shared content...</Text>
         </View>
+      </View>
+    );
+  }
+
+  // ── auto-processing overlay (already_saved=true flow) ─────────────────────
+
+  if (isSaving && alreadySavedRecallId) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { marginTop: 16 }]}>{savingStage || 'Processing…'}</Text>
       </View>
     );
   }

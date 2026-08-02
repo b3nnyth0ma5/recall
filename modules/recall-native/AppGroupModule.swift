@@ -2,8 +2,14 @@ import ExpoModulesCore
 import Foundation
 
 public class AppGroupModule: Module {
+
+  // Prevent double-registration of the Darwin observer across hot reloads
+  private static var darwinObserverRegistered = false
+
   public func definition() -> ModuleDefinition {
     Name("AppGroupModule")
+
+    Events("onShareCompleted")
 
     OnCreate {
       if #available(iOS 16.0, *) {
@@ -20,6 +26,37 @@ public class AppGroupModule: Module {
           }
         }
       }
+
+      // Register Darwin notification observer for share-completed events
+      guard !AppGroupModule.darwinObserverRegistered else { return }
+      AppGroupModule.darwinObserverRegistered = true
+
+      CFNotificationCenterAddObserver(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        Unmanaged.passRetained(self).toOpaque(),
+        { _, observer, _, _, _ in
+          guard let observer = observer else { return }
+          let module = Unmanaged<AppGroupModule>.fromOpaque(observer).takeUnretainedValue()
+          DispatchQueue.main.async {
+            module.sendEvent("onShareCompleted", ["timestamp": Date().timeIntervalSince1970])
+          }
+        },
+        "com.b3nny1nc.recall.shareCompleted" as CFString,
+        nil,
+        .deliverImmediately
+      )
+      print("[AppGroupModule] Darwin observer registered for com.b3nny1nc.recall.shareCompleted")
+    }
+
+    OnDestroy {
+      CFNotificationCenterRemoveObserver(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        Unmanaged.passUnretained(self).toOpaque(),
+        CFNotificationName("com.b3nny1nc.recall.shareCompleted" as CFString),
+        nil
+      )
+      AppGroupModule.darwinObserverRegistered = false
+      print("[AppGroupModule] Darwin observer removed")
     }
 
     AsyncFunction("getContainerPath") { (groupId: String, promise: Promise) in
