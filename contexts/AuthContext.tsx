@@ -196,8 +196,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         try {
-          const { data: { session: currentSession } } = await supabase.auth.getSession();
-          await writeTokenToAppGroup(currentSession);
+          const { data: { session: currentSession }, error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError) {
+            // If refresh fails (e.g. refresh token expired), fall back to the cached session
+            // so we don't wipe a still-valid token from the App Group file
+            console.warn('[AuthContext] App foreground token refresh failed, falling back to cached session:', refreshError.message);
+            const { data: { session: cachedSession } } = await supabase.auth.getSession();
+            await writeTokenToAppGroup(cachedSession);
+          } else {
+            await writeTokenToAppGroup(currentSession);
+          }
         } catch (e) {
           console.error(
             '[AuthContext] App foreground token refresh FAILED:',
