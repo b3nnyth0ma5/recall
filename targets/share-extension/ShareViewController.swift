@@ -990,10 +990,12 @@ class ShareViewController: UIViewController {
 
     @objc private func handleSave() {
         print("[ShareViewController] Save button tapped")
-        noteTextView.resignFirstResponder()
+        // Fix 5.1 — keyboard dismissed only on success, not here
         saveButton.isEnabled = false
         saveButton.alpha = 0.5
-        saveButton.setTitle("", for: .normal)
+        var btnConfig = saveButton.configuration
+        btnConfig?.title = ""
+        saveButton.configuration = btnConfig
         saveSpinner.startAnimating()
 
         switch loadAuthToken() {
@@ -1020,6 +1022,22 @@ class ShareViewController: UIViewController {
                 } else {
                     print("[ShareViewController] Using stored token for insert")
                     finalAccessToken = accessToken
+                }
+
+                // Fix 2.1 — Wait up to 5 s for any in-flight URL scrape to finish
+                if self.isScraping {
+                    let deadline = DispatchTime.now() + .seconds(5)
+                    let waitGroup = DispatchGroup()
+                    waitGroup.enter()
+                    DispatchQueue.global().async {
+                        var waited = 0
+                        while self.isScraping && waited < 50 {
+                            Thread.sleep(forTimeInterval: 0.1)
+                            waited += 1
+                        }
+                        waitGroup.leave()
+                    }
+                    waitGroup.wait(timeout: deadline)
                 }
 
                 let noteText = self.noteTextView.text ?? ""
@@ -1071,9 +1089,14 @@ class ShareViewController: UIViewController {
             return
         }
 
+        // Fix 8.1 — Add client-side timestamps to recall insert
+        let isoFormatter = ISO8601DateFormatter()
+        let nowISO = isoFormatter.string(from: Date())
         let body: [String: Any] = [
             "text": text,
             "user_id": userId,
+            "created_at": nowISO,
+            "updated_at": nowISO,
         ]
 
         var request = URLRequest(url: url)
@@ -1188,7 +1211,10 @@ class ShareViewController: UIViewController {
             }
             self.saveButton.isEnabled = true
             self.saveButton.alpha = 1.0
-            self.saveButton.setTitle("Create Recall", for: .normal)
+            // Fix 4.1 — UIButton.Configuration title reset
+            var btnConfig = self.saveButton.configuration
+            btnConfig?.title = "Create Recall"
+            self.saveButton.configuration = btnConfig
             self.saveSpinner.stopAnimating()
             self.statusLabel.isHidden = true
         }
@@ -1207,8 +1233,13 @@ class ShareViewController: UIViewController {
         updateStatus("Done ✓", isSuccess: true)
         DispatchQueue.main.async {
             self.saveSpinner.stopAnimating()
-            self.saveButton.setTitle("Create Recall", for: .normal)
+            // Fix 4.1 — UIButton.Configuration title reset
+            var btnConfig = self.saveButton.configuration
+            btnConfig?.title = "Create Recall"
+            self.saveButton.configuration = btnConfig
             self.saveButton.alpha = 1.0
+            // Fix 5.1 — dismiss keyboard only on success
+            self.noteTextView.resignFirstResponder()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
@@ -1406,6 +1437,7 @@ class ShareViewController: UIViewController {
 
     // MARK: - Save to App Group
 
+    // Fix 3.1 — Wrap saveSharedData write with NSFileCoordinator
     private func saveSharedData(_ data: [String: Any]) {
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
             print("[ShareViewController] Failed to get App Group container URL")
@@ -1414,12 +1446,23 @@ class ShareViewController: UIViewController {
 
         let fileURL = containerURL.appendingPathComponent("shared-data.json")
 
-        do {
-            let jsonData = try JSONSerialization.data(withJSONObject: data, options: [])
-            try jsonData.write(to: fileURL)
-            print("[ShareViewController] Saved shared data to: \(fileURL.path)")
-        } catch {
-            print("[ShareViewController] Error saving shared data: \(error)")
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: data, options: []) else {
+            print("[ShareViewController] Failed to serialize shared data")
+            return
+        }
+
+        let coordinator = NSFileCoordinator()
+        var coordinatorError: NSError?
+        coordinator.coordinate(writingItemAt: fileURL, options: .forReplacing, error: &coordinatorError) { coordURL in
+            do {
+                try jsonData.write(to: coordURL, options: .atomic)
+                print("[ShareViewController] Saved shared data to: \(coordURL.path)")
+            } catch {
+                print("[ShareViewController] Error saving shared data: \(error)")
+            }
+        }
+        if let err = coordinatorError {
+            print("[ShareViewController] NSFileCoordinator write error: \(err.localizedDescription)")
         }
     }
 }

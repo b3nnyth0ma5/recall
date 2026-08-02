@@ -76,13 +76,6 @@ async function checkForIOSSharedData() {
       return;
     }
 
-    // Respect already_saved flag — share extension already persisted this recall
-    if (sharedData.already_saved === true) {
-      console.log('[NativeShareReceiver] already_saved=true — share extension already saved this recall, clearing and skipping');
-      await clearSharedData();
-      return;
-    }
-
     console.log('[NativeShareReceiver] Found shared data:', {
       hasText: !!sharedData.text,
       urlCount: sharedData.urls?.length || 0,
@@ -108,6 +101,23 @@ async function checkForIOSSharedData() {
 
     // Combine URLs
     const allUrls = [...(sharedData.urls || []), ...extractedUrls];
+
+    // Respect already_saved flag — share extension already persisted this recall
+    if (sharedData.already_saved === true) {
+      console.log('[NativeShareReceiver] already_saved=true — share extension already saved this recall, passing recall_id through');
+      await clearSharedData();
+      // Return the payload so the React screen can skip re-inserting
+      await processSharedData({
+        text: sharedData.text,
+        images: copiedImages,
+        urls: allUrls.length > 0 ? allUrls : undefined,
+        videos: sharedData.videos,
+        files: sharedData.files,
+        already_saved: true,
+        recall_id: (sharedData as any).recall_id,
+      } as any);
+      return;
+    }
 
     // Process the data
     await processSharedData({
@@ -174,13 +184,6 @@ export async function getInitialShareData(): Promise<ReceivedShareData | null> {
       return null;
     }
 
-    // Respect already_saved flag — share extension already persisted this recall
-    if (sharedData.already_saved === true) {
-      console.log('[NativeShareReceiver] already_saved=true — share extension already saved this recall, clearing and skipping');
-      await clearSharedData();
-      return null;
-    }
-
     console.log('[NativeShareReceiver] Found shared data in App Group:', {
       hasText: !!sharedData.text,
       urlCount: sharedData.urls?.length || 0,
@@ -206,16 +209,35 @@ export async function getInitialShareData(): Promise<ReceivedShareData | null> {
 
     const allUrls = [...(sharedData.urls || []), ...extractedUrls];
 
-    await clearSharedData();
-    console.log('[NativeShareReceiver] Shared data cleared from App Group');
+    // Respect already_saved flag — share extension already persisted this recall
+    if (sharedData.already_saved === true) {
+      console.log('[NativeShareReceiver] already_saved=true — share extension already saved this recall, passing recall_id through');
+      await clearSharedData();
+      // Return the payload so the React screen can skip re-inserting
+      return {
+        text: sharedData.text,
+        images: copiedImages,
+        urls: allUrls.length > 0 ? allUrls : undefined,
+        videos: sharedData.videos,
+        files: sharedData.files,
+        already_saved: true,
+        recall_id: (sharedData as any).recall_id,
+      } as any;
+    }
 
-    return {
+    const result: ReceivedShareData = {
       text: sharedData.text,
       images: copiedImages,
       urls: allUrls.length > 0 ? allUrls : undefined,
       videos: sharedData.videos,
       files: sharedData.files,
     };
+
+    // Clear AFTER data is safely assembled in memory
+    await clearSharedData();
+    console.log('[NativeShareReceiver] Shared data cleared from App Group');
+
+    return result;
   } catch (error) {
     console.error('[NativeShareReceiver] Error getting initial share data:', error);
     return null;

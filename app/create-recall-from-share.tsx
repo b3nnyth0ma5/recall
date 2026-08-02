@@ -16,7 +16,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Dimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -83,6 +82,7 @@ export default function CreateRecallFromShareScreen() {
   const [isLoadingShareData, setIsLoadingShareData] = useState(true);
   const [isScrapingUrl, setIsScrapingUrl] = useState(false);
   const [alreadySavedRecallId, setAlreadySavedRecallId] = useState<string | null>(null);
+  const [inlineError, setInlineError] = useState<string | null>(null);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [scrapedMetadata, setScrapedMetadata] = useState<{
     title?: string;
@@ -333,12 +333,12 @@ export default function CreateRecallFromShareScreen() {
     console.log('[CreateRecallFromShare] Save pressed');
 
     if (!user) {
-      Alert.alert('Error', 'You must be logged in to create a recall');
+      setInlineError('You must be signed in to create a recall');
       return;
     }
 
     if (!text.trim() && images.length === 0 && urls.length === 0) {
-      Alert.alert('Error', 'Please add some content before saving');
+      setInlineError('Please add some content before saving');
       return;
     }
 
@@ -389,7 +389,7 @@ export default function CreateRecallFromShareScreen() {
 
         if (recallError) {
           console.error('[CreateRecallFromShare] Error creating recall:', recallError);
-          Alert.alert('Error', 'Failed to create recall');
+          setInlineError('Failed to create recall — please try again');
           return;
         }
 
@@ -471,7 +471,7 @@ export default function CreateRecallFromShareScreen() {
       router.replace('/(tabs)/(home)');
     } catch (error) {
       console.error('[CreateRecallFromShare] Error saving recall:', error);
-      Alert.alert('Error', 'Failed to save recall. Please try again.');
+      setInlineError('Failed to save recall — please try again');
     } finally {
       setIsSaving(false);
       setSavingStage('');
@@ -549,6 +549,19 @@ export default function CreateRecallFromShareScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {/* ── Inline error banner ── */}
+          {inlineError && (
+            <Pressable
+              style={styles.inlineErrorBanner}
+              onPress={() => setInlineError(null)}
+              accessibilityRole="alert"
+            >
+              <IconSymbol name="exclamationmark.triangle.fill" size={18} color="#FF453A" />
+              <Text style={styles.inlineErrorText}>{inlineError}</Text>
+              <IconSymbol name="xmark" size={14} color="#FF453A" />
+            </Pressable>
+          )}
+
           {/* ── FROM section ── */}
           {!showFromSection ? (
             <View style={styles.section}>
@@ -730,6 +743,7 @@ export default function CreateRecallFromShareScreen() {
               onChangeText={(val) => {
                 console.log('[CreateRecallFromShare] Note text changed, length:', val.length);
                 setText(val);
+                setInlineError(null);
               }}
               placeholder="Add a note (optional)"
               placeholderTextColor={colors.textTertiary}
@@ -1098,6 +1112,24 @@ const styles = StyleSheet.create({
   noSourceText: {
     fontSize: 14,
     color: colors.textTertiary,
+  },
+
+  // Inline error banner
+  inlineErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    backgroundColor: 'rgba(255, 69, 58, 0.12)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 69, 58, 0.3)',
+  },
+  inlineErrorText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#FF453A',
+    fontWeight: '500',
   },
 
   // Empty state
