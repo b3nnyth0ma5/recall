@@ -1,4 +1,4 @@
-const { createRunOncePlugin, withPodfile, withXcodeProject, withDangerousMod } = require('@expo/config-plugins');
+const { createRunOncePlugin, withPodfile, withXcodeProject, withDangerousMod, withInfoPlist } = require('@expo/config-plugins');
 
 /**
  * Expo Config Plugin for Recall App
@@ -9,6 +9,7 @@ const { createRunOncePlugin, withPodfile, withXcodeProject, withDangerousMod } =
  * 3. Injects AppGroupModule.swift into ios/RecallNative/ during prebuild.
  * 4. Injects SiriShortcutsModule.swift into ios/RecallNative/ during prebuild.
  * 5. Copies App Intent Swift files into ios/Recall/AppIntents/ and registers them in Xcode.
+ * 6. Injects SupabaseURL and SupabaseAnonKey into the main app's Info.plist.
  */
 
 const withFollyNoCoroutines = (config) => {
@@ -284,6 +285,35 @@ const withShareExtensionSupabaseConfig = (config) => {
   ]);
 };
 
+/**
+ * Injects SupabaseURL and SupabaseAnonKey into the main app's Info.plist so
+ * that AppIntents code (RecallSupabaseClient) can read them via
+ * Bundle.main.infoDictionary at runtime.
+ */
+const withMainAppSupabaseConfig = (config) => {
+  return withInfoPlist(config, (cfg) => {
+    const supabaseUrl = cfg.expo?.extra?.supabaseUrl ?? '';
+    const supabaseAnonKey = cfg.expo?.extra?.supabaseAnonKey ?? '';
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.warn('[withMainAppSupabaseConfig] supabaseUrl or supabaseAnonKey missing from app.json extra — skipping');
+      return cfg;
+    }
+
+    // Idempotency: skip if already set
+    if (cfg.modResults['SupabaseURL'] && cfg.modResults['SupabaseAnonKey']) {
+      console.log('[withMainAppSupabaseConfig] Keys already present — skipping');
+      return cfg;
+    }
+
+    cfg.modResults['SupabaseURL'] = supabaseUrl;
+    cfg.modResults['SupabaseAnonKey'] = supabaseAnonKey;
+    console.log('[withMainAppSupabaseConfig] Injected SupabaseURL and SupabaseAnonKey into main app Info.plist');
+
+    return cfg;
+  });
+};
+
 const withRecallConfig = (config) => {
   config = withFollyNoCoroutines(config);
   config = withStripDebugConfigFlag(config);
@@ -291,6 +321,7 @@ const withRecallConfig = (config) => {
   config = withAppIntents(config);
   config = withShareExtensionIcon(config);
   config = withShareExtensionSupabaseConfig(config);
+  config = withMainAppSupabaseConfig(config);
   return config;
 };
 

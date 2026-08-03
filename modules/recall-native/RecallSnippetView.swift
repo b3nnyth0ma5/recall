@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import AppIntents
 
 // MARK: - Colour palette (matches Recall app)
