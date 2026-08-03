@@ -12,7 +12,7 @@ public class AppGroupModule: Module {
     Events("onShareCompleted")
 
     OnCreate {
-      if #available(iOS 16.0, *) {
+      if #available(iOS 17.2, *) {
         // After prebuild the intent files compile into the main "Recall" target,
         // so the ObjC runtime name is "Recall.RecallShortcutsHelper".
         // Try both the qualified and unqualified names for robustness.

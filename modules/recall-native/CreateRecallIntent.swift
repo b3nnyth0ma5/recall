@@ -1,7 +1,7 @@
 import AppIntents
 import UIKit
 
-@available(iOS 16.0, *)
+@available(iOS 17.2, *)
 struct CreateRecallIntent: AppIntent {
     static var title: LocalizedStringResource = "Create Recall"
     static var description = IntentDescription("Open Recall ready to create a new memory.")
