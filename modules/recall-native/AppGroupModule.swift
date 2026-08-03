@@ -33,7 +33,7 @@ public class AppGroupModule: Module {
 
       CFNotificationCenterAddObserver(
         CFNotificationCenterGetDarwinNotifyCenter(),
-        Unmanaged.passRetained(self).toOpaque(),
+        Unmanaged.passUnretained(self).toOpaque(),
         { _, observer, _, _, _ in
           guard let observer = observer else { return }
           let module = Unmanaged<AppGroupModule>.fromOpaque(observer).takeUnretainedValue()

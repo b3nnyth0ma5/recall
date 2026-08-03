@@ -539,7 +539,6 @@ class ShareViewController: UIViewController {
             badge.widthAnchor.constraint(equalToConstant: 18),
             badge.heightAnchor.constraint(equalToConstant: 18),
 
-            container.topAnchor.constraint(equalTo: container.topAnchor),
             container.heightAnchor.constraint(equalToConstant: 36),
         ])
 

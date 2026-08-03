@@ -24,8 +24,6 @@ public class FoundationModelAnswerModule: Module {
           promise.resolve("model_not_ready")
         case .unavailable:
           promise.resolve("unavailable")
-        @unknown default:
-          promise.resolve("unavailable")
         }
       } else {
         promise.resolve("unavailable")

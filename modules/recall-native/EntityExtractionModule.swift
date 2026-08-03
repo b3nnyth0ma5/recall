@@ -409,29 +409,13 @@ public class EntityExtractionModule: Module {
           rawPoints.append((x: Float(p.x), y: Float(1.0 - p.y)))
         }
 
-        func centroid(_ indices: [Int]) -> (x: Float, y: Float) {
-          guard !indices.isEmpty else { return (0, 0) }
-          var sx: Float = 0; var sy: Float = 0
-          for i in indices {
-            let p = i < rawPoints.count ? rawPoints[i] : (x: Float(0), y: Float(0))
-            sx += p.x; sy += p.y
-          }
-          let n = Float(indices.count)
-          return (sx / n, sy / n)
-        }
-
-        func dist(_ a: (x: Float, y: Float), _ b: (x: Float, y: Float)) -> Double {
-          let dx = a.x - b.x; let dy = a.y - b.y
-          return Double(sqrt(dx*dx + dy*dy))
-        }
-
         let anchors: [(x: Float, y: Float)] = [
-          centroid(Array(0..<8)),
-          centroid(Array(8..<16)),
-          centroid(Array(16..<28)),
-          centroid(Array(28..<48)),
-          centroid(Array(48..<68)),
-          centroid(Array(68..<min(76, rawPoints.count))),
+          EntityExtractionModule.faceAnchorCentroid(Array(0..<8), rawPoints: rawPoints),
+          EntityExtractionModule.faceAnchorCentroid(Array(8..<16), rawPoints: rawPoints),
+          EntityExtractionModule.faceAnchorCentroid(Array(16..<28), rawPoints: rawPoints),
+          EntityExtractionModule.faceAnchorCentroid(Array(28..<48), rawPoints: rawPoints),
+          EntityExtractionModule.faceAnchorCentroid(Array(48..<68), rawPoints: rawPoints),
+          EntityExtractionModule.faceAnchorCentroid(Array(68..<min(76, rawPoints.count)), rawPoints: rawPoints),
           rawPoints.count > 0  ? rawPoints[0]  : (0,0),
           rawPoints.count > 7  ? rawPoints[7]  : (0,0),
           rawPoints.count > 8  ? rawPoints[8]  : (0,0),
@@ -448,7 +432,7 @@ public class EntityExtractionModule: Module {
         result.reserveCapacity(128)
         for i in 0..<anchors.count {
           for j in (i+1)..<anchors.count {
-            result.append(dist(anchors[i], anchors[j]))
+            result.append(EntityExtractionModule.faceAnchorDist(anchors[i], anchors[j]))
           }
         }
         while result.count < 128 { result.append(0) }
@@ -554,29 +538,13 @@ public class EntityExtractionModule: Module {
           rawPoints.append((x: Float(p.x), y: Float(1.0 - p.y)))
         }
 
-        func centroid(_ indices: [Int]) -> (x: Float, y: Float) {
-          guard !indices.isEmpty else { return (0, 0) }
-          var sx: Float = 0; var sy: Float = 0
-          for i in indices {
-            let p = i < rawPoints.count ? rawPoints[i] : (x: Float(0), y: Float(0))
-            sx += p.x; sy += p.y
-          }
-          let n = Float(indices.count)
-          return (sx / n, sy / n)
-        }
-
-        func dist(_ a: (x: Float, y: Float), _ b: (x: Float, y: Float)) -> Double {
-          let dx = a.x - b.x; let dy = a.y - b.y
-          return Double(sqrt(dx*dx + dy*dy))
-        }
-
         let anchors: [(x: Float, y: Float)] = [
-          centroid(Array(0..<8)),
-          centroid(Array(8..<16)),
-          centroid(Array(16..<28)),
-          centroid(Array(28..<48)),
-          centroid(Array(48..<68)),
-          centroid(Array(68..<min(76, rawPoints.count))),
+          EntityExtractionModule.faceAnchorCentroid(Array(0..<8), rawPoints: rawPoints),
+          EntityExtractionModule.faceAnchorCentroid(Array(8..<16), rawPoints: rawPoints),
+          EntityExtractionModule.faceAnchorCentroid(Array(16..<28), rawPoints: rawPoints),
+          EntityExtractionModule.faceAnchorCentroid(Array(28..<48), rawPoints: rawPoints),
+          EntityExtractionModule.faceAnchorCentroid(Array(48..<68), rawPoints: rawPoints),
+          EntityExtractionModule.faceAnchorCentroid(Array(68..<min(76, rawPoints.count)), rawPoints: rawPoints),
           rawPoints.count > 0  ? rawPoints[0]  : (0,0),
           rawPoints.count > 7  ? rawPoints[7]  : (0,0),
           rawPoints.count > 8  ? rawPoints[8]  : (0,0),
@@ -593,7 +561,7 @@ public class EntityExtractionModule: Module {
         result.reserveCapacity(128)
         for i in 0..<anchors.count {
           for j in (i+1)..<anchors.count {
-            result.append(dist(anchors[i], anchors[j]))
+            result.append(EntityExtractionModule.faceAnchorDist(anchors[i], anchors[j]))
           }
         }
         while result.count < 128 { result.append(0) }
@@ -620,5 +588,21 @@ public class EntityExtractionModule: Module {
 
       return descriptor
     }
+  }
+
+  private static func faceAnchorCentroid(_ indices: [Int], rawPoints: [(x: Float, y: Float)]) -> (x: Float, y: Float) {
+    guard !indices.isEmpty else { return (0, 0) }
+    var sx: Float = 0; var sy: Float = 0
+    for i in indices {
+      let p = i < rawPoints.count ? rawPoints[i] : (x: Float(0), y: Float(0))
+      sx += p.x; sy += p.y
+    }
+    let n = Float(indices.count)
+    return (sx / n, sy / n)
+  }
+
+  private static func faceAnchorDist(_ a: (x: Float, y: Float), _ b: (x: Float, y: Float)) -> Double {
+    let dx = a.x - b.x; let dy = a.y - b.y
+    return Double(sqrt(dx*dx + dy*dy))
   }
 }
