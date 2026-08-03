@@ -18,7 +18,7 @@
       "ios": {
         "simulator": true,
         "buildConfiguration": "Debug",
-        "image": "macos-15-latest"
+        "image": "macos-tahoe-26.4-xcode-26.4"
       },
       "android": {
         "buildType": "apk"
@@ -36,7 +36,7 @@
       "ios": {
         "simulator": false,
         "buildConfiguration": "Release",
-        "image": "macos-15-latest"
+        "image": "macos-tahoe-26.4-xcode-26.4"
       },
       "android": {
         "buildType": "apk"
@@ -55,7 +55,7 @@
       "ios": {
         "simulator": false,
         "buildConfiguration": "Release",
-        "image": "macos-15-latest"
+        "image": "macos-tahoe-26.4-xcode-26.4"
       },
       "android": {
         "buildType": "app-bundle"
