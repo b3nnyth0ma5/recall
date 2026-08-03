@@ -2,10 +2,9 @@ import AppIntents
 import UIKit
 
 @available(iOS 17.2, *)
-struct SearchRecallIntent: ShowInAppSearchResultsIntent {
+struct SearchRecallIntent: AppIntent {
     static var title: LocalizedStringResource = "Search Recall"
     static var description = IntentDescription("Search your Recall memories by voice or text.")
-    static let searchScopes: [StringSearchScope] = [.general]
     static var openAppWhenRun: Bool = true
 
     @Parameter(
@@ -13,12 +12,12 @@ struct SearchRecallIntent: ShowInAppSearchResultsIntent {
         description: "What would you like to search for in your memories?",
         requestValueDialog: IntentDialog("What would you like to search for in Recall?")
     )
-    var criteria: StringSearchCriteria
+    var query: String
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let term = criteria.term
-        guard !term.trimmingCharacters(in: .whitespaces).isEmpty else {
+        let term = query.trimmingCharacters(in: .whitespaces)
+        guard !term.isEmpty else {
             return .result()
         }
         let encoded = term.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? term
