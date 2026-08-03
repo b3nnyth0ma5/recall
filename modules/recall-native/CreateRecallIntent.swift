@@ -5,7 +5,12 @@ import UIKit
 struct CreateRecallIntent: AppIntent {
     static var title: LocalizedStringResource = "Create Recall"
     static var description = IntentDescription("Open Recall ready to create a new memory.")
-    static var openAppWhenRun: Bool = true
+    static var supportedModes: IntentModes = .foregroundApplication
+    static var isDiscoverable: Bool = true
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Create a new Recall memory")
+    }
 
     @MainActor
     func perform() async throws -> some IntentResult {

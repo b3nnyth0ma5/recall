@@ -38,7 +38,7 @@ enum RecallSupabaseClient {
             return []
         }
 
-        let urlString = "\(supabaseURL)/rest/v1/recalls?select=id,text,created_at,location,location_primary_type&text=ilike.\(encodedPattern)&order=created_at.desc&limit=\(limit)"
+        let urlString = "\(supabaseURL)/rest/v1/recalls?select=id,text,created_at,location,location_primary_type,recall_images(count)&text=ilike.\(encodedPattern)&order=created_at.desc&limit=\(limit)"
         guard let url = URL(string: urlString) else {
             print("[RecallSupabaseClient] Failed to construct search URL")
             return []
@@ -75,12 +75,21 @@ enum RecallSupabaseClient {
                   let text = row["text"] as? String else { return nil }
             let createdAt = row["created_at"] as? String ?? ""
             let location = row["location"] as? String
+
+            // Parse image count from nested recall_images count
+            var imageCount = 0
+            if let imagesArr = row["recall_images"] as? [[String: Any]],
+               let countObj = imagesArr.first,
+               let count = countObj["count"] as? Int {
+                imageCount = count
+            }
+
             return RecallEntity(
                 id: id,
                 text: text,
                 createdAt: createdAt,
                 locationName: location,
-                imageCount: 0
+                imageCount: imageCount
             )
         }
 
@@ -94,7 +103,7 @@ enum RecallSupabaseClient {
         print("[RecallSupabaseClient] Fetching recall by ID: \(id)")
 
         let encodedId = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id
-        let urlString = "\(supabaseURL)/rest/v1/recalls?select=id,text,created_at,location&id=eq.\(encodedId)&limit=1"
+        let urlString = "\(supabaseURL)/rest/v1/recalls?select=id,text,created_at,location,recall_images(count)&id=eq.\(encodedId)&limit=1"
         guard let url = URL(string: urlString) else {
             print("[RecallSupabaseClient] Failed to construct fetch URL for ID: \(id)")
             return nil
@@ -121,13 +130,21 @@ enum RecallSupabaseClient {
             return nil
         }
 
+        // Parse image count from nested recall_images count
+        var imageCount = 0
+        if let imagesArr = row["recall_images"] as? [[String: Any]],
+           let countObj = imagesArr.first,
+           let count = countObj["count"] as? Int {
+            imageCount = count
+        }
+
         print("[RecallSupabaseClient] Successfully fetched recall: \(rowId)")
         return RecallEntity(
             id: rowId,
             text: text,
             createdAt: row["created_at"] as? String ?? "",
             locationName: row["location"] as? String,
-            imageCount: 0
+            imageCount: imageCount
         )
     }
 }

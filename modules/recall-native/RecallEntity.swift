@@ -23,6 +23,12 @@ struct RecallEntity: AppEntity {
             subtitle: "\(subtitle)"
         )
     }
+
+    var openIntent: OpenRecallIntent {
+        var intent = OpenRecallIntent()
+        intent.recall = self
+        return intent
+    }
 }
 
 // MARK: - RecallEntityQuery
@@ -47,7 +53,12 @@ struct RecallEntityQuery: EntityQuery {
 struct OpenRecallIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Recall"
     static var description = IntentDescription("Opens a specific recall in the Recall app.")
-    static var openAppWhenRun: Bool = true
+    static var supportedModes: IntentModes = .foregroundApplication
+    static var isDiscoverable: Bool = true
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Open \(\.$recall) in Recall")
+    }
 
     @Parameter(title: "Recall")
     var recall: RecallEntity
@@ -62,14 +73,9 @@ struct OpenRecallIntent: AppIntent {
     func perform() async throws -> some IntentResult & OpensIntent {
         let encoded = recall.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? recall.id
         if let url = URL(string: "recall://note/\(encoded)") {
-            console_log("[OpenRecallIntent] Opening recall in app: \(recall.id)")
+            print("[OpenRecallIntent] Opening recall in app: \(recall.id)")
             await UIApplication.shared.open(url)
         }
         return .result()
-    }
-
-    private func console_log(_ message: String) {
-        // Swift equivalent of console.log for debugging
-        print(message)
     }
 }

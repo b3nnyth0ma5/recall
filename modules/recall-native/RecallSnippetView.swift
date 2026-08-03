@@ -113,6 +113,7 @@ struct RecallCardRow: View {
         let locationString = entity.locationName ?? ""
         let hasDate = !dateString.isEmpty
         let hasLocation = !locationString.isEmpty
+        let hasImages = entity.imageCount > 0
 
         VStack(alignment: .leading, spacing: 4) {
             Text(truncatedText)
@@ -132,6 +133,11 @@ struct RecallCardRow: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
+                }
+                if hasImages {
+                    Label("\(entity.imageCount)", systemImage: "photo")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
                 }
             }
         }
