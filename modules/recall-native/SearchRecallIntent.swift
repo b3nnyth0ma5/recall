@@ -4,7 +4,7 @@ import SwiftUI
 @available(iOS 17.2, *)
 struct SearchRecallIntent: AppIntent {
     static var title: LocalizedStringResource = "Search Recall"
-    static var description = IntentDescription("Search your Recall memories and see results directly in Siri.")
+    static var description = IntentDescription("Search your Recall memories and see matching results.")
 
     // Run in background — do NOT open the app just to search
     static var openAppWhenRun: Bool = false
