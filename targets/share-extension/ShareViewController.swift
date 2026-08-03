@@ -1222,7 +1222,7 @@ class ShareViewController: UIViewController {
                 // Post Darwin notification so the main app wakes immediately
                 CFNotificationCenterPostNotification(
                     CFNotificationCenterGetDarwinNotifyCenter(),
-                    "com.b3nny1nc.recall.shareCompleted" as CFNotificationName,
+                    CFNotificationName("com.b3nny1nc.recall.shareCompleted" as CFString),
                     nil, nil, true
                 )
                 print("[ShareViewController] Darwin notification posted: com.b3nny1nc.recall.shareCompleted")
