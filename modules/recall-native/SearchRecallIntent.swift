@@ -1,7 +1,7 @@
 import AppIntents
 import UIKit
 
-@available(iOS 16.0, *)
+@available(iOS 17.2, *)
 struct SearchRecallIntent: ShowInAppSearchResultsIntent {
     static var title: LocalizedStringResource = "Search Recall"
     static var description = IntentDescription("Search your Recall memories by voice or text.")
