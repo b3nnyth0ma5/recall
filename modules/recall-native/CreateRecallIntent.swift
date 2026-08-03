@@ -12,7 +12,7 @@ struct CreateRecallIntent: AppIntent {
         guard let url = URL(string: "recall://create-recall") else {
             return .result()
         }
-        UIApplication.shared.open(url)
+        await UIApplication.shared.open(url)
         return .result()
     }
 }
