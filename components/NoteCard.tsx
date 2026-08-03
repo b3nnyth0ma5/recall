@@ -1299,9 +1299,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 13,
+    paddingVertical: 10,
     gap: 14,
-    minHeight: 50,
+    minHeight: 38,
   },
   contextMenuSeparator: {
     height: StyleSheet.hairlineWidth,

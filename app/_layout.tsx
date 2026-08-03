@@ -120,6 +120,15 @@ function RootLayoutNav() {
         return;
       }
 
+      if (url.includes('create-recall') && !url.includes('create-recall-from-share')) {
+        console.log('[URLHandler] Create recall URL detected');
+        if (user) {
+          console.log('[URLHandler] User authenticated, navigating to home with openCreate');
+          router.push('/(tabs)/(home)?openCreate=true');
+        }
+        return;
+      }
+
       // Siri / NSUserActivity search URLs
       try {
         const parsed = new URL(url);

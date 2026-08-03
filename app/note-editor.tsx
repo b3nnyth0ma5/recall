@@ -781,6 +781,23 @@ export default function NoteEditorScreen() {
               }
             } else {
               console.log('[NoteEditor] Data unchanged, using cache');
+              // If cache had no URL data, fetch recall_urls in background
+              if (!cachedNote.urls || cachedNote.urls.length === 0) {
+                const { data: cachedPathUrlData } = await supabase
+                  .from('recall_urls')
+                  .select('id, url, og_title, og_description, og_image_url, og_site_name, scraped_at')
+                  .eq('recall_id', noteId)
+                  .order('created_at', { ascending: true })
+                  .limit(1)
+                  .maybeSingle();
+
+                if (cachedPathUrlData) {
+                  console.log('[NoteEditor] Loaded URL data from DB (cache path, data unchanged):', cachedPathUrlData.url);
+                  setUrlData(cachedPathUrlData as RecallUrl);
+                  setEditedUrlTitle(cachedPathUrlData.og_title ?? '');
+                  setEditedUrlDescription(cachedPathUrlData.og_description ?? '');
+                }
+              }
             }
           }
           

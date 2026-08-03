@@ -21,7 +21,7 @@ struct SearchRecallIntent: AppIntent {
             return .result()
         }
         let encoded = term.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? term
-        guard let url = URL(string: "recall://search?q=\(encoded)") else {
+        guard let url = URL(string: "recall://search?q=\(encoded)&autoSearch=true") else {
             return .result()
         }
         await UIApplication.shared.open(url)
