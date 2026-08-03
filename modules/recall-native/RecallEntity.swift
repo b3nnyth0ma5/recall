@@ -53,7 +53,7 @@ struct RecallEntityQuery: EntityQuery {
 struct OpenRecallIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Recall"
     static var description = IntentDescription("Opens a specific recall in the Recall app.")
-    static var supportedModes: IntentModes = .foregroundApplication
+    static var openAppWhenRun: Bool = true
     static var isDiscoverable: Bool = true
 
     static var parameterSummary: some ParameterSummary {

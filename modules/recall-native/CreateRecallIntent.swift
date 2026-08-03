@@ -5,7 +5,7 @@ import UIKit
 struct CreateRecallIntent: AppIntent {
     static var title: LocalizedStringResource = "Create Recall"
     static var description = IntentDescription("Open Recall ready to create a new memory.")
-    static var supportedModes: IntentModes = .foregroundApplication
+    static var openAppWhenRun: Bool = true
     static var isDiscoverable: Bool = true
 
     static var parameterSummary: some ParameterSummary {

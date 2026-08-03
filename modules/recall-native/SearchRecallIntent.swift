@@ -7,7 +7,7 @@ struct SearchRecallIntent: AppIntent {
     static var description = IntentDescription("Search your Recall memories and see results directly in Siri.")
 
     // Run in background — do NOT open the app just to search
-    static var supportedModes: IntentModes = .backgroundOnly
+    static var openAppWhenRun: Bool = false
     static var isDiscoverable: Bool = true
 
     static var parameterSummary: some ParameterSummary {
