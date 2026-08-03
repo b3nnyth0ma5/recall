@@ -129,6 +129,26 @@ function RootLayoutNav() {
         return;
       }
 
+      // Siri tap-to-open: recall://note/{id}
+      if (url.includes('/note/')) {
+        try {
+          const parsed = new URL(url);
+          let noteId: string | null = null;
+          if (parsed.hostname === 'note') {
+            noteId = parsed.pathname.replace(/^\//, '');
+          } else if (parsed.pathname.startsWith('/note/')) {
+            noteId = parsed.pathname.replace('/note/', '');
+          }
+          if (noteId && user) {
+            console.log('[URLHandler] Opening recall from Siri tap:', noteId);
+            router.push(`/note-editor?id=${encodeURIComponent(noteId)}`);
+          }
+        } catch (e) {
+          // ignore malformed URLs
+        }
+        return;
+      }
+
       // Siri / NSUserActivity search URLs
       try {
         const parsed = new URL(url);

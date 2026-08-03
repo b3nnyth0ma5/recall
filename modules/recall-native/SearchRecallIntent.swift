@@ -1,11 +1,13 @@
 import AppIntents
-import UIKit
+import SwiftUI
 
 @available(iOS 17.2, *)
 struct SearchRecallIntent: AppIntent {
     static var title: LocalizedStringResource = "Search Recall"
-    static var description = IntentDescription("Search your Recall memories by voice or text.")
-    static var openAppWhenRun: Bool = true
+    static var description = IntentDescription("Search your Recall memories and see results directly in Siri.")
+
+    // Run in background — do NOT open the app just to search
+    static var openAppWhenRun: Bool = false
 
     @Parameter(
         title: "Search query",
@@ -14,17 +16,50 @@ struct SearchRecallIntent: AppIntent {
     )
     var query: String
 
-    @MainActor
-    func perform() async throws -> some IntentResult {
+    func perform() async throws -> some IntentResult & ReturnsValue<[RecallEntity]> & ProvidesDialog & ShowsSnippetView {
         let term = query.trimmingCharacters(in: .whitespaces)
+
+        print("[SearchRecallIntent] perform() called with query: '\(term)'")
+
+        // Not signed in — fall back gracefully
+        guard let token = RecallSupabaseClient.readAccessToken() else {
+            print("[SearchRecallIntent] No auth token found — user not signed in")
+            let dialog = IntentDialog("Please open Recall and sign in first, then try again.")
+            let snippet = RecallSnippetView(query: term, results: [], totalCount: 0)
+            return .result(value: [], dialog: dialog, view: snippet)
+        }
+
         guard !term.isEmpty else {
-            return .result()
+            print("[SearchRecallIntent] Empty query provided")
+            let dialog = IntentDialog("Please provide a search term.")
+            let snippet = RecallSnippetView(query: "", results: [], totalCount: 0)
+            return .result(value: [], dialog: dialog, view: snippet)
         }
-        let encoded = term.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? term
-        guard let url = URL(string: "recall://search?q=\(encoded)&autoSearch=true") else {
-            return .result()
+
+        // Fetch from Supabase
+        print("[SearchRecallIntent] Fetching results from Supabase for: '\(term)'")
+        let results = (try? await RecallSupabaseClient.searchRecalls(query: term, token: token, limit: 5)) ?? []
+        print("[SearchRecallIntent] Got \(results.count) results for query: '\(term)'")
+
+        // Build dialog (spoken by Siri)
+        let dialog: IntentDialog
+        if results.isEmpty {
+            dialog = IntentDialog("I couldn't find any recalls about \(term).")
+        } else if results.count == 1 {
+            dialog = IntentDialog(
+                full: "I found 1 recall about \(term). Tap to open it in Recall.",
+                supporting: "Here's what I found."
+            )
+        } else {
+            dialog = IntentDialog(
+                full: "I found \(results.count) recalls about \(term). Tap any result to open it in Recall.",
+                supporting: "Here are your top results."
+            )
         }
-        await UIApplication.shared.open(url)
-        return .result()
+
+        // Build snippet view shown in Siri's UI
+        let snippet = RecallSnippetView(query: term, results: results, totalCount: results.count)
+
+        return .result(value: results, dialog: dialog, view: snippet)
     }
 }
