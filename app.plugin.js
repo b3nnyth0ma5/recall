@@ -184,14 +184,11 @@ const withAppIntents = (config) => {
     }
 
     for (const f of INTENT_FILES) {
-      // Check if already added (idempotency)
-      const existingFile = project.pbxFileReferenceSection
-        ? Object.values(project.pbxFileReferenceSection()).find(
-            (ref) => ref && ref.path && (ref.path === `"${f}"` || ref.path === f)
-          )
-        : null;
-      if (!existingFile) {
-        // Use bare filename — the group path 'Recall/AppIntents' provides the directory context
+      // Use project.hasFile() — the correct idempotency API that checks both
+      // PBXFileReference AND PBXSourcesBuildPhase to prevent duplicate symbol errors
+      // on repeated expo prebuild runs.
+      const filePath = `Recall/AppIntents/${f}`;
+      if (!project.hasFile(filePath)) {
         project.addSourceFile(f, { target: mainTargetUuid }, groupKey);
         console.log(`[withAppIntents] Registered ${f} in Xcode project`);
       }

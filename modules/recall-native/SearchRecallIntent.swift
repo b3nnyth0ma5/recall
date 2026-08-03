@@ -21,7 +21,7 @@ struct SearchRecallIntent: AppIntent {
     )
     var query: String
 
-    func perform() async throws -> some IntentResult & ReturnsValue<[RecallEntity]> & ProvidesDialog & ShowsSnippetView {
+    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
         let term = query.trimmingCharacters(in: .whitespaces)
 
         print("[SearchRecallIntent] perform() called with query: '\(term)'")
@@ -31,14 +31,14 @@ struct SearchRecallIntent: AppIntent {
             print("[SearchRecallIntent] No auth token found — user not signed in")
             let dialog = IntentDialog("Please open Recall and sign in first, then try again.")
             let snippet = RecallSnippetView(query: term, results: [], totalCount: 0)
-            return .result(value: [], dialog: dialog, view: snippet)
+            return .result(dialog: dialog, view: snippet)
         }
 
         guard !term.isEmpty else {
             print("[SearchRecallIntent] Empty query provided")
             let dialog = IntentDialog("Please provide a search term.")
             let snippet = RecallSnippetView(query: "", results: [], totalCount: 0)
-            return .result(value: [], dialog: dialog, view: snippet)
+            return .result(dialog: dialog, view: snippet)
         }
 
         // Fetch from Supabase
@@ -65,6 +65,6 @@ struct SearchRecallIntent: AppIntent {
         // Build snippet view shown in Siri's UI
         let snippet = RecallSnippetView(query: term, results: results, totalCount: results.count)
 
-        return .result(value: results, dialog: dialog, view: snippet)
+        return .result(dialog: dialog, view: snippet)
     }
 }
