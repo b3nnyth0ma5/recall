@@ -6,6 +6,7 @@ import Foundation
 @available(iOS 17.2, *)
 @objc(RecallShortcutsHelper)
 public class RecallShortcutsHelper: NSObject {
+    @available(iOS 17.2, *)
     @objc public static func updateShortcutParameters() {
         RecallShortcuts.updateAppShortcutParameters()
     }
