@@ -32,6 +32,7 @@ enum RecallSupabaseClient {
 
     // MARK: - Search recalls
 
+    @available(iOS 17.2, *)
     static func searchRecalls(query: String, token: String, limit: Int = 5) async throws -> [RecallEntity] {
         print("[RecallSupabaseClient] Searching recalls for query: \(query), limit: \(limit)")
 
@@ -99,6 +100,7 @@ enum RecallSupabaseClient {
 
     // MARK: - Fetch single recall by ID
 
+    @available(iOS 17.2, *)
     static func fetchRecall(id: String, token: String) async throws -> RecallEntity? {
         print("[RecallSupabaseClient] Fetching recall by ID: \(id)")
 
