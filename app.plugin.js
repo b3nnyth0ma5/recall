@@ -130,6 +130,7 @@ const withAppIntents = (config) => {
     'SearchRecallIntent.swift',
     'RecallShortcuts.swift',
     'RecallShortcutsHelper.swift',
+    'CreateRecallIntent.swift',
   ];
 
   // Stage 1: copy Swift files into the iOS project directory
@@ -171,7 +172,7 @@ const withAppIntents = (config) => {
     let groupKey = project.findPBXGroupKey({ name: 'AppIntents' });
     if (!groupKey) {
       const mainGroupKey = project.findPBXGroupKey({ name: 'Recall' });
-      const result = project.addPbxGroup([], 'AppIntents', 'AppIntents');
+      const result = project.addPbxGroup([], 'AppIntents', 'Recall/AppIntents');
       groupKey = result.uuid;
       if (mainGroupKey) {
         project.addToPbxGroup({ fileRef: groupKey, basename: 'AppIntents' }, mainGroupKey);
@@ -179,7 +180,6 @@ const withAppIntents = (config) => {
     }
 
     for (const f of INTENT_FILES) {
-      const filePath = `Recall/AppIntents/${f}`;
       // Check if already added (idempotency)
       const existingFile = project.pbxFileReferenceSection
         ? Object.values(project.pbxFileReferenceSection()).find(
@@ -187,7 +187,8 @@ const withAppIntents = (config) => {
           )
         : null;
       if (!existingFile) {
-        project.addSourceFile(filePath, { target: mainTargetUuid }, groupKey);
+        // Use bare filename — the group path 'Recall/AppIntents' provides the directory context
+        project.addSourceFile(f, { target: mainTargetUuid }, groupKey);
         console.log(`[withAppIntents] Registered ${f} in Xcode project`);
       }
     }
