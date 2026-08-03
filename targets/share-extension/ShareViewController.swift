@@ -1280,7 +1280,17 @@ class ShareViewController: UIViewController {
             self.noteTextView.resignFirstResponder()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+            guard let self = self else { return }
+            // Open the main app via URL scheme so it foregrounds and processes the pending share.
+            // This is the cold-launch path; the Darwin notification (already posted above) handles
+            // the already-running-in-background path.
+            if let url = URL(string: "recall://share-intent") {
+                self.extensionContext?.open(url, completionHandler: { _ in
+                    self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+                })
+            } else {
+                self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+            }
         }
     }
 
