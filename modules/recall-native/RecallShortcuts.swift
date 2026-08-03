@@ -9,12 +9,12 @@ struct RecallShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: SearchRecallIntent(),
             phrases: [
-                "Search \(.applicationName) for \(\.$query)",
-                "Find \(\.$query) in \(.applicationName)",
-                "Look up \(\.$query) in \(.applicationName)",
-                "Ask \(.applicationName) about \(\.$query)",
-                "Search for \(\.$query) in \(.applicationName)",
-                "Search my \(.applicationName) for \(\.$query)",
+                "Search \(.applicationName)",
+                "Search my \(.applicationName)",
+                "Search my memories in \(.applicationName)",
+                "Find something in \(.applicationName)",
+                "Look something up in \(.applicationName)",
+                "Ask \(.applicationName) something",
             ],
             shortTitle: "Search Recall",
             systemImageName: "magnifyingglass"
