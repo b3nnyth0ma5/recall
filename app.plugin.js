@@ -223,12 +223,71 @@ const withShareExtensionIcon = (config) => {
   ]);
 };
 
+const withShareExtensionSupabaseConfig = (config) => {
+  return withDangerousMod(config, [
+    'ios',
+    async (cfg) => {
+      const fs = require('fs');
+      const path = require('path');
+
+      const supabaseUrl = cfg.extra?.supabaseUrl ?? cfg.expo?.extra?.supabaseUrl ?? '';
+      const supabaseAnonKey = cfg.extra?.supabaseAnonKey ?? cfg.expo?.extra?.supabaseAnonKey ?? '';
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        console.warn('[withShareExtensionSupabaseConfig] supabaseUrl or supabaseAnonKey missing from app.json extra — skipping');
+        return cfg;
+      }
+
+      const plistPath = path.join(cfg.modRequest.platformProjectRoot, '..', 'targets', 'share-extension', 'Info.plist');
+
+      const minimalPlist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+</dict>
+</plist>
+`;
+
+      let plistContent;
+      if (!fs.existsSync(plistPath)) {
+        console.log('[withShareExtensionSupabaseConfig] Info.plist not found — creating minimal plist at:', plistPath);
+        fs.mkdirSync(path.dirname(plistPath), { recursive: true });
+        plistContent = minimalPlist;
+      } else {
+        plistContent = fs.readFileSync(plistPath, 'utf8');
+      }
+
+      // Idempotency: skip if keys already present
+      if (plistContent.includes('<key>SupabaseURL</key>') && plistContent.includes('<key>SupabaseAnonKey</key>')) {
+        console.log('[withShareExtensionSupabaseConfig] Keys already present — skipping');
+        return cfg;
+      }
+
+      const injection = `\t<key>SupabaseURL</key>\n\t<string>${supabaseUrl}</string>\n\t<key>SupabaseAnonKey</key>\n\t<string>${supabaseAnonKey}</string>\n`;
+
+      // Insert before the closing </dict>
+      const lastDictClose = plistContent.lastIndexOf('</dict>');
+      if (lastDictClose === -1) {
+        console.warn('[withShareExtensionSupabaseConfig] Could not find </dict> in Info.plist — skipping');
+        return cfg;
+      }
+
+      plistContent = plistContent.slice(0, lastDictClose) + injection + plistContent.slice(lastDictClose);
+      fs.writeFileSync(plistPath, plistContent, 'utf8');
+      console.log('[withShareExtensionSupabaseConfig] Injected SupabaseURL and SupabaseAnonKey into', plistPath);
+
+      return cfg;
+    },
+  ]);
+};
+
 const withRecallConfig = (config) => {
   config = withFollyNoCoroutines(config);
   config = withStripDebugConfigFlag(config);
   config = withScopeIconToAppTarget(config);
   config = withAppIntents(config);
   config = withShareExtensionIcon(config);
+  config = withShareExtensionSupabaseConfig(config);
   return config;
 };
 

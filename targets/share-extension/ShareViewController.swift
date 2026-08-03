@@ -6,8 +6,18 @@ import UniformTypeIdentifiers
 class ShareViewController: UIViewController {
 
     private let appGroupID = "group.com.b3nny1nc.recall"
-    private let supabaseURL = "https://cesmsdnblkdjkskmiqib.supabase.co"
-    private let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlc21zZG5ibGtkamtza21pcWliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc1NzcsImV4cCI6MjA3ODA4MzU3N30.AlULDdolfFFcqfrjXY4XBC_fzD_Gz-bx2FCyqjx4nA4"
+    private var supabaseURL: String {
+        guard let value = Bundle.main.infoDictionary?["SupabaseURL"] as? String, !value.isEmpty else {
+            fatalError("SupabaseURL missing from Info.plist — run expo prebuild")
+        }
+        return value
+    }
+    private var supabaseAnonKey: String {
+        guard let value = Bundle.main.infoDictionary?["SupabaseAnonKey"] as? String, !value.isEmpty else {
+            fatalError("SupabaseAnonKey missing from Info.plist — run expo prebuild")
+        }
+        return value
+    }
 
     // MARK: - Colors
     private let colorBackground    = UIColor(hex: "#1A1A1A")
