@@ -127,6 +127,9 @@ const withScopeIconToAppTarget = (config) => {
  */
 const withAppIntents = (config) => {
   const INTENT_FILES = [
+    'RecallEntity.swift',
+    'RecallSnippetView.swift',
+    'RecallSupabaseClient.swift',
     'SearchRecallIntent.swift',
     'RecallShortcuts.swift',
     'RecallShortcutsHelper.swift',
