@@ -46,6 +46,7 @@ import * as Haptics from 'expo-haptics';
 import { pickDocuments } from '@/utils/documentPicker';
 import Toast from 'react-native-toast-message';
 import { useDocumentProcessingPoller } from '@/hooks/useDocumentProcessingPoller';
+import UrlPreviewCard from '@/components/UrlPreviewCard';
 
 interface ImageData {
   id?: string;
@@ -103,6 +104,12 @@ export default function NoteEditorScreen() {
   const [editedUrlTitle, setEditedUrlTitle] = useState('');
   const [editedUrlDescription, setEditedUrlDescription] = useState('');
   const [savingUrl, setSavingUrl] = useState(false);
+  const [editedUrlValue, setEditedUrlValue] = useState('');
+  const [editingUrl, setEditingUrl] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [titleExpanded, setTitleExpanded] = useState(false);
+  const [descExpanded, setDescExpanded] = useState(false);
   const isSharedRecall = params.isSharedRecall === 'true';
   const fromShare = params.fromShare === 'true';
   const openCamera = params.openCamera === 'true';
@@ -355,6 +362,30 @@ export default function NoteEditorScreen() {
       setSavingUrl(false);
     }
   }, [urlData, editedUrlTitle, editedUrlDescription]);
+
+  const handleSaveUrlValue = useCallback(async () => {
+    if (!urlData?.id) return;
+    const trimmed = editedUrlValue.trim();
+    if (!trimmed || trimmed === urlData.url) return;
+
+    console.log('[NoteEditor] Saving URL value for:', urlData.id);
+    setSavingUrl(true);
+    try {
+      const { error } = await supabase
+        .from('recall_urls')
+        .update({ url: trimmed })
+        .eq('id', urlData.id);
+      if (error) throw error;
+      setUrlData(prev => prev ? { ...prev, url: trimmed } : null);
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (err) {
+      console.error('[NoteEditor] Error saving URL value:', err);
+    } finally {
+      setSavingUrl(false);
+    }
+  }, [urlData, editedUrlValue]);
 
   const takePhoto = useCallback(async () => {
     try {
@@ -644,6 +675,7 @@ export default function NoteEditorScreen() {
             setUrlData(cachedNote.urls[0]);
             setEditedUrlTitle(cachedNote.urls[0].og_title ?? '');
             setEditedUrlDescription(cachedNote.urls[0].og_description ?? '');
+            setEditedUrlValue(cachedNote.urls[0].url);
           }
 
           if (cachedNote.people && cachedNote.people.length > 0) {
@@ -778,6 +810,7 @@ export default function NoteEditorScreen() {
                 setUrlData(bgUrlsData as RecallUrl);
                 setEditedUrlTitle(bgUrlsData.og_title ?? '');
                 setEditedUrlDescription(bgUrlsData.og_description ?? '');
+                setEditedUrlValue(bgUrlsData.url);
               }
             } else {
               console.log('[NoteEditor] Data unchanged, using cache');
@@ -796,6 +829,7 @@ export default function NoteEditorScreen() {
                   setUrlData(cachedPathUrlData as RecallUrl);
                   setEditedUrlTitle(cachedPathUrlData.og_title ?? '');
                   setEditedUrlDescription(cachedPathUrlData.og_description ?? '');
+                  setEditedUrlValue(cachedPathUrlData.url);
                 }
               }
             }
@@ -940,6 +974,7 @@ export default function NoteEditorScreen() {
           setUrlData(urlsData as RecallUrl);
           setEditedUrlTitle(urlsData.og_title ?? '');
           setEditedUrlDescription(urlsData.og_description ?? '');
+          setEditedUrlValue(urlsData.url);
         }
       } catch (error) {
         console.error('[NoteEditor] Error loading note:', error);
@@ -1655,66 +1690,172 @@ export default function NoteEditorScreen() {
         <View style={styles.spacer} />
 
         {isEditing && urlData && (
-          <View style={styles.urlSection}>
-            <Text style={styles.sectionHeader}>LINK</Text>
-            <View style={styles.urlCard}>
-              {urlData.og_image_url ? (
-                <Image
-                  source={{ uri: urlData.og_image_url }}
-                  style={styles.urlOgImage}
-                  contentFit="cover"
+          <>
+            {/* ── LINK PREVIEW ── */}
+            <View style={styles.urlSection}>
+              <Text style={styles.sectionHeader}>LINK</Text>
+              <View style={styles.urlPreviewWrapper}>
+                <UrlPreviewCard
+                  url={urlData.url}
+                  ogTitle={urlData.og_title ?? null}
+                  ogDescription={urlData.og_description ?? null}
+                  ogSiteName={urlData.og_site_name ?? null}
+                  ogImageUrl={urlData.og_image_url ?? null}
+                  scrapedAt={urlData.scraped_at ?? null}
                 />
-              ) : null}
+              </View>
 
-              <Pressable
-                style={styles.urlChip}
-                onPress={() => {
-                  console.log('[NoteEditor] Opening URL:', urlData.url);
-                  Linking.openURL(urlData.url).catch(() => {});
-                }}
-                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-              >
-                <IconSymbol name="link" size={12} color={colors.primary} />
-                <Text style={styles.urlChipText} numberOfLines={1}>{urlData.url}</Text>
-                <IconSymbol name="square.and.arrow.up" size={11} color={colors.primary} />
-              </Pressable>
-
-              <TextInput
-                style={styles.urlTitleInput}
-                value={editedUrlTitle}
-                onChangeText={setEditedUrlTitle}
-                placeholder="Add a title…"
-                placeholderTextColor={colors.textTertiary}
-                onBlur={() => {
-                  console.log('[NoteEditor] URL title field blurred, saving metadata');
-                  handleSaveUrlMetadata();
-                }}
-                returnKeyType="next"
-                blurOnSubmit={false}
-              />
-
-              <TextInput
-                style={styles.urlDescInput}
-                value={editedUrlDescription}
-                onChangeText={setEditedUrlDescription}
-                placeholder="Add a description…"
-                placeholderTextColor={colors.textTertiary}
-                multiline
-                onBlur={() => {
-                  console.log('[NoteEditor] URL description field blurred, saving metadata');
-                  handleSaveUrlMetadata();
-                }}
-                scrollEnabled={false}
-              />
-
-              {savingUrl && (
-                <View style={styles.urlSavingRow}>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                  <Text style={styles.urlSavingText}>Saving…</Text>
+              {/* URL editable pill row */}
+              {editingUrl ? (
+                <View style={styles.urlEditRow}>
+                  <IconSymbol name="link" size={14} color={colors.primary} />
+                  <TextInput
+                    style={styles.urlEditInput}
+                    value={editedUrlValue}
+                    onChangeText={setEditedUrlValue}
+                    autoFocus
+                    autoCapitalize="none"
+                    keyboardType="url"
+                    returnKeyType="done"
+                    onBlur={() => {
+                      console.log('[NoteEditor] URL edit field blurred, saving URL value');
+                      setEditingUrl(false);
+                      handleSaveUrlValue();
+                    }}
+                    onSubmitEditing={() => {
+                      console.log('[NoteEditor] URL edit submitted, saving URL value');
+                      setEditingUrl(false);
+                      handleSaveUrlValue();
+                    }}
+                  />
                 </View>
+              ) : (
+                <Pressable
+                  style={styles.urlPillRow}
+                  onPress={() => {
+                    console.log('[NoteEditor] Opening URL in browser:', urlData.url);
+                    Linking.openURL(urlData.url).catch(() => {});
+                  }}
+                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                >
+                  <IconSymbol name="link" size={14} color={colors.primary} />
+                  <Text style={styles.urlPillText} numberOfLines={1}>{editedUrlValue || urlData.url}</Text>
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      console.log('[NoteEditor] Edit URL button pressed');
+                      setEditingUrl(true);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol name="pencil" size={14} color={colors.textTertiary} />
+                  </Pressable>
+                </Pressable>
               )}
             </View>
-          </View>
+
+            {/* ── TITLE ── */}
+            <View style={styles.urlMetaSection}>
+              <Text style={styles.sectionHeader}>TITLE</Text>
+              <View style={styles.urlMetaCard}>
+                {editingTitle ? (
+                  <TextInput
+                    style={styles.urlMetaTitleInput}
+                    value={editedUrlTitle}
+                    onChangeText={setEditedUrlTitle}
+                    multiline
+                    autoFocus
+                    placeholder="Add a title…"
+                    placeholderTextColor={colors.textTertiary}
+                    onBlur={() => {
+                      console.log('[NoteEditor] Title field blurred, saving metadata');
+                      setEditingTitle(false);
+                      handleSaveUrlMetadata();
+                    }}
+                    scrollEnabled={false}
+                  />
+                ) : (
+                  <Pressable onPress={() => {
+                    console.log('[NoteEditor] Title card tapped, entering edit mode');
+                    setEditingTitle(true);
+                  }}>
+                    <Text
+                      style={styles.urlMetaTitleText}
+                      numberOfLines={titleExpanded ? undefined : 3}
+                    >
+                      {editedUrlTitle || 'Tap to add a title…'}
+                    </Text>
+                    {!titleExpanded && editedUrlTitle && editedUrlTitle.length > 120 ? (
+                      <Pressable onPress={(e) => { e.stopPropagation(); setTitleExpanded(true); }}>
+                        <Text style={styles.viewMoreText}>View more</Text>
+                      </Pressable>
+                    ) : titleExpanded ? (
+                      <Pressable onPress={(e) => { e.stopPropagation(); setTitleExpanded(false); }}>
+                        <Text style={styles.viewMoreText}>View less</Text>
+                      </Pressable>
+                    ) : null}
+                  </Pressable>
+                )}
+                {savingUrl && (
+                  <View style={styles.urlSavingRow}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.urlSavingText}>Saving…</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* ── DESCRIPTION ── */}
+            <View style={styles.urlMetaSection}>
+              <Text style={styles.sectionHeader}>DESCRIPTION</Text>
+              <View style={styles.urlMetaCard}>
+                {editingDesc ? (
+                  <TextInput
+                    style={styles.urlMetaDescInput}
+                    value={editedUrlDescription}
+                    onChangeText={setEditedUrlDescription}
+                    multiline
+                    autoFocus
+                    placeholder="Add a description…"
+                    placeholderTextColor={colors.textTertiary}
+                    onBlur={() => {
+                      console.log('[NoteEditor] Description field blurred, saving metadata');
+                      setEditingDesc(false);
+                      handleSaveUrlMetadata();
+                    }}
+                    scrollEnabled={false}
+                  />
+                ) : (
+                  <Pressable onPress={() => {
+                    console.log('[NoteEditor] Description card tapped, entering edit mode');
+                    setEditingDesc(true);
+                  }}>
+                    <Text
+                      style={styles.urlMetaDescText}
+                      numberOfLines={descExpanded ? undefined : 6}
+                    >
+                      {editedUrlDescription || 'Tap to add a description…'}
+                    </Text>
+                    {!descExpanded && editedUrlDescription && editedUrlDescription.length > 300 ? (
+                      <Pressable onPress={(e) => { e.stopPropagation(); setDescExpanded(true); }}>
+                        <Text style={styles.viewMoreText}>View more</Text>
+                      </Pressable>
+                    ) : descExpanded ? (
+                      <Pressable onPress={(e) => { e.stopPropagation(); setDescExpanded(false); }}>
+                        <Text style={styles.viewMoreText}>View less</Text>
+                      </Pressable>
+                    ) : null}
+                  </Pressable>
+                )}
+                {savingUrl && (
+                  <View style={styles.urlSavingRow}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.urlSavingText}>Saving…</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </>
         )}
 
         {people.length > 0 && (
@@ -2323,60 +2464,100 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   urlSection: {
+    marginBottom: 4,
+  },
+  urlPreviewWrapper: {
+    paddingHorizontal: 16,
     marginBottom: 8,
   },
-  urlCard: {
-    marginHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: colors.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  urlOgImage: {
-    width: '100%',
-    height: 160,
-    backgroundColor: colors.cardDark,
-  },
-  urlChip: {
+  urlPillRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 4,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
-  urlChipText: {
+  urlPillText: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.primary,
     fontWeight: '500',
   },
-  urlTitleInput: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
+  urlEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 4,
     paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 4,
+    paddingVertical: 8,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  urlEditInput: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '500',
+    padding: 0,
+  },
+  urlMetaSection: {
+    marginBottom: 4,
+  },
+  urlMetaCard: {
+    marginHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: colors.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  urlMetaTitleText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
     lineHeight: 22,
   },
-  urlDescInput: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    paddingHorizontal: 14,
-    paddingTop: 4,
-    paddingBottom: 12,
-    lineHeight: 19,
+  urlMetaTitleInput: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    lineHeight: 22,
+    padding: 0,
     textAlignVertical: 'top',
+  },
+  urlMetaDescText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 21,
+  },
+  urlMetaDescInput: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 21,
+    padding: 0,
+    textAlignVertical: 'top',
+  },
+  viewMoreText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '500',
+    marginTop: 6,
   },
   urlSavingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 14,
-    paddingBottom: 10,
+    paddingTop: 8,
   },
   urlSavingText: {
     fontSize: 12,
