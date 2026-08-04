@@ -1,8 +1,8 @@
 
 import { Platform, Share as RNShare } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 import * as Linking from 'expo-linking';
+import RNShareLib from 'react-native-share';
 import Toast from 'react-native-toast-message';
 import { Note } from '@/types/Note';
 import { supabase } from '@/utils/supabase';
@@ -106,20 +106,34 @@ export interface SharedRecallData {
 }
 
 /**
- * Share a recall using react-native-share library
- * Includes text, location, and all images as actual files in a single share prompt
+ * Returns true if the error represents a user cancellation (not a real error).
+ */
+function isUserCancelError(error: unknown): boolean {
+  if (!error) return false;
+  const msg: string = (error as any)?.message ?? '';
+  const errField: string = (error as any)?.error ?? '';
+  return (
+    msg.includes('User did not share') ||
+    msg.includes('dismissed') ||
+    msg.includes('cancel') ||
+    errField === 'User did not share'
+  );
+}
+
+/**
+ * Share a recall using react-native-share library.
+ * Includes text, location, and ALL images as actual files in a single share prompt.
  * @param recall - The note/recall to share
  * @param currentImageIndex - The index of the image currently being viewed (becomes primary)
  */
 export async function shareRecall(recall: Note, currentImageIndex: number = 0, options?: { includeLocation?: boolean }): Promise<void> {
   const includeLocation = options?.includeLocation !== false;
   try {
-    console.log('User tapped Share button for recall:', recall.id);
-    console.log('Current image index:', currentImageIndex);
-    console.log('Total images (in-memory):', recall.images?.length || 0);
+    console.log('[shareRecall] User tapped Share button for recall:', recall.id);
+    console.log('[shareRecall] currentImageIndex:', currentImageIndex);
+    console.log('[shareRecall] Total images (in-memory):', recall.images?.length ?? 0);
 
-    // Fetch the authoritative image list from the database so we always share ALL images,
-    // not just the subset that was lazy-loaded into memory.
+    // ── 1. Fetch authoritative image list from DB ────────────────────────────
     console.log('[shareRecall] Fetching authoritative image list from DB for recall:', recall.id);
     const { data: dbImages, error: dbImagesError } = await supabase
       .from('recall_images')
@@ -165,7 +179,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
 
     console.log('[shareRecall] Total images to share:', imagesToShare.length);
 
-    // ── Fallback preview image when no recall photos exist ───────────────────
+    // ── 2. Fallback preview image when no recall photos exist ────────────────
     let fallbackPreviewUri: string | null = null;
     if (imagesToShare.length === 0) {
       // Priority 1: URL OG image
@@ -208,35 +222,33 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
       }
     }
 
-    // Build comprehensive share message with recall text, location, and image info
-    let shareMessage = '';
+    // ── 3. Build share message ───────────────────────────────────────────────
+    // Use the canonical URL from recall_urls table (more reliable than regex extraction)
+    const canonicalUrl = recall.urls?.[0]?.url ?? null;
 
-    // Strip URLs from recall.text so they don't appear inline at the message head —
-    // iOS Messages aggressively globs trailing content into a leading URL otherwise,
-    // making the link unclickable and corrupting the rest of the message body.
-    // The extracted URL(s) are placed below on a labeled line.
     const urlRegex = /https?:\/\/\S+/g;
-    const extractedUrls = recall.text?.match(urlRegex) ?? [];
-    const textWithoutUrls = (recall.text ?? '')
+    let cleanText = recall.text ?? '';
+    // Strip the canonical URL specifically to avoid duplication
+    if (canonicalUrl) {
+      cleanText = cleanText.replace(canonicalUrl, '');
+    }
+    // Also strip any remaining URLs from text (belt-and-suspenders)
+    cleanText = cleanText
       .replace(urlRegex, '')
       .replace(/[ \t]+/g, ' ')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
 
-    // Recall body text (URLs removed)
-    if (textWithoutUrls) {
-      shareMessage += `${textWithoutUrls}\n\n`;
+    let shareMessage = '';
+
+    if (cleanText) {
+      shareMessage += `${cleanText}\n\n`;
     }
 
-    // Extracted URL(s) on a labeled line so iOS Messages parses each as its own link
-    if (extractedUrls.length > 0) {
-      for (const url of extractedUrls) {
-        shareMessage += `🔗 ${url}\n`;
-      }
-      shareMessage += '\n';
+    if (canonicalUrl) {
+      shareMessage += `🔗 ${canonicalUrl}\n\n`;
     }
 
-    // Location with Google Maps link on its own labeled line
     if (recall.location && includeLocation) {
       shareMessage += `📍 ${recall.location}\n`;
       if (recall.latitude && recall.longitude) {
@@ -246,80 +258,146 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
       shareMessage += '\n';
     }
 
-    // Footer — shown on every share, not just shares with a location
     shareMessage += 'Shared from Recall';
+    shareMessage = shareMessage.trim();
 
-    console.log('Share message prepared:', shareMessage.substring(0, 100) + '...');
+    console.log('[shareRecall] Share message prepared (first 120 chars):', shareMessage.substring(0, 120));
 
-    // If there are images, download the primary one and share it with expo-sharing
-    if (imagesToShare.length > 0 && Platform.OS !== 'web' && await Sharing.isAvailableAsync()) {
-      console.log(`Starting download process for primary image (1 of ${imagesToShare.length})`);
+    // ── 4. Download and share all images ────────────────────────────────────
+    if (imagesToShare.length > 0 && Platform.OS !== 'web') {
+      // Cap at 10 images to avoid memory pressure
+      const urlsToDownload = imagesToShare.slice(0, 10);
 
-      try {
-        const primaryUrl = imagesToShare[0];
-        const fileExtension = getImageExtensionFromUrl(primaryUrl);
-        const timestamp = Date.now();
-        const randomSuffix = Math.random().toString(36).substring(7);
-        const fileName = `share_recall_${recall.id}_0_${timestamp}_${randomSuffix}.${fileExtension}`;
-        const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+      console.log(`[shareRecall] Downloading ${urlsToDownload.length} image(s) in parallel`);
 
-        console.log('[Image 1] Source URL:', primaryUrl);
-        console.log('[Image 1] Target path:', fileUri);
-
-        const downloadResult = await FileSystem.downloadAsync(primaryUrl, fileUri);
-        console.log('[Image 1] Download result status:', downloadResult.status);
-
-        if (downloadResult.status === 200) {
-          const fileInfo = await FileSystem.getInfoAsync(downloadResult.uri);
-          console.log('[Image 1] File info:', fileInfo);
-
-          if (fileInfo.exists) {
-            let finalUri = downloadResult.uri;
-            if (Platform.OS === 'ios' && !finalUri.startsWith('file://')) {
-              finalUri = `file://${finalUri}`;
-            }
-
-            console.log('[Image 1] ✅ Successfully downloaded, calling Sharing.shareAsync');
-            await Sharing.shareAsync(finalUri, { mimeType: 'image/jpeg', dialogTitle: 'Share Recall' });
-            console.log('[Image 1] Sharing.shareAsync completed');
-
-            await cleanupTempFiles([finalUri]);
-            return;
-          } else {
-            console.error('[Image 1] ❌ File does not exist after download');
+      const downloadResults = await Promise.allSettled(
+        urlsToDownload.map(async (url, index) => {
+          const ext = getImageExtensionFromUrl(url);
+          const fileName = `share_recall_${recall.id}_${index}_${Date.now()}.${ext}`;
+          const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+          console.log(`[shareRecall] [Image ${index + 1}] Downloading:`, url);
+          const result = await FileSystem.downloadAsync(url, fileUri);
+          if (result.status !== 200) {
+            throw new Error(`Download failed with status ${result.status} for image ${index + 1}`);
           }
-        } else {
-          console.error('[Image 1] ❌ Download failed with status:', downloadResult.status);
-        }
-      } catch (imageError) {
-        console.error('❌ Error in image download/share process:', imageError);
-        // Fall through to text-only share
+          let finalUri = result.uri;
+          if (Platform.OS === 'ios' && !finalUri.startsWith('file://')) {
+            finalUri = `file://${finalUri}`;
+          }
+          console.log(`[shareRecall] [Image ${index + 1}] Downloaded to:`, finalUri);
+          return finalUri;
+        })
+      );
+
+      const successfulUris: string[] = downloadResults
+        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+        .map(r => r.value);
+
+      const failedCount = downloadResults.filter(r => r.status === 'rejected').length;
+      if (failedCount > 0) {
+        console.warn(`[shareRecall] ${failedCount} image(s) failed to download`);
       }
-    } else if (fallbackPreviewUri && Platform.OS !== 'web' && await Sharing.isAvailableAsync()) {
-      // Share fallback preview (OG image / doc thumbnail)
+      console.log(`[shareRecall] Successfully downloaded ${successfulUris.length} of ${urlsToDownload.length} images`);
+
+      if (successfulUris.length > 0) {
+        // Primary path: react-native-share with all images + text
+        try {
+          console.log('[shareRecall] Opening share sheet via RNShareLib with', successfulUris.length, 'image(s)');
+          await RNShareLib.open({
+            urls: successfulUris,
+            message: shareMessage,
+            title: 'Share Recall',
+            failOnCancel: false,
+          });
+          console.log('[shareRecall] RNShareLib.open completed');
+          await cleanupTempFiles(successfulUris);
+          return;
+        } catch (multiShareError: unknown) {
+          if (isUserCancelError(multiShareError)) {
+            console.log('[shareRecall] User cancelled share sheet');
+            await cleanupTempFiles(successfulUris);
+            return;
+          }
+          console.warn('[shareRecall] RNShareLib.open failed, trying single-image fallback:', multiShareError);
+
+          // Fallback: single image + text via RNShare (iOS built-in)
+          try {
+            console.log('[shareRecall] Falling back to RNShare.share with single image');
+            await RNShare.share({
+              message: shareMessage,
+              url: successfulUris[0],
+              title: 'Share Recall',
+            });
+            console.log('[shareRecall] RNShare.share (single image) completed');
+            await cleanupTempFiles(successfulUris);
+            return;
+          } catch (singleShareError: unknown) {
+            if (isUserCancelError(singleShareError)) {
+              console.log('[shareRecall] User cancelled single-image share sheet');
+              await cleanupTempFiles(successfulUris);
+              return;
+            }
+            console.warn('[shareRecall] Single-image fallback also failed:', singleShareError);
+            await cleanupTempFiles(successfulUris);
+            // Fall through to text-only
+          }
+        }
+      }
+    } else if (fallbackPreviewUri && Platform.OS !== 'web') {
+      // ── 5. Fallback preview path (OG image / doc thumbnail) ─────────────
       try {
-        console.log('[shareRecall] Sharing fallback preview URI:', fallbackPreviewUri);
-        await Sharing.shareAsync(fallbackPreviewUri, { mimeType: 'image/jpeg', dialogTitle: 'Share Recall' });
+        console.log('[shareRecall] Sharing fallback preview via RNShareLib:', fallbackPreviewUri);
+        await RNShareLib.open({
+          urls: [fallbackPreviewUri],
+          message: shareMessage,
+          title: 'Share Recall',
+          failOnCancel: false,
+        });
+        console.log('[shareRecall] RNShareLib fallback preview share completed');
         await cleanupTempFiles([fallbackPreviewUri]);
         return;
-      } catch (imageError) {
-        console.error('❌ Error sharing fallback preview:', imageError);
+      } catch (fallbackShareError: unknown) {
+        if (isUserCancelError(fallbackShareError)) {
+          console.log('[shareRecall] User cancelled fallback preview share sheet');
+          await cleanupTempFiles([fallbackPreviewUri]);
+          return;
+        }
+        console.warn('[shareRecall] RNShareLib fallback preview failed, trying RNShare:', fallbackShareError);
+
+        try {
+          console.log('[shareRecall] Falling back to RNShare.share with fallback preview URI');
+          await RNShare.share({
+            message: shareMessage,
+            url: fallbackPreviewUri,
+            title: 'Share Recall',
+          });
+          console.log('[shareRecall] RNShare fallback preview share completed');
+          await cleanupTempFiles([fallbackPreviewUri]);
+          return;
+        } catch (rnShareFallbackError: unknown) {
+          if (isUserCancelError(rnShareFallbackError)) {
+            console.log('[shareRecall] User cancelled RNShare fallback preview share sheet');
+            await cleanupTempFiles([fallbackPreviewUri]);
+            return;
+          }
+          console.warn('[shareRecall] RNShare fallback preview also failed:', rnShareFallbackError);
+          await cleanupTempFiles([fallbackPreviewUri]).catch(() => {});
+          // Fall through to text-only
+        }
       }
     }
 
-    // Fallback: Share text only using React Native's built-in Share API
-    console.log(`Sharing text only (Platform: ${Platform.OS})`);
-
+    // ── 6. Text-only fallback ────────────────────────────────────────────────
+    console.log(`[shareRecall] Sharing text only (Platform: ${Platform.OS})`);
     try {
       const result = await RNShare.share({
-        message: shareMessage.trim(),
+        message: shareMessage,
         title: 'Share Recall',
       });
-      console.log('Text-only share result:', result);
-    } catch (shareError: any) {
-      // User dismissed the share dialog
-      if (shareError.message && (shareError.message.includes('User did not share') || shareError.message.includes('dismissed'))) {
-        console.log('Share dismissed by user');
+      console.log('[shareRecall] Text-only share result:', result);
+    } catch (shareError: unknown) {
+      if (isUserCancelError(shareError)) {
+        console.log('[shareRecall] User cancelled text-only share sheet');
         return;
       }
       throw shareError;
@@ -330,8 +408,8 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
       await cleanupTempFiles([fallbackPreviewUri]).catch(() => {});
     }
   } catch (error) {
-    console.error('❌ Error sharing recall:', error);
-    
+    console.error('[shareRecall] Error sharing recall:', error);
+
     Toast.show({
       type: 'error',
       text1: 'Share Failed',
@@ -339,7 +417,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
       position: 'bottom',
       visibilityTime: 3000,
     });
-    
+
     throw error;
   }
 }
@@ -349,16 +427,16 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
  * @param fileUris - Array of file URIs to delete
  */
 async function cleanupTempFiles(fileUris: string[]): Promise<void> {
-  console.log(`Cleaning up ${fileUris.length} temporary file(s)`);
-  
+  console.log(`[shareRecall] Cleaning up ${fileUris.length} temporary file(s)`);
+
   for (const fileUri of fileUris) {
     try {
       // Remove file:// prefix if present for deletion
       const cleanUri = fileUri.replace('file://', '');
       await FileSystem.deleteAsync(cleanUri, { idempotent: true });
-      console.log('Cleaned up temp file:', fileUri);
+      console.log('[shareRecall] Cleaned up temp file:', fileUri);
     } catch (cleanupError) {
-      console.warn('Error cleaning up temp file:', cleanupError);
+      console.warn('[shareRecall] Error cleaning up temp file:', cleanupError);
     }
   }
 }
@@ -370,29 +448,29 @@ async function cleanupTempFiles(fileUris: string[]): Promise<void> {
  */
 export function parseSharedRecallUrl(url: string): SharedRecallData | null {
   try {
-    console.log('Parsing shared recall URL:', url);
-    
+    console.log('[shareRecall] Parsing shared recall URL:', url);
+
     const parsed = Linking.parse(url);
-    console.log('Parsed URL:', parsed);
+    console.log('[shareRecall] Parsed URL:', parsed);
 
     if (parsed.path !== 'shared-recall' && parsed.hostname !== 'shared-recall') {
-      console.log('Not a shared recall URL');
+      console.log('[shareRecall] Not a shared recall URL');
       return null;
     }
 
     const dataParam = parsed.queryParams?.data;
     if (!dataParam || typeof dataParam !== 'string') {
-      console.log('No data parameter found');
+      console.log('[shareRecall] No data parameter found');
       return null;
     }
 
     const decodedData = decodeURIComponent(dataParam);
     const sharedData: SharedRecallData = JSON.parse(decodedData);
 
-    console.log('Successfully parsed shared recall data:', sharedData);
+    console.log('[shareRecall] Successfully parsed shared recall data:', sharedData);
     return sharedData;
   } catch (error) {
-    console.error('Error parsing shared recall URL:', error);
+    console.error('[shareRecall] Error parsing shared recall URL:', error);
     return null;
   }
 }
