@@ -2,7 +2,6 @@
 import { Platform, Share as RNShare } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Linking from 'expo-linking';
-import RNShareLib from 'react-native-share';
 import Toast from 'react-native-toast-message';
 import { Note } from '@/types/Note';
 import { supabase } from '@/utils/supabase';
@@ -128,6 +127,16 @@ function isUserCancelError(error: unknown): boolean {
  */
 export async function shareRecall(recall: Note, currentImageIndex: number = 0, options?: { includeLocation?: boolean }): Promise<void> {
   const includeLocation = options?.includeLocation !== false;
+  // Lazy-load react-native-share to avoid TurboModuleRegistry crash at bundle load time.
+  // In a proper EAS build the native module is present and this succeeds.
+  // In Expo Go / dev client without the native build it throws and RNShareLib stays null,
+  // causing the code to fall through to the single-image fallback automatically.
+  let RNShareLib: any = null;
+  try {
+    RNShareLib = require('react-native-share').default;
+  } catch {
+    console.log('[shareRecall] react-native-share native module not available, will use fallback');
+  }
   try {
     console.log('[shareRecall] User tapped Share button for recall:', recall.id);
     console.log('[shareRecall] currentImageIndex:', currentImageIndex);
@@ -303,6 +312,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
         // Primary path: react-native-share with all images + text
         try {
           console.log('[shareRecall] Opening share sheet via RNShareLib with', successfulUris.length, 'image(s)');
+          if (!RNShareLib) throw new Error('react-native-share not available');
           await RNShareLib.open({
             urls: successfulUris,
             message: shareMessage,
@@ -347,6 +357,7 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
       // ── 5. Fallback preview path (OG image / doc thumbnail) ─────────────
       try {
         console.log('[shareRecall] Sharing fallback preview via RNShareLib:', fallbackPreviewUri);
+        if (!RNShareLib) throw new Error('react-native-share not available');
         await RNShareLib.open({
           urls: [fallbackPreviewUri],
           message: shareMessage,
