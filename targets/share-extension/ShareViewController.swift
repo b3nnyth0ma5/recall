@@ -1023,7 +1023,7 @@ class ShareViewController: UIViewController {
         saveSpinner.startAnimating()
 
         switch loadAuthToken() {
-        case .success(let accessToken, let refreshToken, let userId, _):
+        case .success(let accessToken, let refreshToken, let userId, let expiresAt):
             // Pre-flight auth check
             guard !userId.isEmpty && !accessToken.isEmpty else {
                 print("[ShareViewController] PRE-FLIGHT FAIL — userId empty: \(userId.isEmpty), token empty: \(accessToken.isEmpty)")
@@ -1034,57 +1034,24 @@ class ShareViewController: UIViewController {
             persistSuccess(userId: userId)
             updateStatus("Authenticating…")
 
-            // Pass userId explicitly so refreshAccessToken can safely write it back
-            // without re-reading the file.
-            refreshAccessToken(refreshToken: refreshToken, userId: userId) { [weak self] freshToken, newExpiresAt in
-                guard let self = self else { return }
-
-                let finalAccessToken: String
-                if let fresh = freshToken {
-                    print("[ShareViewController] Using refreshed token for insert")
-                    finalAccessToken = fresh
-                } else {
-                    print("[ShareViewController] Using stored token for insert")
-                    finalAccessToken = accessToken
-                }
-
-                // Fix 2.1 — Wait up to 5 s for any in-flight URL scrape to finish
-                if self.isScraping {
-                    let deadline = DispatchTime.now() + .seconds(5)
-                    let waitGroup = DispatchGroup()
-                    waitGroup.enter()
-                    DispatchQueue.global().async {
-                        var waited = 0
-                        while self.isScraping && waited < 50 {
-                            Thread.sleep(forTimeInterval: 0.1)
-                            waited += 1
-                        }
-                        waitGroup.leave()
+            let timeRemaining = expiresAt - Date().timeIntervalSince1970
+            if timeRemaining > 300 {
+                // Token still valid — skip the network refresh round-trip
+                print("[ShareViewController] Token still valid (\(Int(timeRemaining))s remaining) — skipping refresh")
+                self.proceedWithSave(accessToken: accessToken, userId: userId)
+            } else {
+                // Token expired or near-expiry — refresh before saving
+                print("[ShareViewController] Token expired or near-expiry (\(Int(timeRemaining))s remaining) — refreshing")
+                refreshAccessToken(refreshToken: refreshToken, userId: userId) { [weak self] freshToken, _ in
+                    guard let self = self else { return }
+                    let finalToken = freshToken ?? accessToken
+                    if freshToken != nil {
+                        print("[ShareViewController] Using refreshed token for insert")
+                    } else {
+                        print("[ShareViewController] Refresh failed — falling back to stored token for insert")
                     }
-                    waitGroup.wait(timeout: deadline)
+                    self.proceedWithSave(accessToken: finalToken, userId: userId)
                 }
-
-                let noteText = self.noteTextView.text ?? ""
-                var parts: [String] = []
-                if !noteText.trimmingCharacters(in: .whitespaces).isEmpty {
-                    parts.append(noteText.trimmingCharacters(in: .whitespaces))
-                }
-                var metaParts: [String] = []
-                if let t = self.scrapedTitle, !t.isEmpty { metaParts.append(t) }
-                if let d = self.scrapedDescription, !d.isEmpty { metaParts.append(d) }
-                if !metaParts.isEmpty { parts.append(metaParts.joined(separator: "\n")) }
-                if !self.parsedURLs.isEmpty { parts.append(self.parsedURLs.joined(separator: "\n")) }
-                let nonURLTexts = self.parsedTexts.filter { !$0.hasPrefix("http") }
-                if !nonURLTexts.isEmpty { parts.append(nonURLTexts.joined(separator: "\n\n")) }
-                let finalText = parts.joined(separator: "\n\n")
-
-                print("[ShareViewController] Inserting recall — userId: \(userId), textLength: \(finalText.count), tokenSource: \(freshToken != nil ? "refreshed" : "stored")")
-
-                DispatchQueue.main.async {
-                    self.updateStatus("Saving recall…")
-                }
-
-                self.insertRecall(text: finalText, urls: self.parsedURLs, imagePaths: self.parsedImagePaths, userId: userId, accessToken: finalAccessToken)
             }
 
         case .failure(let stageFail):
@@ -1095,6 +1062,47 @@ class ShareViewController: UIViewController {
             self.isAuthFailure = true
             showInFormError(stage: "Auth Failed", message: userMessage)
         }
+    }
+
+    /// Extracted save logic — called with a valid (possibly refreshed) access token.
+    private func proceedWithSave(accessToken: String, userId: String) {
+        // Fix 2.1 — Wait up to 5 s for any in-flight URL scrape to finish
+        if self.isScraping {
+            let deadline = DispatchTime.now() + .seconds(5)
+            let waitGroup = DispatchGroup()
+            waitGroup.enter()
+            DispatchQueue.global().async {
+                var waited = 0
+                while self.isScraping && waited < 50 {
+                    Thread.sleep(forTimeInterval: 0.1)
+                    waited += 1
+                }
+                waitGroup.leave()
+            }
+            waitGroup.wait(timeout: deadline)
+        }
+
+        let noteText = self.noteTextView.text ?? ""
+        var parts: [String] = []
+        if !noteText.trimmingCharacters(in: .whitespaces).isEmpty {
+            parts.append(noteText.trimmingCharacters(in: .whitespaces))
+        }
+        var metaParts: [String] = []
+        if let t = self.scrapedTitle, !t.isEmpty { metaParts.append(t) }
+        if let d = self.scrapedDescription, !d.isEmpty { metaParts.append(d) }
+        if !metaParts.isEmpty { parts.append(metaParts.joined(separator: "\n")) }
+        if !self.parsedURLs.isEmpty { parts.append(self.parsedURLs.joined(separator: "\n")) }
+        let nonURLTexts = self.parsedTexts.filter { !$0.hasPrefix("http") }
+        if !nonURLTexts.isEmpty { parts.append(nonURLTexts.joined(separator: "\n\n")) }
+        let finalText = parts.joined(separator: "\n\n")
+
+        print("[ShareViewController] Inserting recall — userId: \(userId), textLength: \(finalText.count)")
+
+        DispatchQueue.main.async {
+            self.updateStatus("Saving recall…")
+        }
+
+        self.insertRecall(text: finalText, urls: self.parsedURLs, imagePaths: self.parsedImagePaths, userId: userId, accessToken: accessToken)
     }
 
     @objc private func handleCancel() {

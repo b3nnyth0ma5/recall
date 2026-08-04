@@ -119,11 +119,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    // Get initial session
+    // Get initial session — try to refresh first so the App Group token is always fresh
     const initializeAuth = async () => {
       try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        
+        // Try to get a fresh session first; fall back to cached if refresh fails
+        let initialSession = null;
+        try {
+          const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError || !refreshedSession) {
+            console.log('[AuthContext] Initial refresh failed, falling back to cached session:', refreshError?.message);
+            const { data: { session: cachedSession } } = await supabase.auth.getSession();
+            initialSession = cachedSession;
+          } else {
+            console.log('[AuthContext] Initial session refreshed successfully');
+            initialSession = refreshedSession;
+          }
+        } catch (e) {
+          console.warn('[AuthContext] initializeAuth refresh threw, falling back to getSession:', e);
+          const { data: { session: cachedSession } } = await supabase.auth.getSession();
+          initialSession = cachedSession;
+        }
+
         if (mounted) {
           setSession(initialSession);
           setUser(initialSession?.user ?? null);

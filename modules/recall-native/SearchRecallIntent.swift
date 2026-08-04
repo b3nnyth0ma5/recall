@@ -26,10 +26,19 @@ struct SearchRecallIntent: AppIntent {
 
         print("[SearchRecallIntent] perform() called with query: '\(term)'")
 
-        // Not signed in — fall back gracefully
-        guard let token = RecallSupabaseClient.readAccessToken() else {
-            print("[SearchRecallIntent] No auth token found — user not signed in")
-            let dialog = IntentDialog("Please open Recall and sign in first, then try again.")
+        // Attempt to get a valid (possibly refreshed) token
+        guard let token = await RecallSupabaseClient.readAndRefreshTokenIfNeeded() else {
+            print("[SearchRecallIntent] No auth token available — user not signed in or refresh failed")
+
+            // Distinguish between "never signed in" and "refresh failed"
+            let dialog: IntentDialog
+            if RecallSupabaseClient.hasTokenFile() {
+                print("[SearchRecallIntent] Token file exists but refresh failed — prompting reconnect")
+                dialog = IntentDialog("Couldn't refresh your sign-in. Open Recall to reconnect.")
+            } else {
+                print("[SearchRecallIntent] No token file found — user has never signed in")
+                dialog = IntentDialog("Open Recall and sign in to enable search.")
+            }
             let snippet = RecallSnippetView(query: term, results: [], totalCount: 0)
             return .result(dialog: dialog, view: snippet)
         }
