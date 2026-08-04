@@ -254,15 +254,27 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
       shareMessage += `${cleanText}\n\n`;
     }
 
-    if (canonicalUrl) {
-      shareMessage += `🔗 ${canonicalUrl}\n\n`;
-    }
+    const hasUrl = !!canonicalUrl;
+    const hasLocation = !!(recall.location && includeLocation);
 
-    if (recall.location && includeLocation) {
+    if (hasUrl && hasLocation) {
+      // Both present — use icons so each line is clearly labelled
+      shareMessage += `🔗 ${canonicalUrl}\n\n`;
       shareMessage += `📍 ${recall.location}\n`;
       if (recall.latitude && recall.longitude) {
         const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${recall.latitude},${recall.longitude}`;
-        shareMessage += `🗺️ ${mapsUrl}\n`;
+        shareMessage += `${mapsUrl}\n`;
+      }
+      shareMessage += '\n';
+    } else if (hasUrl) {
+      // URL only — no icon, bare URL so iOS generates a native link preview card
+      shareMessage += `${canonicalUrl}\n\n`;
+    } else if (hasLocation) {
+      // Location only — no icon, plain text + maps URL so iOS can preview it
+      shareMessage += `${recall.location}\n`;
+      if (recall.latitude && recall.longitude) {
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${recall.latitude},${recall.longitude}`;
+        shareMessage += `${mapsUrl}\n`;
       }
       shareMessage += '\n';
     }

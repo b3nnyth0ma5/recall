@@ -932,18 +932,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
 
               {/* Group 1: Actions */}
               <Pressable style={styles.contextMenuRow} onPress={async () => {
-                console.log('[NoteCard] User tapped Chat with Recall in context menu for recall:', note.id);
-                if (Platform.OS !== 'web') {
-                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                }
-                pendingActionRef.current = () => setShowChatModal(true);
-                setShowContextMenu(false);
-              }}>
-                <IconSymbol name="bubble.left.and.bubble.right.fill" size={22} color={colors.text} />
-                <Text style={styles.contextMenuLabel}>Chat with Recall</Text>
-              </Pressable>
-              <View style={styles.contextMenuSeparator} />
-              <Pressable style={styles.contextMenuRow} onPress={async () => {
                 console.log('[NoteCard] User tapped Share Recall in context menu for recall:', note.id);
                 if (Platform.OS !== 'web') {
                   await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -954,23 +942,17 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                 <IconSymbol name="square.and.arrow.up" size={22} color={colors.text} />
                 <Text style={styles.contextMenuLabel}>Share Recall</Text>
               </Pressable>
-              <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={async () => {
-                console.log('[NoteCard] User tapped People in context menu for recall:', note.id);
+                console.log('[NoteCard] User tapped Chat with Recall in context menu for recall:', note.id);
                 if (Platform.OS !== 'web') {
                   await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                 }
-                pendingActionRef.current = () => handleTagPeople();
+                pendingActionRef.current = () => setShowChatModal(true);
                 setShowContextMenu(false);
               }}>
-                <IconSymbol name="person.crop.circle.badge.plus" size={22} color={colors.text} />
-                <Text style={styles.contextMenuLabel}>People</Text>
+                <IconSymbol name="bubble.left.and.bubble.right.fill" size={22} color={colors.text} />
+                <Text style={styles.contextMenuLabel}>Chat with Recall</Text>
               </Pressable>
-
-              {/* Full-width group divider */}
-              <View style={styles.contextMenuGroupDivider} />
-
-              {/* Group 2: Media */}
               <Pressable style={styles.contextMenuRow} onPress={async () => {
                 console.log('[NoteCard] User tapped Camera in context menu for recall:', note.id);
                 if (Platform.OS !== 'web') {
@@ -982,7 +964,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                 <IconSymbol name="camera.fill" size={22} color={colors.text} />
                 <Text style={styles.contextMenuLabel}>Camera</Text>
               </Pressable>
-              <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={async () => {
                 console.log('[NoteCard] User tapped Photos in context menu for recall:', note.id);
                 if (Platform.OS !== 'web') {
@@ -994,7 +975,6 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
                 <IconSymbol name="photo.on.rectangle" size={22} color={colors.text} />
                 <Text style={styles.contextMenuLabel}>Photos</Text>
               </Pressable>
-              <View style={styles.contextMenuSeparator} />
               <Pressable style={styles.contextMenuRow} onPress={async () => {
                 console.log('[NoteCard] User tapped Files in context menu for recall:', note.id);
                 if (Platform.OS !== 'web') {
@@ -1005,6 +985,22 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
               }}>
                 <IconSymbol name="paperclip" size={22} color={colors.text} />
                 <Text style={styles.contextMenuLabel}>Files</Text>
+              </Pressable>
+
+              {/* Full-width group divider */}
+              <View style={styles.contextMenuGroupDivider} />
+
+              {/* Group 2: People */}
+              <Pressable style={styles.contextMenuRow} onPress={async () => {
+                console.log('[NoteCard] User tapped People in context menu for recall:', note.id);
+                if (Platform.OS !== 'web') {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                }
+                pendingActionRef.current = () => handleTagPeople();
+                setShowContextMenu(false);
+              }}>
+                <IconSymbol name="person.crop.circle.badge.plus" size={22} color={colors.text} />
+                <Text style={styles.contextMenuLabel}>People</Text>
               </Pressable>
 
               {/* Full-width group divider */}

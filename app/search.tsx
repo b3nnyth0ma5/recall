@@ -191,7 +191,7 @@ function TypingDots() {
 
 export default function SearchScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{ q?: string; autoSearch?: string; focus?: string }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { 
@@ -744,6 +744,16 @@ export default function SearchScreen() {
       hasAutoSearchedRef.current = false;
     }
   }, [params.q]);
+
+  // Auto-focus search input when opened via Siri intent (focus=true param)
+  useEffect(() => {
+    if (params.focus === 'true') {
+      const timer = setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [params.focus]);
 
   useEffect(() => {
     if (!hasSearched && searchHistory.length > 0 && !isLoadingHistory) {

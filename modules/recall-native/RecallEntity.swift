@@ -44,29 +44,16 @@ struct RecallEntityQuery: EntityQuery {
 // MARK: - OpenRecallIntent
 
 @available(iOS 17.2, *)
-struct OpenRecallIntent: OpenIntent {
-    static var title: LocalizedStringResource = "Open Recall"
-    static var description = IntentDescription("Opens a specific recall in the Recall app.")
+struct OpenRecallIntent: AppIntent {
+    static var title: LocalizedStringResource = "Create Recall"
+    static var description = IntentDescription("Opens Recall to create a new memory.")
     static var isDiscoverable: Bool = true
-
-    static var parameterSummary: some ParameterSummary {
-        Summary("Open \(\.$target) in Recall")
-    }
-
-    @Parameter(title: "Recall")
-    var target: RecallEntity
-
-    init() {}
-
-    init(target: RecallEntity) {
-        self.target = target
-    }
+    static var openAppWhenRun: Bool = true
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let encoded = target.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? target.id
-        if let url = URL(string: "recall://note/\(encoded)") {
-            print("[OpenRecallIntent] Opening recall in app: \(target.id)")
+        if let url = URL(string: "recall://?openCreate=true") {
+            print("[OpenRecallIntent] Opening Recall home screen to create new recall")
             await UIApplication.shared.open(url)
         }
         return .result()
