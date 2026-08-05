@@ -9,18 +9,20 @@ import {
 import { Stack } from 'expo-router';
 import { supabase } from '@/utils/supabase';
 import { colors } from '@/styles/commonStyles';
-// import { // recall-native disabled
-//   getDiagnostics,
-//   getAppGroupContainerPath,
-//   verifyAppGroupContainer,
-//   readLastShareExtensionError,
-//   clearLastShareExtensionError,
-//   type AppGroupDiagnostics,
-// } from 'recall-native'; // recall-native disabled
+import {
+  getDiagnostics,
+  verifyAppGroupContainer,
+  readLastShareExtensionError,
+  clearLastShareExtensionError,
+  verifyKeychainItem,
+  writeTokenFile,
+  deleteTokenFile,
+  type AppGroupDiagnostics,
+} from '@/modules/recall-native';
 import { writeTokenToAppGroup } from '@/contexts/AuthContext';
-import * as FileSystem from 'expo-file-system/legacy';
 
 const APP_GROUP_ID = 'group.com.b3nny1nc.recall';
+const KEYCHAIN_ACCESS_GROUP = '9PWN6F3TK8.com.b3nny1nc.recall';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -41,20 +43,93 @@ function relativeTime(epochSeconds: number): string {
   return `${diffDay} day${diffDay === 1 ? '' : 's'} ago`;
 }
 
-// ─── component ──────────────────────────────────────────────────────────────
+function expiryDisplay(expiresAt: number): { text: string; expired: boolean } {
+  const remaining = expiresAt - Date.now() / 1000;
+  if (remaining <= 0) return { text: 'EXPIRED', expired: true };
+  const mins = Math.floor(remaining / 60);
+  if (mins < 60) return { text: `${mins} min remaining`, expired: false };
+  const hrs = Math.floor(mins / 60);
+  return { text: `${hrs}h ${mins % 60}m remaining`, expired: false };
+}
+
+// ─── sub-components ─────────────────────────────────────────────────────────
+
+function StatusRow({ label, ok, value }: { label: string; ok: boolean; value: string }) {
+  const indicator = ok ? '✓' : '✗';
+  const indicatorColor = ok ? '#4CAF50' : colors.appleRed;
+  return (
+    <View style={rowStyles.row}>
+      <Text style={[rowStyles.indicator, { color: indicatorColor }]}>{indicator}</Text>
+      <Text style={rowStyles.label}>{label}</Text>
+      <Text style={rowStyles.value}>{value}</Text>
+    </View>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={rowStyles.row}>
+      <Text style={rowStyles.infoLabel}>{label}</Text>
+      <Text style={rowStyles.value}>{value}</Text>
+    </View>
+  );
+}
+
+const rowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+    gap: 6,
+  },
+  indicator: {
+    fontFamily: 'Courier',
+    fontSize: 13,
+    fontWeight: '700',
+    width: 16,
+    lineHeight: 18,
+  },
+  label: {
+    fontFamily: 'Courier',
+    fontSize: 12,
+    color: colors.textSecondary,
+    width: 130,
+    lineHeight: 18,
+  },
+  infoLabel: {
+    fontFamily: 'Courier',
+    fontSize: 12,
+    color: colors.textSecondary,
+    width: 146,
+    lineHeight: 18,
+  },
+  value: {
+    fontFamily: 'Courier',
+    fontSize: 12,
+    color: colors.text,
+    flex: 1,
+    lineHeight: 18,
+  },
+});
+
+// ─── main component ──────────────────────────────────────────────────────────
+
+interface DiagState {
+  appGroup: AppGroupDiagnostics | null;
+  keychain: { present: boolean; dataSize: number } | null;
+  tokenExpiresAt: number | null;
+}
 
 export default function ShareExtensionDebugScreen() {
-  const [diagnostics, setDiagnostics] = useState<any>(null);
+  const [diag, setDiag] = useState<DiagState>({ appGroup: null, keychain: null, tokenExpiresAt: null });
   const [sessionInfo, setSessionInfo] = useState<string>('—');
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
-  // Section A — last share extension error
   const [lastError, setLastError] = useState<Record<string, any> | null | undefined>(undefined);
   const [errorBusy, setErrorBusy] = useState(false);
 
-  // Section B — round-trip test result
   const [roundTripResult, setRoundTripResult] = useState<string | null>(null);
   const [roundTripPass, setRoundTripPass] = useState<boolean | null>(null);
   const [roundTripBusy, setRoundTripBusy] = useState(false);
@@ -67,14 +142,28 @@ export default function ShareExtensionDebugScreen() {
   }, []);
 
   const runDiagnostics = useCallback(async () => {
-    appendLog('Running getDiagnostics()…');
+    appendLog('Running diagnostics…');
     try {
-      const result = null; // getDiagnostics disabled
-      // const result = await getDiagnostics(); // recall-native disabled
-      setDiagnostics(result);
-      appendLog('getDiagnostics() OK: ' + JSON.stringify(result));
+      const [appGroup, keychain] = await Promise.all([
+        getDiagnostics(),
+        verifyKeychainItem(),
+      ]);
+      appendLog('getDiagnostics OK: ' + JSON.stringify(appGroup));
+      appendLog('verifyKeychainItem OK: ' + JSON.stringify(keychain));
+
+      // Try to read token expiry from App Group file
+      let tokenExpiresAt: number | null = null;
+      if (appGroup?.tokenFileExists && appGroup?.containerPath) {
+        // We can't read the file directly from JS, but we can infer from session
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.expires_at) {
+          tokenExpiresAt = session.expires_at;
+        }
+      }
+
+      setDiag({ appGroup, keychain, tokenExpiresAt });
     } catch (e) {
-      appendLog('getDiagnostics() THREW: ' + String(e));
+      appendLog('Diagnostics THREW: ' + String(e));
     }
   }, [appendLog]);
 
@@ -107,10 +196,9 @@ export default function ShareExtensionDebugScreen() {
     console.log('[ShareExtDebug] fetchLastError called');
     setErrorBusy(true);
     try {
-      const result = null; // readLastShareExtensionError disabled
-      // const result = await readLastShareExtensionError(); // recall-native disabled
+      const result = await readLastShareExtensionError();
       setLastError(result);
-      // appendLog('readLastShareExtensionError: ' + (result ? JSON.stringify(result) : 'null')); // recall-native disabled
+      appendLog('readLastShareExtensionError: ' + (result ? JSON.stringify(result) : 'null'));
     } catch (e) {
       appendLog('readLastShareExtensionError THREW: ' + String(e));
       setLastError(null);
@@ -122,9 +210,8 @@ export default function ShareExtensionDebugScreen() {
     console.log('[ShareExtDebug] Clear last error button pressed');
     setErrorBusy(true);
     try {
-      const ok = false; // clearLastShareExtensionError disabled
-      // const ok = await clearLastShareExtensionError(); // recall-native disabled
-      // appendLog('clearLastShareExtensionError: ' + (ok ? 'cleared' : 'nothing to clear')); // recall-native disabled
+      const ok = await clearLastShareExtensionError();
+      appendLog('clearLastShareExtensionError: ' + (ok ? 'cleared' : 'nothing to clear'));
       setLastError(null);
     } catch (e) {
       appendLog('clearLastShareExtensionError THREW: ' + String(e));
@@ -132,7 +219,6 @@ export default function ShareExtensionDebugScreen() {
     setErrorBusy(false);
   }, [appendLog]);
 
-  // Run all on mount
   useEffect(() => {
     runDiagnostics();
     fetchSession();
@@ -152,7 +238,7 @@ export default function ShareExtensionDebugScreen() {
   const handleForceWrite = useCallback(async () => {
     console.log('[ShareExtDebug] Force write token button pressed');
     setBusy(true);
-    appendLog('Force-writing token to App Group…');
+    appendLog('Force-writing token to App Group + Keychain…');
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error || !session) {
@@ -160,40 +246,12 @@ export default function ShareExtensionDebugScreen() {
         setBusy(false);
         return;
       }
-
-      const containerPath = null as string | null; // getAppGroupContainerPath disabled
-      // const containerPath = await getAppGroupContainerPath(); // recall-native disabled
-      appendLog('Container path: ' + (containerPath ?? 'NULL'));
-
-      if (!containerPath) {
-        appendLog('ABORT — container path is null');
-        setBusy(false);
-        return;
-      }
-
-      const normalized = containerPath.startsWith('file://')
-        ? containerPath
-        : `file://${containerPath}`;
-      const tokenPath = normalized.endsWith('/')
-        ? `${normalized}auth-token.json`
-        : `${normalized}/auth-token.json`;
-
-      const payload = JSON.stringify({
-        access_token: session.access_token,
-        refresh_token: session.refresh_token,
-        user_id: session.user.id,
-        expires_at: session.expires_at ?? 0,
-      });
-
-      appendLog(`Writing ${payload.length} bytes to: ${tokenPath}`);
-      await FileSystem.writeAsStringAsync(tokenPath, payload);
-      appendLog('Write succeeded!');
-
-      // Re-run diagnostics to confirm
+      appendLog('Session OK — calling writeTokenToAppGroup…');
+      await writeTokenToAppGroup(session);
+      appendLog('writeTokenToAppGroup returned');
       await runDiagnostics();
     } catch (e) {
       appendLog('Force write FAILED: ' + (e instanceof Error ? e.message : String(e)));
-      appendLog('Stack: ' + (e instanceof Error ? (e.stack ?? 'no stack') : 'no stack'));
     }
     setBusy(false);
   }, [appendLog, runDiagnostics]);
@@ -201,30 +259,10 @@ export default function ShareExtensionDebugScreen() {
   const handleClearToken = useCallback(async () => {
     console.log('[ShareExtDebug] Clear token button pressed');
     setBusy(true);
-    appendLog('Clearing token from App Group…');
+    appendLog('Clearing token from App Group + Keychain…');
     try {
-      const containerPath = null as string | null; // getAppGroupContainerPath disabled
-      // const containerPath = await getAppGroupContainerPath(); // recall-native disabled
-      appendLog('Container path: ' + (containerPath ?? 'NULL'));
-
-      if (!containerPath) {
-        appendLog('ABORT — container path is null');
-        setBusy(false);
-        return;
-      }
-
-      const normalized = containerPath.startsWith('file://')
-        ? containerPath
-        : `file://${containerPath}`;
-      const tokenPath = normalized.endsWith('/')
-        ? `${normalized}auth-token.json`
-        : `${normalized}/auth-token.json`;
-
-      appendLog('Deleting: ' + tokenPath);
-      await FileSystem.deleteAsync(tokenPath, { idempotent: true });
-      appendLog('Delete succeeded!');
-
-      // Re-run diagnostics to confirm
+      const ok = await deleteTokenFile();
+      appendLog('deleteTokenFile result: ' + ok);
       await runDiagnostics();
     } catch (e) {
       appendLog('Clear token FAILED: ' + (e instanceof Error ? e.message : String(e)));
@@ -232,7 +270,6 @@ export default function ShareExtensionDebugScreen() {
     setBusy(false);
   }, [appendLog, runDiagnostics]);
 
-  // Section B — end-to-end round-trip test
   const handleRoundTripTest = useCallback(async () => {
     console.log('[ShareExtDebug] Run end-to-end token test button pressed');
     setRoundTripBusy(true);
@@ -241,7 +278,6 @@ export default function ShareExtensionDebugScreen() {
     appendLog('Starting end-to-end token round-trip test…');
 
     try {
-      // Step 1: get session
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error || !session) {
         const msg = 'No active session — sign in first';
@@ -253,16 +289,17 @@ export default function ShareExtensionDebugScreen() {
       }
       appendLog('Session OK — userId: ' + session.user.id);
 
-      // Step 2: write token via AuthContext's exported function
       appendLog('Calling writeTokenToAppGroup…');
       await writeTokenToAppGroup(session);
       appendLog('writeTokenToAppGroup returned');
 
-      // Step 3: verify via native module
       appendLog('Calling verifyAppGroupContainer…');
-      const verify = null as any; // verifyAppGroupContainer disabled
-      // const verify = await verifyAppGroupContainer(); // recall-native disabled
+      const verify = await verifyAppGroupContainer();
       appendLog('verifyAppGroupContainer result: ' + JSON.stringify(verify));
+
+      appendLog('Calling verifyKeychainItem…');
+      const kc = await verifyKeychainItem();
+      appendLog('verifyKeychainItem result: ' + JSON.stringify(kc));
 
       if (!verify) {
         const msg = 'FAIL — verifyAppGroupContainer returned null (native module unavailable or not iOS)';
@@ -274,40 +311,27 @@ export default function ShareExtensionDebugScreen() {
       }
 
       if (!verify.containerExists) {
-        const msg = `FAIL — Stage 1: App Group container does not exist at ${verify.containerPath}. Hint: entitlements mismatch or app not installed with correct provisioning.`;
+        const kcStatus = kc?.present ? ' (Keychain fallback: PRESENT)' : ' (Keychain fallback: MISSING)';
+        const msg = `FAIL — Stage 1: App Group container unreachable.${kcStatus}`;
         appendLog(msg);
         setRoundTripResult(msg);
-        setRoundTripPass(false);
+        setRoundTripPass(kc?.present === true);
         setRoundTripBusy(false);
         return;
       }
 
       if (!verify.tokenFileExists) {
-        const msg = `FAIL — Stage 2: auth-token.json not found after write. Container path seen by JS: ${verify.containerPath}. Hint: JS writes to a different path than Swift reads.`;
+        const kcStatus = kc?.present ? ' (Keychain fallback: PRESENT)' : ' (Keychain fallback: MISSING)';
+        const msg = `FAIL — Stage 2: auth-token.json not found after write.${kcStatus}`;
         appendLog(msg);
         setRoundTripResult(msg);
-        setRoundTripPass(false);
+        setRoundTripPass(kc?.present === true);
         setRoundTripBusy(false);
         return;
       }
 
-      const expectedPayload = JSON.stringify({
-        access_token: session.access_token,
-        refresh_token: session.refresh_token,
-        user_id: session.user.id,
-        expires_at: session.expires_at ?? 0,
-      });
-
-      if (verify.tokenFileSize !== expectedPayload.length) {
-        const msg = `FAIL — Stage 3: size mismatch. Wrote ${expectedPayload.length} bytes, Swift sees ${verify.tokenFileSize} bytes. Hint: encoding difference or partial write.`;
-        appendLog(msg);
-        setRoundTripResult(msg);
-        setRoundTripPass(false);
-        setRoundTripBusy(false);
-        return;
-      }
-
-      const msg = `PASS — token file exists (${verify.tokenFileSize} bytes), size matches. Container: ${verify.containerPath}`;
+      const kcStatus = kc?.present ? `Keychain: ✓ (${kc.dataSize} bytes)` : 'Keychain: ✗ missing';
+      const msg = `PASS — App Group: ✓ (${verify.tokenFileSize} bytes) | ${kcStatus}`;
       appendLog(msg);
       setRoundTripResult(msg);
       setRoundTripPass(true);
@@ -321,9 +345,24 @@ export default function ShareExtensionDebugScreen() {
     setRoundTripBusy(false);
   }, [appendLog]);
 
-  const diagnosticsText = diagnostics ? JSON.stringify(diagnostics, null, 2) : 'Not yet loaded';
+  // Derived display values
+  const ag = diag.appGroup;
+  const kc = diag.keychain;
+  const containerReachable = ag?.containerExists === true;
+  const tokenFilePresent = ag?.tokenFileExists === true;
+  const tokenFileSize = ag?.tokenFileSize ?? 0;
+  const tokenModified = ag?.tokenFileModifiedTimestamp ?? 0;
+  const tokenModifiedText = tokenModified > 0 ? relativeTime(tokenModified) : '—';
+  const tokenFileSizeText = tokenFilePresent ? `${tokenFileSize} bytes` : '—';
+  const containerPath = ag?.containerPath ?? '—';
 
-  // Derive last error display values
+  const expiry = diag.tokenExpiresAt ? expiryDisplay(diag.tokenExpiresAt) : null;
+  const expiryText = expiry ? expiry.text : '—';
+  const expiryExpired = expiry?.expired === true;
+
+  const keychainPresent = kc?.present === true;
+  const keychainSizeText = keychainPresent ? `${kc!.dataSize} bytes` : '—';
+
   const lastErrorStage = lastError?.stage ?? null;
   const lastErrorTimestamp = typeof lastError?.timestamp === 'number' ? lastError.timestamp : null;
   const lastErrorRelTime = lastErrorTimestamp ? relativeTime(lastErrorTimestamp) : null;
@@ -338,52 +377,81 @@ export default function ShareExtensionDebugScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Share Extension Debug' }} />
+      <Stack.Screen options={{ title: 'Auth Diagnostics' }} />
       <ScrollView
         ref={scrollRef}
         style={styles.container}
         contentContainerStyle={styles.content}
       >
-        {/* ── Session ── */}
+        {/* ── Refresh ── */}
+        <Pressable
+          style={[styles.btn, styles.btnPrimary, busy && styles.btnDisabled]}
+          onPress={handleRefresh}
+          disabled={busy}
+        >
+          <Text style={styles.btnText}>{busy ? 'Refreshing…' : 'Refresh All'}</Text>
+        </Pressable>
+
+        {/* ── Supabase Session ── */}
         <Text style={styles.sectionTitle}>Supabase Session</Text>
         <View style={styles.card}>
           <Text style={styles.mono}>{sessionInfo}</Text>
         </View>
 
-        {/* ── Diagnostics ── */}
-        <Text style={styles.sectionTitle}>App Group Diagnostics</Text>
+        {/* ── App Group Container ── */}
+        <Text style={styles.sectionTitle}>App Group Container</Text>
         <View style={styles.card}>
-          <Text style={styles.mono}>{diagnosticsText}</Text>
+          <StatusRow label="Container reachable" ok={containerReachable} value={containerReachable ? 'yes' : 'no'} />
+          <InfoRow label="Container path" value={containerPath} />
+          <StatusRow label="auth-token.json" ok={tokenFilePresent} value={tokenFilePresent ? 'present' : 'missing'} />
+          <InfoRow label="Token file size" value={tokenFileSizeText} />
+          <InfoRow label="Token last modified" value={tokenModifiedText} />
+          <View style={rowStyles.row}>
+            <Text style={[rowStyles.infoLabel]}>Token expiry</Text>
+            <Text style={[rowStyles.value, expiryExpired && { color: colors.appleRed, fontWeight: '700' }]}>
+              {expiryText}
+            </Text>
+          </View>
         </View>
-        {diagnostics?.moduleLoadError != null && (
+
+        {/* ── Keychain ── */}
+        <Text style={styles.sectionTitle}>Keychain Sharing</Text>
+        <View style={styles.card}>
+          <StatusRow label="Keychain item" ok={keychainPresent} value={keychainPresent ? 'present' : 'missing'} />
+          <InfoRow label="Keychain data size" value={keychainSizeText} />
+          <InfoRow label="Access group" value={KEYCHAIN_ACCESS_GROUP} />
+        </View>
+
+        {/* ── Module load error ── */}
+        {ag?.moduleLoadError != null && (
           <>
             <Text style={styles.sectionTitle}>Module Load Error</Text>
             <View style={[styles.card, styles.errorCard]}>
               <Text style={styles.moduleLoadErrorLabel}>requireNativeModule('AppGroupModule') threw:</Text>
-              <Text style={styles.moduleLoadErrorText}>{diagnostics.moduleLoadError}</Text>
+              <Text style={styles.moduleLoadErrorText}>{ag.moduleLoadError}</Text>
             </View>
           </>
         )}
 
-        {/* ── Section A: Last Share Extension Error ── */}
+        {/* ── Last Share Extension Error ── */}
         <Text style={styles.sectionTitle}>Last Share Extension Error</Text>
         <View style={styles.card}>
           {lastError === undefined ? (
             <Text style={styles.mono}>Loading…</Text>
           ) : lastError === null ? (
             <Text style={[styles.mono, { color: colors.textSecondary }]}>
-              No share extension errors recorded — last share either succeeded or hasn't run since install.
+              No share extension errors recorded.
             </Text>
           ) : (
             <>
-              <View style={styles.errorRow}>
-                <Text style={styles.errorLabel}>Stage</Text>
-                <Text style={[styles.mono, styles.errorValue]}>{lastErrorStage ?? '—'}</Text>
+              <View style={rowStyles.row}>
+                <Text style={rowStyles.label}>Stage</Text>
+                <Text style={[styles.mono, { flex: 1 }]}>{lastErrorStage ?? '—'}</Text>
               </View>
               {lastErrorRelTime !== null && (
-                <View style={styles.errorRow}>
-                  <Text style={styles.errorLabel}>When</Text>
-                  <Text style={[styles.mono, styles.errorValue]}>{lastErrorRelTime}</Text>
+                <View style={rowStyles.row}>
+                  <Text style={rowStyles.label}>When</Text>
+                  <Text style={[styles.mono, { flex: 1 }]}>{lastErrorRelTime}</Text>
                 </View>
               )}
               {lastErrorOtherText !== null && (
@@ -413,8 +481,8 @@ export default function ShareExtensionDebugScreen() {
           )}
         </View>
 
-        {/* ── Section B: Round-Trip Test ── */}
-        <Text style={styles.sectionTitle}>Run Round-Trip Test</Text>
+        {/* ── Round-Trip Test ── */}
+        <Text style={styles.sectionTitle}>End-to-End Token Test</Text>
         <Pressable
           style={[styles.btn, styles.btnSuccess, roundTripBusy && styles.btnDisabled]}
           onPress={handleRoundTripTest}
@@ -434,14 +502,6 @@ export default function ShareExtensionDebugScreen() {
         <Text style={styles.sectionTitle}>Actions</Text>
         <View style={styles.buttonRow}>
           <Pressable
-            style={[styles.btn, styles.btnPrimary, busy && styles.btnDisabled]}
-            onPress={handleRefresh}
-            disabled={busy}
-          >
-            <Text style={styles.btnText}>Refresh All</Text>
-          </Pressable>
-
-          <Pressable
             style={[styles.btn, styles.btnSuccess, busy && styles.btnDisabled]}
             onPress={handleForceWrite}
             disabled={busy}
@@ -454,11 +514,11 @@ export default function ShareExtensionDebugScreen() {
             onPress={handleClearToken}
             disabled={busy}
           >
-            <Text style={styles.btnText}>Clear App Group Token</Text>
+            <Text style={styles.btnText}>Clear Token (App Group + Keychain)</Text>
           </Pressable>
         </View>
 
-        {/* ── On-screen log ── */}
+        {/* ── Log ── */}
         <Text style={styles.sectionTitle}>Log</Text>
         <View style={styles.logBox}>
           {log.length === 0 ? (
@@ -509,23 +569,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#0D0D0D',
     borderRadius: 6,
     padding: 8,
-  },
-  errorRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 4,
-    gap: 8,
-  },
-  errorLabel: {
-    fontFamily: 'Courier',
-    fontSize: 12,
-    color: colors.textSecondary,
-    width: 52,
-    lineHeight: 18,
-  },
-  errorValue: {
-    flex: 1,
-    color: colors.text,
   },
   buttonRow: {
     gap: 10,

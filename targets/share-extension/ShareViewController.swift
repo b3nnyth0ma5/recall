@@ -2,21 +2,20 @@ import UIKit
 import Social
 import MobileCoreServices
 import UniformTypeIdentifiers
+import Security
 
 class ShareViewController: UIViewController {
 
     private let appGroupID = "group.com.b3nny1nc.recall"
+    private let keychainService     = "com.b3nny1nc.recall.auth"
+    private let keychainAccount     = "supabase-session"
+    private let keychainAccessGroup = "9PWN6F3TK8.com.b3nny1nc.recall"
+
     private var supabaseURL: String {
-        guard let value = Bundle.main.infoDictionary?["SupabaseURL"] as? String, !value.isEmpty else {
-            fatalError("SupabaseURL missing from Info.plist — run expo prebuild")
-        }
-        return value
+        return Bundle.main.infoDictionary?["SupabaseURL"] as? String ?? ""
     }
     private var supabaseAnonKey: String {
-        guard let value = Bundle.main.infoDictionary?["SupabaseAnonKey"] as? String, !value.isEmpty else {
-            fatalError("SupabaseAnonKey missing from Info.plist — run expo prebuild")
-        }
-        return value
+        return Bundle.main.infoDictionary?["SupabaseAnonKey"] as? String ?? ""
     }
 
     // MARK: - Colors
@@ -849,9 +848,43 @@ class ShareViewController: UIViewController {
         }
     }
 
+
+    // MARK: - Keychain fallback
+
+    private func readTokenFromKeychain() -> (accessToken: String, refreshToken: String, userId: String, expiresAt: Double)? {
+        print("[ShareViewController] readTokenFromKeychain — attempting Keychain read")
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount,
+            kSecAttrAccessGroup as String: keychainAccessGroup,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let accessToken = json["access_token"] as? String,
+              let refreshToken = json["refresh_token"] as? String,
+              let userId = json["user_id"] as? String else {
+            print("[ShareViewController] readTokenFromKeychain — failed (status: \(status))")
+            return nil
+        }
+        let expiresAt = (json["expires_at"] as? Double) ?? 0
+        print("[ShareViewController] readTokenFromKeychain — success, userId=\(userId), expiresAt=\(expiresAt)")
+        return (accessToken: accessToken, refreshToken: refreshToken, userId: userId, expiresAt: expiresAt)
+    }
+
     private func loadAuthToken() -> TokenLoadResult {
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
-            print("[ShareViewController] loadAuthToken stage 1 FAILED — App Group containerURL is nil for groupID=\(appGroupID)")
+            print("[ShareViewController] loadAuthToken stage 1 FAILED — App Group containerURL is nil for groupID=\(appGroupID), trying Keychain fallback")
+            if let kc = readTokenFromKeychain() {
+                print("[ShareViewController] loadAuthToken — Keychain fallback succeeded")
+                return .success(accessToken: kc.accessToken, refreshToken: kc.refreshToken, userId: kc.userId, expiresAt: kc.expiresAt)
+            }
+            print("[ShareViewController] loadAuthToken — Keychain fallback also failed")
             return .failure(.containerUnavailable)
         }
         print("[ShareViewController] loadAuthToken stage 1 OK — containerURL=\(containerURL.path)")
@@ -860,7 +893,11 @@ class ShareViewController: UIViewController {
         let tokenPath = tokenURL.path
 
         guard FileManager.default.fileExists(atPath: tokenPath) else {
-            print("[ShareViewController] loadAuthToken stage 2 FAILED — auth-token.json does not exist at \(tokenPath)")
+            print("[ShareViewController] loadAuthToken stage 2 FAILED — auth-token.json does not exist at \(tokenPath), trying Keychain fallback")
+            if let kc = readTokenFromKeychain() {
+                print("[ShareViewController] loadAuthToken — Keychain fallback succeeded")
+                return .success(accessToken: kc.accessToken, refreshToken: kc.refreshToken, userId: kc.userId, expiresAt: kc.expiresAt)
+            }
             return .failure(.fileMissing(path: tokenPath))
         }
 
@@ -1127,6 +1164,11 @@ class ShareViewController: UIViewController {
     // MARK: - Supabase Insert
 
     private func insertRecall(text: String, urls: [String], imagePaths: [String], userId: String, accessToken: String) {
+        guard !supabaseURL.isEmpty, !supabaseAnonKey.isEmpty else {
+            print("[ShareViewController] insertRecall — Supabase config missing from Info.plist")
+            showInFormError(stage: "Config Error", message: "Supabase config missing — rebuild the app")
+            return
+        }
         let urlString = "\(supabaseURL)/rest/v1/recalls"
         guard let url = URL(string: urlString) else {
             print("[ShareViewController] insertRecall — invalid URL")

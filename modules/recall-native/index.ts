@@ -243,6 +243,16 @@ export async function generateAnswerOnDevice(
   }
 }
 
-export { getAppGroupContainerPath, verifyAppGroupContainer, writeTokenFile, deleteTokenFile } from './src/AppGroupModule';
+export {
+  getAppGroupContainerPath,
+  verifyAppGroupContainer,
+  writeTokenFile,
+  deleteTokenFile,
+  verifyKeychainItem,
+  getDiagnostics,
+  readLastShareExtensionError,
+  clearLastShareExtensionError,
+} from './src/AppGroupModule';
+export type { AppGroupDiagnostics, ContainerVerification } from './src/AppGroupModule';
 
 export type { ExtractedEntities };

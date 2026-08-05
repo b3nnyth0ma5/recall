@@ -499,9 +499,17 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
 
-        {/* App Info */}
+        {/* App Info — long-press version label to open auth diagnostics */}
         <View style={styles.appInfo}>
-          <Text style={styles.appInfoText}>Recall App v{Constants.expoConfig?.version ?? '1.0.0'} ({Constants.nativeBuildVersion ?? 'dev'})</Text>
+          <Pressable
+            onLongPress={() => {
+              console.log('[Profile] Version label long-pressed — navigating to auth diagnostics');
+              router.push('/share-extension-debug');
+            }}
+            hitSlop={{ top: 12, bottom: 12, left: 24, right: 24 }}
+          >
+            <Text style={styles.appInfoText}>Recall App v{Constants.expoConfig?.version ?? '1.0.0'} ({Constants.nativeBuildVersion ?? 'dev'})</Text>
+          </Pressable>
           <Text style={styles.appInfoText}>© 2024 Recall. All rights reserved.</Text>
         </View>
       </ScrollView>

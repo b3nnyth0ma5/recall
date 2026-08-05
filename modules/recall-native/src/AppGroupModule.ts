@@ -226,3 +226,24 @@ export async function deleteTokenFile(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Verify whether a Keychain item exists for the auth token.
+ * Returns { present: boolean, dataSize: number } or null if unavailable.
+ */
+export async function verifyKeychainItem(): Promise<{ present: boolean; dataSize: number } | null> {
+  if (Platform.OS !== 'ios') return null;
+  const mod = getNativeModule();
+  if (!mod) {
+    console.warn('[AppGroupModule] verifyKeychainItem — native module unavailable');
+    return null;
+  }
+  try {
+    const result = await mod.verifyKeychainItem();
+    console.log('[AppGroupModule] verifyKeychainItem result:', JSON.stringify(result));
+    return result ?? null;
+  } catch (e: any) {
+    console.error('[AppGroupModule] verifyKeychainItem threw:', String(e));
+    return null;
+  }
+}

@@ -1,10 +1,59 @@
 import ExpoModulesCore
 import Foundation
+import Security
 
 public class AppGroupModule: Module {
 
   // Prevent double-registration of the Darwin observer across hot reloads
   private static var darwinObserverRegistered = false
+
+  // MARK: - Keychain helpers
+
+  private static let keychainService = "com.b3nny1nc.recall.auth"
+  private static let keychainAccount = "supabase-session"
+  private static let keychainAccessGroup = "9PWN6F3TK8.com.b3nny1nc.recall"
+
+  private static func writeTokenToKeychain(_ jsonPayload: String) {
+    guard let data = jsonPayload.data(using: .utf8) else {
+      print("[AppGroupModule] writeTokenToKeychain — failed to encode payload")
+      return
+    }
+    // Delete any existing item first
+    let deleteQuery: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: keychainService,
+      kSecAttrAccount as String: keychainAccount,
+      kSecAttrAccessGroup as String: keychainAccessGroup,
+    ]
+    SecItemDelete(deleteQuery as CFDictionary)
+
+    // Add new item
+    let addQuery: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: keychainService,
+      kSecAttrAccount as String: keychainAccount,
+      kSecAttrAccessGroup as String: keychainAccessGroup,
+      kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+      kSecValueData as String: data,
+    ]
+    let status = SecItemAdd(addQuery as CFDictionary, nil)
+    if status == errSecSuccess {
+      print("[AppGroupModule] writeTokenToKeychain — wrote \(data.count) bytes to Keychain")
+    } else {
+      print("[AppGroupModule] writeTokenToKeychain — SecItemAdd failed: \(status)")
+    }
+  }
+
+  private static func deleteTokenFromKeychain() {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: keychainService,
+      kSecAttrAccount as String: keychainAccount,
+      kSecAttrAccessGroup as String: keychainAccessGroup,
+    ]
+    let status = SecItemDelete(query as CFDictionary)
+    print("[AppGroupModule] deleteTokenFromKeychain — status: \(status)")
+  }
 
   public func definition() -> ModuleDefinition {
     Name("AppGroupModule")
@@ -155,6 +204,8 @@ public class AppGroupModule: Module {
     AsyncFunction("writeTokenFile") { (groupId: String, jsonPayload: String, promise: Promise) in
       guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId) else {
         print("[AppGroupModule] writeTokenFile — containerURL is nil for groupId=\(groupId)")
+        // Still write to Keychain even if App Group is unavailable
+        AppGroupModule.writeTokenToKeychain(jsonPayload)
         promise.resolve(false)
         return
       }
@@ -182,17 +233,21 @@ public class AppGroupModule: Module {
         return
       }
       promise.resolve(writeSuccess)
+      // Also write to Keychain as a fallback for share extension / Siri
+      AppGroupModule.writeTokenToKeychain(jsonPayload)
     }
 
     AsyncFunction("deleteTokenFile") { (groupId: String, promise: Promise) in
       guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId) else {
         print("[AppGroupModule] deleteTokenFile — containerURL is nil for groupId=\(groupId)")
+        AppGroupModule.deleteTokenFromKeychain()
         promise.resolve(false)
         return
       }
       let tokenURL = containerURL.appendingPathComponent("auth-token.json")
       guard FileManager.default.fileExists(atPath: tokenURL.path) else {
         print("[AppGroupModule] deleteTokenFile — file does not exist, nothing to delete")
+        AppGroupModule.deleteTokenFromKeychain()
         promise.resolve(false)
         return
       }
@@ -214,6 +269,24 @@ public class AppGroupModule: Module {
         return
       }
       promise.resolve(deleteSuccess)
+      AppGroupModule.deleteTokenFromKeychain()
+    }
+
+    AsyncFunction("verifyKeychainItem") { (promise: Promise) in
+      let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: "com.b3nny1nc.recall.auth",
+        kSecAttrAccount as String: "supabase-session",
+        kSecAttrAccessGroup as String: "9PWN6F3TK8.com.b3nny1nc.recall",
+        kSecReturnData as String: true,
+        kSecMatchLimit as String: kSecMatchLimitOne,
+      ]
+      var result: AnyObject?
+      let status = SecItemCopyMatching(query as CFDictionary, &result)
+      let present = status == errSecSuccess
+      let dataSize = (result as? Data)?.count ?? 0
+      print("[AppGroupModule] verifyKeychainItem — present=\(present) dataSize=\(dataSize) status=\(status)")
+      promise.resolve(["present": present, "dataSize": dataSize] as [String: Any])
     }
   }
 }

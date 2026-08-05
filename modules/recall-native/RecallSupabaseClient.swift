@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 enum RecallSupabaseClient {
 
@@ -9,14 +10,46 @@ enum RecallSupabaseClient {
         Bundle.main.infoDictionary?["SupabaseAnonKey"] as? String ?? ""
     }
 
+    // MARK: - Keychain fallback
+
+    private static let keychainService     = "com.b3nny1nc.recall.auth"
+    private static let keychainAccount     = "supabase-session"
+    private static let keychainAccessGroup = "9PWN6F3TK8.com.b3nny1nc.recall"
+
+    static func readTokenFromKeychain() -> (accessToken: String, refreshToken: String, userId: String, expiresAt: Double)? {
+        print("[RecallSupabaseClient] readTokenFromKeychain — attempting")
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount,
+            kSecAttrAccessGroup as String: keychainAccessGroup,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let accessToken = json["access_token"] as? String,
+              let refreshToken = json["refresh_token"] as? String,
+              let userId = json["user_id"] as? String else {
+            print("[RecallSupabaseClient] readTokenFromKeychain — failed (status: \(status))")
+            return nil
+        }
+        let expiresAt = (json["expires_at"] as? Double) ?? 0
+        print("[RecallSupabaseClient] readTokenFromKeychain — success, userId=\(userId)")
+        return (accessToken: accessToken, refreshToken: refreshToken, userId: userId, expiresAt: expiresAt)
+    }
+
     // MARK: - Auth token helpers
 
     static func readAccessToken() -> String? {
         guard let containerURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: "group.com.b3nny1nc.recall"
         ) else {
-            print("[RecallSupabaseClient] readAccessToken — containerURL is nil (App Group entitlement missing?)")
-            return nil
+            print("[RecallSupabaseClient] readAccessToken — containerURL is nil (App Group entitlement missing?), trying Keychain")
+            return readTokenFromKeychain()?.accessToken
         }
         print("[RecallSupabaseClient] readAccessToken — containerURL resolved: \(containerURL.path)")
 
@@ -26,8 +59,8 @@ enum RecallSupabaseClient {
         print("[RecallSupabaseClient] readAccessToken — auth-token.json exists: \(fileExists) at \(tokenPath)")
 
         guard fileExists else {
-            print("[RecallSupabaseClient] readAccessToken — file not found")
-            return nil
+            print("[RecallSupabaseClient] readAccessToken — file not found, trying Keychain")
+            return readTokenFromKeychain()?.accessToken
         }
 
         var fileSize = 0
@@ -38,16 +71,16 @@ enum RecallSupabaseClient {
 
         guard let data = try? Data(contentsOf: tokenURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            print("[RecallSupabaseClient] readAccessToken — failed to read/parse JSON")
-            return nil
+            print("[RecallSupabaseClient] readAccessToken — failed to read/parse JSON, trying Keychain")
+            return readTokenFromKeychain()?.accessToken
         }
 
         let rawExpiresAt = json["expires_at"]
         print("[RecallSupabaseClient] readAccessToken — raw expires_at value: \(String(describing: rawExpiresAt))")
 
         guard let token = json["access_token"] as? String else {
-            print("[RecallSupabaseClient] readAccessToken — access_token field missing or wrong type")
-            return nil
+            print("[RecallSupabaseClient] readAccessToken — access_token field missing or wrong type, trying Keychain")
+            return readTokenFromKeychain()?.accessToken
         }
         print("[RecallSupabaseClient] readAccessToken — successfully read access token")
         return token
@@ -58,27 +91,27 @@ enum RecallSupabaseClient {
         guard let containerURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: "group.com.b3nny1nc.recall"
         ) else {
-            print("[RecallSupabaseClient] readFullTokenData — containerURL is nil")
-            return nil
+            print("[RecallSupabaseClient] readFullTokenData — containerURL is nil, trying Keychain")
+            return readTokenFromKeychain()
         }
 
         let tokenURL = containerURL.appendingPathComponent("auth-token.json")
         guard FileManager.default.fileExists(atPath: tokenURL.path) else {
-            print("[RecallSupabaseClient] readFullTokenData — auth-token.json not found")
-            return nil
+            print("[RecallSupabaseClient] readFullTokenData — auth-token.json not found, trying Keychain")
+            return readTokenFromKeychain()
         }
 
         guard let data = try? Data(contentsOf: tokenURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            print("[RecallSupabaseClient] readFullTokenData — failed to read/parse JSON")
-            return nil
+            print("[RecallSupabaseClient] readFullTokenData — failed to read/parse JSON, trying Keychain")
+            return readTokenFromKeychain()
         }
 
         guard let accessToken = json["access_token"] as? String,
               let refreshToken = json["refresh_token"] as? String,
               let userId = json["user_id"] as? String else {
-            print("[RecallSupabaseClient] readFullTokenData — required fields missing (access_token/refresh_token/user_id)")
-            return nil
+            print("[RecallSupabaseClient] readFullTokenData — required fields missing (access_token/refresh_token/user_id), trying Keychain")
+            return readTokenFromKeychain()
         }
 
         let expiresAt = (json["expires_at"] as? Double) ?? 0
