@@ -12,6 +12,7 @@ import {
   Keyboard,
   Switch,
   ScrollView,
+  Animated,
 } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -22,9 +23,6 @@ import { PersonAvatar } from '@/components/PersonAvatar';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
-
-const CROP_DISPLAY_SIZE = 100;
-const CROP_ZOOM = 2.5;
 
 export interface FaceRow {
   id: string;
@@ -98,6 +96,7 @@ function CandidateCard({
     }}>
       <PersonAvatar personName={candidate.personName} photoUrl={candidate.photoUrl} size={48} />
       <Text style={styles.candidateName} numberOfLines={1}>{candidate.personName}</Text>
+      <Text style={styles.candidatePct}>{confidencePct}%</Text>
       <View style={pillStyle}>
         <Text style={[styles.confidencePillText, { color: pillTextColor }]}>{pillLabel}</Text>
       </View>
@@ -129,6 +128,14 @@ export function FaceLinkSheet({
   const [useAsPhoto, setUseAsPhoto] = useState(true);
   const [pendingPerson, setPendingPerson] = useState<PersonResult | null>(null);
 
+  // Change 1 — face crop preview state
+  const [croppedFaceUri, setCroppedFaceUri] = useState<string | null>(null);
+  const [isCroppingFace, setIsCroppingFace] = useState(false);
+
+  // Change 3 — search expand animation state
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const searchExpandAnim = useRef(new Animated.Value(0)).current;
+
   const insets = useSafeAreaInsets();
 
   // Reset state when sheet opens/closes
@@ -143,10 +150,87 @@ export function FaceLinkSheet({
       setSuggestionDismissed(false);
       setPendingPerson(null);
       setUseAsPhoto(true);
+      setCroppedFaceUri(null);
+      setIsCroppingFace(false);
+      setIsSearchFocused(false);
       loadRecentPeople();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  // Change 1 — ImageManipulator face crop preview
+  useEffect(() => {
+    if (!visible || !faceRow || !imageUrl || naturalWidth === 0 || naturalHeight === 0) {
+      setCroppedFaceUri(null);
+      return;
+    }
+    let cancelled = false;
+    const PADDING = 0.25; // 25% padding around the face bbox
+    setIsCroppingFace(true);
+
+    (async () => {
+      const localUri = `${FileSystem.cacheDirectory}face-preview-${Date.now()}.jpg`;
+      try {
+        console.log('[FaceLinkSheet] Downloading image for face preview crop');
+        const downloadResult = await FileSystem.downloadAsync(imageUrl, localUri);
+
+        // Compute padded square crop region in normalised coords
+        const rawX = faceRow.bbox_x - PADDING * faceRow.bbox_w;
+        const rawY = faceRow.bbox_y - PADDING * faceRow.bbox_h;
+        const rawW = faceRow.bbox_w * (1 + 2 * PADDING);
+        const rawH = faceRow.bbox_h * (1 + 2 * PADDING);
+
+        // Make it square using the larger dimension
+        const side = Math.max(rawW, rawH);
+        const centreX = faceRow.bbox_x + faceRow.bbox_w / 2;
+        const centreY = faceRow.bbox_y + faceRow.bbox_h / 2;
+        const squareX = centreX - side / 2;
+        const squareY = centreY - side / 2;
+
+        const clampedX = Math.max(0, squareX);
+        const clampedY = Math.max(0, squareY);
+        const clampedW = Math.min(side, 1 - clampedX);
+        const clampedH = Math.min(side, 1 - clampedY);
+
+        const pixelX = Math.round(clampedX * naturalWidth);
+        const pixelY = Math.round(clampedY * naturalHeight);
+        const pixelW = Math.max(1, Math.round(clampedW * naturalWidth));
+        const pixelH = Math.max(1, Math.round(clampedH * naturalHeight));
+
+        console.log('[FaceLinkSheet] Face preview crop region (pixels):', { pixelX, pixelY, pixelW, pixelH });
+
+        const result = await ImageManipulator.manipulateAsync(
+          downloadResult.uri,
+          [{ crop: { originX: pixelX, originY: pixelY, width: pixelW, height: pixelH } }],
+          { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
+        );
+
+        await FileSystem.deleteAsync(localUri, { idempotent: true });
+
+        if (!cancelled) {
+          console.log('[FaceLinkSheet] Face preview crop complete:', result.uri);
+          setCroppedFaceUri(result.uri);
+        }
+      } catch (e) {
+        console.warn('[FaceLinkSheet] face preview crop failed (non-fatal):', e);
+        await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => {});
+        if (!cancelled) setCroppedFaceUri(null);
+      } finally {
+        if (!cancelled) setIsCroppingFace(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [visible, faceRow, imageUrl, naturalWidth, naturalHeight]);
+
+  // Change 3 — drive search expand animation
+  useEffect(() => {
+    Animated.timing(searchExpandAnim, {
+      toValue: isSearchFocused ? 1 : 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  }, [isSearchFocused, searchExpandAnim]);
 
   // Keyboard listeners for paddingBottom adjustment
   useEffect(() => {
@@ -540,9 +624,9 @@ export function FaceLinkSheet({
 
   const sheetPaddingBottom = Math.max(keyboardHeight, insets.bottom + 40);
 
-  // Build candidates array from faceRow
+  // Change 2 — Build candidates array, filter to ≥75% confidence
   const candidates: CandidateItem[] = [];
-  if (faceRow?.suggested_person_id && !suggestionDismissed) {
+  if (faceRow?.suggested_person_id && !suggestionDismissed && (faceRow.match_confidence ?? 0) >= 0.75) {
     candidates.push({
       personId: faceRow.suggested_person_id,
       personName: faceRow.suggested_person_name ?? '',
@@ -550,7 +634,7 @@ export function FaceLinkSheet({
       confidence: faceRow.match_confidence ?? 0,
     });
   }
-  if (faceRow?.suggested_person_id_2 && !suggestionDismissed) {
+  if (faceRow?.suggested_person_id_2 && !suggestionDismissed && (faceRow.match_confidence_2 ?? 0) >= 0.75) {
     candidates.push({
       personId: faceRow.suggested_person_id_2,
       personName: faceRow.suggested_person_name_2 ?? '',
@@ -558,7 +642,7 @@ export function FaceLinkSheet({
       confidence: faceRow.match_confidence_2 ?? 0,
     });
   }
-  if (faceRow?.suggested_person_id_3 && !suggestionDismissed) {
+  if (faceRow?.suggested_person_id_3 && !suggestionDismissed && (faceRow.match_confidence_3 ?? 0) >= 0.75) {
     candidates.push({
       personId: faceRow.suggested_person_id_3,
       personName: faceRow.suggested_person_name_3 ?? '',
@@ -566,11 +650,6 @@ export function FaceLinkSheet({
       confidence: faceRow.match_confidence_3 ?? 0,
     });
   }
-
-  const faceCenterX = faceRow ? faceRow.bbox_x + faceRow.bbox_w / 2 : 0;
-  const faceCenterY = faceRow ? faceRow.bbox_y + faceRow.bbox_h / 2 : 0;
-  const cropTranslateX = -faceCenterX * CROP_DISPLAY_SIZE * CROP_ZOOM + CROP_DISPLAY_SIZE / 2;
-  const cropTranslateY = -faceCenterY * CROP_DISPLAY_SIZE * CROP_ZOOM + CROP_DISPLAY_SIZE / 2;
 
   const listEmptyComponent = searchQuery.trim() && !isSearching ? (
     <View>
@@ -657,99 +736,118 @@ export function FaceLinkSheet({
               </Pressable>
             </View>
 
-            {/* Face crop preview */}
-            {faceRow && imageUrl ? (
+            {/* Change 3 — Animated wrapper for face crop + candidates + recent (fades out when searching) */}
+            <Animated.View
+              style={{ opacity: Animated.subtract(1, searchExpandAnim), overflow: 'hidden' }}
+              pointerEvents={isSearchFocused ? 'none' : 'auto'}
+            >
+              {/* Change 1 — Face crop preview using ImageManipulator */}
               <View style={styles.faceCropContainer}>
-                <Image
-                  source={{ uri: imageUrl }}
-                  style={[
-                    styles.faceCropImage,
-                    {
-                      transform: [
-                        { translateX: cropTranslateX },
-                        { translateY: cropTranslateY },
-                        { scale: CROP_ZOOM },
-                      ],
-                    },
-                  ]}
-                  contentFit="cover"
-                />
+                {isCroppingFace ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : croppedFaceUri ? (
+                  <Image
+                    source={{ uri: croppedFaceUri }}
+                    style={styles.faceCropImage}
+                    contentFit="cover"
+                  />
+                ) : null}
               </View>
-            ) : null}
 
-            {/* Multi-candidate suggestion cards */}
-            {candidates.length > 0 && (
-              <View style={styles.candidatesRow}>
-                <Text style={styles.sectionLabel}>Suggested</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ paddingBottom: 4 }}
-                >
-                  {candidates.map((c) => (
-                    <CandidateCard
-                      key={c.personId}
-                      candidate={c}
-                      onPress={() => setPendingPerson({ id: c.personId, person_name: c.personName, photo_url: c.photoUrl })}
-                    />
-                  ))}
-                </ScrollView>
-                <Pressable
-                  style={styles.notThemButton}
-                  onPress={() => {
-                    if (candidates[0]) {
-                      handleRejectSuggestion(candidates[0].personId);
-                    }
+              {/* Multi-candidate suggestion cards */}
+              {candidates.length > 0 && (
+                <View style={styles.candidatesRow}>
+                  <Text style={styles.sectionLabel}>Suggested</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ paddingBottom: 4 }}
+                  >
+                    {candidates.map((c) => (
+                      <CandidateCard
+                        key={c.personId}
+                        candidate={c}
+                        onPress={() => setPendingPerson({ id: c.personId, person_name: c.personName, photo_url: c.photoUrl })}
+                      />
+                    ))}
+                  </ScrollView>
+                  <Pressable
+                    style={styles.notThemButton}
+                    onPress={() => {
+                      if (candidates[0]) {
+                        handleRejectSuggestion(candidates[0].personId);
+                      }
+                    }}
+                    disabled={isLoading}
+                  >
+                    <Text style={styles.notThemText}>Not them</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {/* Recently linked people (shown when search is empty) */}
+              {!searchQuery.trim() && recentPeople.length > 0 && (
+                <View style={styles.recentSection}>
+                  <Text style={styles.sectionLabel}>Recent</Text>
+                  <FlatList
+                    horizontal
+                    data={recentPeople}
+                    keyExtractor={(item) => item.id}
+                    showsHorizontalScrollIndicator={false}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        style={styles.recentPersonChip}
+                        onPress={() => {
+                          console.log('[FaceLinkSheet] Recent person tapped:', item.id, item.person_name);
+                          setPendingPerson(item);
+                        }}
+                      >
+                        <PersonAvatar personName={item.person_name} photoUrl={item.photo_url} size={36} />
+                        <Text style={styles.recentPersonName} numberOfLines={1}>{item.person_name}</Text>
+                      </Pressable>
+                    )}
+                  />
+                </View>
+              )}
+            </Animated.View>
+
+            {/* Change 3 — Animated search container that slides up when focused */}
+            <Animated.View style={{
+              transform: [{
+                translateY: searchExpandAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, -220],
+                }),
+              }],
+              zIndex: isSearchFocused ? 10 : 1,
+            }}>
+              {/* Change 4 — Search input styled to match SearchBar */}
+              <View style={styles.searchContainer}>
+                <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search people..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={searchQuery}
+                  autoFocus
+                  onFocus={() => {
+                    console.log('[FaceLinkSheet] Search input focused');
+                    setIsSearchFocused(true);
                   }}
-                  disabled={isLoading}
-                >
-                  <Text style={styles.notThemText}>Not them</Text>
-                </Pressable>
-              </View>
-            )}
-
-            {/* Search input */}
-            <View style={styles.searchContainer}>
-              <IconSymbol name="magnifyingglass" size={16} color={colors.textSecondary} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search people..."
-                placeholderTextColor={colors.textSecondary}
-                value={searchQuery}
-                autoFocus
-                onChangeText={(text) => {
-                  console.log('[FaceLinkSheet] Search query changed:', text);
-                  setSearchQuery(text);
-                }}
-                returnKeyType="search"
-              />
-              {isSearching && <ActivityIndicator size="small" color={colors.primary} />}
-            </View>
-
-            {/* Recently linked people (shown when search is empty) */}
-            {!searchQuery.trim() && recentPeople.length > 0 && (
-              <View style={styles.recentSection}>
-                <Text style={styles.sectionLabel}>Recent</Text>
-                <FlatList
-                  horizontal
-                  data={recentPeople}
-                  keyExtractor={(item) => item.id}
-                  showsHorizontalScrollIndicator={false}
-                  renderItem={({ item }) => (
-                    <Pressable
-                      style={styles.recentPersonChip}
-                      onPress={() => {
-                        console.log('[FaceLinkSheet] Recent person tapped:', item.id, item.person_name);
-                        setPendingPerson(item);
-                      }}
-                    >
-                      <PersonAvatar personName={item.person_name} photoUrl={item.photo_url} size={36} />
-                      <Text style={styles.recentPersonName} numberOfLines={1}>{item.person_name}</Text>
-                    </Pressable>
-                  )}
+                  onBlur={() => {
+                    console.log('[FaceLinkSheet] Search input blurred');
+                    if (!searchQuery.trim()) setIsSearchFocused(false);
+                  }}
+                  onChangeText={(text) => {
+                    console.log('[FaceLinkSheet] Search query changed:', text);
+                    setSearchQuery(text);
+                    if (text.trim()) setIsSearchFocused(true);
+                  }}
+                  returnKeyType="search"
                 />
+                {isSearching && <ActivityIndicator size="small" color={colors.primary} />}
               </View>
-            )}
+            </Animated.View>
 
             {/* Results list */}
             <FlatList
@@ -870,14 +968,16 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   faceCropContainer: {
-    width: CROP_DISPLAY_SIZE,
-    height: CROP_DISPLAY_SIZE,
+    width: 100,
+    height: 100,
     borderRadius: 50,
     overflow: 'hidden',
     alignSelf: 'center',
     marginBottom: 16,
     borderWidth: 3,
     borderColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   faceCropImage: {
     width: '100%',
@@ -902,7 +1002,13 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     marginTop: 6,
-    marginBottom: 4,
+    marginBottom: 2,
+  },
+  candidatePct: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 2,
   },
   confidencePillGreen: {
     paddingHorizontal: 8,
@@ -1054,22 +1160,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
   },
+  // Change 4 — Search container styled to match SearchBar
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.background,
+    backgroundColor: colors.card,
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 8,
+    paddingHorizontal: 16 * 1.15,
+    paddingVertical: 12 * 1.15,
+    gap: 12,
     borderWidth: 1,
-    borderColor: colors.border ?? '#E0E0E0',
+    borderColor: colors.border,
+    minHeight: 48 * 1.1,
+    marginBottom: 8,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
     color: colors.text,
+    minHeight: 24 * 1.1,
   },
   resultsList: {
     flex: 1,
