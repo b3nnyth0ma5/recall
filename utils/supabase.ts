@@ -275,7 +275,6 @@ export async function uploadImageToDatabase(
                     const { data: matchResult, error: matchError } = await supabase.rpc('match_face_to_person', {
                       p_embedding: vectorString,
                       p_threshold: 0.75,
-                      p_face_row_id: insertedFace.id,
                     });
                     if (matchError) {
                       console.warn('[uploadImageToDatabase] match_face_to_person RPC error (non-fatal):', matchError);
@@ -287,18 +286,18 @@ export async function uploadImageToDatabase(
                       const top3 = matchRows.find((r: any) => r.rank === 3);
 
                       if (top1 && top1.person_id) {
-                        console.log('[uploadImageToDatabase] Auto-match top1:', top1.person_id, 'similarity:', top1.similarity);
+                        console.log('[uploadImageToDatabase] Auto-match top1:', top1.person_id, 'similarity:', top1.best_similarity);
                         const updatePayload: any = {
                           suggested_person_id: top1.person_id,
-                          match_confidence: top1.similarity,
+                          match_confidence: top1.best_similarity,
                         };
                         if (top2?.person_id) {
                           updatePayload.suggested_person_id_2 = top2.person_id;
-                          updatePayload.match_confidence_2 = top2.similarity;
+                          updatePayload.match_confidence_2 = top2.best_similarity;
                         }
                         if (top3?.person_id) {
                           updatePayload.suggested_person_id_3 = top3.person_id;
-                          updatePayload.match_confidence_3 = top3.similarity;
+                          updatePayload.match_confidence_3 = top3.best_similarity;
                         }
                         const { error: suggestionUpdateError } = await supabase
                           .from('recall_images_people')

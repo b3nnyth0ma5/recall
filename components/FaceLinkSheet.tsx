@@ -324,36 +324,62 @@ export function FaceLinkSheet({
   // Fire-and-forget: fetch the face embedding from DB and upsert it onto the person
   const saveFaceEmbeddingToPerson = useCallback(async (faceRowId: string, personId: string) => {
     console.log('[FaceLinkSheet] saveFaceEmbeddingToPerson called for face:', faceRowId, 'person:', personId);
+    const MAX_RETRIES = 5;
+    const RETRY_DELAY_MS = 1000;
+
+    let embeddingString: string | null = null;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const { data: faceData, error: fetchError } = await supabase
+          .from('recall_images_people')
+          .select('face_embedding')
+          .eq('id', faceRowId)
+          .maybeSingle();
+
+        if (fetchError) {
+          console.warn('[FaceLinkSheet] saveFaceEmbeddingToPerson: fetch error (non-fatal):', fetchError);
+          return;
+        }
+
+        const embeddingValue = (faceData as any)?.face_embedding;
+        if (embeddingValue) {
+          embeddingString = typeof embeddingValue === 'string'
+            ? embeddingValue
+            : JSON.stringify(embeddingValue);
+          console.log('[FaceLinkSheet] saveFaceEmbeddingToPerson: got embedding on attempt', attempt);
+          break;
+        }
+
+        if (attempt < MAX_RETRIES) {
+          console.log(`[FaceLinkSheet] saveFaceEmbeddingToPerson: embedding not ready, retrying in ${RETRY_DELAY_MS}ms (attempt ${attempt}/${MAX_RETRIES})`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+        }
+      } catch (e) {
+        console.warn('[FaceLinkSheet] saveFaceEmbeddingToPerson: exception on attempt', attempt, e);
+        return;
+      }
+    }
+
+    if (!embeddingString) {
+      console.warn('[FaceLinkSheet] saveFaceEmbeddingToPerson: embedding still null after', MAX_RETRIES, 'attempts, giving up');
+      return;
+    }
+
     try {
-      const { data: faceData, error: fetchError } = await supabase
-        .from('recall_images_people')
-        .select('face_embedding')
-        .eq('id', faceRowId)
-        .maybeSingle();
-      if (fetchError) {
-        console.warn('[FaceLinkSheet] saveFaceEmbeddingToPerson: fetch error (non-fatal):', fetchError);
-        return;
-      }
-      const embeddingValue = (faceData as any)?.face_embedding;
-      if (!embeddingValue) {
-        console.log('[FaceLinkSheet] saveFaceEmbeddingToPerson: no embedding on face row, skipping');
-        return;
-      }
-      const embeddingString = typeof embeddingValue === 'string'
-        ? embeddingValue
-        : JSON.stringify(embeddingValue);
       console.log('[FaceLinkSheet] saveFaceEmbeddingToPerson: calling upsert_person_face_embedding RPC');
       const { error: rpcError } = await supabase.rpc('upsert_person_face_embedding', {
         p_person_id: personId,
         new_embedding: embeddingString,
+        p_source_face_id: faceRowId,
       });
       if (rpcError) {
         console.warn('[FaceLinkSheet] saveFaceEmbeddingToPerson: RPC error (non-fatal):', rpcError);
       } else {
-        console.log('[FaceLinkSheet] saveFaceEmbeddingToPerson: embedding saved to person:', personId);
+        console.log('[FaceLinkSheet] saveFaceEmbeddingToPerson: embedding saved to person_face_embeddings for person:', personId);
       }
     } catch (e) {
-      console.warn('[FaceLinkSheet] saveFaceEmbeddingToPerson: exception (non-fatal):', e);
+      console.warn('[FaceLinkSheet] saveFaceEmbeddingToPerson: RPC exception (non-fatal):', e);
     }
   }, []);
 
