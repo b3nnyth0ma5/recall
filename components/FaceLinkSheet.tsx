@@ -13,6 +13,7 @@ import {
   Switch,
   ScrollView,
   Animated,
+  Image as RNImage,
 } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -132,9 +133,7 @@ export function FaceLinkSheet({
   const [croppedFaceUri, setCroppedFaceUri] = useState<string | null>(null);
   const [isCroppingFace, setIsCroppingFace] = useState(false);
 
-  // Change 3 — search expand animation state
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const searchExpandAnim = useRef(new Animated.Value(0)).current;
 
   const insets = useSafeAreaInsets();
 
@@ -174,6 +173,12 @@ export function FaceLinkSheet({
         console.log('[FaceLinkSheet] Downloading image for face preview crop');
         const downloadResult = await FileSystem.downloadAsync(imageUrl, localUri);
 
+        // Measure actual pixel dimensions of the downloaded file (CDN may serve a resized variant)
+        const { width: actualW, height: actualH } = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+          RNImage.getSize(downloadResult.uri, (w, h) => resolve({ width: w, height: h }), reject);
+        });
+        console.log('[FaceLinkSheet] Actual downloaded image dimensions:', actualW, 'x', actualH);
+
         // Compute padded square crop region in normalised coords
         const rawX = faceRow.bbox_x - PADDING * faceRow.bbox_w;
         const rawY = faceRow.bbox_y - PADDING * faceRow.bbox_h;
@@ -192,10 +197,10 @@ export function FaceLinkSheet({
         const clampedW = Math.min(side, 1 - clampedX);
         const clampedH = Math.min(side, 1 - clampedY);
 
-        const pixelX = Math.round(clampedX * naturalWidth);
-        const pixelY = Math.round(clampedY * naturalHeight);
-        const pixelW = Math.max(1, Math.round(clampedW * naturalWidth));
-        const pixelH = Math.max(1, Math.round(clampedH * naturalHeight));
+        const pixelX = Math.round(clampedX * actualW);
+        const pixelY = Math.round(clampedY * actualH);
+        const pixelW = Math.max(1, Math.round(clampedW * actualW));
+        const pixelH = Math.max(1, Math.round(clampedH * actualH));
 
         console.log('[FaceLinkSheet] Face preview crop region (pixels):', { pixelX, pixelY, pixelW, pixelH });
 
@@ -223,14 +228,16 @@ export function FaceLinkSheet({
     return () => { cancelled = true; };
   }, [visible, faceRow, imageUrl, naturalWidth, naturalHeight]);
 
-  // Change 3 — drive search expand animation
+  // Drive top-section collapse animation (maxHeight: 400 → 0 when searching)
+  const topSectionMaxHeight = useRef(new Animated.Value(400)).current;
+
   useEffect(() => {
-    Animated.timing(searchExpandAnim, {
-      toValue: isSearchFocused ? 1 : 0,
+    Animated.timing(topSectionMaxHeight, {
+      toValue: isSearchFocused ? 0 : 400,
       duration: 250,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
-  }, [isSearchFocused, searchExpandAnim]);
+  }, [isSearchFocused, topSectionMaxHeight]);
 
   // Keyboard listeners for paddingBottom adjustment
   useEffect(() => {
@@ -334,22 +341,6 @@ export function FaceLinkSheet({
     console.log('[FaceLinkSheet] cropAndUpload called for person:', personName);
 
     const PADDING = 0.2;
-    const rawX = faceRow.bbox_x - PADDING * faceRow.bbox_w;
-    const rawY = faceRow.bbox_y - PADDING * faceRow.bbox_h;
-    const rawW = faceRow.bbox_w * (1 + 2 * PADDING);
-    const rawH = faceRow.bbox_h * (1 + 2 * PADDING);
-
-    const clampedX = Math.max(0, rawX);
-    const clampedY = Math.max(0, rawY);
-    const clampedW = Math.min(rawW, 1 - clampedX);
-    const clampedH = Math.min(rawH, 1 - clampedY);
-
-    const pixelX = Math.round(clampedX * naturalWidth);
-    const pixelY = Math.round(clampedY * naturalHeight);
-    const pixelW = Math.round(clampedW * naturalWidth);
-    const pixelH = Math.round(clampedH * naturalHeight);
-
-    console.log('[FaceLinkSheet] Crop region (pixels):', { pixelX, pixelY, pixelW, pixelH });
 
     const localUri = `${FileSystem.cacheDirectory}face-crop-${Date.now()}.jpg`;
     try {
@@ -357,6 +348,29 @@ export function FaceLinkSheet({
       const downloadResult = await FileSystem.downloadAsync(imageUrl, localUri);
       const localImageUri = downloadResult.uri;
       console.log('[FaceLinkSheet] Download complete, local URI:', localImageUri);
+
+      // Measure actual pixel dimensions of the downloaded file (CDN may serve a resized variant)
+      const { width: actualW, height: actualH } = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        RNImage.getSize(localImageUri, (w, h) => resolve({ width: w, height: h }), reject);
+      });
+      console.log('[FaceLinkSheet] cropAndUpload actual image dimensions:', actualW, 'x', actualH);
+
+      const rawX = faceRow.bbox_x - PADDING * faceRow.bbox_w;
+      const rawY = faceRow.bbox_y - PADDING * faceRow.bbox_h;
+      const rawW = faceRow.bbox_w * (1 + 2 * PADDING);
+      const rawH = faceRow.bbox_h * (1 + 2 * PADDING);
+
+      const clampedX = Math.max(0, rawX);
+      const clampedY = Math.max(0, rawY);
+      const clampedW = Math.min(rawW, 1 - clampedX);
+      const clampedH = Math.min(rawH, 1 - clampedY);
+
+      const pixelX = Math.round(clampedX * actualW);
+      const pixelY = Math.round(clampedY * actualH);
+      const pixelW = Math.round(clampedW * actualW);
+      const pixelH = Math.round(clampedH * actualH);
+
+      console.log('[FaceLinkSheet] Crop region (pixels):', { pixelX, pixelY, pixelW, pixelH });
 
       let manipResult: ImageManipulator.ImageResult;
       try {
@@ -736,9 +750,9 @@ export function FaceLinkSheet({
               </Pressable>
             </View>
 
-            {/* Change 3 — Animated wrapper for face crop + candidates + recent (fades out when searching) */}
+            {/* Animated wrapper for face crop + candidates + recent (collapses when searching) */}
             <Animated.View
-              style={{ opacity: Animated.subtract(1, searchExpandAnim), overflow: 'hidden' }}
+              style={{ maxHeight: topSectionMaxHeight, overflow: 'hidden' }}
               pointerEvents={isSearchFocused ? 'none' : 'auto'}
             >
               {/* Change 1 — Face crop preview using ImageManipulator */}
@@ -811,43 +825,31 @@ export function FaceLinkSheet({
               )}
             </Animated.View>
 
-            {/* Change 3 — Animated search container that slides up when focused */}
-            <Animated.View style={{
-              transform: [{
-                translateY: searchExpandAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -220],
-                }),
-              }],
-              zIndex: isSearchFocused ? 10 : 1,
-            }}>
-              {/* Change 4 — Search input styled to match SearchBar */}
-              <View style={styles.searchContainer}>
-                <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search people..."
-                  placeholderTextColor={colors.textSecondary}
-                  value={searchQuery}
-                  autoFocus
-                  onFocus={() => {
-                    console.log('[FaceLinkSheet] Search input focused');
-                    setIsSearchFocused(true);
-                  }}
-                  onBlur={() => {
-                    console.log('[FaceLinkSheet] Search input blurred');
-                    if (!searchQuery.trim()) setIsSearchFocused(false);
-                  }}
-                  onChangeText={(text) => {
-                    console.log('[FaceLinkSheet] Search query changed:', text);
-                    setSearchQuery(text);
-                    if (text.trim()) setIsSearchFocused(true);
-                  }}
-                  returnKeyType="search"
-                />
-                {isSearching && <ActivityIndicator size="small" color={colors.primary} />}
-              </View>
-            </Animated.View>
+            {/* Search input — always in normal document flow, no animation */}
+            <View style={styles.searchContainer}>
+              <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search people..."
+                placeholderTextColor={colors.textSecondary}
+                value={searchQuery}
+                onFocus={() => {
+                  console.log('[FaceLinkSheet] Search input focused');
+                  setIsSearchFocused(true);
+                }}
+                onBlur={() => {
+                  console.log('[FaceLinkSheet] Search input blurred');
+                  if (!searchQuery.trim()) setIsSearchFocused(false);
+                }}
+                onChangeText={(text) => {
+                  console.log('[FaceLinkSheet] Search query changed:', text);
+                  setSearchQuery(text);
+                  if (text.trim()) setIsSearchFocused(true);
+                }}
+                returnKeyType="search"
+              />
+              {isSearching && <ActivityIndicator size="small" color={colors.primary} />}
+            </View>
 
             {/* Results list */}
             <FlatList

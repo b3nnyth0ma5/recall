@@ -1182,7 +1182,7 @@ export function FullScreenImage({
                 console.log('[FullScreenImage] runFaceDetectionForImage: running match_face_to_person for face:', insertedFace.id);
                 const { data: matchResult, error: matchError } = await supabase.rpc('match_face_to_person', {
                   p_embedding: vectorString,
-                  p_threshold: 0.75,
+                  p_threshold: 0.82,
                 });
                 if (matchError) {
                   console.warn('[FullScreenImage] runFaceDetectionForImage: match_face_to_person error (non-fatal):', matchError);
