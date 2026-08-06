@@ -133,6 +133,7 @@ export default function ShareExtensionDebugScreen() {
   const [roundTripResult, setRoundTripResult] = useState<string | null>(null);
   const [roundTripPass, setRoundTripPass] = useState<boolean | null>(null);
   const [roundTripBusy, setRoundTripBusy] = useState(false);
+  const [roundTripSteps, setRoundTripSteps] = useState<{ label: string; pass: boolean; detail?: string }[]>([]);
 
   const appendLog = useCallback((line: string) => {
     const entry = `[${ts()}] ${line}`;
@@ -275,66 +276,79 @@ export default function ShareExtensionDebugScreen() {
     setRoundTripBusy(true);
     setRoundTripResult(null);
     setRoundTripPass(null);
+    setRoundTripSteps([]);
     appendLog('Starting end-to-end token round-trip test…');
 
+    const steps: { label: string; pass: boolean; detail?: string }[] = [];
+
     try {
+      // Step 1: Session present
       const { data: { session }, error } = await supabase.auth.getSession();
-      if (error || !session) {
-        const msg = 'No active session — sign in first';
-        appendLog('Round-trip ABORTED: ' + msg);
-        setRoundTripResult(msg);
+      const sessionPresent = !error && session != null;
+      let sessionDetail: string;
+      if (sessionPresent && session) {
+        const remaining = (session.expires_at ?? 0) - Date.now() / 1000;
+        const expiryStr = remaining <= 0
+          ? 'EXPIRED'
+          : `expires in ${Math.floor(remaining / 60)}m`;
+        sessionDetail = `userId: ${session.user.id} | ${expiryStr}`;
+      } else {
+        sessionDetail = error ? error.message : 'No active session';
+      }
+      steps.push({ label: 'Session present', pass: sessionPresent, detail: sessionDetail });
+      setRoundTripSteps([...steps]);
+      appendLog(`Step 1 — Session present: ${sessionPresent} | ${sessionDetail}`);
+
+      if (!sessionPresent || !session) {
+        appendLog('Round-trip ABORTED: no session');
         setRoundTripPass(false);
         setRoundTripBusy(false);
         return;
       }
-      appendLog('Session OK — userId: ' + session.user.id);
 
-      appendLog('Calling writeTokenToAppGroup…');
-      await writeTokenToAppGroup(session);
-      appendLog('writeTokenToAppGroup returned');
+      // Step 2: Token write
+      let writePass = false;
+      let writeDetail: string;
+      try {
+        await writeTokenToAppGroup(session);
+        writePass = true;
+        writeDetail = 'writeTokenToAppGroup completed without throwing';
+      } catch (writeErr) {
+        writeDetail = 'threw: ' + (writeErr instanceof Error ? writeErr.message : String(writeErr));
+      }
+      steps.push({ label: 'Token write', pass: writePass, detail: writeDetail });
+      setRoundTripSteps([...steps]);
+      appendLog(`Step 2 — Token write: ${writePass} | ${writeDetail}`);
 
+      // Step 3: App Group file exists
       appendLog('Calling verifyAppGroupContainer…');
       const verify = await verifyAppGroupContainer();
       appendLog('verifyAppGroupContainer result: ' + JSON.stringify(verify));
+      const fileExists = verify?.tokenFileExists === true;
+      const fileDetail = verify
+        ? `containerExists=${verify.containerExists} tokenFileExists=${verify.tokenFileExists} size=${verify.tokenFileSize ?? 0}b`
+        : 'native module returned null';
+      steps.push({ label: 'App Group file exists', pass: fileExists, detail: fileDetail });
+      setRoundTripSteps([...steps]);
+      appendLog(`Step 3 — App Group file exists: ${fileExists} | ${fileDetail}`);
 
+      // Step 4: Keychain item exists
       appendLog('Calling verifyKeychainItem…');
       const kc = await verifyKeychainItem();
       appendLog('verifyKeychainItem result: ' + JSON.stringify(kc));
+      const kcPresent = kc?.present === true;
+      const kcDetail = kc ? `present=${kc.present} size=${kc.dataSize}b` : 'null result';
+      steps.push({ label: 'Keychain item exists', pass: kcPresent, detail: kcDetail });
+      setRoundTripSteps([...steps]);
+      appendLog(`Step 4 — Keychain item exists: ${kcPresent} | ${kcDetail}`);
 
-      if (!verify) {
-        const msg = 'FAIL — verifyAppGroupContainer returned null (native module unavailable or not iOS)';
-        appendLog(msg);
-        setRoundTripResult(msg);
-        setRoundTripPass(false);
-        setRoundTripBusy(false);
-        return;
-      }
-
-      if (!verify.containerExists) {
-        const kcStatus = kc?.present ? ' (Keychain fallback: PRESENT)' : ' (Keychain fallback: MISSING)';
-        const msg = `FAIL — Stage 1: App Group container unreachable.${kcStatus}`;
-        appendLog(msg);
-        setRoundTripResult(msg);
-        setRoundTripPass(kc?.present === true);
-        setRoundTripBusy(false);
-        return;
-      }
-
-      if (!verify.tokenFileExists) {
-        const kcStatus = kc?.present ? ' (Keychain fallback: PRESENT)' : ' (Keychain fallback: MISSING)';
-        const msg = `FAIL — Stage 2: auth-token.json not found after write.${kcStatus}`;
-        appendLog(msg);
-        setRoundTripResult(msg);
-        setRoundTripPass(kc?.present === true);
-        setRoundTripBusy(false);
-        return;
-      }
-
-      const kcStatus = kc?.present ? `Keychain: ✓ (${kc.dataSize} bytes)` : 'Keychain: ✗ missing';
-      const msg = `PASS — App Group: ✓ (${verify.tokenFileSize} bytes) | ${kcStatus}`;
-      appendLog(msg);
-      setRoundTripResult(msg);
-      setRoundTripPass(true);
+      const allPass = sessionPresent && writePass && fileExists && kcPresent;
+      const summary = allPass
+        ? `PASS — all 4 steps succeeded`
+        : `FAIL — ${steps.filter((s) => !s.pass).map((s) => s.label).join(', ')}`;
+      appendLog(summary);
+      setRoundTripResult(summary);
+      setRoundTripPass(allPass);
     } catch (e) {
       const msg = 'Round-trip test THREW: ' + (e instanceof Error ? e.message : String(e));
       appendLog(msg);
@@ -492,9 +506,30 @@ export default function ShareExtensionDebugScreen() {
             {roundTripBusy ? 'Running…' : 'Run end-to-end token test'}
           </Text>
         </Pressable>
-        {roundTripResult !== null && (
+        {roundTripSteps.length > 0 && (
           <View style={[styles.card, { borderColor: roundTripColor }]}>
-            <Text style={[styles.mono, { color: roundTripColor }]}>{roundTripResult}</Text>
+            {roundTripSteps.map((step, i) => {
+              const stepIndicator = step.pass ? '✓' : '✗';
+              const stepColor = step.pass ? '#4CAF50' : colors.appleRed;
+              return (
+                <View key={i} style={[rowStyles.row, i > 0 && { marginTop: 8 }]}>
+                  <Text style={[rowStyles.indicator, { color: stepColor }]}>{stepIndicator}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.mono, { color: stepColor, fontWeight: '700' }]}>{step.label}</Text>
+                    {step.detail != null && (
+                      <Text style={[styles.mono, { color: colors.textSecondary, fontSize: 11, marginTop: 2 }]}>
+                        {step.detail}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+            {roundTripResult !== null && (
+              <Text style={[styles.mono, { color: roundTripColor, marginTop: 10, fontWeight: '600' }]}>
+                {roundTripResult}
+              </Text>
+            )}
           </View>
         )}
 

@@ -22,7 +22,9 @@
           "group.com.b3nny1nc.recall"
         ],
         "com.apple.developer.siri": true,
-        "keychain-access-groups": ["9PWN6F3TK8.com.b3nny1nc.recall"]
+        "keychain-access-groups": [
+          "9PWN6F3TK8.com.b3nny1nc.recall"
+        ]
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -70,7 +72,9 @@
                     "com.apple.security.application-groups": [
                       "group.com.b3nny1nc.recall"
                     ],
-                    "keychain-access-groups": ["9PWN6F3TK8.com.b3nny1nc.recall"]
+                    "keychain-access-groups": [
+                      "9PWN6F3TK8.com.b3nny1nc.recall"
+                    ]
                   }
                 }
               ]

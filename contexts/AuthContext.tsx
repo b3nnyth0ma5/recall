@@ -57,11 +57,18 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
         payload.length,
         'bytes'
       );
-      const success = await writeTokenFile(payload);
+      let success = await writeTokenFile(payload);
       if (success) {
         console.log('[AuthContext] Token file written successfully via native bridge');
       } else {
-        console.error('[AuthContext] writeTokenFile returned false — token may not have been written');
+        console.error('[AuthContext] writeTokenFile returned false — retrying after 500ms delay');
+        await new Promise<void>((resolve) => setTimeout(resolve, 500));
+        console.log('[AuthContext] retrying writeTokenFile after 500ms delay');
+        success = await writeTokenFile(payload);
+        console.log('[AuthContext] retry result:', success);
+        if (!success) {
+          console.error('[AuthContext] writeTokenFile retry also returned false — token may not have been written');
+        }
       }
 
       // Verify the write landed
@@ -213,14 +220,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         try {
           const { data: { session: currentSession }, error: refreshError } = await supabase.auth.refreshSession();
+          let sessionToWrite: Session | null;
           if (refreshError) {
             // If refresh fails (e.g. refresh token expired), fall back to the cached session
             // so we don't wipe a still-valid token from the App Group file
             console.warn('[AuthContext] App foreground token refresh failed, falling back to cached session:', refreshError.message);
             const { data: { session: cachedSession } } = await supabase.auth.getSession();
-            await writeTokenToAppGroup(cachedSession);
+            sessionToWrite = cachedSession;
           } else {
-            await writeTokenToAppGroup(currentSession);
+            sessionToWrite = currentSession;
+          }
+          await writeTokenToAppGroup(sessionToWrite);
+
+          // Self-heal: verify the file actually landed; if not, retry the write once
+          if (sessionToWrite && Platform.OS === 'ios') {
+            try {
+              let verifyAppGroupContainer: (() => Promise<unknown>) | null = null;
+              try {
+                const mod = await import('recall-native');
+                verifyAppGroupContainer = mod.verifyAppGroupContainer;
+              } catch {
+                // native module not available
+              }
+              if (verifyAppGroupContainer) {
+                const verify = await verifyAppGroupContainer() as any;
+                if (!verify?.tokenFileExists) {
+                  console.warn('[AuthContext] Foreground self-heal: tokenFileExists=false after write — retrying writeTokenToAppGroup');
+                  await writeTokenToAppGroup(sessionToWrite);
+                } else {
+                  console.log('[AuthContext] Foreground self-heal verify OK — tokenFileExists=true size=', verify?.tokenFileSize);
+                }
+              }
+            } catch (verifyErr) {
+              console.warn('[AuthContext] Foreground self-heal verify threw:', String(verifyErr));
+            }
           }
         } catch (e) {
           console.error(

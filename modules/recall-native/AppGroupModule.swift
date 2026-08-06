@@ -14,8 +14,9 @@ public class AppGroupModule: Module {
   private static let keychainAccessGroup = "9PWN6F3TK8.com.b3nny1nc.recall"
 
   private static func writeTokenToKeychain(_ jsonPayload: String) {
+    print("[AppGroupModule] writeTokenToKeychain — starting, payload length=\(jsonPayload.count)")
     guard let data = jsonPayload.data(using: .utf8) else {
-      print("[AppGroupModule] writeTokenToKeychain — failed to encode payload")
+      print("[AppGroupModule] writeTokenToKeychain — failed to encode payload as UTF-8")
       return
     }
     // Delete any existing item first
@@ -25,7 +26,8 @@ public class AppGroupModule: Module {
       kSecAttrAccount as String: keychainAccount,
       kSecAttrAccessGroup as String: keychainAccessGroup,
     ]
-    SecItemDelete(deleteQuery as CFDictionary)
+    let deleteStatus = SecItemDelete(deleteQuery as CFDictionary)
+    print("[AppGroupModule] writeTokenToKeychain — SecItemDelete status=\(Int32(deleteStatus))")
 
     // Add new item
     let addQuery: [String: Any] = [
@@ -37,10 +39,11 @@ public class AppGroupModule: Module {
       kSecValueData as String: data,
     ]
     let status = SecItemAdd(addQuery as CFDictionary, nil)
+    let statusInt = Int32(status)
     if status == errSecSuccess {
-      print("[AppGroupModule] writeTokenToKeychain — wrote \(data.count) bytes to Keychain")
+      print("[AppGroupModule] writeTokenToKeychain — SecItemAdd SUCCESS, wrote \(data.count) bytes (status=\(statusInt))")
     } else {
-      print("[AppGroupModule] writeTokenToKeychain — SecItemAdd failed: \(status)")
+      print("[AppGroupModule] writeTokenToKeychain — SecItemAdd FAILED status=\(statusInt) (errSecDuplicateItem=-25299, errSecMissingEntitlement=-34018, errSecInteractionNotAllowed=-25308)")
     }
   }
 
@@ -202,39 +205,64 @@ public class AppGroupModule: Module {
     }
 
     AsyncFunction("writeTokenFile") { (groupId: String, jsonPayload: String, promise: Promise) in
+      print("[AppGroupModule] writeTokenFile — start groupId=\(groupId) payloadLength=\(jsonPayload.count)")
+
       guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId) else {
-        print("[AppGroupModule] writeTokenFile — containerURL is nil for groupId=\(groupId)")
-        // Still write to Keychain even if App Group is unavailable
+        print("[AppGroupModule] writeTokenFile — containerURL is nil for groupId=\(groupId), writing Keychain only")
         AppGroupModule.writeTokenToKeychain(jsonPayload)
         promise.resolve(false)
         return
       }
+      print("[AppGroupModule] writeTokenFile — containerURL=\(containerURL.path)")
+
       let tokenURL = containerURL.appendingPathComponent("auth-token.json")
       guard let data = jsonPayload.data(using: .utf8) else {
         print("[AppGroupModule] writeTokenFile — failed to encode payload as UTF-8")
+        AppGroupModule.writeTokenToKeychain(jsonPayload)
         promise.resolve(false)
         return
       }
+
+      // ── Attempt 1: NSFileCoordinator ────────────────────────────────────────
       var coordinatorError: NSError?
       var writeSuccess = false
       let coordinator = NSFileCoordinator()
+      print("[AppGroupModule] writeTokenFile — attempting NSFileCoordinator write to \(tokenURL.path)")
       coordinator.coordinate(writingItemAt: tokenURL, options: .forReplacing, error: &coordinatorError) { url in
         do {
           try data.write(to: url, options: .atomic)
           writeSuccess = true
-          print("[AppGroupModule] writeTokenFile — wrote \(data.count) bytes to \(url.path)")
+          print("[AppGroupModule] writeTokenFile — wrote \(data.count) bytes via coordinator to \(url.path)")
         } catch {
-          print("[AppGroupModule] writeTokenFile — write failed: \(error.localizedDescription)")
+          print("[AppGroupModule] writeTokenFile — coordinator write block threw: \(error.localizedDescription)")
         }
       }
       if let err = coordinatorError {
-        print("[AppGroupModule] writeTokenFile — coordinator error: \(err.localizedDescription)")
-        promise.resolve(false)
-        return
+        print("[AppGroupModule] writeTokenFile — coordinator error: \(err.localizedDescription) (code=\(err.code))")
       }
-      promise.resolve(writeSuccess)
-      // Also write to Keychain as a fallback for share extension / Siri
+
+      // ── Attempt 2: direct write fallback if coordinator failed ───────────────
+      if !writeSuccess {
+        print("[AppGroupModule] writeTokenFile — coordinator did not succeed, trying direct write fallback")
+        do {
+          try data.write(to: tokenURL, options: .atomic)
+          writeSuccess = true
+          print("[AppGroupModule] writeTokenFile — wrote \(data.count) bytes via direct fallback to \(tokenURL.path)")
+        } catch {
+          print("[AppGroupModule] writeTokenFile — direct fallback FAILED: \(error.localizedDescription)")
+        }
+      }
+
+      if writeSuccess {
+        print("[AppGroupModule] writeTokenFile — final outcome: SUCCESS (\(data.count) bytes)")
+      } else {
+        print("[AppGroupModule] writeTokenFile — final outcome: ALL WRITE PATHS FAILED")
+      }
+
+      // Always write to Keychain regardless of file write outcome
       AppGroupModule.writeTokenToKeychain(jsonPayload)
+
+      promise.resolve(writeSuccess)
     }
 
     AsyncFunction("deleteTokenFile") { (groupId: String, promise: Promise) in
@@ -285,7 +313,7 @@ public class AppGroupModule: Module {
       let status = SecItemCopyMatching(query as CFDictionary, &result)
       let present = status == errSecSuccess
       let dataSize = (result as? Data)?.count ?? 0
-      print("[AppGroupModule] verifyKeychainItem — present=\(present) dataSize=\(dataSize) status=\(status)")
+      print("[AppGroupModule] verifyKeychainItem — present=\(present) dataSize=\(dataSize) status=\(Int32(status))")
       promise.resolve(["present": present, "dataSize": dataSize] as [String: Any])
     }
   }
