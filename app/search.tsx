@@ -24,7 +24,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import RecallHeader from '@/components/RecallHeader';
 import { SearchTopBar } from '@/components/SearchTopBar';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { useScrollToTop } from '@/contexts/ScrollToTopContext';
@@ -39,7 +39,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { MarkdownAnswer } from '@/components/MarkdownAnswer';
 import Toast from 'react-native-toast-message';
 // import { donateSearch } from 'recall-native'; // recall-native disabled
-import { Share as ShareIcon } from 'lucide-react-native';
 import { Swipeable, RectButton } from 'react-native-gesture-handler';
 import { supabase, deleteSearchHistory, cleanupCloudflareCollage, saveSearchHistoryUploads, getSearchHistoryUploads, getRecollectionCategories, getCategoryRecollections } from '@/utils/supabase';
 import { writeSearchHistoryCache, readSearchHistoryCache, invalidateSearchHistoryCache } from '@/hooks/useNotes';
@@ -750,10 +749,27 @@ export default function SearchScreen() {
     if (params.focus === 'true') {
       const timer = setTimeout(() => {
         searchInputRef.current?.focus();
-      }, 400);
+      }, 800);
       return () => clearTimeout(timer);
     }
   }, [params.focus]);
+
+  // Also focus on screen becoming active (handles cold launch timing)
+  const hasFocusedRef = useRef(false);
+  useEffect(() => {
+    hasFocusedRef.current = false;
+  }, [params.focus]);
+  useFocusEffect(
+    useCallback(() => {
+      if (params.focus === 'true' && !hasFocusedRef.current) {
+        hasFocusedRef.current = true;
+        const timer = setTimeout(() => {
+          searchInputRef.current?.focus();
+        }, 600);
+        return () => clearTimeout(timer);
+      }
+    }, [params.focus])
+  );
 
   useEffect(() => {
     if (!hasSearched && searchHistory.length > 0 && !isLoadingHistory) {
@@ -1729,7 +1745,12 @@ export default function SearchScreen() {
 
                 {/* Show answer card as soon as search starts */}
                 {(isSearching || !!streamingAnswer || !!searchAnswer) && !(isStreamingComplete && !streamingAnswer && !searchAnswer) ? (
-                  <Animated.View entering={FadeIn.duration(300)} style={styles.answerContainer}>
+                  <Animated.View entering={FadeIn.duration(300)}>
+                    <Pressable
+                      onLongPress={isStreamingComplete ? handleShareAnswer : undefined}
+                      delayLongPress={400}
+                      style={styles.answerContainer}
+                    >
                     <View style={styles.answerHeader}>
                       <View style={styles.answerHeaderLeft}>
                         <IconSymbol name="lightbulb.fill" size={20} color={colors.primary} />
@@ -1748,7 +1769,7 @@ export default function SearchScreen() {
                             style={styles.shareAnswerButton}
                             hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
                           >
-                            <ShareIcon size={18} color={colors.primary} strokeWidth={2.2} />
+                            <IconSymbol name="square.and.arrow.up" size={18} color={colors.primary} />
                           </Pressable>
                         )}
                       </View>
@@ -1799,6 +1820,7 @@ export default function SearchScreen() {
                         </Text>
                       </Pressable>
                     )}
+                    </Pressable>
                   </Animated.View>
                 ) : (
                   <React.Fragment>

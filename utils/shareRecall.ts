@@ -262,7 +262,10 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
       shareMessage += `🔗 ${canonicalUrl}\n\n`;
       shareMessage += `📍 ${recall.location}\n`;
       if (recall.latitude && recall.longitude) {
-        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${recall.latitude},${recall.longitude}`;
+        const locationQuery = recall.location
+          ? `${recall.latitude},${recall.longitude}+${encodeURIComponent(recall.location)}`
+          : `${recall.latitude},${recall.longitude}`;
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${locationQuery}`;
         shareMessage += `${mapsUrl}\n`;
       }
       shareMessage += '\n';
@@ -273,7 +276,10 @@ export async function shareRecall(recall: Note, currentImageIndex: number = 0, o
       // Location only — no icon, plain text + maps URL so iOS can preview it
       shareMessage += `${recall.location}\n`;
       if (recall.latitude && recall.longitude) {
-        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${recall.latitude},${recall.longitude}`;
+        const locationQuery = recall.location
+          ? `${recall.latitude},${recall.longitude}+${encodeURIComponent(recall.location)}`
+          : `${recall.latitude},${recall.longitude}`;
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${locationQuery}`;
         shareMessage += `${mapsUrl}\n`;
       }
       shareMessage += '\n';

@@ -141,7 +141,9 @@ export const NoteCard = memo(function NoteCard({ note, onPress, onCardPress, onI
     } catch (error) {
       console.error('Error sharing recall:', error);
     } finally {
-      isShareInProgress.current = false;
+      setTimeout(() => {
+        isShareInProgress.current = false;
+      }, 600);
     }
   }, [note, currentImageIndex]);
 

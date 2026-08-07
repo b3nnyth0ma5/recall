@@ -80,17 +80,20 @@ export default function HomeScreen() {
 
   // Siri "Create Recall" intent — open the create panel when deep-linked with ?openCreate=true
   const hasHandledOpenCreateRef = useRef(false);
-  useEffect(() => {
-    if (params.openCreate === 'true' && !hasHandledOpenCreateRef.current) {
-      hasHandledOpenCreateRef.current = true;
-      console.log('[HomeScreen iOS] Siri create intent — opening create panel');
-      // Small delay to ensure the screen is fully mounted before opening the panel
-      const timer = setTimeout(() => {
-        openCreatePanel();
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [params.openCreate, openCreatePanel]);
+  useFocusEffect(
+    useCallback(() => {
+      if (params.openCreate === 'true' && !hasHandledOpenCreateRef.current) {
+        hasHandledOpenCreateRef.current = true;
+        console.log('[HomeScreen iOS] Siri create intent — opening create panel');
+        // Small delay to ensure the screen is fully mounted before opening the panel
+        const timer = setTimeout(() => {
+          openCreatePanel();
+        }, 300);
+        return () => clearTimeout(timer);
+      }
+      return () => {};
+    }, [params.openCreate, openCreatePanel])
+  );
 
   useEffect(() => {
     const checkForRecalls = async () => {

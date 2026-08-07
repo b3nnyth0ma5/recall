@@ -15,6 +15,7 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   Modal,
+  InputAccessoryView,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -58,6 +59,8 @@ interface ImageData {
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const IMAGE_CAROUSEL_WIDTH = 88;
 const IMAGE_CAROUSEL_SPACING = 10;
+const URL_TITLE_INPUT_ACCESSORY_ID = 'url-title-input-accessory';
+const URL_DESC_INPUT_ACCESSORY_ID = 'url-desc-input-accessory';
 
 const hasUrl = (text: string): boolean => {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -103,6 +106,8 @@ export default function NoteEditorScreen() {
   const [urlData, setUrlData] = useState<RecallUrl | null>(null);
   const [editedUrlTitle, setEditedUrlTitle] = useState('');
   const [editedUrlDescription, setEditedUrlDescription] = useState('');
+  const editedUrlTitleRef = useRef('');
+  const editedUrlDescriptionRef = useRef('');
   const [savingUrl, setSavingUrl] = useState(false);
   const [editedUrlValue, setEditedUrlValue] = useState('');
   const [editingUrl, setEditingUrl] = useState(false);
@@ -328,30 +333,25 @@ export default function NoteEditorScreen() {
 
   const handleSaveUrlMetadata = useCallback(async () => {
     if (!urlData?.id) return;
-    const titleChanged = editedUrlTitle !== (urlData.og_title ?? '');
-    const descChanged = editedUrlDescription !== (urlData.og_description ?? '');
-    if (!titleChanged && !descChanged) return;
-
-    console.log('[NoteEditor] Saving URL metadata for:', urlData.id);
+    const latestTitle = editedUrlTitleRef.current;
+    const latestDesc = editedUrlDescriptionRef.current;
+    console.log('[NoteEditor] Saving URL metadata for:', urlData.id, '— title:', latestTitle, '— desc:', latestDesc);
     setSavingUrl(true);
     try {
       const { error } = await supabase
         .from('recall_urls')
         .update({
-          og_title: editedUrlTitle.trim() || null,
-          og_description: editedUrlDescription.trim() || null,
+          og_title: latestTitle.trim() || null,
+          og_description: latestDesc.trim() || null,
         })
         .eq('id', urlData.id);
-
       if (error) throw error;
-
       console.log('[NoteEditor] URL metadata saved successfully');
       setUrlData(prev => prev ? {
         ...prev,
-        og_title: editedUrlTitle.trim() || null,
-        og_description: editedUrlDescription.trim() || null,
+        og_title: latestTitle.trim() || null,
+        og_description: latestDesc.trim() || null,
       } : null);
-
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
@@ -361,7 +361,7 @@ export default function NoteEditorScreen() {
     } finally {
       setSavingUrl(false);
     }
-  }, [urlData, editedUrlTitle, editedUrlDescription]);
+  }, [urlData]);
 
   const handleSaveUrlValue = useCallback(async () => {
     if (!urlData?.id) return;
@@ -674,7 +674,9 @@ export default function NoteEditorScreen() {
             console.log('[NoteEditor] Loaded URL data from cache:', cachedNote.urls[0].url);
             setUrlData(cachedNote.urls[0]);
             setEditedUrlTitle(cachedNote.urls[0].og_title ?? '');
+            editedUrlTitleRef.current = cachedNote.urls[0].og_title ?? '';
             setEditedUrlDescription(cachedNote.urls[0].og_description ?? '');
+            editedUrlDescriptionRef.current = cachedNote.urls[0].og_description ?? '';
             setEditedUrlValue(cachedNote.urls[0].url);
           }
 
@@ -809,7 +811,9 @@ export default function NoteEditorScreen() {
                 console.log('[NoteEditor] Refreshed URL data from DB (background):', bgUrlsData.url);
                 setUrlData(bgUrlsData as RecallUrl);
                 setEditedUrlTitle(bgUrlsData.og_title ?? '');
+                editedUrlTitleRef.current = bgUrlsData.og_title ?? '';
                 setEditedUrlDescription(bgUrlsData.og_description ?? '');
+                editedUrlDescriptionRef.current = bgUrlsData.og_description ?? '';
                 setEditedUrlValue(bgUrlsData.url);
               }
             } else {
@@ -828,7 +832,9 @@ export default function NoteEditorScreen() {
                   console.log('[NoteEditor] Loaded URL data from DB (cache path, data unchanged):', cachedPathUrlData.url);
                   setUrlData(cachedPathUrlData as RecallUrl);
                   setEditedUrlTitle(cachedPathUrlData.og_title ?? '');
+                  editedUrlTitleRef.current = cachedPathUrlData.og_title ?? '';
                   setEditedUrlDescription(cachedPathUrlData.og_description ?? '');
+                  editedUrlDescriptionRef.current = cachedPathUrlData.og_description ?? '';
                   setEditedUrlValue(cachedPathUrlData.url);
                 }
               }
@@ -1762,11 +1768,12 @@ export default function NoteEditorScreen() {
                   <TextInput
                     style={styles.urlMetaTitleInput}
                     value={editedUrlTitle}
-                    onChangeText={setEditedUrlTitle}
+                    onChangeText={(text) => { setEditedUrlTitle(text); editedUrlTitleRef.current = text; }}
                     multiline
                     autoFocus
                     placeholder="Add a title…"
                     placeholderTextColor={colors.textTertiary}
+                    inputAccessoryViewID={URL_TITLE_INPUT_ACCESSORY_ID}
                     onBlur={() => {
                       console.log('[NoteEditor] Title field blurred, saving metadata');
                       setEditingTitle(false);
@@ -1804,6 +1811,15 @@ export default function NoteEditorScreen() {
                 )}
               </View>
             </View>
+            {Platform.OS === 'ios' && (
+              <InputAccessoryView nativeID={URL_TITLE_INPUT_ACCESSORY_ID}>
+                <View style={{ backgroundColor: '#f1f1f1', paddingHorizontal: 16, paddingVertical: 8, alignItems: 'flex-end', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#ccc' }}>
+                  <Pressable onPress={() => { setEditingTitle(false); handleSaveUrlMetadata(); }} hitSlop={{ top: 8, bottom: 8, left: 16, right: 8 }}>
+                    <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 16 }}>Done</Text>
+                  </Pressable>
+                </View>
+              </InputAccessoryView>
+            )}
 
             {/* ── DESCRIPTION ── */}
             <View style={styles.urlMetaSection}>
@@ -1813,11 +1829,12 @@ export default function NoteEditorScreen() {
                   <TextInput
                     style={styles.urlMetaDescInput}
                     value={editedUrlDescription}
-                    onChangeText={setEditedUrlDescription}
+                    onChangeText={(text) => { setEditedUrlDescription(text); editedUrlDescriptionRef.current = text; }}
                     multiline
                     autoFocus
                     placeholder="Add a description…"
                     placeholderTextColor={colors.textTertiary}
+                    inputAccessoryViewID={URL_DESC_INPUT_ACCESSORY_ID}
                     onBlur={() => {
                       console.log('[NoteEditor] Description field blurred, saving metadata');
                       setEditingDesc(false);
@@ -1855,6 +1872,15 @@ export default function NoteEditorScreen() {
                 )}
               </View>
             </View>
+            {Platform.OS === 'ios' && (
+              <InputAccessoryView nativeID={URL_DESC_INPUT_ACCESSORY_ID}>
+                <View style={{ backgroundColor: '#f1f1f1', paddingHorizontal: 16, paddingVertical: 8, alignItems: 'flex-end', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#ccc' }}>
+                  <Pressable onPress={() => { setEditingDesc(false); handleSaveUrlMetadata(); }} hitSlop={{ top: 8, bottom: 8, left: 16, right: 8 }}>
+                    <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 16 }}>Done</Text>
+                  </Pressable>
+                </View>
+              </InputAccessoryView>
+            )}
           </>
         )}
 
