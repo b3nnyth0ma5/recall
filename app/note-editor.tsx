@@ -5,6 +5,7 @@ import {
   TextInput,
   StyleSheet,
   ScrollView,
+  KeyboardAvoidingView,
   Pressable,
   Alert,
   ActivityIndicator,
@@ -98,6 +99,7 @@ export default function NoteEditorScreen() {
   const [pendingDeleteIndex, setPendingDeleteIndex] = useState<number | null>(null);
   const [deletingImageIndex, setDeletingImageIndex] = useState<number | null>(null);
   const imageScrollRef = useRef<ScrollView>(null);
+  const mainScrollRef = useRef<ScrollView>(null);
 
   const isEditing = !!params.id;
 
@@ -1012,6 +1014,7 @@ export default function NoteEditorScreen() {
       console.log('Skipping location update for shared recall');
       return;
     }
+    if (loadingNote) return;
 
     if (params.selectedLatitude && params.selectedLongitude && params.selectedLocationName) {
       const latitude = parseFloat(params.selectedLatitude as string);
@@ -1034,7 +1037,7 @@ export default function NoteEditorScreen() {
         selectedPrimaryType: undefined,
       });
     }
-  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router, isSharedRecall]);
+  }, [params.selectedLatitude, params.selectedLongitude, params.selectedLocationName, params.selectedPrimaryType, router, isSharedRecall, loadingNote]);
 
   const requestLocationPermission = async () => {
     try {
@@ -1173,7 +1176,10 @@ export default function NoteEditorScreen() {
     }
 
     console.log('Navigating to location search screen');
-    router.push('/location-search');
+    router.push({
+      pathname: '/location-search',
+      params: isEditing ? { id: params.id as string } : {},
+    });
   };
 
   const handlePeopleChange = useCallback((newPeople: Person[]) => {
@@ -1534,9 +1540,19 @@ export default function NoteEditorScreen() {
     }
   };
 
+  const scrollToInput = useCallback((_reactNode: any) => {
+    if (!mainScrollRef.current) return;
+    setTimeout(() => {
+      mainScrollRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  }, []);
+
   const handleLocationSearch = () => {
     console.log('[NoteEditor] Location pill pressed — opening location search');
-    router.push('/location-search');
+    router.push({
+      pathname: '/location-search',
+      params: isEditing ? { id: params.id as string } : {},
+    });
   };
 
   const handleClearLocation = useCallback(() => {
@@ -1613,6 +1629,11 @@ export default function NoteEditorScreen() {
   }
 
   return (
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+    >
     <View style={styles.container}>
       <Stack.Screen
         options={{
@@ -1674,6 +1695,7 @@ export default function NoteEditorScreen() {
       )}
 
       <ScrollView
+        ref={mainScrollRef}
         style={styles.scrollView}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -1723,6 +1745,9 @@ export default function NoteEditorScreen() {
                     autoCapitalize="none"
                     keyboardType="url"
                     returnKeyType="done"
+                    onFocus={() => {
+                      setTimeout(() => mainScrollRef.current?.scrollToEnd({ animated: true }), 150);
+                    }}
                     onBlur={() => {
                       console.log('[NoteEditor] URL edit field blurred, saving URL value');
                       setEditingUrl(false);
@@ -1774,6 +1799,9 @@ export default function NoteEditorScreen() {
                     placeholder="Add a title…"
                     placeholderTextColor={colors.textTertiary}
                     inputAccessoryViewID={URL_TITLE_INPUT_ACCESSORY_ID}
+                    onFocus={() => {
+                      setTimeout(() => mainScrollRef.current?.scrollToEnd({ animated: true }), 150);
+                    }}
                     onBlur={() => {
                       console.log('[NoteEditor] Title field blurred, saving metadata');
                       setEditingTitle(false);
@@ -1835,6 +1863,9 @@ export default function NoteEditorScreen() {
                     placeholder="Add a description…"
                     placeholderTextColor={colors.textTertiary}
                     inputAccessoryViewID={URL_DESC_INPUT_ACCESSORY_ID}
+                    onFocus={() => {
+                      setTimeout(() => mainScrollRef.current?.scrollToEnd({ animated: true }), 150);
+                    }}
                     onBlur={() => {
                       console.log('[NoteEditor] Description field blurred, saving metadata');
                       setEditingDesc(false);
@@ -2152,6 +2183,7 @@ export default function NoteEditorScreen() {
         </View>
       </Modal>
     </View>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -331,10 +331,10 @@ export default function LocationSearchScreen({ onClose, onSelectLocation }: Loca
               selectedFullAddress: location.formattedAddress,
               selectedPrimaryType: location.primaryTypeDisplayName || '',
             });
-          } catch (error) {
-            console.error('[LocationSearch] Error setting params:', error);
+          } catch (e) {
+            console.warn('[LocationSearch] setParams failed (non-fatal):', e);
           }
-        }, 100);
+        }, 200);
       }
     } catch (error) {
       console.error('[LocationSearch] Error processing location:', error);
