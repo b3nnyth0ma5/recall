@@ -42,6 +42,21 @@ public class AppGroupModule: Module {
     let statusInt = Int32(status)
     if status == errSecSuccess {
       print("[AppGroupModule] writeTokenToKeychain — SecItemAdd SUCCESS, wrote \(data.count) bytes (status=\(statusInt))")
+      // Verify the item is actually readable
+      let verifyQuery: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: keychainService,
+        kSecAttrAccount as String: keychainAccount,
+        kSecAttrAccessGroup as String: keychainAccessGroup,
+        kSecReturnData as String: false,
+        kSecMatchLimit as String: kSecMatchLimitOne,
+      ]
+      let verifyStatus = SecItemCopyMatching(verifyQuery as CFDictionary, nil)
+      if verifyStatus == errSecSuccess {
+        print("[AppGroupModule] writeTokenToKeychain — read-back verify OK: item is accessible")
+      } else {
+        print("[AppGroupModule] writeTokenToKeychain — read-back verify FAILED status=\(Int32(verifyStatus)): item was written but cannot be read back. Access group may not be authorised by the provisioning profile.")
+      }
     } else {
       print("[AppGroupModule] writeTokenToKeychain — SecItemAdd FAILED status=\(statusInt) (errSecDuplicateItem=-25299, errSecMissingEntitlement=-34018, errSecInteractionNotAllowed=-25308)")
     }
@@ -257,6 +272,18 @@ public class AppGroupModule: Module {
         print("[AppGroupModule] writeTokenFile — final outcome: SUCCESS (\(data.count) bytes)")
       } else {
         print("[AppGroupModule] writeTokenFile — final outcome: ALL WRITE PATHS FAILED")
+      }
+
+      // ── Post-write sandbox verification ─────────────────────────────────────────
+      if writeSuccess {
+        let verifyExists = FileManager.default.fileExists(atPath: tokenURL.path)
+        let verifySize = (try? FileManager.default.attributesOfItem(atPath: tokenURL.path))?[.size] as? Int ?? 0
+        if !verifyExists || verifySize == 0 {
+          print("[AppGroupModule] writeTokenFile — SILENT SANDBOX FAILURE: write returned success but file not found or empty (verifyExists=\(verifyExists) verifySize=\(verifySize)). The provisioning profile likely does not authorise the App Group entitlement.")
+          writeSuccess = false
+        } else {
+          print("[AppGroupModule] writeTokenFile — post-write verify OK: file exists, size=\(verifySize)")
+        }
       }
 
       // Always write to Keychain regardless of file write outcome
