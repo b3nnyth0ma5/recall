@@ -2018,7 +2018,7 @@ export default function NoteEditorScreen() {
           style={[
             styles.floatingActionsContainer,
             keyboardVisible && Platform.OS === 'ios' && {
-              bottom: keyboardHeight + 60,
+              bottom: 60,
             },
           ]}
         >
@@ -2060,15 +2060,7 @@ export default function NoteEditorScreen() {
         </Animated.View>
       )}
 
-      <View style={[
-        styles.toolbar,
-        keyboardVisible && Platform.OS === 'ios' && { 
-          position: 'absolute',
-          bottom: keyboardHeight,
-          left: 0,
-          right: 0,
-        }
-      ]}>
+      <View style={styles.toolbar}>
         {/* Plus icon - Left aligned (swapped from right) */}
         <View style={styles.toolbarLeft}>
           <Pressable
