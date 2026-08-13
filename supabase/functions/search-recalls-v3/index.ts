@@ -151,8 +151,8 @@ Respond with valid JSON only, no markdown.`;
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'gpt-4.1-mini',
-      max_tokens: 500,
+      model: 'gpt-4o-mini',
+      max_completion_tokens: 500,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: query }
@@ -321,8 +321,10 @@ Deno.serve(async (req) => {
     }
 
     // Step 3: generate_answer_only short-circuit — skip all vector search, stream QA answer token-by-token
-    if (generate_answer_only && clientContextForAnswer) {
-      console.log('[Answer Generation] Streaming answer via OpenAI (generate_answer_only path), context length:', clientContextForAnswer.length);
+    // NOTE: We only gate on generate_answer_only here — clientContextForAnswer may be an empty string
+    // when no recalls matched, and the model handles that gracefully.
+    if (generate_answer_only) {
+      console.log('[Answer Generation] Streaming answer via OpenAI (generate_answer_only path), context length:', (clientContextForAnswer ?? '').length);
 
       const qaSystemPrompt = `You are an intelligent search assistant that answers questions based on the user's personal recall notes. You understand the user's intent and make associations between pieces of information.
 
@@ -353,7 +355,7 @@ UPLOADED SEARCH IMAGES:
 If the recalls don't contain enough information to answer the question, say so plainly in one sentence.`;
 
       const uploadedCtx = uploadedImagesContextParam ?? '';
-      const qaUserMessage = `Question: ${query}${uploadedCtx}\n\n${clientContextForAnswer}`;
+      const qaUserMessage = `Question: ${query}${uploadedCtx}\n\n${clientContextForAnswer ?? ''}`;
 
       const qaResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -362,8 +364,8 @@ If the recalls don't contain enough information to answer the question, say so p
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'gpt-4.1-mini',
-          max_tokens: 2048,
+          model: 'gpt-4o-mini',
+          max_completion_tokens: 2048,
           stream: true,
           messages: [
             { role: 'system', content: qaSystemPrompt },
@@ -1068,8 +1070,8 @@ If the recalls don't contain enough information to answer the question, say so p
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'gpt-4.1-mini',
-          max_tokens: 2048,
+          model: 'gpt-4o-mini',
+          max_completion_tokens: 2048,
           messages: [
             { role: 'system', content: qaSystemPrompt },
             { role: 'user', content: qaUserMessage }
