@@ -359,6 +359,12 @@ export default function HomeScreen() {
       console.log('[handleCreateRecallFromCombined] Recall created with ID:', recallData.id);
       setCreatingRecallId(recallData.id);
 
+      // Fire-and-forget: trigger category matching check after new recall insert
+      console.log('[AutoCategory] Triggering check-and-trigger-category-matching for user:', user.id);
+      supabase.functions.invoke('check-and-trigger-category-matching', {
+        body: { userId: user.id },
+      }).catch((e) => console.warn('[AutoCategory] check-and-trigger failed:', e));
+
       // Show the card and dismiss the panel immediately — background work continues
       console.log('[handleCreateRecallFromCombined] Optimistic insert + early dismiss');
       addNoteOptimistic(recallData);

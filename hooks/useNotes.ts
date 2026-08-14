@@ -678,6 +678,12 @@ export function useNotes() {
       }
 
       if (__DEV__) console.log('Recall added successfully with location_primary_type:', recallData.location_primary_type);
+
+      // Fire-and-forget: trigger category matching check after new recall insert
+      console.log('[AutoCategory] Triggering check-and-trigger-category-matching for user:', user.id);
+      supabase.functions.invoke('check-and-trigger-category-matching', {
+        body: { userId: user.id },
+      }).catch((e) => console.warn('[AutoCategory] check-and-trigger failed:', e));
       
       await refreshNotes();
       return recallData.id;

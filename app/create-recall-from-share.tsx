@@ -396,6 +396,12 @@ export default function CreateRecallFromShareScreen() {
 
         console.log('[CreateRecallFromShare] Recall created with ID:', recallData.id);
         recallId = recallData.id;
+
+        // Fire-and-forget: trigger category matching check after new recall insert
+        console.log('[AutoCategory] Triggering check-and-trigger-category-matching for user:', user.id);
+        supabase.functions.invoke('check-and-trigger-category-matching', {
+          body: { userId: user.id },
+        }).catch((e) => console.warn('[AutoCategory] check-and-trigger failed:', e));
       }
 
       // Trigger recall text embedding (→ people-finder → category matching) fire-and-forget
