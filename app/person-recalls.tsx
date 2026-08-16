@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  ScrollView,
   Pressable,
   ActivityIndicator,
   RefreshControl,
@@ -33,7 +34,7 @@ import { useNotes } from '@/hooks/useNotes';
 import { useNotesContext } from '@/contexts/NotesContext';
 import { peopleCache, imageCache, CostCalculator } from '@/utils/memoryCache';
 import { debounce } from '@/utils/debounce';
-import { PillsRow } from '@/components/PillsRow';
+
 
 
 type SortOrder = 'Newest' | 'Oldest' | 'Best match';
@@ -935,20 +936,26 @@ export default function PersonRecallsScreen() {
 
               {/* Sort pills */}
               <View style={styles.sortContainer}>
-                <PillsRow
-                  items={[
-                    { id: 'Newest', label: 'Newest' },
-                    { id: 'Oldest', label: 'Oldest' },
-                    { id: 'Best match', label: 'Best match' },
-                  ]}
-                  selected={sortOrder}
-                  onSelect={(id) => {
-                    if (id) {
-                      console.log('[PersonRecalls] Sort order changed to:', id);
-                      setSortOrder(id as SortOrder);
-                    }
-                  }}
-                />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.sortPillsContent}
+                >
+                  {(['Newest', 'Oldest', 'Best match'] as SortOrder[]).map((option) => (
+                    <Pressable
+                      key={option}
+                      onPress={() => {
+                        console.log('[PersonRecalls] Sort order changed to:', option);
+                        setSortOrder(option);
+                      }}
+                      style={[styles.sortPill, sortOrder === option && styles.sortPillSelected]}
+                    >
+                      <Text style={[styles.sortPillText, sortOrder === option && styles.sortPillTextSelected]}>
+                        {option}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
               </View>
               {isSortLoading && (
                 <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 8 }} />
@@ -1077,6 +1084,34 @@ const styles = StyleSheet.create({
   // ─── Sort pills wrapper ───────────────────────────────────────────────────────
   sortContainer: {
     marginHorizontal: -16,
+  },
+  sortPillsContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  sortPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sortPillSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  sortPillText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  sortPillTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
   },
   // ─── Count row (mirrors countEllipsisRow / recallCount) ──────────────────────
   countEllipsisRow: {

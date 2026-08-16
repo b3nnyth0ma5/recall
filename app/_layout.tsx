@@ -412,7 +412,6 @@ function RootLayoutNav() {
     const seg1 = segments[1] as string | undefined;
     const seg2 = segments[2] as string | undefined;
     const inHomeIndex = seg0 === '(tabs)' && seg1 === '(home)' && (!seg2 || seg2 === 'index');
-    const inCategoryViewer = seg0 === '(tabs)' && seg1 === '(home)' && seg2 === 'category-viewer';
     const inProfile = seg0 === '(tabs)' && seg1 === 'profile';
     const inSearch = seg0 === 'search';
     const inPersonRecalls = seg0 === 'person-recalls';
@@ -434,15 +433,7 @@ function RootLayoutNav() {
 
   const handleNavHome = () => {
     console.log('[FloatingNavBar] Home tapped, activeRoute:', activeRoute, 'pathname:', pathname);
-    if (pathname.includes('category-viewer')) {
-      console.log('[FloatingNavBar] On category-viewer — dismissing all and replacing to home tab');
-      try {
-        router.dismissAll();
-      } catch (_e) {
-        // nothing to dismiss
-      }
-      router.replace('/(tabs)/(home)');
-    } else if (activeRoute === 'home') {
+    if (activeRoute === 'home') {
       console.log('[FloatingNavBar] Already on home — scrolling to top');
       triggerScrollToTop('home');
     } else {

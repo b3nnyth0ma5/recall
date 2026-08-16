@@ -17,13 +17,6 @@ export default function HomeLayout() {
           title: 'Home'
         }}
       />
-      <Stack.Screen
-        name="create-category"
-        options={{
-          headerShown: false,
-          presentation: 'card',
-        }}
-      />
     </Stack>
   );
 }

@@ -320,33 +320,6 @@ export class CostCalculator {
   }
 
   /**
-   * Calculate cost for a category object
-   */
-  static forCategory(category: any): number {
-    let totalCost = 0;
-
-    // Category name
-    if (category.category_name) {
-      totalCost += CostCalculator.forText(category.category_name);
-    }
-
-    // Description
-    if (category.category_search_description) {
-      totalCost += CostCalculator.forText(category.category_search_description);
-    }
-
-    // Icon URL
-    if (category.icon_cdn_url) {
-      totalCost += CostCalculator.forText(category.icon_cdn_url);
-    }
-
-    // Base object overhead
-    totalCost += 150; // bytes
-
-    return totalCost;
-  }
-
-  /**
    * Calculate cost for people data
    */
   static forPeople(people: any[]): number {
@@ -386,15 +359,6 @@ export const noteCache = new MemoryCache<any>({
   evictionPolicy: 'lru',
 });
 
-// Category Cache: 5MB limit, 200 items
-// Stores category objects
-export const categoryCache = new MemoryCache<any>({
-  name: 'CategoryCache',
-  countLimit: 200,
-  totalCostLimit: 5 * 1024 * 1024, // 5 MB
-  evictionPolicy: 'lru',
-});
-
 // People Cache: 5MB limit, 1000 items
 // Stores people associations for recalls
 export const peopleCache = new MemoryCache<any[]>({
@@ -408,7 +372,7 @@ export const peopleCache = new MemoryCache<any[]>({
  * Global cache manager for monitoring and maintenance
  */
 export class CacheManager {
-  private static caches = [imageCache, noteCache, categoryCache, peopleCache];
+  private static caches = [imageCache, noteCache, peopleCache];
 
   /**
    * Get statistics for all caches
@@ -464,7 +428,6 @@ export class CacheManager {
 export default {
   imageCache,
   noteCache,
-  categoryCache,
   peopleCache,
   CostCalculator,
   CacheManager,

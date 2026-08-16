@@ -40,16 +40,10 @@ import { MarkdownAnswer } from '@/components/MarkdownAnswer';
 import Toast from 'react-native-toast-message';
 // import { donateSearch } from 'recall-native'; // recall-native disabled
 import { Swipeable, RectButton } from 'react-native-gesture-handler';
-import { supabase, deleteSearchHistory, cleanupCloudflareCollage, saveSearchHistoryUploads, getSearchHistoryUploads, getRecollectionCategories, getCategoryRecollections } from '@/utils/supabase';
+import { supabase, deleteSearchHistory, cleanupCloudflareCollage, saveSearchHistoryUploads, getSearchHistoryUploads } from '@/utils/supabase';
 import { writeSearchHistoryCache, readSearchHistoryCache, invalidateSearchHistoryCache } from '@/hooks/useNotes';
 import { uploadImageToCloudflare } from '@/utils/cloudflareCDN';
-import { PillsRow } from '@/components/PillsRow';
-import type { PillItem } from '@/components/PillsRow';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
-
-
-// Pill widths vary so the skeleton row doesn't look like a uniform stripe
-const PILL_SKELETON_WIDTHS = [80, 60, 110, 120, 70, 70, 100, 100, 80, 95];
 
 const THINKING_PHRASES = [
   "Digging through your memories...",
@@ -223,14 +217,6 @@ export default function SearchScreen() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [isProgressExpanded, setIsProgressExpanded] = useState(true);
-  const [selectedPill, setSelectedPill] = useState<string | null>(null);
-  const [userCategories, setUserCategories] = useState<PillItem[]>([]);
-  const [categoryRecalls, setCategoryRecalls] = useState<import('@/types/Note').Note[]>([]);
-  const [isLoadingCategoryRecalls, setIsLoadingCategoryRecalls] = useState(false);
-  const [categoryPage, setCategoryPage] = useState(0);
-  const [hasMoreCategoryRecalls, setHasMoreCategoryRecalls] = useState(false);
-  const [isLoadingMoreCategoryRecalls, setIsLoadingMoreCategoryRecalls] = useState(false);
-  const [categoryHasLocationRecalls, setCategoryHasLocationRecalls] = useState(false);
   const [onDeviceAnswerMs, setOnDeviceAnswerMs] = useState<number | null>(null);
   const [streamingAnswer, setStreamingAnswer] = useState('');
   const [isStreamingComplete, setIsStreamingComplete] = useState(false);
@@ -532,23 +518,8 @@ export default function SearchScreen() {
     setHasLoadedHistoryOnce(true);
   }, [getSearchHistory, user?.id, hasLoadedHistoryOnce]);
 
-  const loadCategories = useCallback(async () => {
-    try {
-      console.log('[SearchScreen] Loading recollection categories');
-      const cats = await getRecollectionCategories();
-      setUserCategories(cats.map(c => ({
-        id: c.id,
-        label: c.category_name,
-        count: c.recollection_count,
-      })));
-    } catch (e) {
-      console.error('[SearchScreen] Failed to load categories:', e);
-    }
-  }, []);
-
   useEffect(() => {
     loadSearchHistory();
-    loadCategories();
 
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
       setKeyboardVisible(true);
@@ -561,7 +532,7 @@ export default function SearchScreen() {
       keyboardDidHideListener.remove();
       keyboardDidShowListener.remove();
     };
-  }, [loadSearchHistory, loadCategories]);
+  }, [loadSearchHistory]);
 
   // Change 2: when the user manually deletes text down to empty, reset search state
   useEffect(() => {
@@ -1206,8 +1177,6 @@ export default function SearchScreen() {
     setAttachedImages([]);
     setOcrProgress(null);
     setShowAttachFABs(false);
-    setSelectedPill(null);
-    setCategoryRecalls([]);
     setOnDeviceAnswerMs(null);
     setStreamingAnswer('');
     setIsStreamingComplete(false);
@@ -1228,8 +1197,6 @@ export default function SearchScreen() {
     setIsAnswerExpanded(true);
     setIsSearching(false);
     setIsProgressExpanded(true);
-    setSelectedPill(null);
-    setCategoryRecalls([]);
     setOnDeviceAnswerMs(null);
     setStreamingAnswer('');
     setIsStreamingComplete(false);
@@ -1379,30 +1346,7 @@ export default function SearchScreen() {
     );
   }, []);
 
-  // Change 5: shimmering pills row skeleton
-  const pillsRowSkeleton = useMemo(() => (
-    <Animated.View
-      entering={FadeIn.duration(300)}
-      exiting={FadeOut.duration(200)}
-      style={styles.pillsRowWrapper}
-    >
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.pillsSkeletonContent}
-      >
-        {PILL_SKELETON_WIDTHS.map((w, i) => (
-          <SkeletonLoader
-            key={`pill-skeleton-${i}`}
-            variant="wave"
-            width={w}
-            height={36}
-            borderRadius={20}
-          />
-        ))}
-      </ScrollView>
-    </Animated.View>
-  ), []);
+
 
   const searchTips = useMemo(() => (
     <View style={styles.searchTipsContainer}>
@@ -1651,9 +1595,9 @@ export default function SearchScreen() {
           <View style={styles.listHeaderContainer}>
 
             {/* History / zero states / search steps */}
-            {showHistory && !selectedPill && isLoadingHistory ? (
+            {showHistory && isLoadingHistory ? (
               renderHistorySkeletons
-            ) : showHistory && !selectedPill && searchHistory.length > 0 ? (
+            ) : showHistory && searchHistory.length > 0 ? (
               <Animated.View entering={FadeIn.duration(600)} style={styles.historyContainer}>
                 <Text style={styles.historyTitle}>Recent</Text>
                 {searchHistory.map((item) => (
@@ -1695,7 +1639,7 @@ export default function SearchScreen() {
                   </Swipeable>
                 ))}
               </Animated.View>
-            ) : showHistory && !selectedPill && searchHistory.length === 0 && !isLoadingHistory && hasLoadedHistoryOnce ? (
+            ) : showHistory && searchHistory.length === 0 && !isLoadingHistory && hasLoadedHistoryOnce ? (
               // Change 4: gate "No Search History" on hasLoadedHistoryOnce
               <Animated.View entering={FadeIn.duration(600)} style={styles.emptyHistoryContainer}>
                 <View style={styles.emptyHistoryIconContainer}>
@@ -1707,7 +1651,7 @@ export default function SearchScreen() {
                 </Text>
                 {searchTips}
               </Animated.View>
-            ) : !hasSearched && !selectedPill && hasLoadedHistoryOnce ? (
+            ) : !hasSearched && hasLoadedHistoryOnce ? (
               // Change 4: gate "Smart Searching" hero on hasLoadedHistoryOnce
               <Animated.View entering={FadeIn.duration(600)} style={styles.emptyContainer}>
                 <IconSymbol name="photo.on.rectangle" size={80} color={colors.textTertiary} />
@@ -1929,17 +1873,6 @@ const styles = StyleSheet.create({
   },
   listHeaderContainer: {
     width: '100%',
-  },
-  pillsRowWrapper: {
-    marginHorizontal: -16,
-    marginTop: 0,
-    marginBottom: 8,
-  },
-  pillsSkeletonContent: {
-    paddingHorizontal: 16,
-    gap: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
   },
   historyContainer: {
     width: '100%',
@@ -2367,17 +2300,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 107, 122, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  categoryLoadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 32,
-    gap: 10,
-  },
-  categoryLoadingText: {
-    fontSize: 14,
-    color: colors.textSecondary,
   },
   thinkingText: {
     fontSize: 13,

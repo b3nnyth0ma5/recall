@@ -481,98 +481,7 @@ export function useNotes() {
   }, [user?.id]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
-  // Realtime subscription: patch category_matching_at / category_matched_at into
-  // in-memory notes so NoteCard spinners react live without a full reload.
-  // Use a unique channel name per mount to avoid the "cannot add postgres_changes
-  // callbacks after subscribe()" crash under StrictMode / Fast Refresh.
-  // Safety timer map: noteId -> timeout handle. Fires category_matched_at if backend never stamps it.
-  const categoryMatchTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  const categoryMatchingChannelRef = useRef<string>(
-    `recalls:category_matching:${Math.random().toString(36).slice(2)}`
-  );
-  useEffect(() => {
-    if (!user) return;
-
-    const channelName = `realtime:${user.id}:${categoryMatchingChannelRef.current}`;
-    console.log('[useNotes] Setting up realtime subscription for recall category matching, channel:', channelName);
-
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'recalls',
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          const updated = payload.new as any;
-          if (!updated?.id) return;
-          const noteId: string = updated.id;
-          console.log('[useNotes] Realtime UPDATE on recall:', noteId, '— category_matching_at:', updated.category_matching_at, 'category_matched_at:', updated.category_matched_at);
-          setNotes(prev =>
-            prev.map(note =>
-              note.id === noteId
-                ? {
-                    ...note,
-                    ...(updated.category_matching_at !== undefined && { category_matching_at: updated.category_matching_at }),
-                    ...(updated.category_matched_at !== undefined && { category_matched_at: updated.category_matched_at }),
-                    ...(updated.updated_at !== undefined && { updated_at: updated.updated_at }),
-                  }
-                : note,
-            ),
-          );
-
-          // Safety timer logic
-          const matchingAt: string | null = updated.category_matching_at ?? null;
-          const matchedAt: string | null = updated.category_matched_at ?? null;
-
-          if (matchedAt) {
-            // Backend completed — cancel any pending safety timer
-            const existing = categoryMatchTimeoutsRef.current.get(noteId);
-            if (existing !== undefined) {
-              clearTimeout(existing);
-              categoryMatchTimeoutsRef.current.delete(noteId);
-              console.log('[useNotes] Safety timer cancelled (backend stamped category_matched_at) for', noteId);
-            }
-          } else if (matchingAt) {
-            // Matching started but not yet completed — arm a 5s safety timer
-            const existing = categoryMatchTimeoutsRef.current.get(noteId);
-            if (existing !== undefined) {
-              clearTimeout(existing);
-            }
-            const handle = setTimeout(async () => {
-              console.log('[useNotes] Safety timer force-stamping category_matched_at for', noteId);
-              categoryMatchTimeoutsRef.current.delete(noteId);
-              try {
-                await supabase
-                  .from('recalls')
-                  .update({ category_matched_at: new Date().toISOString() })
-                  .eq('id', noteId)
-                  .is('category_matched_at', null);
-              } catch (err) {
-                console.error('[useNotes] Safety timer stamp failed for', noteId, err);
-              }
-            }, 5000);
-            categoryMatchTimeoutsRef.current.set(noteId, handle);
-          }
-        },
-      )
-      .subscribe();
-
-    const timeoutsRef = categoryMatchTimeoutsRef.current;
-    return () => {
-      console.log('[useNotes] Cleaning up realtime recall category matching subscription');
-      channel.unsubscribe();
-      supabase.removeChannel(channel);
-      // Clear all pending safety timers
-      timeoutsRef.forEach(clearTimeout);
-      timeoutsRef.clear();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
 
   const loadMoreNotes = useCallback(() => {
     if (!isLoadingMore && hasMore && !loading) {
@@ -679,12 +588,6 @@ export function useNotes() {
 
       if (__DEV__) console.log('Recall added successfully with location_primary_type:', recallData.location_primary_type);
 
-      // Fire-and-forget: trigger category matching check after new recall insert
-      console.log('[AutoCategory] Triggering check-and-trigger-category-matching for user:', user.id);
-      supabase.functions.invoke('check-and-trigger-category-matching', {
-        body: { userId: user.id },
-      }).catch((e) => console.warn('[AutoCategory] check-and-trigger failed:', e));
-      
       await refreshNotes();
       return recallData.id;
     } catch (error) {
@@ -1482,8 +1385,6 @@ export function useNotes() {
         imageIds: [],
         people: [],
         documents: [],
-        category_matching_at: note.category_matching_at,
-        category_matched_at: note.category_matched_at,
       };
       if (existing) {
         return prev.map(n => n.id === note.id ? { ...n, ...baseNote } : n);

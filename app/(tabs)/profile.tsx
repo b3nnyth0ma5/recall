@@ -14,7 +14,7 @@ import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
 import { useScrollToTop } from '@/contexts/ScrollToTopContext';
-import Toast from 'react-native-toast-message';
+
 
 
 
@@ -236,86 +236,6 @@ export default function ProfileScreen() {
       if (val === 'true') setOnDeviceAnswer(true);
     });
   }, []);
-
-  // Category health card state
-  const [categoryStatsLoading, setCategoryStatsLoading] = useState(true);
-  const [totalRecalls, setTotalRecalls] = useState(0);
-  const [recallCountAtLastRun, setRecallCountAtLastRun] = useState(0);
-  const [lastCategoryRunAt, setLastCategoryRunAt] = useState<string | null>(null);
-  const [categoryCount, setCategoryCount] = useState(0);
-  const [categoryMatchLoading, setCategoryMatchLoading] = useState(false);
-
-  const fetchCategoryStats = useCallback(async () => {
-    if (!user) return;
-    console.log('[Profile] Fetching category stats');
-    setCategoryStatsLoading(true);
-    try {
-      const [recallsResult, prefsResult, categoriesResult] = await Promise.all([
-        supabase
-          .from('recalls')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id),
-        supabase
-          .from('user_preferences')
-          .select('recall_count_at_last_category_run, last_category_run_at')
-          .eq('user_id', user.id)
-          .maybeSingle(),
-        supabase
-          .from('recollection_categories')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id),
-      ]);
-
-      setTotalRecalls(recallsResult.count ?? 0);
-      setRecallCountAtLastRun(prefsResult.data?.recall_count_at_last_category_run ?? 0);
-      setLastCategoryRunAt(prefsResult.data?.last_category_run_at ?? null);
-      setCategoryCount(categoriesResult.count ?? 0);
-    } catch (e) {
-      console.error('[Profile] Error fetching category stats:', e);
-    } finally {
-      setCategoryStatsLoading(false);
-    }
-  }, [user]);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchCategoryStats();
-    }, [fetchCategoryStats])
-  );
-
-  const handleRerunCategoryMatching = async () => {
-    if (!user) return;
-    console.log('[Profile] Re-run category matching button pressed');
-    setCategoryMatchLoading(true);
-    try {
-      const { error } = await supabase.functions.invoke('check-and-trigger-category-matching', {
-        body: { userId: user.id, forceRun: true },
-      });
-      if (error) throw error;
-      console.log('[Profile] Category matching triggered successfully');
-      Toast.show({ type: 'success', text1: 'Category matching started', position: 'bottom' });
-      await fetchCategoryStats();
-    } catch (e) {
-      console.error('[Profile] Error triggering category matching:', e);
-      Toast.show({ type: 'error', text1: 'Failed to trigger matching', position: 'bottom' });
-    } finally {
-      setCategoryMatchLoading(false);
-    }
-  };
-
-  const formatRelativeTime = (isoString: string | null): string => {
-    if (!isoString) return 'Never';
-    const diff = Date.now() - new Date(isoString).getTime();
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
-    const months = Math.floor(days / 30);
-    return `${months} month${months === 1 ? '' : 's'} ago`;
-  };
 
   const handleOnDeviceNerToggle = (value: boolean) => {
     console.log('[Profile] On-device NER toggle changed:', value);
@@ -549,70 +469,6 @@ export default function ProfileScreen() {
             </View>
           </View>
         )}
-
-        {/* Categories Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <IconSymbol name="square.grid.2x2" size={24} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Categories</Text>
-          </View>
-
-          {categoryStatsLoading ? (
-            <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 12 }} />
-          ) : (
-            <>
-              <View style={styles.categoryStatsCard}>
-                <View style={styles.categoryStatRow}>
-                  <View style={styles.categoryStatItem}>
-                    <Text style={styles.categoryStatValue}>{totalRecalls}</Text>
-                    <Text style={styles.categoryStatLabel}>Total Recalls</Text>
-                  </View>
-                  <View style={styles.categoryStatDivider} />
-                  <View style={styles.categoryStatItem}>
-                    {(() => {
-                      const newCount = Math.max(0, totalRecalls - recallCountAtLastRun);
-                      const pct = totalRecalls > 0 ? Math.round((newCount / totalRecalls) * 100) : 0;
-                      const newLabel = `${newCount} new (${pct}%)`;
-                      return (
-                        <>
-                          <Text style={styles.categoryStatValue}>{newLabel}</Text>
-                          <Text style={styles.categoryStatLabel}>Since Last Run</Text>
-                        </>
-                      );
-                    })()}
-                  </View>
-                  <View style={styles.categoryStatDivider} />
-                  <View style={styles.categoryStatItem}>
-                    <Text style={styles.categoryStatValue}>{categoryCount}</Text>
-                    <Text style={styles.categoryStatLabel}>Categories</Text>
-                  </View>
-                </View>
-                <View style={styles.categoryLastRunRow}>
-                  <IconSymbol name="clock" size={14} color={colors.textSecondary} />
-                  <Text style={styles.categoryLastRunText}>
-                    Last run: {formatRelativeTime(lastCategoryRunAt)}
-                  </Text>
-                </View>
-              </View>
-
-              <Pressable
-                onPress={handleRerunCategoryMatching}
-                disabled={categoryMatchLoading}
-                style={[styles.rerunButton, categoryMatchLoading && styles.buttonDisabled]}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                {categoryMatchLoading ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <>
-                    <IconSymbol name="arrow.clockwise" size={18} color={colors.primary} />
-                    <Text style={styles.rerunButtonText}>Re-run category matching</Text>
-                  </>
-                )}
-              </Pressable>
-            </>
-          )}
-        </View>
 
         {/* Account Section */}
         <View style={styles.section}>
@@ -1017,68 +873,5 @@ const styles = StyleSheet.create({
     marginTop: 2,
     lineHeight: 16,
   },
-  categoryStatsCard: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-    marginBottom: 12,
-  },
-  categoryStatRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  categoryStatItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  categoryStatDivider: {
-    width: 1,
-    height: 36,
-    backgroundColor: colors.border,
-  },
-  categoryStatValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  categoryStatLabel: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  categoryLastRunRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 10,
-  },
-  categoryLastRunText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  rerunButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  rerunButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.primary,
-  },
+
 });
