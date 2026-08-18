@@ -14,7 +14,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export async function writeTokenToAppGroup(newSession: Session | null) {
+export async function writeTokenToAppGroup(newSession: Session | null): Promise<boolean> {
   const hasSession = newSession !== null;
   console.log(
     '[AuthContext] writeTokenToAppGroup called — has session:',
@@ -25,24 +25,25 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
 
   if (Platform.OS !== 'ios') {
     console.log('[AuthContext] writeTokenToAppGroup — skipping, not iOS');
-    return;
+    return true; // no-op on non-iOS is not a failure
   }
 
   try {
     let writeTokenFile: ((json: string) => Promise<boolean>) | null = null;
     let deleteTokenFile: (() => Promise<boolean>) | null = null;
+
     try {
       const mod = await import('recall-native');
       writeTokenFile = mod.writeTokenFile;
       deleteTokenFile = mod.deleteTokenFile;
     } catch {
       console.warn('[AuthContext] recall-native not available in this build — skipping App Group write');
-      return;
+      return false;
     }
 
     if (!writeTokenFile || !deleteTokenFile) {
       console.warn('[AuthContext] writeTokenFile/deleteTokenFile not exported from recall-native — skipping');
-      return;
+      return false;
     }
 
     if (newSession) {
@@ -52,11 +53,13 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
         user_id: newSession.user.id,
         expires_at: newSession.expires_at ?? 0,
       });
+
       console.log(
         '[AuthContext] Writing token via native bridge — payload size:',
         payload.length,
         'bytes'
       );
+
       let success = await writeTokenFile(payload);
       if (success) {
         console.log('[AuthContext] Token file written successfully via native bridge');
@@ -71,7 +74,9 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
         }
       }
 
-      // Verify the write landed
+      // Verify the write landed — this is now the source of truth we return,
+      // not just whether writeTokenFile() resolved without throwing.
+      let verifiedOnDisk = false;
       try {
         let verifyAppGroupContainer: (() => Promise<unknown>) | null = null;
         try {
@@ -80,6 +85,7 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
         } catch {
           // skip verify
         }
+
         const verify = verifyAppGroupContainer ? await verifyAppGroupContainer() as any : null;
         console.log(
           '[AuthContext] Post-write verify:',
@@ -91,20 +97,28 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
             containerPath: verify?.containerPath ?? null,
           })
         );
+
         if (!verify?.tokenFileExists) {
           console.error('[AuthContext] Post-write verify FAILED — file not found after write.');
         } else if (verify.tokenFileSize !== payload.length) {
           console.error(
             `[AuthContext] Post-write verify SIZE MISMATCH — wrote ${payload.length} bytes, Swift sees ${verify.tokenFileSize} bytes.`
           );
+        } else {
+          verifiedOnDisk = true;
         }
       } catch (verifyErr) {
         console.warn('[AuthContext] Post-write verify threw:', String(verifyErr));
       }
+
+      // Success means: writeTokenFile resolved true AND the file is actually
+      // on disk with the right size — not just "the call didn't throw."
+      return success && verifiedOnDisk;
     } else {
       console.log('[AuthContext] Deleting token file via native bridge');
       const deleted = await deleteTokenFile();
       console.log('[AuthContext] Token file delete result:', deleted);
+      return deleted;
     }
   } catch (e) {
     console.error(
@@ -115,6 +129,7 @@ export async function writeTokenToAppGroup(newSession: Session | null) {
       '[AuthContext] writeTokenToAppGroup error stack:',
       e instanceof Error ? e.stack : 'no stack'
     );
+    return false;
   }
 }
 
