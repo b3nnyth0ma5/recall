@@ -851,8 +851,18 @@ class ShareViewController: UIViewController {
 
     // MARK: - Keychain fallback
 
+    /// Human-readable OSStatus decoding. A bare number like "-34018" tells you nothing;
+    /// this turns it into e.g. "errSecMissingEntitlement" so an entitlement/provisioning
+    /// mismatch is obvious in the log instead of looking like "the item just isn't there".
+    private func secStatusMessage(_ status: OSStatus) -> String {
+        if let cfMessage = SecCopyErrorMessageString(status, nil) {
+            return "\(status) (\(cfMessage as String))"
+        }
+        return "\(status)"
+    }
+
     private func readTokenFromKeychain() -> (accessToken: String, refreshToken: String, userId: String, expiresAt: Double)? {
-        print("[ShareViewController] readTokenFromKeychain — attempting Keychain read")
+        print("[ShareViewController] readTokenFromKeychain — attempting Keychain read, accessGroup=\(keychainAccessGroup), service=\(keychainService), account=\(keychainAccount)")
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
@@ -863,13 +873,33 @@ class ShareViewController: UIViewController {
         ]
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
+
         guard status == errSecSuccess,
               let data = result as? Data,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let accessToken = json["access_token"] as? String,
               let refreshToken = json["refresh_token"] as? String,
               let userId = json["user_id"] as? String else {
-            print("[ShareViewController] readTokenFromKeychain — failed (status: \(status))")
+            print("[ShareViewController] readTokenFromKeychain — failed, status: \(secStatusMessage(status))")
+
+            // Diagnostic-only probe: retry WITHOUT kSecAttrAccessGroup. If this second
+            // query finds an item but the first one (scoped to keychainAccessGroup) did not,
+            // the item exists under a DIFFERENT access group — almost always a Team ID /
+            // Keychain Sharing entitlement mismatch between the main app and this extension,
+            // not a "token was never written" problem. This block never returns data to the
+            // caller; it only logs, since reading from an unexpected access group would be
+            // reading someone else's / a stale/misconfigured item.
+            if status == errSecItemNotFound || status == errSecMissingEntitlement {
+                var probeQuery = query
+                probeQuery.removeValue(forKey: kSecAttrAccessGroup as String)
+                var probeResult: AnyObject?
+                let probeStatus = SecItemCopyMatching(probeQuery as CFDictionary, &probeResult)
+                if probeStatus == errSecSuccess {
+                    print("[ShareViewController] readTokenFromKeychain DIAGNOSTIC — item exists under a DIFFERENT access group than '\(keychainAccessGroup)'. This means the app and the share extension are signed with mismatched Team IDs or Keychain Sharing entitlements — fix the entitlements/provisioning, this is very likely the root cause of the auth failure.")
+                } else {
+                    print("[ShareViewController] readTokenFromKeychain DIAGNOSTIC — no item found even without an access group filter (status: \(secStatusMessage(probeStatus))). The token was never written to the Keychain at all — the bug is on the write side (main app), not here.")
+                }
+            }
             return nil
         }
         let expiresAt = (json["expires_at"] as? Double) ?? 0
@@ -879,7 +909,7 @@ class ShareViewController: UIViewController {
 
     private func loadAuthToken() -> TokenLoadResult {
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
-            print("[ShareViewController] loadAuthToken stage 1 FAILED — App Group containerURL is nil for groupID=\(appGroupID), trying Keychain fallback")
+            print("[ShareViewController] loadAuthToken stage 1 FAILED — App Group containerURL is nil for groupID=\(appGroupID), bundleID=\(Bundle.main.bundleIdentifier ?? "nil"). This means THIS target (the share extension) is missing the App Groups entitlement, or the ID doesn't match what's registered on developer.apple.com / in the main app's entitlements. Trying Keychain fallback…")
             if let kc = readTokenFromKeychain() {
                 print("[ShareViewController] loadAuthToken — Keychain fallback succeeded")
                 return .success(accessToken: kc.accessToken, refreshToken: kc.refreshToken, userId: kc.userId, expiresAt: kc.expiresAt)
