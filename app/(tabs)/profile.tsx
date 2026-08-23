@@ -14,6 +14,10 @@ import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
 import { useScrollToTop } from '@/contexts/ScrollToTopContext';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
+
+const BIOMETRIC_LOCK_KEY = 'biometric_lock_enabled';
 
 
 
@@ -76,6 +80,7 @@ export default function ProfileScreen() {
           onPress: async () => {
             console.log('[Profile] Sign out confirmed');
             try {
+              await SecureStore.setItemAsync(BIOMETRIC_LOCK_KEY, 'false');
               await signOut();
               router.replace('/login');
             } catch (error) {
@@ -227,6 +232,8 @@ export default function ProfileScreen() {
 
   const [onDeviceNer, setOnDeviceNer] = useState(false);
   const [onDeviceAnswer, setOnDeviceAnswer] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem('search_ner_ondevice').then(val => {
@@ -236,6 +243,52 @@ export default function ProfileScreen() {
       if (val === 'true') setOnDeviceAnswer(true);
     });
   }, []);
+
+  useEffect(() => {
+    const checkBiometric = async () => {
+      console.log('[Profile] Checking biometric availability');
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      console.log('[Profile] Biometric hardware:', hasHardware, 'enrolled:', isEnrolled);
+      setBiometricAvailable(hasHardware && isEnrolled);
+      if (hasHardware && isEnrolled) {
+        const stored = await SecureStore.getItemAsync(BIOMETRIC_LOCK_KEY);
+        setBiometricEnabled(stored === 'true');
+      }
+    };
+    checkBiometric();
+  }, []);
+
+  const handleBiometricToggle = async (value: boolean) => {
+    console.log('[Profile] Biometric toggle pressed, new value:', value);
+    if (value) {
+      // Turning ON — verify Face ID first to prevent self-lockout
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!isEnrolled) {
+        Alert.alert(
+          'Face ID Not Set Up',
+          'Please go to Settings → Face ID & Passcode to enrol Face ID first.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Confirm Face ID to enable app lock',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      });
+      console.log('[Profile] Biometric enable auth result:', result.success);
+      if (result.success) {
+        await SecureStore.setItemAsync(BIOMETRIC_LOCK_KEY, 'true');
+        setBiometricEnabled(true);
+      }
+    } else {
+      // Turning OFF — no re-auth needed
+      console.log('[Profile] Disabling biometric lock');
+      await SecureStore.setItemAsync(BIOMETRIC_LOCK_KEY, 'false');
+      setBiometricEnabled(false);
+    }
+  };
 
   const handleOnDeviceNerToggle = (value: boolean) => {
     console.log('[Profile] On-device NER toggle changed:', value);
@@ -418,6 +471,22 @@ export default function ProfileScreen() {
                   </>
                 )}
               </Pressable>
+            </View>
+          )}
+
+          {/* Face ID / Biometric Lock Toggle */}
+          {biometricAvailable && (
+            <View style={styles.settingRow}>
+              <View style={styles.settingRowLeft}>
+                <IconSymbol name="faceid" size={20} color={colors.primary} />
+                <Text style={styles.settingLabel}>Require Face ID</Text>
+              </View>
+              <Switch
+                value={biometricEnabled}
+                onValueChange={handleBiometricToggle}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#FFFFFF"
+              />
             </View>
           )}
         </View>
@@ -872,6 +941,25 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
     lineHeight: 16,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  settingRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  settingLabel: {
+    fontSize: 15,
+    color: colors.text,
+    fontWeight: '500',
   },
 
 });

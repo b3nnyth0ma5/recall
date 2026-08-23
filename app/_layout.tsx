@@ -10,11 +10,17 @@ import { PeopleGraph } from '@/components/PeopleGraph';
 import { FloatingNavBar } from '@/components/FloatingNavBar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PortalProvider } from '@gorhom/portal';
-import { StyleSheet, View, Platform, Linking, AppState } from 'react-native';
+import { StyleSheet, View, Platform, Linking, AppState, Image, ActivityIndicator, Pressable, Text } from 'react-native';
 import { supabase } from '@/utils/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image as ExpoImage } from 'expo-image';
 import { Asset as ExpoAsset } from 'expo-asset';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
+import { IconSymbol } from '@/components/IconSymbol';
+
+const BIOMETRIC_LOCK_KEY = 'biometric_lock_enabled';
+const LOCK_GRACE_MS = 3000; // 3 seconds — don't re-lock on brief switches
 
 
 const PeopleGraphOverlay = memo(() => {
@@ -78,6 +84,58 @@ function RootLayoutNav() {
   const lastRouteRef = useRef<string>('');
   // Track share intent that arrived before auth was ready
   const pendingShareIntentRef = useRef(false);
+
+  // Biometric lock state
+  const [lockState, setLockState] = useState<'locked' | 'unlocked' | 'checking'>('checking');
+  const lastBackgroundedAt = useRef<number | null>(null);
+  const isAuthenticatingRef = useRef(false);
+
+  const attemptBiometricUnlock = useCallback(async () => {
+    console.log('[BiometricLock] attemptBiometricUnlock called');
+    if (isAuthenticatingRef.current) return;
+    isAuthenticatingRef.current = true;
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Unlock Recall',
+        fallbackLabel: 'Use Passcode',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      });
+      console.log('[BiometricLock] authenticateAsync result:', result.success);
+      if (result.success) {
+        setLockState('unlocked');
+      }
+      // If cancelled/failed, stay locked — user can tap to retry
+    } catch (e) {
+      console.warn('[BiometricLock] authenticateAsync error:', e);
+    } finally {
+      isAuthenticatingRef.current = false;
+    }
+  }, []);
+
+  const checkAndLock = useCallback(async () => {
+    console.log('[BiometricLock] checkAndLock called');
+    try {
+      const enabled = await SecureStore.getItemAsync(BIOMETRIC_LOCK_KEY);
+      console.log('[BiometricLock] biometric_lock_enabled:', enabled);
+      if (enabled !== 'true') {
+        setLockState('unlocked');
+        return;
+      }
+      setLockState('locked');
+      await attemptBiometricUnlock();
+    } catch (e) {
+      console.warn('[BiometricLock] checkAndLock error:', e);
+      setLockState('unlocked');
+    }
+  }, [attemptBiometricUnlock]);
+
+  // Initial lock check on mount
+  useEffect(() => {
+    checkAndLock();
+    // checkAndLock is stable (useCallback with stable deps) — intentionally run once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // One-shot Recall logo prefetch — runs once when the root layout mounts.
   useEffect(() => {
@@ -197,13 +255,26 @@ function RootLayoutNav() {
     }
   }, [user, router]);
 
-  // AppState foreground listener — check for pending share when app becomes active
+  // AppState foreground listener — check for pending share + biometric re-lock
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') checkForPendingShare();
+      if (state === 'active') {
+        console.log('[AppState] App became active');
+        checkForPendingShare();
+        // Biometric re-lock on foreground (with grace period)
+        const now = Date.now();
+        const elapsed = lastBackgroundedAt.current ? now - lastBackgroundedAt.current : Infinity;
+        console.log('[BiometricLock] Elapsed since background:', elapsed, 'ms');
+        if (elapsed > LOCK_GRACE_MS) {
+          checkAndLock();
+        }
+      } else if (state === 'background' || state === 'inactive') {
+        console.log('[AppState] App went to background/inactive');
+        lastBackgroundedAt.current = Date.now();
+      }
     });
     return () => sub.remove();
-  }, [checkForPendingShare]);
+  }, [checkForPendingShare, checkAndLock]);
 
   // Darwin bridge — listen for onShareCompleted event from AppGroupModule
   useEffect(() => {
@@ -478,6 +549,32 @@ function RootLayoutNav() {
     <View style={styles.container}>
       {/* iOS Status Bar Background - Thin black bar */}
       <IOSStatusBarBackground />
+
+      {/* Biometric Lock Overlay */}
+      {(lockState === 'locked' || lockState === 'checking') && (
+        <View style={lockStyles.overlay}>
+          <Image
+            source={require('@/assets/images/976f1127-ecb6-4965-9721-d979165ced5e.png')}
+            style={lockStyles.logo}
+            resizeMode="contain"
+          />
+          {lockState === 'locked' && (
+            <Pressable
+              style={lockStyles.unlockButton}
+              onPress={() => {
+                console.log('[BiometricLock] Unlock button tapped');
+                attemptBiometricUnlock();
+              }}
+            >
+              <IconSymbol name="faceid" size={48} color="#FFFFFF" />
+              <Text style={lockStyles.unlockLabel}>Tap to unlock</Text>
+            </Pressable>
+          )}
+          {lockState === 'checking' && (
+            <ActivityIndicator size="large" color="#FFFFFF" style={{ marginTop: 40 }} />
+          )}
+        </View>
+      )}
       
       <Stack
         screenOptions={{
@@ -587,5 +684,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
     zIndex: 999998,
     elevation: 999998,
+  },
+});
+
+const lockStyles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0A0A0A',
+    zIndex: 9999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    marginBottom: 48,
+  },
+  unlockButton: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  unlockLabel: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+    opacity: 0.8,
   },
 });

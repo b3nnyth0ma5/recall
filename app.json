@@ -33,7 +33,8 @@
         "NSCameraUsageDescription": "Recall needs access to your camera to capture photos and add them to your memories.",
         "NSLocationWhenInUseUsageDescription": "Recall uses your location to tag memories with where they happened and to help you find recalls by place.",
         "NSPhotoLibraryAddUsageDescription": "Recall needs permission to save images to your photo library.",
-        "NSSiriUsageDescription": "Recall uses Siri to let you search and create memories with your voice."
+        "NSSiriUsageDescription": "Recall uses Siri to let you search and create memories with your voice.",
+        "NSFaceIDUsageDescription": "Recall uses Face ID to protect your memories."
       }
     },
     "android": {
