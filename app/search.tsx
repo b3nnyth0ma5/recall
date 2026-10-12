@@ -217,6 +217,7 @@ export default function SearchScreen() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [isProgressExpanded, setIsProgressExpanded] = useState(true);
+  const [dateInfo, setDateInfo] = useState<{ dateFrom: string | null; dateTo: string | null; description: string | null } | null>(null);
   const [onDeviceAnswerMs, setOnDeviceAnswerMs] = useState<number | null>(null);
   const [streamingAnswer, setStreamingAnswer] = useState('');
   const [isStreamingComplete, setIsStreamingComplete] = useState(false);
@@ -548,6 +549,7 @@ export default function SearchScreen() {
         setIsAnswerExpanded(false);
         setIsProgressExpanded(true);
         setShowHistory(true);
+        setDateInfo(null);
         searchNotes('');
       }
     }
@@ -651,6 +653,8 @@ export default function SearchScreen() {
           const canUseOnDeviceAnswer = await checkAndNotifyFoundationModels();
           const searchResult = await searchNotes(decodedQuery, true, undefined, preExtractedEntities);
           if (searchResult !== undefined) {
+            if (searchResult.dateInfo) setDateInfo(searchResult.dateInfo);
+            else setDateInfo(null);
             const contextForAnswer = searchResult.context_for_answer ?? '';
             if (canUseOnDeviceAnswer) {
               const MAX_ONDEVICE_CONTEXT_CHARS = 12_000;
@@ -938,6 +942,8 @@ export default function SearchScreen() {
       const searchResult = await searchNotes(searchQuery, true, searchUploads.length > 0 ? searchUploads : undefined, preExtractedEntities);
 
       if (searchResult !== undefined) {
+        if (searchResult.dateInfo) setDateInfo(searchResult.dateInfo);
+        else setDateInfo(null);
         const contextForAnswer = searchResult.context_for_answer ?? '';
         if (canUseOnDeviceAnswer) {
           console.log('[Search] handleSearch: attempting on-device answer generation');
@@ -1050,6 +1056,8 @@ export default function SearchScreen() {
       const searchResult = await searchNotes(item.search_text, true, searchUploads, preExtractedEntities);
 
       if (searchResult !== undefined) {
+        if (searchResult.dateInfo) setDateInfo(searchResult.dateInfo);
+        else setDateInfo(null);
         const contextForAnswer = searchResult.context_for_answer ?? '';
         if (canUseOnDeviceAnswer) {
           console.log('[Search] handleHistoryItemPress: attempting on-device answer generation');
@@ -1181,6 +1189,7 @@ export default function SearchScreen() {
     setStreamingAnswer('');
     setIsStreamingComplete(false);
     setShowThinkingText(false);
+    setDateInfo(null);
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -1201,6 +1210,7 @@ export default function SearchScreen() {
     setStreamingAnswer('');
     setIsStreamingComplete(false);
     setShowThinkingText(false);
+    setDateInfo(null);
     searchNotes('');
     // Refresh recent-searches list so the just-completed search is visible
     // immediately, regardless of realtime timing.
@@ -1670,6 +1680,16 @@ export default function SearchScreen() {
                     <Text style={styles.ocrProgressText}>{ocrProgress}</Text>
                   </Animated.View>
                 )}
+
+                {/* Date info chip */}
+                {dateInfo?.description ? (
+                  <Animated.View entering={FadeIn.duration(300)} style={styles.infoChipsRow}>
+                    <View style={styles.infoChip}>
+                      <IconSymbol name="calendar" size={14} color={colors.primary} />
+                      <Text style={styles.infoChipText}>{dateInfo.description}</Text>
+                    </View>
+                  </Animated.View>
+                ) : null}
                 {false && (
                   <SearchProgressIndicator
                     stage={searchStage}
@@ -2306,5 +2326,26 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 8,
     fontStyle: 'italic',
+  },
+  infoChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  infoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: `${colors.primary}15`,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  infoChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
   },
 });

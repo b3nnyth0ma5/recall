@@ -1116,6 +1116,7 @@ export function useNotes() {
         context_for_answer: (entityResult.context_for_answer as string) ?? '',
         uploaded_images_context: entityResult.uploaded_images_context as string | undefined,
         results: mappedResults,
+        dateInfo: (entityResult.dateInfo as { dateFrom: string | null; dateTo: string | null; description: string | null } | null) ?? null,
       };
     } catch (error) {
       console.error('=== SEARCH EXCEPTION ===');

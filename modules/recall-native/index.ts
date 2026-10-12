@@ -5,6 +5,9 @@ interface ExtractedEntities {
   people: string[];
   location: string;
   locationIntent: 'in' | 'near' | 'near_me' | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  dateDescription?: string | null;
 }
 
 export type FoundationModelsStatus =
