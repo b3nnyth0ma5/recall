@@ -15,7 +15,7 @@ import { supabase } from '@/utils/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image as ExpoImage } from 'expo-image';
 import { Asset as ExpoAsset } from 'expo-asset';
-import * as LocalAuthentication from 'expo-local-authentication';
+import * as LocalAuthentication from '@/utils/localAuthentication';
 import * as SecureStore from 'expo-secure-store';
 import { IconSymbol } from '@/components/IconSymbol';
 

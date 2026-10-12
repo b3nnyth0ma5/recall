@@ -14,7 +14,7 @@ import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
 import { useScrollToTop } from '@/contexts/ScrollToTopContext';
-import * as LocalAuthentication from 'expo-local-authentication';
+import * as LocalAuthentication from '@/utils/localAuthentication';
 import * as SecureStore from 'expo-secure-store';
 
 const BIOMETRIC_LOCK_KEY = 'biometric_lock_enabled';
